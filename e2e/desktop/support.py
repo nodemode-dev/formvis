@@ -384,5 +384,32 @@ class XWindow:
         test.XTestFakeButtonEvent(self.display, 1, 0, 0)
         self.lib.XSync(self.display, 0)
 
+    def focus(self) -> None:
+        """Without a window manager the keys go to the window under the pointer: the pointer is put on the window's middle."""
+        test = ctypes.CDLL("libXtst.so.6")
+        test.XTestFakeMotionEvent.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_ulong]
+        x, y, width, height = self.geometry()
+        test.XTestFakeMotionEvent(self.display, 0, x + width // 2, y + height // 2, 0)
+        self.lib.XSync(self.display, 0)
+        time.sleep(0.5)
+
+    def keys(self, *names: str) -> None:
+        """Real key presses through XTEST to the focused window: keysym names such as a, minus, Return; a name joined with + is held while the last one is pressed (Control_L+a)."""
+        test = ctypes.CDLL("libXtst.so.6")
+        test.XTestFakeKeyEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+        self.lib.XStringToKeysym.restype = ctypes.c_ulong
+        self.lib.XStringToKeysym.argtypes = [ctypes.c_char_p]
+        self.lib.XKeysymToKeycode.restype = ctypes.c_ubyte
+        self.lib.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        for name in names:
+            codes = [self.lib.XKeysymToKeycode(self.display, self.lib.XStringToKeysym(part.encode())) for part in name.split("+")]
+            assert all(codes), f"no key for {name}"
+            for code in codes:
+                test.XTestFakeKeyEvent(self.display, code, 1, 0)
+            for code in reversed(codes):
+                test.XTestFakeKeyEvent(self.display, code, 0, 0)
+            self.lib.XSync(self.display, 0)
+            time.sleep(0.06)
+
     def close(self) -> None:
         self.lib.XCloseDisplay(self.display)

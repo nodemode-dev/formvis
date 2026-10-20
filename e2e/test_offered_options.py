@@ -209,6 +209,7 @@ def test_every_tool_option_at_every_value(page, part):
     stage = page.evaluate("(() => { const r = document.querySelector('.cv-stage').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
     tried = 0
     for tid in tools:
+        print(f"[offered] tool {tid}", flush=True)
         page.evaluate(SETUP)
         page.evaluate("(id) => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); e.deselect(); e.setTool(id); }", tid)
         opts = page.evaluate("""async (tid) => { const R = await import('/src/extensions/registry.ts'), e = window.formvis.engine;

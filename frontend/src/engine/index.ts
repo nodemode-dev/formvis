@@ -129,7 +129,7 @@ export { CONTOURS, DEFAULT_GLOBAL_LIGHT, contourCurve, customContourId, customCo
 import { mergeMeta, type DocMeta, type MetaPatch } from './doc-meta';
 export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, customLines, metaWritable, mergeMeta, parseCustom, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
 import { UPRIGHT, allBrushPresets, computeOption, defaultShape, mergeShape, noDynamics, noSymmetry, pressureOption, type BrushSymmetry, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
-import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, shapeGradient, shapePattern, type PathShapeKind, type PathShapeOptions } from './shape-paths';
+import { DEFAULT_PATH_SHAPE, boxedShapePath, cornerRectPath, linePath, shapeGradient, shapePattern, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
 import { traceAlpha } from './trace-outline';
@@ -3297,10 +3297,21 @@ export class Engine {
     return true;
   }
 
+  /** The vector form of a live Rectangle or Ellipse shape layer (the Shape tools' own layers, which keep their look as
+   *  parameters): its outline in the layer's box, its colour as the fill. Null for any other layer. */
+  private liveShapeVector(l: Layer): NonNullable<Layer['vector']> | null {
+    const s = l.shape, t = l.transform;
+    if (l.vector || !s || !l.raster) return null;
+    const box = { x: t.x, y: t.y, w: t.w, h: t.h }, radii = cornerRadiiOf(s);
+    const path = s.kind === 'Ellipse' ? boxedShapePath('ellipse', box, DEFAULT_PATH_SHAPE) : radii ? cornerRectPath(box, radii) : boxedShapePath('rectangle', box, { ...DEFAULT_PATH_SHAPE, cornerRadius: Number(s.cornerRadius) || 0 });
+    const ch = (v: unknown): number => Math.round(clamp(Number(v) || 0, 0, 1) * 255);
+    return { path, fill: { r: ch(s.red), g: ch(s.green), b: ch(s.blue) }, stroke: null, origin: { x: t.x, y: t.y } };
+  }
+
   /** A shape layer's outline where its pixels are now: its path, drawn at `origin`, carried through the layer's placement
    *  (a move, scale, turn or flip). */
   private placedPath(l: Layer): VectorPath | null {
-    const v = l.vector, r = l.raster;
+    const v = l.vector ?? this.liveShapeVector(l), r = l.raster;
     if (!v || !r) return null;
     const m = placement(l.transform, r.width, r.height);
     return mapPath(v.path, (q) => applyMat(m, q.x - v.origin.x, q.y - v.origin.y));
@@ -3328,7 +3339,7 @@ export class Engine {
   combineShapes(op: PathOp | 'merge'): void {
     const p = this.current;
     if (!p || this.stroke) return;
-    const shapes = p.doc.layers.filter((l) => p.selectedIds.has(l.id) && !!l.vector && !!l.raster);
+    const shapes = p.doc.layers.filter((l) => p.selectedIds.has(l.id) && !!l.raster && (!!l.vector || !!this.liveShapeVector(l)));
     if (!shapes.length) { this.notice('Select one or more shape layers first.'); return; }
     const paths = shapes.map((l) => this.placedPath(l) as VectorPath);
     let subpaths = paths[0].subpaths;
@@ -3339,9 +3350,10 @@ export class Engine {
     }
     const path = op === 'merge' ? this.mergedOutline({ subpaths }) : { subpaths };
     if (!path) { this.notice('The shapes fill nothing to merge.'); return; }
-    const back = shapes[0].id, gone = new Set(shapes.slice(1).map((l) => l.id));
+    const back = shapes[0].id, gone = new Set(shapes.slice(1).map((l) => l.id)), backLive = shapes[0].vector ? null : this.liveShapeVector(shapes[0]);
     this.settle();
     this.edit(op === 'merge' ? 'Merge Shape Components' : 'Combine Shapes', (q) => {
+      if (backLive) q.updateLayer(back, { vector: backLive, shape: null });
       if (gone.size) q.setLayers(this.normalizeClips(q.doc.layers.filter((l) => !gone.has(l.id))));
       this.reshape(q, back, path);
       this.focus(q, back);

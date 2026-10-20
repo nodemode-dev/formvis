@@ -135,6 +135,17 @@ function ellipsePath(b: Rect): VectorPath {
   ] }] };
 }
 
+/** A rectangle with its own radius at each corner (top left, top right, bottom right, bottom left), each held to half the shorter side. */
+export function cornerRectPath(b: Rect, radii: readonly number[]): VectorPath {
+  const { x, y, w, h } = b, cap = Math.min(w, h) / 2, [a, c, d, e] = radii.map((v) => Math.max(0, Math.min(v, cap))), K = KAPPA;
+  const anchors: VectorPath['subpaths'][number]['anchors'] = [];
+  anchors.push(anchor(x + a, y, x + a - a * K, y), anchor(x + w - c, y, x + w - c, y, x + w - c + c * K, y));
+  anchors.push(anchor(x + w, y + c, x + w, y + c - c * K), anchor(x + w, y + h - d, x + w, y + h - d, x + w, y + h - d + d * K));
+  anchors.push(anchor(x + w - d, y + h, x + w - d + d * K, y + h), anchor(x + e, y + h, x + e, y + h, x + e - e * K, y + h));
+  anchors.push(anchor(x, y + h - e, x, y + h - e + e * K), anchor(x, y + a, x, y + a, x, y + a - a * K));
+  return { subpaths: [{ closed: true, anchors }] };
+}
+
 function roundRectPath(b: Rect, r: number): VectorPath {
   const { x, y, w, h } = b;
   if (r <= 0) return closed([{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }]);

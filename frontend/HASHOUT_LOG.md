@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Live shapes combine, native folder rounding, ComfyUI re-upload only when lost · _v1.92.3 (engine/shape-paths.ts, engine/index.ts, app.ts, gpu/native-display.ts, io/api.ts, io/comfy.ts, ui/panels/connection-settings.ts; tests)
+
+- Combine Shapes: live Rectangle and Ellipse layers (createShape: a raster with a `shape` and no `vector`) are converted on the fly by liveShapeVector (from the transform box, corner radius or four radii via cornerRectPath) inside the one edit(); placedPath reads `l.vector ?? this.liveShapeVector(l)`. The combined back layer becomes a vector shape and loses its live corner parameters.
+- Native folders: the CPU canvas blends a non-opaque folder in 8-bit premultiplied with div255 = (v + 255) >> 8 in difference, exclusion, darken, lighten, multiply, screen, overlay and hard light; the native group tile now rounds each layer to 8-bit premultiplied and uses that arithmetic, output alpha by floor. Hue, Color Burn, Saturation, Vivid Light and Reflect still differ (Reflect even from the CPU's own group capture through the formula) and stay CPU. GROUP_BLENDS gained ten modes.
+- The luminance blur for Shadows/Highlights and HDR Toning is stored as hi/lo bytes in an Rgba8 target (about 16 bits); Rgba32Float is not renderable on GL.
+- GPU brush: the remaining GPU/CPU mismatch is per-pixel float32 against the CPU's float64 (one ulp near a .5 boundary flips a byte), not accumulation or the write; the declines stay.
+- Desktop: the WebKitGTK window is not cross-origin isolated with COEP credentialless (SharedArrayBuffer undefined), so the worker pool takes the transfer route there; a banded 16-bit blur gives the same pixels as single thread in the real window.
+
 ## Native hood adjustments, floating panels in the dock layout, deep bands and float composite on workers · _v1.92.2 (gpu/native-display.ts, ui/dock.ts, ui/panel-group.ts, ui/titlebar-tools.ts, app.ts, styles/panels.css, engine/deep-bands.ts, engine/deep.ts, engine/band-pool.ts, engine/filter-worker.ts, engine/filter-jobs.ts, engine/composite-bands.ts, engine/composite-worker.ts, engine/index.ts, ui/panels/filter-panel.ts; e2e tests)
 
 - Native hood: the blur is document-sized in a half-float pair (Rgba32Float is not renderable on GL) and recomputed per frame; HDR Toning measured 3 levels (probably half-float precision in its log and exp) and stays CPU, as do hood layers in a non-Normal blend; documents over 8,192 px a side refuse. The refusal line gained `&& !l.hood`.

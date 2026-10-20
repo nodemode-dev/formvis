@@ -327,6 +327,16 @@ def mirror_list(request: Request) -> dict:
     return {"folder": str(_mirror_dir()), "files": files}
 
 
+def _held(base: str, name: str, data: bytes) -> bool:
+    """Whether ComfyUI's input folder still holds this picture, byte for byte (its /view serves input files)."""
+    q = urllib.parse.urlencode({"filename": name, "subfolder": SUBFOLDER, "type": "input"})
+    try:
+        with _request(f"{base}/view?{q}", timeout=10) as r:
+            return r.read() == data
+    except (urllib.error.URLError, OSError):
+        return False
+
+
 @router.post("/reupload")
 def reupload(request: Request, target: str = Form(...), names: str = Form(...)) -> dict:
     """Sends mirrored pictures to ComfyUI again, for an input folder ComfyUI emptied or a ComfyUI that was reinstalled.
@@ -339,7 +349,7 @@ def reupload(request: Request, target: str = Form(...), names: str = Form(...)) 
         assert isinstance(wanted, list) and 0 < len(wanted) <= 64 and all(isinstance(n, str) for n in wanted)
     except (ValueError, AssertionError):
         raise HTTPException(status_code=422, detail="Name the pictures to send again as a list of ComfyUI input names.")
-    sent, missing = [], []
+    sent, missing, present = [], [], []
     try:
         for n in wanted:
             stem = n.split("/", 1)[-1]
@@ -348,7 +358,11 @@ def reupload(request: Request, target: str = Form(...), names: str = Form(...)) 
             if not stem or "/" in stem or "\\" in stem or stem.startswith(".") or not path.is_file():
                 missing.append(n)
                 continue
-            body, kind = outbound.multipart("image", path.name, path.read_bytes(), {"type": "input", "subfolder": SUBFOLDER, "overwrite": "true"})
+            data = path.read_bytes()
+            if _held(base, path.name, data):
+                present.append(n)
+                continue
+            body, kind = outbound.multipart("image", path.name, data, {"type": "input", "subfolder": SUBFOLDER, "overwrite": "true"})
             with _request(base + "/upload/image", body, {"Content-Type": kind}, "POST") as r:
                 reply = json.loads(r.read() or b"{}")
             stored = reply.get("name") or path.name
@@ -358,7 +372,7 @@ def reupload(request: Request, target: str = Form(...), names: str = Form(...)) 
         raise HTTPException(status_code=502, detail=f"ComfyUI refused the upload ({exc.code}).")
     except (urllib.error.URLError, OSError) as exc:
         raise outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc)
-    return {"sent": sent, "missing": missing}
+    return {"sent": sent, "missing": missing, "present": present}
 
 
 @router.post("/send")

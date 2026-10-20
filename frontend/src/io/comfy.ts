@@ -122,11 +122,11 @@ export function uniqueRecipeName(base: string): string {
 }
 
 /** The pictures formvis sent to ComfyUI that the data folder still holds and `json` names; sent again to the ComfyUI at `target`. */
-export async function resendRecipeInputs(target: string, json: string): Promise<{ sent: number; missing: number; held: number }> {
+export async function resendRecipeInputs(target: string, json: string): Promise<{ sent: number; missing: number; held: number; present: number }> {
   const names = (await api.comfyuiMirror()).map((f) => f.name).filter((n) => json.includes(n));
-  if (!names.length) return { sent: 0, missing: 0, held: 0 };
+  if (!names.length) return { sent: 0, missing: 0, held: 0, present: 0 };
   const r = await api.comfyuiReupload(target, names);
-  return { sent: r.sent.length, missing: r.missing.length, held: names.length };
+  return { sent: r.sent.length, missing: r.missing.length, held: names.length, present: r.present.length };
 }
 
 /** Sets how @img1, @img2 are written into the prompt for a kept workflow; false when it is not a kept one or the pattern is not offered. */

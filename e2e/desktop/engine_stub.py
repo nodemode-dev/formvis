@@ -71,10 +71,13 @@ class Handler(BaseHTTPRequestHandler):
         kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         data = target.read_bytes()
         seeded = os.environ.get("FORMVIS_STUB_STORAGE")
-        if seeded and target.name == "index.html":
-            script = f"<script>try{{const s={seeded};for(const k in s)if(localStorage.getItem(k)===null)localStorage.setItem(k,s[k])}}catch(e){{}}</script>"
+        if target.name == "index.html":
+            script = "<script>try{fetch('/__stub/report',{method:'POST',body:JSON.stringify({isolated:window.crossOriginIsolated===true,sab:typeof SharedArrayBuffer,cores:navigator.hardwareConcurrency,worker:typeof Worker,secure:window.isSecureContext,agent:navigator.userAgent})}).catch(()=>{})}catch(e){}</script>"
+            if seeded:
+                script += f"<script>try{{const s={seeded};for(const k in s)if(localStorage.getItem(k)===null)localStorage.setItem(k,s[k])}}catch(e){{}}</script>"
             data = data.replace(b"<head>", b"<head>" + script.encode(), 1)
-        self._send(200, [("Content-Type", kind), ("Cache-Control", "no-store")], data)
+        isolation = [] if os.environ.get("FORMVIS_ISOLATED") == "0" else [("Cross-Origin-Opener-Policy", "same-origin"), ("Cross-Origin-Embedder-Policy", os.environ.get("FORMVIS_STUB_COEP", "credentialless"))]
+        self._send(200, [("Content-Type", kind), ("Cache-Control", "no-store"), *isolation], data)
         return True
 
     def _proxy(self, body: bytes) -> None:
@@ -128,6 +131,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/__stub/state":
             with LOCK:
                 return self._json({**{k: v for k, v in STATE.items() if k != "commands"}, "age": time.time() - STATE["last_poll"] if STATE["last_poll"] else None})
+        if path == "/__stub/report" and self.command == "POST":
+            with LOCK:
+                STATE["report"] = json.loads(body or b"{}")
+            return self._json({"ok": True})
         if path == "/__stub/catalogue":
             with LOCK:
                 return self._json({"size": STATE["catalogue"], "missing": STATE["missing"], "commands": STATE["commands"]})
@@ -155,7 +162,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("FORMVIS_STUB_PORT", "0"))), Handler)
     server.daemon_threads = True
     address = f"http://127.0.0.1:{server.server_address[1]}"
     if os.environ.get("FORMVIS_STUB_ADDRESS_FILE"):

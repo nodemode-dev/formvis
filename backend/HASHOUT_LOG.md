@@ -2,6 +2,11 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## ComfyUI re-upload only what was lost · _v1.92.3 (app/routers/comfyui.py; tests/comfy_mock.py)
+
+- The reupload route checks ComfyUI's /view?type=input for each mirrored picture (_held) and sends only the ones it no longer holds byte for byte; it answers `present` beside `sent` and `missing`. A failed check counts as not held, so it falls back to uploading.
+- tests/comfy_mock.py is a stand-in ComfyUI (HTTP routes plus a hand-written /ws, since the stdlib server cannot share a port with a websocket server) that runs LoadImage, Invert, Blend, KSampler and SaveImage on real pixels and forgets its inputs on restart().
+
 ## Crop and Straighten Photos colour order and refusal · _v1.92.1 (app/routers/merge.py)
 
 - `_read` returns OpenCV's BGR array and crop_photos warped it and saved it as RGB, so red and blue swapped; the cut-out is reversed to RGB before Pillow. Removed `Image.fromarray(warped).save(buf, "PNG")`.

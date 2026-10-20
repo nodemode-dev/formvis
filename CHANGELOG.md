@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.3 · 2026-10-20
+
+- Layer > Combine Shapes (Unite, Subtract, Intersect, Exclude) works on the live Rectangle and Ellipse layers made by the Shape tools, converting them to vector outlines in one undo step.
+- Native renderer: folders in Overlay, Difference, Darken, Exclusion, Hard Light, Color Dodge, Linear Light, Pin Light, Divide and Glow match the CPU within 2 levels (layers inside a folder round to 8-bit premultiplied as the canvas does); the Shadows/Highlights and HDR Toning blur keeps 16-bit precision (HDR Toning is down to 3 pixels over 2 and stays on the CPU).
+- ComfyUI: Send inputs and Edit in ComfyUI send a recipe's pictures only when ComfyUI has lost them; Edit in ComfyUI now sends lost inputs too.
+- Tests: the menu-command, colour-mode and tool-option walks all pass (10 parts); 70 tests for transforms, type anti-aliasing and type on path, Depth Map, video layers, panorama and Contact Sheet; .kra and .pdn readers with hand-built files; a stand-in ComfyUI server with live-flow backend tests; the Linux desktop suite at 28 tests (floating panels, Save As into the library with Open Recent after a restart, and the window's cross-origin isolation).
+
 ## 1.92.2 · 2026-10-20
 
 - Native renderer: Shadows/Highlights and Clarity adjustment layers draw natively through a blurred copy of the layers below (within 2 levels); HDR Toning, Blend If on the colours beneath, clipped groups and the remaining folder blend modes stay on the CPU.

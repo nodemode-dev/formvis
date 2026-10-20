@@ -305,7 +305,8 @@ export class RecipesSection {
     let copied = true;
     try { await navigator.clipboard.writeText(r.json); } catch { copied = false; }
     window.open(url, '_blank', 'noopener');
-    setText(this.note, `${copied ? `${name} copied: paste it on the ComfyUI canvas (Ctrl+V)` : `${name} could not be copied: open it from your own file`}, edit it, then Export (API) and choose Update... on ${name}.`);
+    const again = await resendRecipeInputs(url.trim(), r.json).then((s) => s.sent, () => 0);
+    setText(this.note, `${copied ? `${name} copied: paste it on the ComfyUI canvas (Ctrl+V)` : `${name} could not be copied: open it from your own file`}, edit it, then Export (API) and choose Update... on ${name}.${again ? ` ${again} of its input pictures were sent to ComfyUI again.` : ''}`);
   }
 
   /** Update...: the chosen workflow (API or editor format) replaces the recipe of the same name, then the connected ComfyUI is asked what it still lacks. */
@@ -342,7 +343,7 @@ export class RecipesSection {
     if (!/^https?:\/\/./i.test(url)) { setText(this.note, 'Set the ComfyUI address in Preferences > Plugins first.'); return; }
     try {
       const s = await resendRecipeInputs(url, r.json);
-      setText(this.note, s.held === 0 ? `${name} names none of the pictures formvis has copies of.` : `${s.sent} picture${s.sent === 1 ? '' : 's'} of ${name} sent to ComfyUI again${s.missing ? `; ${s.missing} no longer have a copy` : ''}.`);
+      setText(this.note, s.held === 0 ? `${name} names none of the pictures formvis has copies of.` : s.sent === 0 && s.present > 0 ? `${s.present} picture${s.present === 1 ? ' is' : 's of ' + name + ' are'} already in ComfyUI${s.missing ? `; ${s.missing} no longer have a copy` : ''}.` : `${s.sent} picture${s.sent === 1 ? '' : 's'} of ${name} sent to ComfyUI again${s.missing ? `; ${s.missing} no longer have a copy` : ''}.`);
     } catch (err) { setText(this.note, failure(err, 'The pictures could not be sent again.')); }
   }
 

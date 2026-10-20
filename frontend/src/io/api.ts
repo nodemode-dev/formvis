@@ -330,8 +330,8 @@ export const api = {
     try { return ((await (await request('/comfyui/mirror')).json()) as { files: Array<{ name: string; bytes: number; time: number }> }).files; } catch { return []; }
   },
   /** Sends mirrored pictures to ComfyUI again from the copies in the data folder; the names sent and those no copy is left of. */
-  async comfyuiReupload(target: string, names: string[]): Promise<{ sent: string[]; missing: string[] }> {
-    return (await (await request('/comfyui/reupload', { method: 'POST', body: form({ target, names: JSON.stringify(names) }) })).json()) as { sent: string[]; missing: string[] };
+  async comfyuiReupload(target: string, names: string[]): Promise<{ sent: string[]; missing: string[]; present: string[] }> {
+    return (await (await request('/comfyui/reupload', { method: 'POST', body: form({ target, names: JSON.stringify(names) }) })).json()) as { sent: string[]; missing: string[]; present: string[] };
   },
 
   /** Sign-in for the user's own ComfyUI server: the mode, user name and header name (never the secret). */
