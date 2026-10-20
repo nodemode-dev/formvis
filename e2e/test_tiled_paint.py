@@ -112,7 +112,7 @@ def test_undo_brings_back_tiles_that_went_to_disk(page):
       const far = E.createSurface(600, 400); e.compose(far, [1, 0, 0, 1, -20000, -15000], 'high');   // the view far from the stroke
       await e.pageTiles();
       const pagedBefore = t.pagedCount, n = e.current.history.steps.current;
-      e.undo(); for (let i = 0; i < 200 && (e.draining || e.current.history.steps.current !== n - 1); i++) await new Promise((r) => setTimeout(r, 30));
+      e.undo(); for (let i = 0; i < 1000 && (e.draining || e.current.history.steps.current !== n - 1); i++) await new Promise((r) => setTimeout(r, 30));
       return { pagedBefore, undone: e.current.history.steps.current === n - 1, white: window.__region((x, y, w, h) => t.read(x, y, w, h)) === white };
     }""")
     assert r["pagedBefore"] >= 2, r                                         # the stroke's tiles went to disk

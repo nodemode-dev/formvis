@@ -1,5 +1,6 @@
 import { blurDeep, motionBlurDeep, noiseDeep, surfaceBlurDeep, unsharpDeep } from '../../engine/deep';
 import { POOL_FROM } from '../../engine/band-pool';
+import { deepBandable } from '../../engine/deep-bands';
 import { DEEP_RGB_ONLY, deepGalleryFilter, deepLibFilter, lensBlurIrisDeep, lensCorrectDeep, smartSharpenDeep, viaRgbDeep } from '../../engine/deep-filters';
 import type { DeepPixels } from '../../engine/types';
 import { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, lensCorrect, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine, type LensFix } from '../../engine';
@@ -1066,17 +1067,20 @@ export class FilterPanel extends Dialog {
     return true;
   }
 
-  /** Gaussian Blur and Unsharp Mask on a large 16 or 32 bit layer in bands on the worker pool; null where the whole-layer route applies. */
-  private deepPooled(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> | null {
+  /** A banded-safe filter (Gaussian Blur, Unsharp Mask, Motion Blur, Surface Blur, Add Noise and the neighbourhood library filters) on a large 16 or 32 bit layer in bands on the worker pool; null where the whole-layer route applies. */
+  private deepPooled(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean | 'refused'> | null {
     const p = this.engine.current, ch = p?.activeLayer?.channels;
-    if (!p || !ch || ch.mode !== 'rgb' || (kind !== 'gaussianBlur' && kind !== 'unsharpMask') || ch.width * ch.height <= Math.max(this.engine.bandFrom, POOL_FROM)) return null;
-    const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, apron = bandApron(kind, s);
-    return apron === null ? null : this.engine.bandedDeepFilterPool(FILTER_LABELS[kind], { kind, settings: s }, apron);
+    if (!p || !ch || ch.mode !== 'rgb' || !deepBandable(kind) || ch.width * ch.height <= Math.max(this.engine.bandFrom, POOL_FROM)) return null;
+    if (isLibKind(kind) && libFilter(kind).fills && (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind]?.newLayer === true) return null;
+    const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed, apron = kind === 'addNoise' ? 0 : bandApron(kind, s);
+    return apron === null ? null : this.engine.bandedDeepFilterPool(FILTER_LABELS[kind], { kind, settings: s, seed }, apron);
   }
 
     private async applyInBackground(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> {
     const deepPool = this.deepPooled(kind, settings);
-    if (deepPool && await deepPool) { this.engine.setPreview(null); this.close(); return true; }
+    const deepDone = deepPool ? await deepPool : false;
+    if (deepDone === 'refused') return false;
+    if (deepDone) { this.engine.setPreview(null); this.close(); return true; }
     if (this.deepFilter(kind, settings)) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }   // 16 bits (1.53.7)
     if (this.missingImage(kind, settings)) return false;
     if (isLibKind(kind) && libFilter(kind).fills && (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind]?.newLayer === true && !this.smartTarget()) {
@@ -1129,7 +1133,7 @@ export class FilterPanel extends Dialog {
     Object.assign(this.s, structuredClone(settings));
     const run = (src: ImageData, scale: number, frame?: LibFrame): ImageData => this.run(src, scale, frame);
     const deepPool = this.deepPooled(kind, settings);
-    if (deepPool) return deepPool.then((done) => done || this.deepFilter(kind, settings));
+    if (deepPool) return deepPool.then((done) => (done === 'refused' ? false : done || this.deepFilter(kind, settings)));
     if (this.deepFilter(kind, settings)) return true;   // 16 bits (1.53.7)
     const apron = bandApron(kind, this.s);   // a large layer in bands (1.60.9)
     if (apron !== null && this.engine.activeTiled()) { void this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src, frame) => run(src, 1, frame), apron); return true; }

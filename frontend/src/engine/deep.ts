@@ -177,9 +177,9 @@ export function unsharpDeep(src: DeepPixels, amount: number, radius: number, thr
 
 /** Add Noise on floats: the 8-bit filter's seeded noise (the same values for the same seed), not rounded, per channel;
  *  at 32 bits (1.57.2) `ceiling` is Infinity, so light above white keeps its brightness. */
-export function noiseDeep(src: DeepPixels, amount: number, gaussian: boolean, monochromatic: boolean, seed: number, ceiling = 1): DeepPixels {
+export function noiseDeep(src: DeepPixels, amount: number, gaussian: boolean, monochromatic: boolean, seed: number, ceiling = 1, first = 0): DeepPixels {
   const d = new Float32Array(src.data), spread = (amount / 100) * 127.5, S = src.n + 1, A = src.n;
-  for (let px = 0, i = 0; i < d.length; px++, i += S) {
+  for (let px = first, i = 0; i < d.length; px++, i += S) {
     if (d[i + A] === 0) continue;
     const pixelKey = mix32(mix32(px) ^ seed);
     let shared = NaN;

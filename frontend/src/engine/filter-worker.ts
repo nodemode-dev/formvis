@@ -4,7 +4,7 @@ import { developImage } from './develop';
 import { lensBlurSettings, shakeReduce, smartSharpen } from './filters-more';
 import { isGalleryKind, runGallery } from './blur-gallery';
 import { isLibKind, runLib } from './filter-library';
-import { blurDeep, unsharpDeep } from './deep';
+import { deepBandRun } from './deep-bands';
 import type { FilterJob } from './filter-jobs';
 
 /** Filters run here, off the main thread: formvis's kernels are JavaScript, so the
@@ -15,7 +15,7 @@ onmessage = (e: MessageEvent<FilterJob>) => {
   if (job.deep) {
     const floats = job.shared ? new Float32Array(job.shared.buf, job.shared.offset, job.shared.length / 4).slice() : new Float32Array(job.pixels);
     const band = { mode: 'rgb' as const, n: job.deep.n, width: job.width, height: job.height, data: floats };
-    const done = job.kind === 'unsharpMask' ? unsharpDeep(band, job.settings.usmAmount, job.settings.usmRadius, job.settings.threshold, job.deep.ceiling) : blurDeep(band, job.settings.radius);
+    const done = deepBandRun(job.kind, job.settings, job.seed, job.deep.ceiling, job.deep.first ?? 0, band) ?? band;
     const buffer = done.data.buffer as ArrayBuffer;
     postMessage({ id: job.id, width: job.width, height: job.height, pixels: buffer, deep: true }, [buffer]);
     return;

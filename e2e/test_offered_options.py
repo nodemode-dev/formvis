@@ -22,7 +22,9 @@ PICK_LAYERS = """async () => { const E = await import('/src/engine/index.ts'), e
   for (let i = 0; i < 4 && document.querySelector('.cv-scrim:not([hidden]) .cv-dialog'); i++) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise((r) => setTimeout(r, 60)); }
   for (let i = 0; i < 40 && document.documentElement.classList.contains('cv-relighting'); i++) { document.querySelector('.cv-relight-btn[data-act="cancel"]')?.click(); await new Promise((r) => setTimeout(r, 100)); }
   for (let i = 0; i < 10; i++) { const r = new E.Raster(240, 160); r.ctx.fillStyle = '#808080'; r.ctx.fillRect(0, 0, 240, 160); r.touch(); e.insertRasterLayer(r, 'Cover ' + i, 0, 0, {}, 'Cover'); }
-  e.setTool('move'); e.setViewFlip?.(false); window.formvis.commands.get('screen-standard').run(); const tp = window.formvis.commands.get('toggle-panels'); if (!tp.checked?.()) tp.run(); for (const c of ['interface-zoom-reset', 'screen-standard', 'actual']) { const cm = window.formvis.commands; if (cm.enabled(cm.get(c))) cm.run(c); } await new Promise((r) => setTimeout(r, 700));
+  e.setTool('move'); e.setViewFlip?.(false); window.formvis.commands.get('screen-standard').run(); const tp = window.formvis.commands.get('toggle-panels'); if (!tp.checked?.()) tp.run(); const tt = window.formvis.commands.get('terminal.toggle'); if (tt?.checked?.()) tt.run();
+  for (const c of ['interface-zoom-reset', 'screen-standard', 'arrange-tabs']) { const cm = window.formvis.commands; if (cm.enabled(cm.get(c))) cm.run(c); } await new Promise((r) => setTimeout(r, 700));
+  e.fit(); await new Promise((r) => setTimeout(r, 300));
   const st = document.querySelector('.cv-stage'), r = st.getBoundingClientRect(), v = e.current.viewport, at = v.toScreen(120, 80);
   st.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + at.x, clientY: r.top + at.y })); }"""
 
@@ -52,6 +54,7 @@ BUILDERS = [
     ("a layer comp","() => { window.formvis.commands.run('layer-comp-new'); }"),
     ("a vector mask", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); e.addVectorMask('reveal'); }"),
     ("data sets", "() => { window.formvis.engine.importDataSets('a,b\\n1,2\\n3,4'); }"),
+    ("a redaction box", "() => { const e = window.formvis.engine; e.markupKind = 'redact'; e.addMarkup({ x: 30, y: 30 }, { x: 100, y: 90 }); }"),
     ("a mesh warp", "async () => { const e = window.formvis.engine; e.cancelTransform?.(); e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); e.deselect(); window.formvis.commands.run('transform-warp'); await new Promise((r) => setTimeout(r, 800)); }"),
     ("a grayscale document", "async () => { window.formvis.commands.run('mode-grayscale'); await new Promise((r) => setTimeout(r, 300)); }"),
     ("a 32-bit document","() => window.formvis.engine.setDepth(32)"),   # File > Export > Radiance HDR and OpenEXR (1.53.9)
@@ -102,7 +105,7 @@ BUILDERS = [
 # say so in a toast. Commands that leave the page (a language or workspace reload) would be listed here with their reason.
 OUTSIDE = {"patterns-export", "panorama-apply-view", "video-restore-frame", "video-interpret-footage", "video-replace-footage", "video-insert-blank-frame", "video-restore-all", "render-video", "measure-scale-marker", "color-table", "video-delete-frame",
            "revert", "slice-options", "transform-again-copy",       # a document saved to the library and then changed; a selected slice; a transform done by hand first
-           "apply-redactions", "clear-slices", "convert-point-text", "delete-hidden", "rasterize-fill", "smart-reveal-linked", "transform-again", "video-duplicate-frame", "video-rasterize",   # redaction marks, slices, point text, a hidden layer, a fill layer and a linked smart object are each made by their own dialog or tool; the rest follow a transform or a video
+           "clear-slices", "convert-point-text", "delete-hidden", "rasterize-fill", "smart-reveal-linked", "transform-again", "video-duplicate-frame", "video-rasterize",   # slices, point text, a hidden layer, a fill layer and a linked smart object are each made by their own dialog or tool; the rest follow a transform or a video
            "trap", "warp-split-cross",                       # CMYK reached through the Mode dialog and its engine round trip; a warp grid whose cross split depends on a drag (its siblings warp-split-h, -v and warp-remove-split do run)
            "recent-heading", *(f"recent-{i}" for i in range(40)), "clear-recent", "send-host", "update-linked", "relink", "embed-linked", "assemble-tiles",   # one row per recent file, up to the longest Recent list
            "custom-title-bar", "menus-in-window", "check-for-updates",   # need the desktop window (its caption buttons, a Mac menu bar, the updater)

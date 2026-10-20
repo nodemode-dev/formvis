@@ -229,6 +229,7 @@ import { CameraRawDialog, type RawChoice } from './ui/panels/camera-raw';
 import { ColourView, PROOF_KINDS } from './ui/colour';
 import { composeDeep, deepFromU16, deepToU16, deepToned, place, srgbToLinear } from './engine/deep';
 import { composeFloat } from './engine/compose-float';
+import { composeFloatOnWorkers } from './engine/composite-bands';
 import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './engine/channels';
 import { applyLut, type Lut3x4, type Lut4 } from './engine/colour-lut';
 import type { ChannelPixels, DocMode, DocProfile, ID } from './engine/types';
@@ -386,7 +387,8 @@ export function startApp(): void {
   const pickMenu = new PopupMenu(commands, null, true);
   const fillMenu = new PopupMenu(commands, null, true);
   toolHost.run = (id) => { commands.run(id); };   // a tool's bar runs commands (the path actions)
-  PanelGroup.menuHost = (anchor, ids) => { panelMenu.setItems(ids); const r = anchor.getBoundingClientRect(); panelMenu.openAt(r.right, r.bottom + 4); };
+  let menuPanel: string | null = null;
+  PanelGroup.menuHost = (anchor, ids, group) => { menuPanel = dockIdOfGroup(group.id); panelMenu.setItems(menuPanel ? [...ids, '-', dock.isFloating(menuPanel) ? 'panel-dock' : 'panel-float'] : ids); const r = anchor.getBoundingClientRect(); panelMenu.openAt(r.right, r.bottom + 4); };
   // Screen modes and panels (the owner's walkthrough): Standard, Full Screen with Menu Bar (no tabs or
   // status bar), Full Screen (the canvas alone, on black; Esc leaves it); F cycles them; Tab shows or hides the panels.
   // The rail: Quick Mask (Q) below the colours, and its one or two columns (the » at its top), remembered.
@@ -700,7 +702,7 @@ export function startApp(): void {
   enhanceAllSelects();   // every dropdown as the glass list (the owner's walkthrough)
   const titleTools = new TitleTools(q(root, '.cv-titlebar'), {
     commands,
-    arrange: (w) => { dock.arrange(w.order, w.hidden); store('formvis.propsCol', w.propsColumn ? 'shown' : 'hidden'); syncPropsCol(); },
+    arrange: (w) => { dock.arrange(w.order, w.hidden, w.floats); store('formvis.propsCol', w.propsColumn ? 'shown' : 'hidden'); syncPropsCol(); },
     locked: () => dock.locked,
     setLocked: (on) => { dock.locked = on; },
     dock: (kind) => { void termDock.toggleKind(kind); },
@@ -1713,7 +1715,7 @@ export function startApp(): void {
     try {
       // 1.57.8: from any document; below 32 bits (and in CMYK and Lab) the picture the canvas shows, as linear light.
       let deep: { width: number; height: number; data: Float32Array } | { error: string };
-      if (p.doc.depth === 32) deep = composeDeep(p.doc);
+      if (p.doc.depth === 32) deep = (await composeFloatOnWorkers(p.doc)) ?? composeDeep(p.doc);
       else {
         const flat = engine.flattened();
         if (!flat) return;
@@ -2066,7 +2068,7 @@ export function startApp(): void {
     await engine.lockedTask(`Export ${kind.toUpperCase()}`, async () => {
       try {
         // A 16-bit document's PNG and TIFF keep their 16 bits (1.53.6): composed in floating point, written by the engine.
-        const deep = (p.doc.depth ?? 8) > 8 && (kind === 'png' || kind === 'tiff') ? composeDeep(p.doc) : null;
+        const deep = (p.doc.depth ?? 8) > 8 && (kind === 'png' || kind === 'tiff') ? (await composeFloatOnWorkers(p.doc)) ?? composeDeep(p.doc) : null;
         if (deep && 'error' in deep) throw new Error(deep.error);
         // The document's own profile (1.53.5), for every export that can hold one; a 32-bit document's pixels are
         // linear light, so it keeps none.
@@ -4435,7 +4437,7 @@ export function startApp(): void {
       const name = await promptName('New Workspace', '', 'Save');
       if (!name?.trim()) return;
       const l = dock.layout;
-      titleTools.addCustom(name, l.order, l.hidden, stored('formvis.propsCol') !== 'hidden');
+      titleTools.addCustom(name, l.order, l.hidden, stored('formvis.propsCol') !== 'hidden', l.floats);
       toast(`Workspace "${name.trim()}" saved.`);
     } },
     { id: 'delete-workspace', label: 'Delete Workspace', enabled: () => titleTools.isCustom(titleTools.currentId()), run: async () => {
@@ -4584,9 +4586,9 @@ export function startApp(): void {
       : { id: `panel-${pn.id}`, label: pn.label, ...(pn.id === 'layers' ? { keys: ['F7'] } : pn.id === 'actions' ? { keys: ['Alt+F9'] } : {}), checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) }),
     { id: 'merge-columns', label: 'Merge Panel Columns', checked: () => dock.merged, run: () => { if (dock.merged) dock.separate(); else dock.merge(); } },
     { id: 'panel-float', label: 'Float Panel', params: { panel: { type: 'string', description: 'The panel group id (navigator, swatches, layers, timeline, history, properties, brushes and the rest of the Window list) or a tab id inside a group.' }, x: { type: 'number', description: 'Left edge in pixels; where it last stood when left out.' }, y: { type: 'number', description: 'Top edge in pixels.' }, w: { type: 'number', description: 'Width in pixels.' }, h: { type: 'number', description: 'Height in pixels.' } },
-      run: (a) => { const id = panelGroupId(a?.panel); const n = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined); if (!id || !dock.float(id, { x: n(a?.x), y: n(a?.y), w: n(a?.w), h: n(a?.h) })) toast('No panel with that id.', 'error'); } },
+      run: (a) => { const id = panelGroupId(a?.panel ?? menuPanel); menuPanel = null; const n = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined); if (!id || !dock.float(id, { x: n(a?.x), y: n(a?.y), w: n(a?.w), h: n(a?.h) })) toast('No panel with that id.', 'error'); } },
     { id: 'panel-dock', label: 'Dock Panel', params: { panel: { type: 'string', description: 'The id of a floating panel (or a tab inside it).' } },
-      run: (a) => { const id = panelGroupId(a?.panel); if (!id || !dock.dockBack(id)) toast('That panel is not floating.', 'error'); } },
+      run: (a) => { const id = panelGroupId(a?.panel ?? menuPanel); menuPanel = null; if (!id || !dock.dockBack(id)) toast('That panel is not floating.', 'error'); } },
     { id: 'panel-activate', label: 'Activate Panel', params: { panel: { type: 'string', description: 'A panel group id, or a tab id: the tab is brought to the front of its group, the group opened and shown.' } },
       run: (a) => { const v = typeof a?.panel === 'string' ? a.panel : '', id = panelGroupId(v); if (!id) { toast('No panel with that id.', 'error'); return; } const g = PanelGroup.all.get(id); g?.setMinimised(false); if (g?.hasTab(v)) g.show(v); dock.activate(id); } },
     { id: 'panel-close-group', label: 'Close Panel Group', params: { panel: { type: 'string', description: 'A panel group id, or a tab id: the whole group is closed (hidden; Window shows it again).' } },

@@ -3,7 +3,7 @@
 //! the renderer blends and presents what the mirror holds. Rules as in the app: hidden layers draw nothing; a clipped
 //! layer shows through its base at the base's opacity and through the base's mask, and nothing when the base is hidden.
 
-use crate::composite::{Affine, BlendIf, Clip, Grain, Lut, Stack};
+use crate::composite::{Affine, BlendIf, Clip, Grain, Hood, Lut, Stack};
 use crate::{Gpu, TiledLayer};
 use std::collections::HashMap;
 
@@ -38,11 +38,13 @@ pub struct LayerSpec {
     pub ch_off: u32,
     /// Knockout: the layer's opacity and the layers that show through its coverage.
     pub knockout: Option<(f32, Vec<LayerSpec>)>,
+    /// A Shadows/Highlights, HDR Toning or Clarity adjustment layer: kind, blurs colour, the blur box radii, the constants.
+    pub hood: Option<(u32, bool, Vec<[u32; 2]>, Vec<f32>)>,
 }
 
 impl LayerSpec {
     pub fn pixels(id: &str) -> LayerSpec {
-        LayerSpec { id: id.to_string(), mode: 0, opacity: 1.0, visible: true, transform: None, mask: None, clip_to: None, table: None, mask_at: None, threshold: None, folders: Vec::new(), group: None, blend_if: None, grain: None, ch_off: 0, knockout: None }
+        LayerSpec { id: id.to_string(), mode: 0, opacity: 1.0, visible: true, transform: None, mask: None, clip_to: None, table: None, mask_at: None, threshold: None, folders: Vec::new(), group: None, blend_if: None, grain: None, ch_off: 0, knockout: None, hood: None }
     }
 }
 
@@ -122,6 +124,8 @@ impl Document {
         for s in order.iter().filter(|s| s.visible) {
             let mut item = if let Some(g) = &s.group {
                 Stack::group(self.build(g), s.mode, s.opacity)
+            } else if let Some((kind, rgb, radii, p)) = &s.hood {
+                Stack::hood(Hood::new(*kind, *rgb, radii.clone(), p.clone(), self.width, self.height), s.opacity).adjust_in(s.mode)
             } else if let Some(g) = s.grain {
                 Stack::grain(g, s.opacity)
             } else if let Some(level) = s.threshold {

@@ -7,7 +7,7 @@ import type { Checker, DisplayLayer, ScreenDisplay } from './display';
  *  its mirror of the document up to date. Each image, mask and table gets a stable id and is sent again only when its
  *  version changes, as raw bytes; then the stack and the view. Draw requests while one is in flight are coalesced to the
  *  latest, so a slow frame never queues up more. What the native renderer cannot draw yet (folders with their own
- *  blend modes beyond those measured, clipped groups, Blend If on the colours beneath, Grain, the neighbourhood adjustments) is named by unsupported(), and the stage draws on the CPU with that reason. */
+ *  blend modes beyond those measured, clipped groups, Blend If on the colours beneath, HDR Toning) is named by unsupported(), and the stage draws on the CPU with that reason. */
 
 type Invoke = <T>(cmd: string, args?: unknown, options?: { headers: Record<string, string> }) => Promise<T>;
 type Img = HTMLCanvasElement | OffscreenCanvas;
@@ -64,7 +64,10 @@ export class NativeDisplay implements ScreenDisplay {
         if (inner) return inner;
         continue;
       }
-      if (!l.image && !l.lut && !l.grain && l.threshold === undefined) return 'an adjustment layer the native renderer does not draw yet';
+      if (l.hood?.kind === 2) return 'an HDR Toning adjustment layer, which the native renderer does not match the CPU in within two levels yet';
+      if (l.hood && l.blend !== 'normal') return 'a Shadows/Highlights or Clarity adjustment layer in a blend mode of its own, which the native renderer does not match the CPU in yet';
+      if (l.hood && this.docDims && Math.max(this.docDims.width, this.docDims.height) > 8192) return 'a Shadows/Highlights or Clarity adjustment on a document over 8,192 pixels a side, which the native renderer does not blur yet';
+      if (!l.image && !l.lut && !l.grain && !l.hood && l.threshold === undefined) return 'an adjustment layer the native renderer does not draw yet';
       if (l.blendIf && (!l.image || l.blendIf.channel > 4 || l.blendIf.underlying.some((v, i) => v !== BLEND_IF_OPEN[i]))) return 'a layer has Blend If on the colours beneath it or an adjustment limit, which the native renderer does not match the CPU in yet';
     }
     return null;
@@ -157,6 +160,8 @@ export class NativeDisplay implements ScreenDisplay {
         }
         entry.id = table;
         entry.table = table;
+      } else if (l.hood) {
+        entry.hood = { kind: l.hood.kind, rgb: l.hood.rgb, radii: l.hood.radii.map((r) => [r[0], r[1]]), p: Array.from(l.hood.p) };
       } else if (l.grain) {
         entry.grain = l.grain;
       } else if (l.threshold !== undefined) {

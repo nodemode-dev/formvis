@@ -53,7 +53,7 @@ export class PanelGroup {
   private active = '';
   onTab: ((id: string) => void) | null = null;
   /** The panel menu (the target's •••): the app opens it with these command ids (PanelGroup.menuHost). */
-  static menuHost: ((anchor: HTMLElement, ids: string[]) => void) | null = null;
+  static menuHost: ((anchor: HTMLElement, ids: string[], group: PanelGroup) => void) | null = null;
   private menu: (() => string[]) | null = null;
   setMenu(items: () => string[]): void { this.menu = items; setHidden(this.root.querySelector('.cv-group-more') as HTMLElement, false); }
 
@@ -62,7 +62,7 @@ export class PanelGroup {
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
     const more = this.root.querySelector('.cv-group-more') as HTMLElement;
     (this.root.querySelector('.cv-group-over') as HTMLElement).addEventListener('click', (e) => this.openOverflow(e.currentTarget as HTMLElement));
-    more.addEventListener('click', () => { const ids = this.menu?.() ?? []; if (ids.length) PanelGroup.menuHost?.(more, ids); });
+    more.addEventListener('click', () => { const ids = this.menu?.() ?? []; if (ids.length) PanelGroup.menuHost?.(more, ids, this); });
     this.root.dataset.group = id;
     PanelGroup.all.set(id, this);
     for (const t of list) { t.body.classList.add('cv-group-page'); this.attach(t.id, t.label, t.body); }

@@ -8,7 +8,7 @@ import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettin
 import { artHistoryTexture, type ArtStyle } from './art-history';
 import { decodeLab, labFromFloats, labFromRgba, labToSrgb, renderLab } from './lab';
 import { composeFloat, setStyleDrawer } from './compose-float';
-import { blurDeep, deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep, unsharpDeep, type ToneMethod } from './deep';
+import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep, type ToneMethod } from './deep';
 import { quantiseChannels } from './layer-precision';
 import type { ChannelPixels, DeepPixels, DocProfile, EngineJob } from './types';
 import { applyComp, captureComp, editComp, updateComp, type CompOptions, type CompPart } from './layer-comps';
@@ -115,6 +115,7 @@ import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
 import type { FilterKind, FilterSettings } from './filter-jobs';
 import { POOL_FROM, bandPlan, bandPoolReady, bandPoolSize, bandsShared, runBandOnPool, runDeepBandOnPool, runSharedBandOnPool } from './band-pool';
+import { deepBandRun, deepBandable } from './deep-bands';
 import { sharpenSample } from './filters-more';
 import { clampMid, colorAt, diamondFill, presetById, reflectStops, resolveStops, type GradientPreset, type GradientType } from './gradients';
 import { convexQuad, evenSpacing, meshForward, meshSurfacePoint, meshWarpImage, removeSplit, splitGrid, type P2 } from './mesh-warp';
@@ -12360,26 +12361,34 @@ export class Engine {
     return r;
   }
 
-  /** Gaussian Blur or Unsharp Mask on the active 16 or 32 bit layer in bands on the worker pool: the same bands and aprons
-   *  as the 8 bit route, the floats read in place from a SharedArrayBuffer when the page is cross-origin isolated and sent
-   *  as copies otherwise, a band a worker could not filter filtered here, and the assembled floats put through
+  /** A banded-safe filter (`deepBandable`) on the active 16 or 32 bit layer in bands on the worker pool: the same bands and
+   *  aprons as the 8 bit route, the floats read in place from a SharedArrayBuffer when the page is cross-origin isolated and
+   *  sent as copies otherwise (only a few bands in flight at once, after a `room` check of the working set), a band a
+   *  worker could not filter filtered here, and the assembled floats put through
    *  `applyDeepFilter` (selection, rendition and one undo step). Each band is filtered by the very function the single
    *  thread runs, so the floats are the same bits. False where `applyDeepFilter` with the whole layer must be used. */
-  async bandedDeepFilterPool(name: string, job: { kind: 'gaussianBlur' | 'unsharpMask'; settings: FilterSettings }, apron: number): Promise<boolean> {
+  async bandedDeepFilterPool(name: string, job: { kind: FilterKind; settings: FilterSettings; seed: number }, apron: number): Promise<boolean | 'refused'> {
     const p = this.current, l = p?.activeLayer, ch = l?.channels;
-    if (!p || !l || !ch || ch.mode !== 'rgb' || ch.width * ch.height <= Math.max(this.bandFrom, POOL_FROM) || !bandPoolReady()) return false;
+    if (!p || !l || !ch || ch.mode !== 'rgb' || !deepBandable(job.kind) || ch.width * ch.height <= Math.max(this.bandFrom, POOL_FROM) || !bandPoolReady()) return false;
     const W = ch.width, H = ch.height, S = ch.n + 1, A = Math.max(0, Math.ceil(apron)), ceiling = p.doc.depth === 32 ? Infinity : 1, s = job.settings;
-    const plan = bandPlan(H, A, Math.max(512, A)), rows = (a0: number, a1: number): Float32Array => ch.data.slice(a0 * W * S, a1 * W * S);
+    const B = Math.max(512, A), plan = bandPlan(H, A, B), rows = (a0: number, a1: number): Float32Array => ch.data.slice(a0 * W * S, a1 * W * S);
+    const N = bandPoolSize(), flight = Math.max(2, N * 2), shared = bandsShared(), bytes = ch.data.byteLength;
+    if (!this.room(bytes * (shared ? 2 : 1) + flight * (B + 2 * A) * W * S * 4 * 2 + W * H * 4, name)) return 'refused';
     let sab: SharedArrayBuffer | null = null;
-    if (bandsShared()) { try { sab = new SharedArrayBuffer(ch.data.byteLength); new Float32Array(sab).set(ch.data); } catch { sab = null; } }
-    const answers = plan.map((b, i) => runDeepBandOnPool(job.kind, s, ch.n, ceiling, W, b.a0, b.a1, sab ?? rows(b.a0, b.a1), i));
+    if (shared) { try { sab = new SharedArrayBuffer(bytes); new Float32Array(sab).set(ch.data); } catch { sab = null; } }
+    const answers: Array<Promise<Float32Array | null> | null> = [];
+    const start = (i: number): void => { const b = plan[i]; answers[i] = runDeepBandOnPool(job.kind, s, job.seed, ch.n, ceiling, W, b.a0, b.a1, sab ?? rows(b.a0, b.a1), i); };
+    for (let i = 0; i < Math.min(flight, plan.length); i++) start(i);
     const out = new Float32Array(ch.data);
     for (let i = 0; i < plan.length; i++) {
       const b = plan[i];
       let got = await answers[i];
+      answers[i] = null;
+      if (i + flight < plan.length) start(i + flight);
       if (!got) {
         const band = { ...ch, height: b.a1 - b.a0, data: rows(b.a0, b.a1) };
-        got = (job.kind === 'unsharpMask' ? unsharpDeep(band, s.usmAmount, s.usmRadius, s.threshold, ceiling) : blurDeep(band, s.radius)).data;
+        got = deepBandRun(job.kind, s, job.seed, ceiling, b.a0 * W, band)?.data ?? null;
+        if (!got) return false;
       }
       out.set(got.subarray((b.y0 - b.a0) * W * S, (b.y1 - b.a0) * W * S), b.y0 * W * S);
     }

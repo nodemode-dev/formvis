@@ -53,6 +53,17 @@ const FLOAT = -2;
 /** The Essentials default: Navigator, Swatches and Layers shown; Timeline and History in Window. */
 const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference', 'comfyui', 'actions', 'develop'], side: [...DEFAULT_SIDE] };
 
+function cleanFloats(f: unknown): Record<string, { x: number; y: number; w: number; h: number }> {
+  const out: Record<string, { x: number; y: number; w: number; h: number }> = {};
+  if (f && typeof f === 'object') for (const [id, r] of Object.entries(f as Record<string, Record<string, unknown>>)) if (r && [r.x, r.y, r.w, r.h].every((v) => typeof v === 'number' && Number.isFinite(v))) out[id] = { x: r.x as number, y: r.y as number, w: r.w as number, h: r.h as number };
+  return out;
+}
+/** A frame's place and size fitted inside the window: it stays on screen whatever was saved or the window became. */
+function fit(r: { x: number; y: number; w: number; h: number }): { x: number; y: number; w: number; h: number } {
+  const w = Math.max(200, Math.min(r.w, window.innerWidth)), h = Math.max(120, Math.min(r.h, window.innerHeight));
+  return { x: Math.max(0, Math.min(window.innerWidth - w, r.x)), y: Math.max(0, Math.min(window.innerHeight - h, r.y)), w, h };
+}
+
 function load(): DockState {
   try {
     const r = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<DockState>;
@@ -110,12 +121,13 @@ export class Dock {
     }
     // A release anywhere ends a drag begun on a header (released off the header, it used to stay armed).
     window.addEventListener('pointerup', () => { if (this.drag) this.drop(); });
+    window.addEventListener('resize', () => { if (this.frames.size) this.syncFloats(); });
     this.apply();
   }
 
   isShown(id: string): boolean { return !this.state.hidden.includes(id); }
   /** The arrangement as it stands, for Window > Workspace > New Workspace. */
-  get layout(): { order: string[]; hidden: string[] } { return { order: [...this.state.order], hidden: [...this.state.hidden] }; }
+  get layout(): { order: string[]; hidden: string[]; floats: Record<string, { x: number; y: number; w: number; h: number }> } { return { order: [...this.state.order], hidden: [...this.state.hidden], floats: this.floating }; }
   /** Shown and holding a tab (a group whose tabs all moved away is absent). */
   private visible(id: string): boolean { return this.isShown(id) && !this.section(id)?.classList.contains('is-empty'); }
   /** Visible and in a column (a floating panel has its own window). */
@@ -136,9 +148,11 @@ export class Dock {
 
   /** Floating panels (Window > Float Panel): each panel's own window, kept where it was left and remembered. The
    *  panel's element moves into its frame and back, never rebuilt. */
-  private floats: Record<string, { x: number; y: number; w: number; h: number }> = (() => { try { const f = JSON.parse(localStorage.getItem(FLOATS_KEY) ?? '{}') as Record<string, Record<string, unknown>>; const out: Record<string, { x: number; y: number; w: number; h: number }> = {}; for (const [id, r] of Object.entries(f)) if (r && [r.x, r.y, r.w, r.h].every((v) => typeof v === 'number' && Number.isFinite(v))) out[id] = { x: r.x as number, y: r.y as number, w: r.w as number, h: r.h as number }; return out; } catch { return {}; } })();
+  private floats: Record<string, { x: number; y: number; w: number; h: number }> = (() => { try { const own = (JSON.parse(localStorage.getItem(KEY) ?? '{}') as { floats?: unknown }).floats; return cleanFloats(own ?? JSON.parse(localStorage.getItem(FLOATS_KEY) ?? '{}')); } catch { return {}; } })();
   private readonly frames = new Map<string, HTMLElement>();
-  private saveFloats(): void { if (Dock.remember) try { localStorage.setItem(FLOATS_KEY, JSON.stringify(this.floats)); } catch { /* this session only */ } }
+  private saveFloats(): void { if (Dock.remember) try { const s = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Record<string, unknown>; s.floats = this.floats; localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* this session only */ } }
+  /** The floating places as they stand, for a saved workspace. */
+  get floating(): Record<string, { x: number; y: number; w: number; h: number }> { return JSON.parse(JSON.stringify(this.floats)) as Record<string, { x: number; y: number; w: number; h: number }>; }
   isFloating(id: string): boolean { return !!this.floats[id]; }
   floatingIds(): string[] { return Object.keys(this.floats); }
   /** The panel in a window of its own, at a place and size or where it last stood (a new one steps down the screen). */
@@ -182,7 +196,7 @@ export class Dock {
       const x0 = e.clientX, y0 = e.clientY, ox = r.x, oy = r.y;
       let onto: PanelGroup | null = null, gap: ReturnType<Dock['gapAt']> = null;
       const move = (m: PointerEvent): void => {
-        r.x = Math.max(0, Math.min(window.innerWidth - 80, ox + m.clientX - x0)); r.y = Math.max(0, Math.min(window.innerHeight - 40, oy + m.clientY - y0)); f.style.left = `${Math.round(r.x)}px`; f.style.top = `${Math.round(r.y)}px`;
+        r.x = Math.max(0, Math.min(window.innerWidth - Math.min(f.offsetWidth, window.innerWidth), ox + m.clientX - x0)); r.y = Math.max(0, Math.min(window.innerHeight - Math.min(f.offsetHeight, window.innerHeight), oy + m.clientY - y0)); f.style.left = `${Math.round(r.x)}px`; f.style.top = `${Math.round(r.y)}px`;
         // Dragged back over a docked group's tab strip, or a column's gap: the drop indicator says what a release does.
         const head = document.elementsFromPoint(m.clientX, m.clientY).find((n) => n.classList.contains('cv-group-head') && !f.contains(n)), own = this.ownGroup(p.id);
         const g = own && head ? PanelGroup.all.get((head.closest('.cv-group') as HTMLElement | null)?.dataset.group ?? '') ?? null : null;
@@ -220,7 +234,8 @@ export class Dock {
       if (s.parentElement !== f) { f.appendChild(s); s.classList.remove('is-sized'); s.style.height = ''; }
       const title = f.querySelector('.cv-float-title') as HTMLElement;
       if (title.textContent !== p.label) title.textContent = p.label;
-      const css: Array<[string, string]> = [['left', `${Math.round(Math.max(0, Math.min(window.innerWidth - 80, r.x)))}px`], ['top', `${Math.round(Math.max(0, Math.min(window.innerHeight - 40, r.y)))}px`], ['width', `${Math.round(r.w)}px`], ['height', `${Math.round(r.h)}px`]];
+      const q = fit(r);
+      const css: Array<[string, string]> = [['left', `${Math.round(q.x)}px`], ['top', `${Math.round(q.y)}px`], ['width', `${Math.round(q.w)}px`], ['height', `${Math.round(q.h)}px`]];
       for (const [k, v] of css) if (f.style.getPropertyValue(k) !== v) f.style.setProperty(k, v);
     }
   }
@@ -240,7 +255,11 @@ export class Dock {
 
 
   /** A workspace's arrangement (Phase 21): the panels in this order, these hidden; ids not in the dock are ignored. */
-  arrange(order: readonly string[], hidden: readonly string[]): void {
+  arrange(order: readonly string[], hidden: readonly string[], floats: unknown = {}): void {
+    const fl = cleanFloats(floats);
+    const kept = Object.entries(this.floats).filter(([id]) => !DOCK_PANELS.some((p) => p.id === id) && !SIDE_PANELS.some((p) => p.id === id));
+    this.floats = Object.fromEntries([...kept, ...Object.entries(fl).filter(([id]) => ALL_PANELS.some((p) => p.id === id))]);
+    this.saveFloats();
     const ids = DOCK_PANELS.map((p) => p.id);
     const o = order.filter((id) => ids.includes(id));
     for (const id of ids) if (!o.includes(id)) o.push(id);
@@ -392,7 +411,7 @@ export class Dock {
   }
 
   private save(): void {
-    if (Dock.remember) try { localStorage.setItem(KEY, JSON.stringify(this.state)); } catch { /* this session only */ }
+    if (Dock.remember) try { localStorage.setItem(KEY, JSON.stringify({ ...this.state, floats: this.floats })); } catch { /* this session only */ }
     this.apply();
     this.onChange?.();
   }

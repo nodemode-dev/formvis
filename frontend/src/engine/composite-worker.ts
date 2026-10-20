@@ -1,6 +1,7 @@
 import { Renderer } from './renderer';
 import { Raster, createSurface, ctxOf } from './surface';
-import type { Doc, Layer } from './types';
+import type { DeepPixels, Doc, Layer } from './types';
+import { composeFloat } from './compose-float';
 import type { CompIn, CompOut, WireLayer } from './composite-bands';
 import type { FxDone, FxJob, FxPartWire, FxPut } from './fx-wire';
 import { addPattern } from './patterns';
@@ -54,9 +55,37 @@ function buildEffects(m: FxJob): void {
   }
 }
 
+const floats = new Map<string, DeepPixels>();
+
+function floatBand(m: Extract<CompIn, { type: 'fband' }>): void {
+  try {
+    const bh = m.y1 - m.y0;
+    const layers = m.layers.map((w) => {
+      const channels = w.raster ? floats.get(w.raster) : undefined;
+      return { id: w.id, name: w.name, isGroup: w.isGroup, parentId: w.parentId, visible: w.visible, opacity: w.opacity, blend: w.blend, transform: { ...w.transform, y: w.transform.y - m.y0 }, raster: channels ? {} : null, channels, mask: null, fill: w.fill, clipId: null, adjustment: null };
+    });
+    if (m.layers.some((w) => w.raster && !floats.has(w.raster))) throw new Error('a layer picture is missing');
+    const doc = { width: m.width, height: bh, mode: 'rgb', depth: m.linear ? 32 : 16, layers } as unknown as Doc;
+    const c = composeFloat(doc, 3, false, null, m.linear);
+    if ('error' in c) throw new Error(c.error);
+    if (m.out) {
+      new Float32Array(m.out, m.y0 * m.width * 16, m.width * bh * 4).set(c.data);
+      scope.postMessage({ id: m.id, y0: m.y0, y1: m.y1 } satisfies CompOut);
+    } else {
+      const buffer = c.data.buffer as ArrayBuffer;
+      scope.postMessage({ id: m.id, y0: m.y0, y1: m.y1, pixels: buffer } satisfies CompOut, [buffer]);
+    }
+  } catch (err) {
+    scope.postMessage({ id: m.id, y0: m.y0, y1: m.y1, error: String(err) } satisfies CompOut);
+  }
+}
+
 scope.onmessage = (e: MessageEvent<CompIn | FxPut | FxJob>) => {
   const m = e.data;
   if (m.type === 'put') { keep(m.key, m.width, m.height, m.pixels); return; }
+  if (m.type === 'fput') { floats.set(m.key, { mode: 'rgb', n: 3, width: m.width, height: m.height, data: new Float32Array(m.pixels) }); return; }
+  if (m.type === 'fdrop') { floats.clear(); return; }
+  if (m.type === 'fband') { floatBand(m); return; }
   if (m.type === 'fxput') { keepBitmap(m.key, m.width, m.height, m.bitmap); return; }
   if (m.type === 'fx') { buildEffects(m); return; }
   try {

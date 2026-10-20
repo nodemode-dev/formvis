@@ -123,6 +123,10 @@ fn load_layers(layers: &[Value], prefix: &str, doc: &mut Document, gpu: &Gpu, cw
             let f = |key: &str| g[key].as_f64().unwrap_or(0.0) as f32;
             let u = |key: &str| g[key].as_u64().unwrap_or(0) as u32;
             s.grain = Some(Grain { strength: f("strength"), rough: f("rough"), colour: f("colour"), speckle: f("speckle"), cell: f("cell"), amount: f("amount"), seed: u("seed"), fine_seed: u("fineSeed"), spec_seed: u("specSeed") });
+        } else if let Some(h) = l.get("hood") {
+            let radii = h["radii"].as_array().ok_or("hood needs radii")?.iter().map(|r| [r[0].as_u64().unwrap_or(0) as u32, r[1].as_u64().unwrap_or(0) as u32]).collect();
+            let p = h["p"].as_array().ok_or("hood needs p")?.iter().filter_map(|n| n.as_f64()).map(|n| n as f32).collect();
+            s.hood = Some((h["kind"].as_u64().unwrap_or(1) as u32, h["rgb"].as_bool().unwrap_or(false), radii, p));
         } else if let Some(level) = l["threshold"].as_u64() {
             s.threshold = Some(level as u32);
         } else if l.get("table").is_some() {

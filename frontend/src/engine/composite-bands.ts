@@ -2,6 +2,8 @@ import { bandPlan, bandPoolSize } from './band-pool';
 import { shapedMask } from './layer-masks';
 import { effectsActive, blendIfActive, type BlendMode, type Doc, type Layer, type Transform } from './types';
 import type { Mat } from './geometry';
+import { deepFromRaster } from './deep';
+import type { FloatComposite } from './compose-float';
 
 /** The CPU composite in horizontal bands on workers (PC-AU-0145, SC-ED-0259, PC-AU-0152). A worker holds the pixels of
  *  each layer it was sent, keyed by raster and version (a shared buffer when the page is cross-origin isolated, one
@@ -13,7 +15,10 @@ import type { Mat } from './geometry';
 export interface WireLayer { id: string; name: string; isGroup: boolean; parentId: string | null; visible: boolean; opacity: number; fill?: number; blend: BlendMode; transform: Transform; raster: string | null; mask: { raster: string; enabled: boolean; placement: Transform | null } | null }
 export type CompIn =
   | { type: 'put'; key: string; width: number; height: number; pixels: ArrayBufferLike }
-  | { type: 'band'; id: number; width: number; height: number; layers: WireLayer[]; keys: string[]; y0: number; y1: number; matrix: Mat; quality: ImageSmoothingQuality; out?: SharedArrayBuffer };
+  | { type: 'band'; id: number; width: number; height: number; layers: WireLayer[]; keys: string[]; y0: number; y1: number; matrix: Mat; quality: ImageSmoothingQuality; out?: SharedArrayBuffer }
+  | { type: 'fput'; key: string; width: number; height: number; pixels: ArrayBufferLike }
+  | { type: 'fband'; id: number; width: number; height: number; layers: WireLayer[]; linear: boolean; y0: number; y1: number; out?: SharedArrayBuffer }
+  | { type: 'fdrop' };
 export interface CompOut { id: number; y0: number; y1: number; pixels?: ArrayBuffer; error?: string }
 
 export const COMPOSITE_MIN_PIXELS = 1_000_000;
@@ -163,6 +168,78 @@ async function run(doc: Doc, width: number, height: number, matrix: Mat, quality
  *  they have changed since a worker last held them. */
 export function compositeOnWorkers(doc: Doc, width: number, height: number, matrix: Mat, quality: ImageSmoothingQuality = 'high'): Promise<ImageData | null> {
   const next = chain.then(() => run(doc, width, height, matrix, quality), () => run(doc, width, height, matrix, quality));
+  chain = next.catch(() => null);
+  return next.catch(() => null);
+}
+
+const plainFloat = (l: Layer): boolean => plain({ ...l, channels: undefined }) && l.blend !== 'dissolve' && !l.mask;
+
+/** The float form of a 16 or 32 bit RGB document's layers for the workers, or null where a layer needs more than the
+ *  band route composes (adjustments, styles, clipping, masks, Dissolve, isolated or blended folders, a layer off the pixel grid). */
+function prepareFloat(doc: Doc): { layers: WireLayer[]; floats: Map<string, { w: number; h: number; data: Float32Array }> } | null {
+  const out: WireLayer[] = [], floats = new Map<string, { w: number; h: number; data: Float32Array }>();
+  for (const l of doc.layers) {
+    if (!plainFloat(l)) return null;
+    let key: string | null = null;
+    if (l.raster && !l.isGroup) {
+      const d = l.channels ?? deepFromRaster(l.raster);
+      if (d.n !== 3 || d.mode !== 'rgb' || !onGrid(l.transform, d.width, d.height)) return null;
+      key = l.id;
+      floats.set(key, { w: d.width, h: d.height, data: d.data });
+    }
+    out.push({ id: l.id, name: l.name, isGroup: l.isGroup, parentId: l.parentId, visible: l.visible, opacity: l.opacity, ...(l.fill !== undefined ? { fill: l.fill } : {}), blend: l.blend, transform: l.transform, raster: key, mask: null });
+  }
+  return { layers: out, floats };
+}
+
+async function runFloat(doc: Doc): Promise<FloatComposite | null> {
+  const width = doc.width, height = doc.height;
+  if (!compositeOn || failed || width * height < COMPOSITE_MIN_PIXELS || (doc.mode ?? 'rgb') !== 'rgb' || (doc.depth ?? 8) === 8) return null;
+  const prep = prepareFloat(doc);
+  if (!prep || !prep.floats.size) return null;
+  const pool = ensure();
+  if (!pool.length) return null;
+  let total = 0;
+  for (const f of prep.floats.values()) total += f.data.byteLength;
+  if (total * pool.length > WORKER_BUDGET) return null;
+  const share = sharing(), linear = doc.depth === 32;
+  for (const [key, f] of prep.floats) {
+    await idle();
+    if (share) {
+      const sab = new SharedArrayBuffer(f.data.byteLength);
+      new Float32Array(sab).set(f.data);
+      bytes.shared += f.data.byteLength;
+      for (const s of pool) s.w.postMessage({ type: 'fput', key, width: f.w, height: f.h, pixels: sab } satisfies CompIn);
+    } else {
+      for (const s of pool) {
+        const copy = f.data.buffer.slice(f.data.byteOffset, f.data.byteOffset + f.data.byteLength) as ArrayBuffer;
+        bytes.sent += copy.byteLength;
+        s.w.postMessage({ type: 'fput', key, width: f.w, height: f.h, pixels: copy } satisfies CompIn, [copy]);
+      }
+    }
+  }
+  await idle();
+  const plan = bandPlan(height, 0, Math.max(16, Math.ceil(height / (pool.length * 2)))), S = 4;
+  const out = share ? new SharedArrayBuffer(width * height * S * 4) : null, whole = out ? null : new Float32Array(width * height * S);
+  const jobs = plan.map((b, i) => new Promise<CompOut>((resolve) => {
+    const id = nextId++, s = pool[i % pool.length];
+    waiting.set(id, { resolve });
+    try { s.w.postMessage({ type: 'fband', id, width, height, layers: prep.layers, linear, y0: b.y0, y1: b.y1, ...(out ? { out } : {}) } satisfies CompIn); }
+    catch { waiting.delete(id); failed = true; resolve({ id, y0: b.y0, y1: b.y1, error: 'post' }); }
+  }));
+  const done = await Promise.all(jobs);
+  for (const s of pool) s.w.postMessage({ type: 'fdrop' } satisfies CompIn);
+  if (done.some((d) => d.error)) { if (done.some((d) => d.error !== 'ended')) failed = true; endCompositePool(); return null; }
+  bytes.runs++; bytes.bands += done.length;
+  if (whole) for (const d of done) if (d.pixels) whole.set(new Float32Array(d.pixels), d.y0 * width * S);
+  return { width, height, data: out ? new Float32Array(out).slice() : whole as Float32Array };
+}
+
+/** `composeFloat` for a 16 or 32 bit RGB document in bands on the workers, the floats the single thread gives (each band is
+ *  composed by `composeFloat` itself on a document of that band's rows), or null where the document or machine is not
+ *  suited and the caller composes it itself. Shares the one-run-at-a-time chain and the Preferences switch of `compositeOnWorkers`. */
+export function composeFloatOnWorkers(doc: Doc): Promise<FloatComposite | null> {
+  const next = chain.then(() => runFloat(doc), () => runFloat(doc));
   chain = next.catch(() => null);
   return next.catch(() => null);
 }

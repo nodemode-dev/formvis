@@ -9,7 +9,7 @@ import { enhanceSelect } from './dropdown';
  *  Light); a search that finds and runs any enabled command by name, with its shortcut shown; the Claude Code and Show
  *  Terminal buttons, which show the terminal dock on that kind of tab; the workspace dropdown, each workspace an
  *  arrangement of the panels for a kind of work; and Lock Workspace. */
-export interface Workspace { id: string; label: string; order: string[]; hidden: string[]; propsColumn: boolean }
+export interface Workspace { id: string; label: string; order: string[]; hidden: string[]; propsColumn: boolean; floats?: Record<string, { x: number; y: number; w: number; h: number }> }
 export const WORKSPACES: readonly Workspace[] = [
   // The Generate panel (generative fill, models, ComfyUI and NodeMode) sits near the top of the dock in the photo and painting workspaces.
   // Essentials keeps Generate under Layers and closed (1.87.3, D05): at 1400 x 900 it pushed the Layers list out of the
@@ -64,12 +64,12 @@ export class TitleTools {
   }
 
   /** Window > Workspace > New Workspace: keeps the dock as it stands under a name, and selects it. */
-  addCustom(label: string, order: string[], hidden: string[], propsColumn: boolean): void {
+  addCustom(label: string, order: string[], hidden: string[], propsColumn: boolean, floats?: Workspace['floats']): void {
     const name = label.trim();
     if (!name) return;
     const same = this.custom.find((w) => w.label.toLowerCase() === name.toLowerCase());
-    if (same) { same.order = order; same.hidden = hidden; same.propsColumn = propsColumn; }
-    else this.custom.push({ id: `custom-${Date.now().toString(36)}`, label: name, order, hidden, propsColumn });
+    if (same) { same.order = order; same.hidden = hidden; same.propsColumn = propsColumn; same.floats = floats; }
+    else this.custom.push({ id: `custom-${Date.now().toString(36)}`, label: name, order, hidden, propsColumn, floats });
     saveCustom(this.custom);
     this.syncCustom();
     const w = same ?? this.custom[this.custom.length - 1];

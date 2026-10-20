@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.2 · 2026-10-20
+
+- Native renderer: Shadows/Highlights and Clarity adjustment layers draw natively through a blurred copy of the layers below (within 2 levels); HDR Toning, Blend If on the colours beneath, clipped groups and the remaining folder blend modes stay on the CPU.
+- Panels: panel menus gain Float Panel and Dock Panel; floating panels stay fully on screen, also after a window resize, and their places persist inside the dock layout and in saved workspaces.
+- 16 and 32-bit layers: Motion Blur, Surface Blur, Add Noise, Blur, Blur More, Shape Blur, Smart Blur, the Sharpen filters, High Pass, Maximum, Minimum, Median, Dust & Scratches, Despeckle, Emboss, Find Edges, Custom and Tonal Contrast run in bands on the worker pool with the same floats; the transfer route checks memory first and keeps a few bands in flight. 16 and 32-bit exports compose in bands on worker threads when that preference is on.
+- Tests: 58 editing-feature tests (auto tone and colour, replace colour, normal and bump maps, apply image, paragraph presets, samplers, counts, shape combine, type styles, find and replace, layer styles, stack modes, smart filters), 34 format tests (shc, grd, ggr, pat, atn, asl, png8, gif, layered PSD and PSB read by an independent reader, PNG, JPEG, WebP, TIFF, PSD and project downloads, Save for Web), the menu-command walk passing in parts 1 to 5, and the Linux desktop suite at 21 of 21 (the Close click and a second launch without a session bus).
+
 ## 1.92.1 · 2026-10-20
 
 - Preferences follow NodeMode's settings window: a rail of rounded-square tabs in a group well joined to the panel by a wire connector, one scrolling accordion of section cards with sub-group cards (the current section follows the scroll), NodeMode's controls (filled range line with a pill knob, 30 px selects, swatches, two-column fields, hints, danger reset), one Theme group (swatches, match system, light and dark picks, accent, intensity, skins), and sections in a logical order (Language joins Interface, the history log joins History & Cache, placing options are together).

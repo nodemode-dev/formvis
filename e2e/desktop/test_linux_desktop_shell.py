@@ -1,6 +1,9 @@
 """What only the real Linux window shows: the menu bar that stays in the page, the custom title bar's caption buttons, a project
 named in the launch arguments, the single-instance hand-over of a second launch, and the native renderer under Xvfb."""
 import json
+import os
+import signal
+import subprocess
 import time
 import zipfile
 
@@ -69,7 +72,6 @@ def alone(xserver, tmp_path):
     server.stop()
 
 
-@pytest.mark.xfail(strict=False, reason="passes alone; in a full run the real X click on Close does not end the app (1.92.1, cause not found)")
 def test_the_close_caption_button_ends_the_app(alone):
     fresh = alone
     fresh.launch(extra_env={"FORMVIS_STUB_STORAGE": json.dumps({"formvis.customTitleBar": "1"})})
@@ -115,6 +117,31 @@ def test_a_second_launch_hands_its_file_to_the_first_window(fresh):
     assert again.returncode == 0
     assert fresh.alive()
     fresh.ok("ping")
+
+
+def test_a_second_launch_without_a_session_bus_is_a_plain_launch_not_a_hang(fresh):
+    """Single instance on Linux needs a D-Bus session bus. The plugin then cannot claim its name, so it lets the launch go on:
+    a second launch without a bus is a second, independent window (it neither hands over nor waits for the first)."""
+    fresh.launch()
+    picture = write_png(fresh.workdir / "unhanded.png", 40, 30, (20, 120, 220))
+    second = subprocess.Popen([str(fresh.exe), str(picture)], cwd=fresh.run_dir, env=fresh.env, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, start_new_session=True)
+    try:
+        time.sleep(8)
+        assert second.poll() is None, "without a bus the second launch runs on as its own instance"
+        assert fresh.alive()
+    finally:
+        mine = support.descendants(second.pid)
+        second.terminate()
+        try:
+            second.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            second.kill()
+        for pid in mine:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
 
 
 def test_the_native_renderer_starts_under_xvfb_or_falls_back_to_the_cpu(fresh):

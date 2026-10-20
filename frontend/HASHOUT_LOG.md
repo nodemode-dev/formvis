@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Native hood adjustments, floating panels in the dock layout, deep bands and float composite on workers · _v1.92.2 (gpu/native-display.ts, ui/dock.ts, ui/panel-group.ts, ui/titlebar-tools.ts, app.ts, styles/panels.css, engine/deep-bands.ts, engine/deep.ts, engine/band-pool.ts, engine/filter-worker.ts, engine/filter-jobs.ts, engine/composite-bands.ts, engine/composite-worker.ts, engine/index.ts, ui/panels/filter-panel.ts; e2e tests)
+
+- Native hood: the blur is document-sized in a half-float pair (Rgba32Float is not renderable on GL) and recomputed per frame; HDR Toning measured 3 levels (probably half-float precision in its log and exp) and stays CPU, as do hood layers in a non-Normal blend; documents over 8,192 px a side refuse. The refusal line gained `&& !l.hood`.
+- Floats moved into the formvis.dock entry (the old formvis.dock.floats key is read once as a migration); fit() keeps a frame whole on screen (the old clamp let it hang off); a workspace without floats docks the built-in panels back. .cv-float-panel uses --z-companion and the drop hint --z-taskbar.
+- Deep bands: Box Blur is not band-safe (running-sum rounding depends on the band's first row); noiseDeep takes the band's first pixel index so a band draws the layer's own noise. Frame-placed, warping, position-dependent and sequence-random filters stay whole-layer. The transfer route keeps max(2, 2 x workers) bands in flight after a room() check.
+- Desktop isolation: the shell opens the engine's own URL, which already sends COOP and COEP, so Tauri's app.security.headers would not apply; whether WebKitGTK honours credentialless COEP is unverified (the transfer route works either way).
+- e2e/desktop: the Close click missed because the window lookup matched a 10x10 helper named "formvis" once the title became "<doc> - formvis"; it now matches by suffix. A second launch without a session bus is a plain launch by the single-instance plugin's design.
+
 ## NodeMode settings window, title bar squares, native Blend If and Knockout, blur gallery margins · _v1.92.1 (ui/app-dialogs.ts, styles/dialogs.css, ui/panels/controls.ts, app.ts, ui/titlebar-tools.ts, styles/shell.css, ui/icons.ts, gpu/native-display.ts, engine/blur-gallery.ts, engine/deep-filters.ts, ui/panels/filter-panel.ts; e2e tests)
 
 - Settings wire: one SVG with a shade and a line path whose d is written only when it changes; a port span moved by translateY. Redrawn in one requestAnimationFrame on section change, scroll-spy change, fold, rail collapse and resizes; the spy reads rects only and is muted 700 ms after a programmatic scroll. Removed `for (const [n, page] of this.sections) setHidden(page, n !== name);` (sections are cards in one scroller now). The shade stroke is a raw #000 as in NodeMode (no black shadow token).

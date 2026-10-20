@@ -350,7 +350,7 @@ class XWindow:
             for i in range(count.value):
                 child = children[i]
                 name = ctypes.c_char_p()
-                if lib.XFetchName(display, child, ctypes.byref(name)) and name.value and name.value.decode(errors="replace") == title:
+                if lib.XFetchName(display, child, ctypes.byref(name)) and name.value and name.value.decode(errors="replace").endswith(title):
                     matches.append(cls(lib, display, child))
                 pending.append(child)
         if not matches:

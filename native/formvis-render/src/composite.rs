@@ -6,10 +6,98 @@
 //! straight RGBA8. Transforms, masks and clipping follow in the next parts.
 
 use crate::{read_tile, Gpu, TiledLayer, FORMAT, TILE};
+use std::cell::RefCell;
+
+const BLUR: &str = r#"
+struct Blur { rect: vec4<i32>, r: vec2<i32>, dir: u32, first: u32, mode: u32 };
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var<uniform> bu: Blur;
+@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+fn at(p: vec2<i32>) -> vec4<f32> {
+  let q = clamp(p, bu.rect.xy, bu.rect.zw - vec2<i32>(1));
+  let t = textureLoad(src, q, 0);
+  if (bu.first == 0u) { return t; }
+  let c = round(t.rgb * 255.0) / 255.0;
+  if (bu.mode == 0u) { let l = dot(c, vec3<f32>(0.299, 0.587, 0.114)); return vec4<f32>(l, l, 0.0, 1.0); }
+  let a = round(t.a * 255.0) / 255.0;
+  return vec4<f32>(c * a, a);
+}
+@fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  let p = vec2<i32>(floor(pos.xy));
+  var d = vec2<i32>(1, 0);
+  if (bu.dir == 1u) { d = vec2<i32>(0, 1); }
+  if (bu.mode == 0u) {
+    var sa = 0.0; var sb = 0.0;
+    for (var k = -bu.r.x; k <= bu.r.x; k++) { sa += at(p + d * k).x; }
+    for (var k = -bu.r.y; k <= bu.r.y; k++) { sb += at(p + d * k).y; }
+    return vec4<f32>(sa / f32(2 * bu.r.x + 1), sb / f32(2 * bu.r.y + 1), 0.0, 1.0);
+  }
+  var s = vec4<f32>(0.0);
+  for (var k = -bu.r.x; k <= bu.r.x; k++) {
+    let q = p + d * k;
+    if (q.x < bu.rect.x || q.y < bu.rect.y || q.x >= bu.rect.z || q.y >= bu.rect.w) { continue; }
+    s += at(q);
+  }
+  return s / f32(2 * bu.r.x + 1);
+}
+"#;
+
+const HOOD_FN: &str = r#"
+fn hLum(c: vec3<f32>) -> f32 { return dot(c, vec3<f32>(0.299, 0.587, 0.114)); }
+fn hRelight(c: vec3<f32>, to: f32, s: f32) -> vec3<f32> {
+  let was = max(1e-4, hLum(c));
+  let r = c * (to / was);
+  let l = hLum(r);
+  return vec3<f32>(l) + (r - vec3<f32>(l)) * s;
+}
+fn hTone(x: f32, k: array<f32, 5>) -> f32 {
+  var kn = k;
+  let t = clamp(x, 0.0, 1.0) * 4.0;
+  let i = min(3, i32(floor(t)));
+  let f = t - f32(i);
+  let p0 = kn[max(0, i - 1)]; let p1 = kn[i]; let p2 = kn[i + 1]; let p3 = kn[min(4, i + 2)];
+  return clamp(p1 + 0.5 * f * (p2 - p0 + f * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + f * (3.0 * (p1 - p2) + p3 - p0))), 0.0, 1.0);
+}
+fn hoodColor(c: vec3<f32>, h: vec4<f32>, P: array<f32, 16>) -> vec3<f32> {
+  let kind = i32(P[15]);
+  let L = hLum(c);
+  if (kind == 1) {
+    let tS = P[1]; let tH = P[3];
+    let u = clamp(1.0 - h.x / tS, 0.0, 1.0);
+    let v = clamp((h.y - (1.0 - tH)) / tH, 0.0, 1.0);
+    let ws = P[0] * u * u; let wh = P[2] * v * v;
+    var L2 = L;
+    if (L < tS) { L2 = L + ws * (tS - L) * 0.8; }
+    if (L2 > 1.0 - tH) { L2 = L2 - wh * (L2 - (1.0 - tH)) * 0.8; }
+    L2 = L2 + P[5] * 4.0 * L2 * (1.0 - L2) * (L2 - 0.5);
+    return hRelight(c, clamp(L2, 0.0, 1.0), 1.0 + P[4] * (ws + wh));
+  }
+  if (kind == 2) {
+    let Lc = max(1e-4, L); let B = max(1e-4, h.x);
+    let lb = log(B); let ld = log(Lc) - lb; let mean = log(0.45);
+    var L2 = clamp(pow(exp(mean + (lb - mean) / (1.0 + P[6]) + ld * P[7]) * P[8], 1.0 / P[9]), 0.0, 1.0);
+    if (P[0] != 0.0 || P[1] != 0.0) { let m = 1.0 - L2; L2 = clamp(L2 + 0.35 * P[0] * L2 * m * m + 0.35 * P[1] * L2 * L2 * m, 0.0, 1.0); }
+    if (P[5] > 0.5) { L2 = hTone(L2, array<f32, 5>(0.0, 0.25 + P[2], 0.5 + P[3], 0.75 + P[4], 1.0)); }
+    let s0 = max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
+    return hRelight(c, L2, P[11] * (1.0 + P[10] * (1.0 - s0)));
+  }
+  var bl = vec3<f32>(0.0);
+  if (h.a >= 0.5 / 255.0) { bl = round(h.rgb / h.a * 255.0) / 255.0; }
+  let f = P[0];
+  let e = abs(L - 0.5) * 2.0;
+  let term = abs(f) * (1.0 - e * e) * 0.8;
+  var sg = 1.0;
+  if (f > 0.0) { sg = -1.0; }
+  return c + (bl - c) * term * sg;
+}
+"#;
 
 const HEAD: &str = r#"
 struct Place { inv0: vec4<f32>, inv1: vec4<f32>, origin: vec2<f32>, stage: vec2<f32>, size: vec2<f32>, placed: u32, pad: u32 };
-struct Comp { inv0: vec4<f32>, inv1: vec4<f32>, tile_origin: vec2<f32>, opacity: f32, mode: u32, has_mask: u32, has_clip: u32, base_opacity: f32, base_has_mask: u32, stage_origin: vec2<f32>, stage_size: vec2<f32>, layer_size: vec2<f32>, transformed: u32, adj_mode: u32, mask_at: Place, base_mask_at: Place, level: f32, pad1: u32, pad2: u32, pad3: u32, bi_t: vec4<f32>, bi_u: vec4<f32>, bi_ch: u32, ch_off: u32, ko: f32, ko_on: u32, ga: vec4<f32>, gb: vec4<f32>, gs: vec4<u32> };
+struct Comp { inv0: vec4<f32>, inv1: vec4<f32>, tile_origin: vec2<f32>, opacity: f32, mode: u32, has_mask: u32, has_clip: u32, base_opacity: f32, base_has_mask: u32, stage_origin: vec2<f32>, stage_size: vec2<f32>, layer_size: vec2<f32>, transformed: u32, adj_mode: u32, mask_at: Place, base_mask_at: Place, level: f32, pad1: u32, pad2: u32, pad3: u32, bi_t: vec4<f32>, bi_u: vec4<f32>, bi_ch: u32, ch_off: u32, ko: f32, ko_on: u32, ga: vec4<f32>, gb: vec4<f32>, gs: vec4<u32>, hp: array<vec4<f32>, 4> };
 @group(0) @binding(7) var ko_tile: texture_2d<f32>;
 @group(0) @binding(0) var backdrop: texture_2d<f32>;
 @group(0) @binding(1) var source: texture_2d<f32>;
@@ -108,6 +196,17 @@ const FS: &str = r#"
     let tt = vec3<f32>(select(0.0, 1.0, on));
     return vec4<f32>(bd.rgb + (adjust_blend(bd.rgb, tt) - bd.rgb) * comp.opacity * cov, bd.a);
   }
+  // A neighbourhood adjustment (mode 106: Shadows/Highlights, HDR Toning, Clarity): the stage of frontend/src/gpu/hood.ts on
+  // the 8-bit backdrop and the blurred copy of the composite beneath (bound at the document's size as ko_tile).
+  if (comp.mode == 106u) {
+    if (bd.a <= 0.0) { return bd; }
+    let P = array<f32, 16>(comp.hp[0].x, comp.hp[0].y, comp.hp[0].z, comp.hp[0].w, comp.hp[1].x, comp.hp[1].y, comp.hp[1].z, comp.hp[1].w,
+      comp.hp[2].x, comp.hp[2].y, comp.hp[2].z, comp.hp[2].w, comp.hp[3].x, comp.hp[3].y, comp.hp[3].z, comp.hp[3].w);
+    let c0 = round(bd.rgb * 255.0) / 255.0;
+    let hv = textureLoad(ko_tile, vec2<i32>(comp.tile_origin) + px, 0);
+    let th = round(clamp(hoodColor(c0, hv, P), vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0) / 255.0;
+    return vec4<f32>(bd.rgb + (adjust_blend(bd.rgb, th) - bd.rgb) * comp.opacity * cov, bd.a);
+  }
   // A Grain adjustment (mode 104), as engine/adjust.ts grainKernel computes it at one document pixel per pixel: value noise
   // on a lattice of `cell` document units mixed toward per-pixel noise by roughness, weighted to the midtones, per channel
   // when colour is above 0, plus speckle; mixed in by opacity and coverage; alpha kept.
@@ -176,8 +275,7 @@ const FS: &str = r#"
     s0 = textureLoad(source, px, 0);
   }
   var sc = s0;
-  if (s0.a > 0.0 && comp.pad1 == 0u) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }
-  let m = comp.mode;
+  if (s0.a > 0.0 && comp.pad1 == 0u) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }  let m = comp.mode;
   if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u || m >= 27u) {
     sc = vec4<f32>(floor(sc.rgb * 255.0 + 0.5005) / 255.0, sc.a);
   }
@@ -232,6 +330,27 @@ pub enum Source<'a> {
     Group(Vec<Stack<'a>>),
     /// A Grain adjustment.
     Grain(Grain),
+    /// Shadows/Highlights, HDR Toning or Clarity: a stage reading a blurred copy of the composite beneath.
+    Hood(Hood),
+}
+
+/// A neighbourhood adjustment as frontend/src/engine/lut.ts adjustmentHood gives it: the kind (1 Shadows/Highlights,
+/// 2 HDR Toning, 3 Clarity), whether it blurs colour (kind 3) rather than luminance, the box radii of the three blur
+/// passes (a second radius for the highlights' blur), the stage's constants and the document's size, over which it blurs.
+pub struct Hood {
+    pub kind: u32,
+    pub rgb: bool,
+    pub radii: Vec<[u32; 2]>,
+    pub p: Vec<f32>,
+    pub width: u32,
+    pub height: u32,
+    blurred: RefCell<Option<wgpu::Texture>>,
+}
+
+impl Hood {
+    pub fn new(kind: u32, rgb: bool, radii: Vec<[u32; 2]>, p: Vec<f32>, width: u32, height: u32) -> Hood {
+        Hood { kind, rgb, radii, p, width, height, blurred: RefCell::new(None) }
+    }
 }
 
 /// A Grain adjustment's numbers, as frontend/src/engine/adjust.ts grainParams gives them.
@@ -342,6 +461,10 @@ impl<'a> Stack<'a> {
     /// A Grain adjustment at `opacity`.
     pub fn grain(g: Grain, opacity: f32) -> Stack<'a> {
         Stack { source: Source::Grain(g), mode: 104, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new(), blend_if: None, ch_off: 0, knockout: None }
+    }
+    /// A neighbourhood adjustment at `opacity`.
+    pub fn hood(h: Hood, opacity: f32) -> Stack<'a> {
+        Stack { source: Source::Hood(h), mode: 106, opacity, mask: None, mask_at: None, clip: None, transform: None, adjust_mode: 0, folders: Vec::new(), blend_if: None, ch_off: 0, knockout: None }
     }
     /// A group of layers composited alone from clear, then blended as one layer in `mode` at `opacity`.
     pub fn group(sub: Vec<Stack<'a>>, mode: u32, opacity: f32) -> Stack<'a> {
@@ -464,8 +587,9 @@ struct Comp {
     ga: [f32; 4],
     gb: [f32; 4],
     gs: [u32; 4],
+    hp: [[f32; 4]; 4],
 }
-const _: () = assert!(std::mem::size_of::<Comp>() == 336, "the uniform must match the WGSL struct's 336 bytes");
+const _: () = assert!(std::mem::size_of::<Comp>() == 400, "the uniform must match the WGSL struct's 400 bytes");
 
 /// A layer's Blend If: the channel tested (1 grey, 2 red, 3 green, 4 blue) and the four-point ranges of the layer's own
 /// value and of the composite beneath it.
@@ -509,13 +633,15 @@ type Placement = ([f32; 2], [f32; 2], Affine, [f32; 2]);
 pub struct Blender {
     pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
+    blur: wgpu::RenderPipeline,
+    blur_layout: wgpu::BindGroupLayout,
     white: wgpu::Texture,
     sampler: wgpu::Sampler,
 }
 
 impl Blender {
     pub fn new(gpu: &Gpu) -> Blender {
-        let source = format!("{HEAD}{}{FS}", include_str!("blend.wgsl"));
+        let source = format!("{HEAD}{HOOD_FN}{}{FS}", include_str!("blend.wgsl"));
         let module = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("blend"), source: wgpu::ShaderSource::Wgsl(source.into()) });
         let tex_entry = |binding| wgpu::BindGroupLayoutEntry {
             binding,
@@ -578,7 +704,91 @@ impl Blender {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        Blender { pipeline, layout, white, sampler }
+        let blur_module = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("blur"), source: wgpu::ShaderSource::Wgsl(BLUR.into()) });
+        let blur_layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("blur"),
+            entries: &[
+                tex_entry(0),
+                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            ],
+        });
+        let bpl = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("blur"), bind_group_layouts: &[Some(&blur_layout)], ..Default::default() });
+        let blur = gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("blur"),
+            layout: Some(&bpl),
+            vertex: wgpu::VertexState { module: &blur_module, entry_point: Some("vs"), buffers: &[], compilation_options: Default::default() },
+            fragment: Some(wgpu::FragmentState { module: &blur_module, entry_point: Some("fs"), targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba16Float, blend: None, write_mask: wgpu::ColorWrites::ALL })], compilation_options: Default::default() }),
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        Blender { pipeline, layout, blur, blur_layout, white, sampler }
+    }
+
+    /// The blurred copy of the composite beneath a neighbourhood adjustment, over the whole document, kept in the Hood
+    /// for the other tiles: the layers below rendered tile by tile into one texture, then the three box passes along x
+    /// then y (hood.ts BLUR_WGSL) in half float, as the web renderer holds them. None when the document is wider than the GPU's largest texture.
+    fn hood_blur(&self, gpu: &Gpu, h: &Hood, below: &[Stack]) -> Option<wgpu::Texture> {
+        if let Some(t) = h.blurred.borrow().as_ref() {
+            return Some(t.clone());
+        }
+        let (w, ht) = (h.width, h.height);
+        if w == 0 || ht == 0 || w > gpu.limits.max_texture_dimension_2d || ht > gpu.limits.max_texture_dimension_2d {
+            return None;
+        }
+        let make = |format: wgpu::TextureFormat, usage: wgpu::TextureUsages| {
+            gpu.device.create_texture(&wgpu::TextureDescriptor { label: Some("hood"), size: wgpu::Extent3d { width: w, height: ht, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format, usage, view_formats: &[] })
+        };
+        let comp = make(FORMAT, wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST);
+        for ty in 0..ht.div_ceil(TILE) {
+            for tx in 0..w.div_ceil(TILE) {
+                let tile = self.render_tile(gpu, below, tx, ty);
+                let mut enc = gpu.device.create_command_encoder(&Default::default());
+                enc.copy_texture_to_texture(
+                    wgpu::TexelCopyTextureInfo { texture: &tile, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                    wgpu::TexelCopyTextureInfo { texture: &comp, mip_level: 0, origin: wgpu::Origin3d { x: tx * TILE, y: ty * TILE, z: 0 }, aspect: wgpu::TextureAspect::All },
+                    wgpu::Extent3d { width: TILE.min(w - tx * TILE), height: TILE.min(ht - ty * TILE), depth_or_array_layers: 1 },
+                );
+                gpu.queue.submit([enc.finish()]);
+            }
+        }
+        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT;
+        let pair = [make(wgpu::TextureFormat::Rgba16Float, usage), make(wgpu::TextureFormat::Rgba16Float, usage)];
+        let mut enc = gpu.device.create_command_encoder(&Default::default());
+        let mut keep = Vec::new();
+        let mut n = 0usize;
+        for r in &h.radii {
+            for dir in 0..2u32 {
+                let raw: [i32; 12] = [0, 0, w as i32, ht as i32, r[0] as i32, r[1] as i32, dir as i32, (n == 0) as i32, h.rgb as i32, 0, 0, 0];
+                let buf = crate::uniform_buffer(&gpu.device, bytemuck::bytes_of(&raw));
+                let src = if n == 0 { &comp } else { &pair[(n - 1) % 2] };
+                let (sv, dv) = (src.create_view(&Default::default()), pair[n % 2].create_view(&Default::default()));
+                let bind = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("blur"),
+                    layout: &self.blur_layout,
+                    entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&sv) }, wgpu::BindGroupEntry { binding: 1, resource: buf.as_entire_binding() }],
+                });
+                {
+                    let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("blur"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &dv, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store } })],
+                        ..Default::default()
+                    });
+                    pass.set_pipeline(&self.blur);
+                    pass.set_bind_group(0, &bind, &[]);
+                    pass.draw(0..3, 0..1);
+                }
+                keep.push(buf);
+                n += 1;
+            }
+        }
+        gpu.queue.submit([enc.finish()]);
+        std::mem::forget(keep);
+        let out = pair[(n - 1) % 2].clone();
+        *h.blurred.borrow_mut() = Some(out.clone());
+        Some(out)
     }
 
     /// The layer's pixels around one output tile's footprint (its corners mapped back through the placement, widened by a
@@ -761,7 +971,8 @@ impl Blender {
             });
         }
         let mut uniforms = Vec::new();
-        for l in layers {
+        for (li, l) in layers.iter().enumerate() {
+            let mut hood_tex: Option<wgpu::Texture> = None;
             // Pixels with no tile here are transparent here; a table applies everywhere; a placed layer reads its pixels
             // around this tile's footprint, staged into one texture.
             let mut placed: Option<Placement> = None;
@@ -777,6 +988,13 @@ impl Blender {
                 (Source::Table(lut), _) => lut.texture.clone(),
                 (Source::Level(_), _) | (Source::Grain(_), _) => self.white.clone(),
                 (Source::Group(sub), _) => self.render_tile(gpu, sub, tx, ty),
+                (Source::Hood(h), _) => match self.hood_blur(gpu, h, &layers[..li]) {
+                    Some(t) => {
+                        hood_tex = Some(t);
+                        self.white.clone()
+                    }
+                    None => continue,
+                },
             };
             let src = &src;
             // A clipped layer shows nothing where its base has no pixels.
@@ -844,9 +1062,20 @@ impl Blender {
                     Source::Grain(g) => [g.seed, g.fine_seed, g.spec_seed, 0],
                     _ => [0; 4],
                 },
+                hp: match &l.source {
+                    Source::Hood(h) => {
+                        let mut s = [0.0f32; 16];
+                        for (i, v) in h.p.iter().take(15).enumerate() {
+                            s[i] = *v;
+                        }
+                        s[15] = h.kind as f32;
+                        [[s[0], s[1], s[2], s[3]], [s[4], s[5], s[6], s[7]], [s[8], s[9], s[10], s[11]], [s[12], s[13], s[14], s[15]]]
+                    }
+                    _ => [[0.0; 4]; 4],
+                },
             };
             let ko_tile = l.knockout.as_ref().map(|k| self.render_tile(gpu, &k.1, tx, ty));
-            uniforms.push(self.pass(gpu, &mut enc, &u, &back, src, mask.as_ref(), cover.as_ref().or(base), base_mask.as_ref(), ko_tile.as_ref(), &front));
+            uniforms.push(self.pass(gpu, &mut enc, &u, &back, src, mask.as_ref(), cover.as_ref().or(base), base_mask.as_ref(), ko_tile.as_ref().or(hood_tex.as_ref()), &front));
             std::mem::swap(&mut back, &mut front);
         }
         gpu.queue.submit([enc.finish()]);

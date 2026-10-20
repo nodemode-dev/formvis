@@ -128,6 +128,16 @@ pub struct SpecIn {
     ch_off: u32,
     /// Knockout: the layer's opacity and the layers that show through its coverage.
     knockout: Option<KnockoutIn>,
+    /// A Shadows/Highlights, HDR Toning or Clarity adjustment layer.
+    hood: Option<HoodIn>,
+}
+
+#[derive(Deserialize)]
+pub struct HoodIn {
+    kind: u32,
+    rgb: bool,
+    radii: Vec<[u32; 2]>,
+    p: Vec<f32>,
 }
 
 #[derive(Deserialize)]
@@ -185,6 +195,7 @@ fn spec_of(e: SpecIn) -> LayerSpec {
         grain: e.grain.map(|g| Grain { strength: g.strength, rough: g.rough, colour: g.colour, speckle: g.speckle, cell: g.cell, amount: g.amount, seed: g.seed, fine_seed: g.fine_seed, spec_seed: g.spec_seed }),
         ch_off: e.ch_off,
         knockout: e.knockout.map(|k| (k.opacity, k.back.into_iter().map(spec_of).collect())),
+        hood: e.hood.map(|h| (h.kind, h.rgb, h.radii, h.p)),
     }
 }
 
