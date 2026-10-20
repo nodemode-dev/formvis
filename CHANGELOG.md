@@ -15,6 +15,7 @@ The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and
 - Actions .atn: make, delete and select layer and set layer properties are written and read, with a Set Layer action step.
 - Generate Image: a remembered working size for models on this computer; references gain a fit mode and To layer; a ComfyUI workflow says how many reference pictures it takes when too many are chosen.
 - Add Noise's uniform grain runs in a WebAssembly SIMD kernel, byte-identical to the TypeScript.
+- Save a Copy without layers works on documents past one canvas; a brush stroke can cross a tiled layer of any width as one undo step.
 
 ### Fixed
 
