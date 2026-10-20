@@ -2,7 +2,7 @@ import { Raster, type Engine } from '../../engine';
 import type { GenerationInfo } from '../../engine/types';
 import { withBoxes } from '../../engine/boxes';
 import { api, ApiError, type GenerativeStatus, type ProviderStatus } from '../../io/api';
-import { recipes, runToResults } from '../../io/comfy';
+import { checkReferenceCount, recipes, runToResults } from '../../io/comfy';
 import { generatePrompt } from '../../io/prompt-templates';
 import { localModels, runLocal } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
@@ -170,6 +170,8 @@ export interface GenerationRequest {
   providers: readonly ProviderStatus[];
   /** The pixel size to ask for; the document's own when absent. */
   size?: { width: number; height: number };
+  /** The longest side a model on this computer works at (the dialog remembers it); 2048 when absent. The result is placed at the size asked. */
+  cap?: number;
   /** Where the picture lands: a layer of the open document (the default) or a new document of its own size. */
   target?: 'layer' | 'document';
   /** The layers sent as references to a ComfyUI workflow. */
@@ -271,7 +273,7 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
   if (!referenced && hasTokens(prompt)) throw new Error(t('This model takes no references: remove the @img tokens from the prompt, or choose a ComfyUI workflow.'));
   if (choice.startsWith('local:')) {
     // On this computer: the shape asked within the model's 2048 pixels, in multiples of 16.
-    const k = Math.min(1, 2048 / Math.max(w, h)), lw = Math.max(256, Math.round((w * k) / 16) * 16), lh = Math.max(256, Math.round((h * k) / 16) * 16);
+    const k = Math.min(1, Math.min(2048, req.cap ?? 2048) / Math.max(w, h)), lw = Math.max(256, Math.round((w * k) / 16) * 16), lh = Math.max(256, Math.round((h * k) / 16) * 16);
     const r = await runLocal({ generator: choice, prompt, size: `${lw}x${lh}`, count: 1, ...(req.negative ? { negative: req.negative } : {}), ...(req.seed !== undefined || req.steps !== undefined || req.guidance !== undefined ? { options: { ...(req.seed !== undefined ? { seed: req.seed } : {}), ...(req.steps !== undefined ? { steps: req.steps } : {}), ...(req.guidance !== undefined ? { guidance: req.guidance } : {}) } } : {}) }, req.status, req.stopped);
     req.heard?.(r);
     blob = r.pictures[0];
@@ -295,6 +297,7 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
     if (!recipe) throw new Error(t('That workflow is no longer kept: add it again in Edit > Generative Fill.'));
     req.status(t('Sending to ComfyUI...'));
     const refs = req.references ? await req.references() : [];
+    checkReferenceCount(recipe.name, recipe.json, refs.length);
     const said = resolveReferenceTokens(prompt, refs.length, recipe.refs);
     blob = (await runToResults(loadPrefs().comfyuiUrl, recipe.json, refs.map((r) => ({ name: r.name, kind: 'reference' })), refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob })), said, req.status, req.stopped))[0];
   }
@@ -321,6 +324,7 @@ export class GenerateImageDialog extends Dialog {
   private readonly size = el<HTMLSelectElement>('<select class="cv-input" aria-label="Size"></select>');
   private readonly cw = el<HTMLInputElement>('<input class="cv-input" type="number" min="256" max="2048" step="16" value="1024" aria-label="Width" hidden>');
   private readonly ch = el<HTMLInputElement>('<input class="cv-input" type="number" min="256" max="2048" step="16" value="1024" aria-label="Height" hidden>');
+  private readonly cap = el<HTMLSelectElement>('<select class="cv-input" aria-label="Working size" title="The longest side a model on this computer works at; a larger picture is made at this size and placed at the size asked"><option value="2048">Up to 2048 px</option><option value="1536">Up to 1536 px</option><option value="1024">Up to 1024 px</option></select>');
   private readonly target = el<HTMLSelectElement>('<select class="cv-input" aria-label="Result"><option value="layer">Result: a layer of this picture</option><option value="document">Result: a new document</option></select>');
   private readonly clear = el<HTMLInputElement>('<input type="checkbox" aria-label="Transparent background">');
   private readonly clearRow = el('<label class="cv-dialog-row" title="Cuts the background away from the result with the background removal engine"><span>Transparent background</span></label>');
@@ -364,8 +368,10 @@ export class GenerateImageDialog extends Dialog {
     for (const f of [this.cw, this.ch]) f.addEventListener('change', () => { f.value = String(this.side(Number(f.value))); });
     const shape = el('<div class="cv-dialog-row"></div>');
     shape.append(this.size, this.cw, this.ch, this.target);
+    const capRow = el('<label class="cv-dialog-row"><span>Working size</span></label>');
+    capRow.append(this.cap);
     this.clearRow.prepend(this.clear);
-    this.body.append(this.prompt, this.improver.el, row, shape, this.clearRow, this.opts.el, this.keyRow, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
+    this.body.append(this.prompt, this.improver.el, row, shape, capRow, this.clearRow, this.opts.el, this.keyRow, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
     this.hist.addEventListener('click', (ev) => {
       const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
       if (!b) return;
@@ -479,6 +485,7 @@ export class GenerateImageDialog extends Dialog {
    *  while the new model still offers it. */
   private paintShapes(): void {
     this.shapes = shapesFor(this.model.value, this.localSizes[this.model.value] ?? []);
+    this.cap.disabled = !this.model.value.startsWith('local:');
     const was = this.size.value, items: Array<readonly [string, string]> = [['doc', 'Size: the picture\'s own'], ...this.shapes.map((s): readonly [string, string] => [s[0], s[1]]), ['custom', 'Custom width and height']];
     patchList(this.size, items, {
       key: (i) => i[0],
@@ -498,7 +505,7 @@ export class GenerateImageDialog extends Dialog {
     this.stopped = false;
     try {
       // The same generation the Generate panel runs; a new layer at the document's size (a new document when none is open).
-      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, size: this.asked(), target: this.target.value === 'document' ? 'document' : 'layer', transparent: this.clear.checked, references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
+      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, size: this.asked(), cap: Number(this.cap.value), target: this.target.value === 'document' ? 'document' : 'layer', transparent: this.clear.checked, references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
       if (!added) return;
       this.close();
       this.toast('The generated image was added as a layer.');

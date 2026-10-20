@@ -36,7 +36,7 @@ def test_the_font_menu_offers_this_machines_fonts_and_the_system_list(page):
 
 def test_the_type_options_show_tracking_and_kerning(page):
     page.evaluate("window.formvis.engine.newDocument(200, 120, 'T', 'white'); window.formvis.engine.setTool('type')")
-    bar = page.locator(".cv-opt-group:not([hidden]), .cv-opt-pop")
+    bar = page.locator(".cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*='contents']")
     for label in ("Font", "Tracking", "Kerning"):
         assert bar.get_by_text(label, exact=True).count() >= 1, label
     page.evaluate("window.formvis.engine.textSettings = { ...window.formvis.engine.textSettings, tracking: 0 }")

@@ -4,6 +4,25 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.91.3 · 2026-10-20
+
+### Added
+
+- GPU: layer styles on clipped layers, vector-masked layers and layers inside masked folders draw on the GPU, their effects built from the masked pixels and cached by mask version; the console names the display that draws (WebGPU, WebGL2 or native).
+- Distort (Twirl, Pinch, Spherize, Ripple, Wave, ZigZag, Polar Coordinates, Shear), Diffuse, Wind, Crystallize, Fragment, Facet and Despeckle run on the float channels of 16 and 32-bit documents; Develop's tone, colour, curve, vignette, grain and dehaze pass runs on float input when no other Develop stage is active.
+- MCP resource subscriptions notify on edits made by hand in the window.
+- Plug-ins: getPixels and putPixels target an alpha channel by name; formvis.progress, cancelled and onCancel, and a plug-in's run shows as a cancellable job.
+- Actions .atn: make, delete and select layer and set layer properties are written and read, with a Set Layer action step.
+- Generate Image: a remembered working size for models on this computer; references gain a fit mode and To layer; a ComfyUI workflow says how many reference pictures it takes when too many are chosen.
+- Add Noise's uniform grain runs in a WebAssembly SIMD kernel, byte-identical to the TypeScript.
+
+### Fixed
+
+- Options bar: each tool keeps its own parked layout per bar width and its own More-panel section, so switching tools or painting a stroke no longer removes and re-adds bar nodes.
+- Number fields select their whole value when focused by a click or a script, so typing replaces the old value instead of landing in front of it.
+- Redefine Paragraph Style and Apply Data Set re-render type at the document's depth.
+- e2e scenes for the More panel sections, the rail, Preferences and the recovery database follow the current UI.
+
 ## 1.91.2 · 2026-10-19
 
 ### Added

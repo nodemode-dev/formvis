@@ -167,7 +167,25 @@ export class AgentBridge {
   private looping = false;
   private inflight = 0;
   private callId = '';
-  constructor(private readonly engine: Engine, private readonly deps: AgentDeps) {}
+  private changed = new Set<string>();
+  private changedTimer = 0;
+  constructor(private readonly engine: Engine, private readonly deps: AgentDeps) {
+    const kinds: Record<string, string> = { selection: 'selection', history: 'history', doc: 'layers', active: 'document', projects: 'document' };
+    for (const ev of Object.keys(kinds)) (engine as unknown as { on(k: string, f: () => void): void }).on(ev, () => this.tellChanged(kinds[ev]));
+  }
+
+  /** Edits made by hand reach the engine, debounced, so sessions subscribed to a resource are told; a call from an agent is announced by the engine itself. */
+  private tellChanged(kind: string): void {
+    if (this.inflight > 0) return;
+    this.changed.add(kind);
+    if (this.changedTimer) return;
+    this.changedTimer = window.setTimeout(() => {
+      this.changedTimer = 0;
+      const kinds = [...this.changed];
+      this.changed.clear();
+      void fetch('/api/mcp/bridge/changed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kinds }) }).catch(() => undefined);
+    }, 400);
+  }
 
   /** True while an outside agent's call is being run here (the Script Console refuses to run then). */
   get agentBusy(): boolean { return this.inflight > 0; }

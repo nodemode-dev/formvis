@@ -2,7 +2,7 @@ import type { Engine } from '../../engine';
 import { api, type GenerativeStatus, type ProviderStatus } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
-import { addRecipe, apiWorkflow, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
+import { addRecipe, apiWorkflow, checkReferenceCount, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
 import { localFill, localInpaint, localModels, localUpscale, modelReady, upscaleFiles, upscalerReady, type LocalModel } from '../../io/local-gen';
 import { loadPrefs, recalled } from '../prefs';
 import { ReferencePicker } from './references';
@@ -305,7 +305,7 @@ export class GenerativeDialog extends Dialog {
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       const refs = await this.chips.ordered();
       let said: string;
-      try { said = await generatePrompt(resolveReferenceTokens(prompt, refs.length, recipe.refs), 'comfyui'); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'A reference token could not be read.'); return; }
+      try { checkReferenceCount(recipe.name, recipe.json, refs.length); said = await generatePrompt(resolveReferenceTokens(prompt, refs.length, recipe.refs), 'comfyui'); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'A reference token could not be read.'); return; }
       this.close();
       const fill = stoppableFill((stopped) => withCropStitch(comfyGenerator(target, recipe, said, refs, stopped)));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));

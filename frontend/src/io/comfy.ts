@@ -10,6 +10,20 @@ const KEY = 'formvis.comfyui.recipes', HIDDEN_KEY = 'formvis.comfyui.recipesHidd
 export const REFERENCE_NAMES: ReadonlyArray<readonly [string, string]> = [['image {n}', 'image 1, image 2'], ['Image {n}', 'Image 1, Image 2'], ['picture {n}', 'picture 1, picture 2'], ['Picture {n}', 'Picture 1, Picture 2'], ['reference {n}', 'reference 1, reference 2'], ['img{n}', 'img1, img2'], ['<image {n}>', '<image 1>, <image 2>']];
 export const DEFAULT_REFERENCE_NAME = REFERENCE_NAMES[0][0];
 
+/** How many reference pictures a workflow takes: its Load Image nodes titled "formvis reference" (then 1, 2 and on); 0 when the text is not an API-format graph. */
+export function referenceSlots(json: string): number {
+  try {
+    const g = JSON.parse(json) as Record<string, { class_type?: unknown; _meta?: { title?: unknown } }>;
+    return Object.values(g).filter((n) => n && n.class_type === 'LoadImage' && String(n._meta?.title ?? '').trim().toLowerCase().startsWith('formvis reference')).length;
+  } catch { return 0; }
+}
+
+/** Throws in words when more pictures are chosen than the workflow has places for (the rest would be dropped without a word). */
+export function checkReferenceCount(name: string, json: string, count: number): void {
+  const slots = referenceSlots(json);
+  if (count > slots) throw new Error(slots === 0 ? `${name} has no place for reference pictures (a Load Image node titled "formvis reference"): untick the references.` : `${name} takes ${slots} reference picture${slots === 1 ? '' : 's'}, ${count} are chosen: untick ${count - slots}.`);
+}
+
 const graph = (nodes: Array<[string, Record<string, unknown>]>): string => JSON.stringify(Object.fromEntries(nodes.map(([type, inputs], i) => [String(i + 1), { class_type: type, inputs }])));
 
 /** Workflows that ship with formvis: ComfyUI's own nodes only and no model file, so they run on any ComfyUI. A kept workflow

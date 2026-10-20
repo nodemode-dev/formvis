@@ -6,7 +6,7 @@ import { fromBase64, toBase64 } from './icc-read';
  *  Events with a formvis equivalent become steps; the rest are kept as greyed steps holding their original bytes, so
  *  writing the file back returns them untouched, and are named in `unsupported`. */
 
-interface Enum { kind: 'enum'; type: string; value: string }
+interface Enum { kind: 'enum'; type: string; value: string; cls?: string }
 interface Unit { kind: 'unit'; unit: string; value: number }
 export interface Desc { cls: string; classId: string; items: Map<string, Val> }
 export type Val =number | string | boolean | Val[] | Desc | Enum | Unit | null;
@@ -79,8 +79,8 @@ function readReference(r: Reader): Enum | null {
   let found: Enum | null = null;
   for (let i = 0; i < count; i++) {
     const form = r.ascii(4);
-    if (form === 'Clss') { r.unicode(); r.id(); }
-    else if (form === 'Enmr') { r.unicode(); r.id(); const type = r.id(); found = { kind: 'enum', type, value: r.id() }; }
+    if (form === 'Clss') { r.unicode(); found = { kind: 'enum', type: 'Clss', value: r.id(), cls: 'Clss' }; }
+    else if (form === 'Enmr') { r.unicode(); const cls = r.id(), type = r.id(); found = { kind: 'enum', type, value: r.id(), cls }; }
     else if (form === 'name') { r.unicode(); r.id(); r.unicode(); }
     else if (form === 'Idnt' || form === 'indx' || form === 'rele') { r.unicode(); r.id(); r.i32(); }
     else if (form === 'prop') { r.unicode(); r.id(); r.id(); }
@@ -136,6 +136,8 @@ function readItem(r: Reader): Item {
   return { enabled, event, name, desc };
 }
 
+const LAYER_SELECT: Record<string, string> = { Frwr: 'select-layer-up', Bckw: 'select-layer-down', Frnt: 'select-layer-top', Back: 'select-layer-bottom' };
+const LAYER_SELECT_BACK: Record<string, string> = Object.fromEntries(Object.entries(LAYER_SELECT).map(([ord, id]) => [id, ord]));
 const SIMPLE: Record<string, string> = { Invr: 'invert', Dstt: 'desaturate', Fltn: 'flatten', MrgV: 'merge-visible', Mrg2: 'merge-down', Dplc: 'duplicate', Dslc: 'deselect', Invs: 'inverse', Eqlz: 'equalize' };
 
 /** The step an item stands for, or null when formvis has no equivalent. */
@@ -143,8 +145,22 @@ function stepFor(it: Item): ActionStep | null {
   const label = it.name || it.event;
   const cmd = (id: string): ActionStep => ({ kind: 'command', id, label });
   const simple = SIMPLE[it.event];
-  if (simple) return cmd(simple);
   const get = (k: string): Val | undefined => it.desc?.items.get(k);
+  const target = get('null'), onLayer = isEnum(target) && target.cls === 'Lyr ' && target.type === 'Ordn' ? target.value.trim() : null;
+  if (simple && !(it.event === 'Dplc' && isEnum(target) && onLayer === null)) return cmd(simple);
+  if (it.event === 'Mk  ' && isEnum(target) && target.type === 'Clss' && target.value === 'Lyr ' && it.desc?.items.size === 1) return cmd('new-layer');
+  if (it.event === 'Dlt ' && onLayer === 'Trgt') return cmd('delete-layer');
+  if (it.event === 'slct' && onLayer) {
+    const to = LAYER_SELECT[onLayer];
+    return to ? cmd(to) : null;
+  }
+  if (it.event === 'setd' && onLayer === 'Trgt') {
+    const to = get('T   ');
+    if (!isDesc(to) || to.classId !== 'Lyr ' || ![...to.items.keys()].every((k) => k === 'Nm  ' || k === 'Opct' || k === 'Vsbl')) return null;
+    const nm = to.items.get('Nm  '), op = unitOrNumber(to.items.get('Opct')), vs = to.items.get('Vsbl');
+    if (!(typeof nm === 'string' && nm.trim()) && op === null && typeof vs !== 'boolean') return null;
+    return { kind: 'layerProps', label, ...(typeof nm === 'string' && nm.trim() ? { name: nm.trim().slice(0, 200) } : {}), ...(op !== null ? { opacity: Math.min(100, Math.max(0, op)) } : {}), ...(typeof vs === 'boolean' ? { visible: vs } : {}) };
+  }
   if (it.event === 'setd') {
     const to = get('T   ');
     if (isEnum(to) && to.type.trim() === 'Ordn') {
@@ -305,10 +321,12 @@ class Out {
   bytes(): Uint8Array { return Uint8Array.from(this.parts); }
 }
 
-type Field = ['enum', string, string] | ['TEXT', string] | ['bool', boolean] | ['UntF', string, number] | ['long', number] | ['doub', number] | ['sel'] | ['chan', string] | ['list', Field[]] | ['Objc', string, Array<[string, Field]>];
+type Field = ['ref', string, string, string] | ['clss', string] | ['enum', string, string] |['TEXT', string] | ['bool', boolean] | ['UntF', string, number] | ['long', number] | ['doub', number] | ['sel'] | ['chan', string] | ['list', Field[]] | ['Objc', string, Array<[string, Field]>];
 
 function writeField(o: Out, f: Field): void {
-  if (f[0] === 'enum') o.ascii('enum').id(f[1]).id(f[2]);
+  if (f[0] === 'ref') o.ascii('obj ').u32(1).ascii('Enmr').unicode('').id(f[1]).id(f[2]).id(f[3]);
+  else if (f[0] === 'clss') o.ascii('obj ').u32(1).ascii('Clss').unicode('').id(f[1]);
+  else if (f[0] === 'enum') o.ascii('enum').id(f[1]).id(f[2]);
   else if (f[0] === 'TEXT') o.ascii('TEXT').unicode(f[1]);
   else if (f[0] === 'bool') o.ascii('bool').u8(f[1] ? 1 : 0);
   else if (f[0] === 'UntF') o.ascii('UntF').ascii(f[1]).f64(f[2]);
@@ -337,6 +355,19 @@ function itemFor(s: ActionStep): Uint8Array | null {
   const o = new Out(), name = s.label.slice(0, 120);
   const head = (event: string, withDesc: boolean): void => { o.u8(0).u8(s.off ? 0 : 1).u8(0).u8(0).ascii('long').ascii(event).text(name).u32(withDesc ? 0xffffffff : 0); };
   if (s.kind === 'command' && SIMPLE_BACK[s.id]) { head(SIMPLE_BACK[s.id], false); return o.bytes(); }
+  const trgt: [string, Field] = ['null', ['ref', 'Lyr ', 'Ordn', 'Trgt']];
+  if (s.kind === 'command' && s.id === 'new-layer') { head('Mk  ', true); descriptor(o, 'null', [['null', ['clss', 'Lyr ']]]); return o.bytes(); }
+  if (s.kind === 'command' && s.id === 'delete-layer') { head('Dlt ', true); descriptor(o, 'null', [trgt]); return o.bytes(); }
+  if (s.kind === 'command' && LAYER_SELECT_BACK[s.id]) { head('slct', true); descriptor(o, 'null', [['null', ['ref', 'Lyr ', 'Ordn', LAYER_SELECT_BACK[s.id]]]]); return o.bytes(); }
+  if (s.kind === 'layerProps') {
+    const props: Array<[string, Field]> = [];
+    if (s.name !== undefined) props.push(['Nm  ', ['TEXT', s.name]]);
+    if (s.opacity !== undefined) props.push(['Opct', ['UntF', '#Prc', s.opacity]]);
+    if (s.visible !== undefined) props.push(['Vsbl', ['bool', s.visible]]);
+    head('setd', true);
+    descriptor(o, 'null', [trgt, ['T   ', ['Objc', 'Lyr ', props]]]);
+    return o.bytes();
+  }
   if (s.kind === 'command' && s.id === 'select-all') { head('setd', true); descriptor(o, 'null', [['null', ['sel']], ['T   ', ['enum', 'Ordn', 'Al  ']]]); return o.bytes(); }
   if (s.kind === 'command' && (s.id === 'flip-canvas-h' || s.id === 'flip-canvas-v')) { head('Flip', true); descriptor(o, 'null', [['Axis', ['enum', 'Ornt', s.id === 'flip-canvas-h' ? 'Hrzn' : 'Vrtc']]]); return o.bytes(); }
   if (s.kind === 'stop') { head('Stop', true); descriptor(o, 'null', [['Msge', ['TEXT', s.message]], ['Cntn', ['bool', s.allowContinue]]]); return o.bytes(); }

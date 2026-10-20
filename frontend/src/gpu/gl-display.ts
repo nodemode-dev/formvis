@@ -214,6 +214,8 @@ export class GlDisplay {
 
   get maxTexture(): number { return Number(this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE)); }
 
+  readonly api = 'webgl2' as const;
+
   private target(W: number, H: number, half = false): { tex: WebGLTexture; fb: WebGLFramebuffer } {
     const gl = this.gl, tex = gl.createTexture() as WebGLTexture, fb = gl.createFramebuffer() as WebGLFramebuffer;
     gl.bindTexture(gl.TEXTURE_2D, tex);

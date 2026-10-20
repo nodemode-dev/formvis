@@ -72,7 +72,7 @@ function facePicker(box: HTMLSelectElement, spec: Extract<OptionSpec, { kind: 's
 
 /** One tool's built row of controls, and the functions that bring those controls up to date; `parked` holds the
  *  trailing controls moved into the More panel while the row is wider than the bar (1.87.2), in row order. */
-interface Group { node: HTMLElement; sync: Array<() => void>; parked: HTMLElement[] }
+interface Group { node: HTMLElement; sync: Array<() => void>; parked: HTMLElement[]; all: HTMLElement[]; sect: HTMLElement; fitW: number; sig: string }
 
 /** The options bar: one row per tool, all built once, only the active tool's row visible. */
 export class OptionsBar {
@@ -104,6 +104,7 @@ export class OptionsBar {
     // More panel at the bar's end, last first, and come back when there is room. The chevrons stay as a fallback.
     root.appendChild(this.more);
     document.body.appendChild(this.pop);
+    for (const g of this.groups.values()) this.pop.appendChild(g.sect);
     this.more.addEventListener('click', () => this.togglePop(this.pop.hidden === true));
     // The panel sits at the end of the page, so Tab from the open button goes into it, not through the whole window first.
     this.more.addEventListener('keydown', (e) => {
@@ -114,7 +115,7 @@ export class OptionsBar {
     document.addEventListener('pointerdown', (e) => { if (!this.pop.hidden && !this.pop.contains(e.target as Node) && !this.more.contains(e.target as Node)) this.togglePop(false); }, true);
     this.pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this.togglePop(false); this.more.focus(); } });
     let width = 0;
-    new ResizeObserver(() => { const w = root.clientWidth; if (w !== width) { width = w; this.fit(); } this.syncEdges(); }).observe(root);
+    new ResizeObserver(() => { const w = root.clientWidth; if (w !== width) { width = w; this.fitActive(); this.fitRest(); } this.syncEdges(); }).observe(root);
     engine.on('tool', () => this.show());
     // Labels follow the interface language in place (35.5d): each keeps its English in data-en.
     onLanguage(() => { for (const s of Array.from(root.querySelectorAll<HTMLElement>('[data-en]'))) setText(s, tr(s.dataset.en ?? '')); });
@@ -268,23 +269,52 @@ export class OptionsBar {
       for (const a of added) a.dataset.pri = String(a.classList.contains('cv-opt-sep') ? rank - 0.5 : rank);
     }
     Array.from(node.children).forEach((c, i) => { (c as HTMLElement).dataset.ord = String(i); });
-    return { node, sync, parked: [] };
+    const sect = el('<div class="cv-opt-pop-sect"></div>');
+    sect.style.display = 'none';
+    return { node, sync, parked: [], all: Array.from(node.children) as HTMLElement[], sect, fitW: -1, sig: '' };
   }
 
   /** Shows the active tool's row and hides every other. */
   private shownTool = '';
-  private shownWidth = -1;
+  private fitTimer = 0;
   private show(): void {
-    // A document switch announces the tool again; the same tool at the same width keeps its row and its parked controls as they are.
-    if (this.shownTool === this.engine.tool && this.shownWidth === this.root.clientWidth) { this.refresh(); return; }
-    this.shownTool = this.engine.tool;
-    this.shownWidth = this.root.clientWidth;
-    this.togglePop(false);
-    for (const [id, g] of this.groups) setHidden(g.node, id !== this.engine.tool);
-    this.root.scrollLeft = 0;
+    // Every row keeps its own parked layout per bar width (fitted once, cached) and its own section in the More panel:
+    // a tool change only flips which row and section show. A row is fitted here only if it has not been at this width
+    // or one of its conditional controls has since appeared or gone.
+    const g = this.groups.get(this.engine.tool);
+    if (this.shownTool !== this.engine.tool) {
+      this.shownTool = this.engine.tool;
+      this.togglePop(false);
+      for (const [id, o] of this.groups) {
+        const on = id === this.engine.tool, d = on ? 'contents' : 'none';
+        setHidden(o.node, !on);
+        if (o.sect.style.display !== d) o.sect.style.display = d;
+      }
+      this.root.scrollLeft = 0;
+    }
     this.refresh();
-    this.fit();
+    if (g && (g.fitW !== this.root.clientWidth || g.sig !== this.sigOf(g))) this.fit(g);
+    this.paintMore();
     this.syncEdges();
+  }
+
+  private sigOf(g: Group): string { return g.all.map((n) => (n.hidden ? '1' : '0')).join(''); }
+
+  private paintMore(): void { setHidden(this.more, !this.groups.get(this.engine.tool)?.parked.length); }
+
+  private fitActive(): void {
+    const g = this.groups.get(this.engine.tool);
+    if (g) this.fit(g);
+    this.paintMore();
+  }
+
+  /** After a width change the other rows are refitted together, off screen in one task once the resizing settles. */
+  private fitRest(): void {
+    window.clearTimeout(this.fitTimer);
+    this.fitTimer = window.setTimeout(() => {
+      for (const g of this.groups.values()) if (g !== this.groups.get(this.engine.tool) && g.fitW !== this.root.clientWidth) this.fit(g);
+      this.paintMore();
+    }, 120);
   }
 
   private readonly more = el<HTMLButtonElement>(`<button class="cv-opt-more" type="button" aria-haspopup="true" aria-expanded="false" title="More options" aria-label="More options" hidden>${icon('more3', 16)}</button>`);
@@ -303,24 +333,35 @@ export class OptionsBar {
    *  row fits beside the More button: lowest priority first (a spec's `priority`, else by kind), the later one first on
    *  a tie, so sizes, modes and sliders stay in the bar longest and what stays keeps its order. Nodes move as built
    *  (listeners and sync functions stay); a measure per move, only on a tool change or a width change. */
-  private fit(): void {
-    const g = this.groups.get(this.engine.tool);
-    for (const other of this.groups.values()) if (other !== g && other.parked.length) this.unpark(other);
-    if (!g) return;
+  private fit(g: Group): void {
+    const act = this.groups.get(this.engine.tool), swap = act !== g;
+    if (swap) {
+      for (const fn of g.sync) fn();
+      if (act) setHidden(act.node, true);
+      setHidden(g.node, false);
+    }
     if (g.parked.length) this.unpark(g);
     const r = this.root, over = (): boolean => r.scrollWidth > r.clientWidth + 1;
-    if (!over()) { setHidden(this.more, true); this.togglePop(false); return; }
-    setHidden(this.more, false);
-    const rank = (n: HTMLElement): number => Number(n.dataset.pri ?? 50), ord = (n: HTMLElement): number => Number(n.dataset.ord);
-    const order = (Array.from(g.node.children) as HTMLElement[]).filter((n) => !n.hidden && !n.classList.contains('cv-opt-tool')).sort((a, b) => rank(a) - rank(b) || ord(b) - ord(a));
-    for (const n of order) {
-      if (!over()) break;
-      n.remove();
-      g.parked.push(n);
+    setHidden(this.more, true);
+    if (over()) {
+      setHidden(this.more, false);
+      const rank = (n: HTMLElement): number => Number(n.dataset.pri ?? 50), ord = (n: HTMLElement): number => Number(n.dataset.ord);
+      const order = (Array.from(g.node.children) as HTMLElement[]).filter((n) => !n.hidden && !n.classList.contains('cv-opt-tool')).sort((a, b) => rank(a) - rank(b) || ord(b) - ord(a));
+      for (const n of order) {
+        if (!over()) break;
+        n.remove();
+        g.parked.push(n);
+      }
+      g.parked.sort((a, b) => ord(a) - ord(b));
+      g.sect.append(...g.parked);
     }
-    g.parked.sort((a, b) => ord(a) - ord(b));
-    this.pop.append(...g.parked);
-    if (!g.parked.length) setHidden(this.more, true);
+    g.fitW = r.clientWidth;
+    g.sig = this.sigOf(g);
+    if (swap) {
+      setHidden(g.node, true);
+      if (act) setHidden(act.node, false);
+    }
+    if (!swap) this.togglePop(false);
   }
 
   private togglePop(open: boolean): void {

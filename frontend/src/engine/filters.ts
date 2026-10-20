@@ -1,5 +1,5 @@
 import { clamp } from './types';
-import { wasmGaussian } from './wasm-kernels';
+import { wasmGaussian, wasmNoiseUniform } from './wasm-kernels';
 
 /** Image filters, written for formvis from standard methods: a Gaussian blur approximated by three successive box
  *  blurs (widths from Kovesi's formula), a motion blur as a bilinear line integral, seeded noise, a radial lens
@@ -179,6 +179,7 @@ export const toUnit = (bits: number): number => (bits + 0.5) / 4294967296;
 export function addNoise(img: ImageData, amount: number, gaussian: boolean, monochromatic: boolean, seed: number): ImageData {
   const out = new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), d = out.data;
   const spread = (amount / 100) * 127.5;
+  if (!gaussian && wasmNoiseUniform(d, spread, monochromatic, seed)) return out;
   for (let px = 0, i = 0; i < d.length; px++, i += 4) {
     if (d[i + 3] === 0) continue;
     const pixelKey = mix32(mix32(px) ^ seed);

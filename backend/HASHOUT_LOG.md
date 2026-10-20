@@ -9,6 +9,11 @@ The owner's P23 decisions: fal is the one cloud provider; Replicate, WaveSpeedAI
 - `line_counts.py` `PROVIDERS_DECLINED` (replicate.com, api.replicate, wavespeed, cloud.comfy.org, comfy cloud, router or partner, toapis, byteplus, modelark, oxen.ai, magnific, freepik) checked in `declined_problems()` beside the patent pattern; the language-model chat's OpenAI-compatible services are not named by it. Checked on a scratch clone: an api.replicate.com line in a backend file gave the problem; the real tree passes (the code already holds fal alone: `localgen/providers.py` `PROVIDERS = {"fal": ...}`). Harness law 11 and `CLAUDE.md` say the same.
 - Before promising a balance check or cost display: fal's `GET https://api.fal.ai/v1/account/billing?expand=credits` returns the credit balance and currency to a key with the `billing:usage:read` permission, and `GET https://api.fal.ai/v1/models/pricing?endpoint_id=...` a model's unit price; usage line items and estimates are documented without paths in the pricing page, so check the Platform APIs reference when the integration is built.
 
+## Window change notices · _v1.91.3 (app/routers/mcp.py, native/formvis-kernels)
+
+- `POST /api/mcp/bridge/changed` takes kinds only (selection, history, layers, document) and marks the matching resources for subscribed sessions: selection marks selection; history marks document, layers, selection and history; layers marks document and layers; document marks document, layers and history.
+- native/formvis-kernels gains the `noise` feature (fv_noise_uniform), built with `RUSTFLAGS="-C target-feature=+simd128" cargo build --release --offline --target wasm32-unknown-unknown --no-default-features --features noise`.
+
 ## Matting files, depth detail, select_by_depth · _v1.91.2 (app/services/background.py, app/routers/ops.py, app/localgen/depth.py, app/routers/mcp.py)
 
 - Matting file contract: input 1x3xHxW (a fixed size used as is, a dynamic one at 1024), ImageNet normalisation, first output squeezed to 2D, a sigmoid when values leave 0 to 1, resized to the picture. Refusals are 422 with the reason; the folder takes bare names only. `GET /api/ops/matting-models` lists the files.

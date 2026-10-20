@@ -21,7 +21,7 @@ CAPTURE = """async () => {
 def test_a_custom_ring_keeps_its_hole_on_canvas_and_through_psd(page, tmp_path):
     s = page.evaluate("""() => { const e = window.formvis.engine; e.newDocument(200, 160, 'Shapes', 'transparent'); e.setTool('shape'); if (e.tool !== 'shape') throw new Error('tool');
       const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }""")
-    bar = page.locator(".cv-opt-group:not([hidden]), .cv-opt-pop")
+    bar = page.locator(".cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*='contents']")
     bar.get_by_role("button", name="Custom").click()
     page.locator(".cv-opt-more").click()
     sel = bar.locator("select").filter(has=page.locator("option[value='ring']"))

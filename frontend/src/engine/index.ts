@@ -2112,9 +2112,16 @@ export class Engine {
       // layer as the CPU draws them; where the CPU draws effects per render instead, the document stays on the CPU.
       let fxParts: ReturnType<Renderer['gpuEffectParts']> = [];
       if (effectsActive(o?.effects ?? l.effects)) {
-        if (clip || folders) return { reason: 'layer styles on a clipped layer, a vector mask or inside a masked folder' };
+        const maskedFx = !!(clip || folders);
+        if (maskedFx) {
+          if (l.blendClipped || grouped) return { reason: 'layer styles on a layer clipped or masked under Blend Clipped Layers as Group' };
+          for (let b = l.clipId ? map.get(l.clipId) : undefined, n = 0; b && n < 257; b = b.clipId ? map.get(b.clipId) : undefined, n++) {
+            const bo = ov?.get(b.id);
+            if (b.blendClipped || bo?.source || bo?.transform || bo?.patch || bo?.maskSource || bo?.maskPlacement || bo?.opacity !== undefined) return { reason: 'layer styles on a layer clipped to a base being edited' };
+          }
+        }
         if ((o?.effects ?? l.effects)?.blendInterior && (o?.blend ?? l.blend) !== 'normal') return { reason: 'layer styles blended with the layer as a group' };
-        fxParts = this.display.gpuEffectParts(l, o, p.doc);
+        fxParts = this.display.gpuEffectParts(l, o, p.doc, maskedFx);
         if (!fxParts) return { reason: 'layer styles on a layer being edited' };
       }
       if (EXTRA_BLENDS.has(grouped ? 'normal' : o?.blend ?? l.blend)) return { reason: 'a layer in Negation, Reflect, Glow or Xor mode' };
@@ -2402,20 +2409,13 @@ export class Engine {
     const style = styleOf(src.text, id, old.name);
     const linked = p.doc.layers.filter((l) => liveText(l) && l.raster && (l.text?.style === id || l.id === src.id));
     const specs = linked.map((l) => withStyle(l.text as TextSpec, style));
-    // Drawn with each layer's character style over the paragraph style (32.6c); the layer keeps its own spec.
-    const charOf = (s: TextSpec): TextSpec => withCharStyle(s, s.charStyle ? p.doc.characterStyles?.find((x) => x.id === s.charStyle) : undefined);
-    for (const s of specs) await loadTextFont(charOf(s));
+    const patches: Array<{ id: ID; patch: Partial<Layer> }> = [];
+    for (let i = 0; i < linked.length; i++) { const patch = await this.textPatch(p, linked[i].id, specs[i]); if (patch) patches.push({ id: linked[i].id, patch }); }
     if (this.current !== p) return;
     this.edit('Redefine Paragraph Style', (pp) => {
       const own = pp.doc.paragraphStyles ?? [];
       pp.doc = { ...pp.doc, paragraphStyles: own.some((x) => x.id === id) ? own.map((x) => (x.id === id ? style : x)) : [...own, style] };
-      linked.forEach((l, i) => {
-        const spec = specs[i], r = renderText(charOf(spec)), oldR = l.raster as Raster, t = l.transform;
-        const nw = r.raster.width * (t.w / oldR.width), nh = r.raster.height * (t.h / oldR.height);
-        // Vertical type keeps its right edge (its first column); paragraph text its box's corner; point text its alignment.
-    const x = spec.box ? t.x : spec.direction === 'vertical' ? t.x + t.w - nw : spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
-        pp.updateLayer(l.id, { raster: r.raster, transform: { ...t, x, w: nw, h: nh }, text: { ...spec, rendered: textKey(r.raster) } });
-      });
+      for (const x of patches) pp.updateLayer(x.id, x.patch);
     });
   }
 
@@ -2550,14 +2550,13 @@ export class Engine {
   async applyDataSet(name: string, files: ReadonlyMap<string, File> = new Map()): Promise<boolean> {
     const p = this.current, set = p?.doc.dataSets?.find((d) => d.name === name);
     if (!p || !set) { this.notice('No such data set.'); return false; }
-    const plan = VR.planFor(p.doc, set), texts = new Map<ID, { raster: Raster; spec: TextSpec }>(), pixels = new Map<ID, Raster>();
+    const plan = VR.planFor(p.doc, set), texts = new Map<ID, Partial<Layer>>(), pixels = new Map<ID, Raster>();
     for (const c of plan) {
       const l = p.layer(c.layer);
       if (!l) continue;
       if (c.kind === 'text' && l.text && c.content.trim()) {
-        const spec = { ...l.text, content: c.content }, drawn = withCharStyle(spec, spec.charStyle ? p.doc.characterStyles?.find((x) => x.id === spec.charStyle) : undefined);
-        await loadTextFont(drawn);
-        texts.set(l.id, { raster: renderText(drawn).raster, spec });
+        const patch = await this.textPatch(p, l.id, { ...l.text, content: c.content });
+        if (patch) texts.set(l.id, { ...patch, name: l.name });
       } else if (c.kind === 'pixels') {
         const f = files.get(c.file);
         if (!f) { this.notice(`Image not supplied: ${c.file}`); continue; }
@@ -2578,11 +2577,8 @@ export class Engine {
         if (!l) continue;
         if (c.kind === 'visibility') pp.updateLayer(l.id, { visible: c.visible });
         else if (c.kind === 'text') {
-          const n = texts.get(l.id), old = l.raster;
-          if (!n || !old) continue;
-          const t = l.transform, nw = n.raster.width * (t.w / old.width), nh = n.raster.height * (t.h / old.height), s = n.spec;
-          const x = s.box ? t.x : s.direction === 'vertical' ? t.x + t.w - nw : s.align === 'center' ? t.x + (t.w - nw) / 2 : s.align === 'right' ? t.x + t.w - nw : t.x;
-          pp.updateLayer(l.id, { raster: n.raster, transform: { ...t, x, w: nw, h: nh }, text: { ...s, rendered: textKey(n.raster) } });
+          const n = texts.get(l.id);
+          if (n) pp.updateLayer(l.id, n);
         } else if (c.kind === 'pixels') { const r = pixels.get(l.id); if (r) pp.updateLayer(l.id, { raster: r, transform: docTransform(pp.doc.width, pp.doc.height) }); }
       }
       pp.doc = { ...pp.doc, activeDataSet: name };
@@ -4983,6 +4979,16 @@ export class Engine {
     return { ...p.doc, id: uid(), layers: [layer] };
   }
 
+  /** mergedDoc() for a document past one canvas (1.91.3): the picture rendered in bands into one tiled Background layer
+   *  of a document of the same size, resolution, mode, guides and notes, for File > Save a Copy without layers. */
+  async mergedDocBanded(): Promise<Doc | null> {
+    const p = this.current;
+    if (!p) return null;
+    const tiled = await this.flattenToTiles('Save a Copy');
+    if (!tiled) return null;
+    return { ...p.doc, id: uid(), layers: [newLayer('Background', p.doc, { tiled })] };
+  }
+
   /** Duplicate's Merged Layers Only on a document past one canvas (1.91.2): the picture rendered in bands into one tiled
    *  layer of a new document, as Flatten Image makes it, the source untouched. */
   private async duplicateMergedBanded(name: string): Promise<Project | null> {
@@ -5304,6 +5310,7 @@ export class Engine {
     this.stroke = null;
     const snap = st.project.history.abort();
     if (snap) { st.project.doc = snap.doc; st.project.selection = snap.selection; }
+    st.s.revertFlushed();
     this.refresh();
     st.s.release();
   }

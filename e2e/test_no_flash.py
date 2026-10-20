@@ -21,8 +21,8 @@ def test_common_actions_rebuild_nothing(page):
         page.mouse.move(r["x"] + 300, r["y"] + 300); page.mouse.down(); page.mouse.move(r["x"] + 500, r["y"] + 350, steps=10); page.mouse.up()
 
     actions = {
-        "rail: brush": lambda: tools.nth(6).click(),
-        "rail: marquee": lambda: tools.nth(1).click(),
+        "rail: brush": lambda: tools.and_(page.locator("[aria-label='Brush']")).first.click(),
+        "rail: marquee": lambda: tools.and_(page.locator("[aria-label='Marquee']")).first.click(),
         "tab switch": lambda: page.locator(".cv-tab").nth(0).click(),
         "open Preferences": lambda: page.evaluate("window.formvis.commands.run('settings')"),
         "close dialog": lambda: page.keyboard.press("Escape"),

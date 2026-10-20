@@ -7,7 +7,7 @@ AT = "([x, y]) => window.formvis.engine.current.selection.valueAt(x, y)"
 
 def test_magic_wand_anti_alias_softens_the_edge(page):
     s = page.evaluate(SETUP)
-    bar = page.locator(".cv-opt-group:not([hidden]), .cv-opt-pop")
+    bar = page.locator(".cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*='contents']")
     assert bar.locator(".cv-opt", has_text="Anti-alias").locator("input").is_checked()   # on by default
     page.mouse.click(s[0] + 50 * s[2], s[1] + 45 * s[2])
     soft = [page.evaluate(AT, [x, 45]) for x in (29, 30, 50)]

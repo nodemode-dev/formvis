@@ -153,7 +153,7 @@ export function surfaceBlurDeep(src: DeepPixels, radius: number, threshold: numb
           const j = (ny * w + nx) * S;
           if (d[j + A] === 0) continue;
           const v = d[j + c], diff = Math.abs(v - v0);
-          if (diff > t) continue;
+          if (diff > t + 1e-6) continue;
           const wt = 1 - diff / (t * 2.5);
           sum += v * wt; wsum += wt;
         }

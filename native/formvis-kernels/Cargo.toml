@@ -17,6 +17,7 @@ blur = []
 resample = []
 dither = []
 heal = []
+noise = []
 
 [profile.release]
 opt-level = 3

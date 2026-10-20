@@ -1164,6 +1164,22 @@ def _announce(name: str, failed: bool) -> None:
             sub["wake"].set()
 
 
+_WINDOW_CHANGES = {"selection": ("formvis://selection",), "history": _STATE_URIS, "layers": ("formvis://document", "formvis://layers"), "document": ("formvis://document", "formvis://layers", "formvis://history")}
+
+
+def _window_changed(kinds: list) -> int:
+    """An edit made by hand in the window: the resources it can have changed are marked due. Returns how many sessions are told."""
+    changed = {u for k in kinds if isinstance(k, str) for u in _WINDOW_CHANGES.get(k, ())}
+    told = 0
+    for sub in _subs.values():
+        due = changed & sub["uris"]
+        if due:
+            sub["due"] |= due
+            sub["wake"].set()
+            told += 1
+    return told
+
+
 def _subscribe(sid: str | None, uri, on: bool) -> str | None:
     """None when done, otherwise why not."""
     if not sid or not agents.known_session(sid):
@@ -1288,6 +1304,14 @@ async def _stream_call(req_id, modern: bool, client: str, name: str, args: dict,
             task.cancel()
         _inflight.pop(key, None)
         _cancelled.discard(key)
+
+
+@router.post("/api/mcp/bridge/changed")
+async def bridge_changed(request: Request) -> dict:
+    """The window saying what its user changed by hand (selection, history, layers, document), so subscribed sessions are told."""
+    body = await request.json()
+    kinds = body.get("kinds") if isinstance(body, dict) else None
+    return {"told": _window_changed(kinds) if isinstance(kinds, list) else 0}
 
 
 @router.post("/api/mcp/bridge/progress")

@@ -22,6 +22,7 @@ export class NativeDisplay implements ScreenDisplay {
   onLost: (() => void) | null = null;
   /** The native renderer tiles layers, so no texture size limits them. */
   readonly maxTexture = Number.MAX_SAFE_INTEGER;
+  readonly api = 'native' as const;
   private readonly ids = new WeakMap<object, string>();
   private readonly sent = new WeakMap<object, number>();
   private next = 1;

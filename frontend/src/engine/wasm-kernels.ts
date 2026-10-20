@@ -3,7 +3,7 @@
  *  refused) and kept, so startup never waits on it; until a chunk is ready every call answers null and the caller runs
  *  its TypeScript twin, which gives the same bytes. A chunk that fails to load is not tried again. */
 
-export type KernelChunk = 'mask' | 'tone' | 'blur' | 'resample' | 'dither' | 'heal';
+export type KernelChunk = 'mask' | 'tone' | 'blur' | 'resample' | 'dither' | 'heal' | 'noise';
 type Fn = (...args: number[]) => number;
 interface Chunk { memory: WebAssembly.Memory; fn: Record<string, Fn> }
 type State = 'idle' | 'loading' | 'ready' | 'failed';
@@ -16,6 +16,7 @@ const URLS: Record<KernelChunk, string> = {
   resample: new URL('./kernels-wasm/formvis-kernels-resample.wasm', import.meta.url).href,
   dither: new URL('./kernels-wasm/formvis-kernels-dither.wasm', import.meta.url).href,
   heal: new URL('./kernels-wasm/formvis-kernels-heal.wasm', import.meta.url).href,
+  noise: new URL('./kernels-wasm/formvis-kernels-noise.wasm', import.meta.url).href,
 };
 const LIMIT = 1 << 30;
 const RENEW = 3 << 28;
@@ -25,7 +26,7 @@ const modules = new Map<KernelChunk, WebAssembly.Module>();
 const ready = new Map<KernelChunk, Chunk>();
 const loading = new Map<KernelChunk, Promise<boolean>>();
 const failed = new Set<KernelChunk>();
-const calls: Record<KernelChunk, number> = { mask: 0, tone: 0, blur: 0, resample: 0, dither: 0, heal: 0 };
+const calls: Record<KernelChunk, number> = { mask: 0, tone: 0, blur: 0, resample: 0, dither: 0, heal: 0, noise: 0 };
 let enabled = true;
 
 function open(module: WebAssembly.Module): Chunk | null {
@@ -81,7 +82,7 @@ export function setKernelsEnabled(on: boolean): void { enabled = on; }
 
 export function kernelStats(): { enabled: boolean; chunks: Record<KernelChunk, { state: State; calls: number; memory: number }> } {
   const one = (name: KernelChunk) => ({ state: (ready.has(name) ? 'ready' : loading.has(name) ? 'loading' : failed.has(name) ? 'failed' : 'idle') as State, calls: calls[name], memory: ready.get(name)?.memory.buffer.byteLength ?? 0 });
-  return { enabled, chunks: { mask: one('mask'), tone: one('tone'), blur: one('blur'), resample: one('resample'), dither: one('dither'), heal: one('heal') } };
+  return { enabled, chunks: { mask: one('mask'), tone: one('tone'), blur: one('blur'), resample: one('resample'), dither: one('dither'), heal: one('heal'), noise: one('noise') } };
 }
 
 /** Memory never shrinks, so after a very large image the chunk is opened again from its compiled module. */
@@ -216,6 +217,17 @@ export function wasmDither(d: Uint8ClampedArray, w: number, matrix: ArrayLike<nu
     bytes(chunk, p, d.length).set(d);
     new Uint16Array(chunk.memory.buffer, mp, n * n).set(matrix);
     chunk.fn.fv_dither(p, d.length, w, mp, n, q, pixel, colour ? 1 : 0, amount, ink[0], ink[1], ink[2], paper[0], paper[1], paper[2], ox, oy);
+    d.set(bytes(chunk, p, d.length));
+    return true;
+  }) === true;
+}
+
+/** Add Noise's uniform grain over `d` in place; false for Gaussian grain and wherever the TypeScript must run. */
+export function wasmNoiseUniform(d: Uint8ClampedArray, spread: number, mono: boolean, seed: number): boolean {
+  if (d.length % 4 !== 0 || d.length < 4096 || !Number.isFinite(spread) || !Number.isFinite(seed)) return false;
+  return run('noise', [d.length], (chunk, [p]) => {
+    bytes(chunk, p, d.length).set(d);
+    chunk.fn.fv_noise_uniform(p, d.length, spread, mono ? 1 : 0, seed >>> 0);
     d.set(bytes(chunk, p, d.length));
     return true;
   }) === true;

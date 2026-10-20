@@ -424,7 +424,7 @@ export class Stage {
       }
       if (reason !== this.gpuReason) {
         this.gpuReason = reason;
-        console.info(reason ? `formvis: drawing on the CPU, because ${reason}` : 'formvis: drawing on the GPU (WebGPU)');
+        console.info(reason ? `formvis: drawing on the CPU, because ${reason}` : `formvis: drawing on the GPU (${this.gpu?.api === 'webgl2' ? 'WebGL2' : this.gpu?.api === 'native' ? 'native' : 'WebGPU'})`);
         this.gpuState?.(reason);
       }
       if (gpuLayers) region = null;

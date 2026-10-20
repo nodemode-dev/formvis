@@ -1418,7 +1418,7 @@ export function startApp(): void {
     const p = engine.current;
     if (!p) return;
     engine.settle();
-    const doc = layers ? p.doc : engine.mergedDoc();
+    const doc = layers ? p.doc : engine.tiledPastCanvas(p) ? await engine.mergedDocBanded() : engine.mergedDoc();
     if (!doc) return;
     // The desktop app writes the copy where the person chooses in the save panel; the document keeps its own file.
     if (hasPanels()) {
@@ -2240,6 +2240,14 @@ export function startApp(): void {
       return chosen ? dialogs.adjust.applySettings(s.adj as AdjustmentKind, chosen, false) : 'stopped';
     }
     if (s.kind === 'layerStyle') return engine.applyLayerStyle(s.effects ? effectsFromData(s.effects) : null);
+    if (s.kind === 'layerProps') {
+      const l = engine.current?.activeLayer;
+      if (!l) return false;
+      if (s.name !== undefined) engine.renameLayer(l.id, s.name);
+      if (s.opacity !== undefined) engine.setOpacity(s.opacity / 100);
+      if (s.visible !== undefined && l.visible !== s.visible) engine.toggleVisibility(l.id);
+      return true;
+    }
     if (s.kind === 'adjustment') return dialogs.adjust.applySettings(s.adj as AdjustmentKind, s.data as Parameters<typeof dialogs.adjust.applySettings>[1], s.layer);
     if (s.kind === 'fitImage') return engine.fitImage(s.w, s.h, s.enlarge, true);
     if (s.kind === 'conditionalMode') return conditionalMode(s.from, s.to);

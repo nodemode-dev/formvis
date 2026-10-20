@@ -150,15 +150,10 @@ function showPop(f: HTMLInputElement): void {
 
 function hidePop(): void { if (pop && !pop.hidden) pop.hidden = true; popFor = null; }
 
-let pointerFocus = false;
-
 export function installNumberFields(): void {
   const w = window as unknown as Record<string, boolean>;
   if (w.__numFieldsInstalled) return;
   w.__numFieldsInstalled = true;
-
-  document.addEventListener('pointerdown', () => { pointerFocus = true; }, true);
-  document.addEventListener('keydown', () => { pointerFocus = false; }, true);
 
   document.addEventListener('focusin', (e) => {
     const f = e.target;
@@ -166,7 +161,7 @@ export function installNumberFields(): void {
     originals.set(f, f.value);
     f.type = 'text';
     f.setAttribute('data-numtext', '');
-    if (!pointerFocus) f.select();
+    f.select();
     showPop(f);
   });
   document.addEventListener('focusout', (e) => {

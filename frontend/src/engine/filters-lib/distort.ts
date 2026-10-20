@@ -44,35 +44,52 @@ const centre = (b: Box): { cx: number; cy: number; rx: number; ry: number } => (
 
 /** Twirl: the frame's inscribed ellipse turned most at its centre, by `angle` degrees, less toward its rim. */
 export function twirlImage(src: ImageData, angle: number, area: Box): ImageData {
+  return applyWarp(src, area, twirlWarp(angle, area));
+}
+
+/** A backward map and what lies outside the frame, or null where the filter changes nothing. */
+export interface Warp { edge: Edge; f: Backward }
+
+const applyWarp = (src: ImageData, area: Box, w: Warp | null): ImageData => (w ? remap(src, area, w.edge, w.f) : copyImage(src));
+
+export function twirlWarp(angle: number, area: Box): Warp {
   const { cx, cy, rx, ry } = centre(area), turn = (angle * Math.PI) / 180;
-  return remap(src, area, 'repeat', (x, y) => {
+  return { edge: 'repeat', f: (x, y) => {
     const u = (x - cx) / rx, v = (y - cy) / ry, r = Math.hypot(u, v);
     if (r >= 1) return null;
     const a = -turn * (1 - r) * (1 - r), c = Math.cos(a), s = Math.sin(a);
     return [cx + (u * c - v * s) * rx, cy + (u * s + v * c) * ry];
-  });
+  } };
 }
 
 /** Pinch: inside the inscribed ellipse, a positive amount draws the picture toward the centre, a negative one swells
  *  it outward; the rim stays. */
 export function pinchImage(src: ImageData, amount: number, area: Box): ImageData {
+  return applyWarp(src, area, pinchWarp(amount, area));
+}
+
+export function pinchWarp(amount: number, area: Box): Warp | null {
   const { cx, cy, rx, ry } = centre(area), a = Math.max(-1, Math.min(1, amount / 100)), e = a >= 0 ? 1 / (1 + 2 * a) : 1 - 1.5 * a;
-  if (!a) return copyImage(src);
-  return remap(src, area, 'repeat', (x, y) => {
+  if (!a) return null;
+  return { edge: 'repeat', f: (x, y) => {
     const u = (x - cx) / rx, v = (y - cy) / ry, r = Math.hypot(u, v);
     if (r >= 1 || r === 0) return null;
     const k = r ** e / r;
     return [cx + u * k * rx, cy + v * k * ry];
-  });
+  } };
 }
 
 /** Spherize: the picture seen through a sphere (Normal) or a cylinder lying across or standing up (Horizontal or
  *  Vertical only); a positive amount bulges it, a negative one pinches. */
 export function spherizeImage(src: ImageData, amount: number, mode: string, area: Box): ImageData {
+  return applyWarp(src, area, spherizeWarp(amount, mode, area));
+}
+
+export function spherizeWarp(amount: number, mode: string, area: Box): Warp | null {
   const { cx, cy, rx, ry } = centre(area), a = Math.max(-1, Math.min(1, amount / 100));
-  if (!a) return copyImage(src);
+  if (!a) return null;
   const lens = (t: number): number => (1 - Math.abs(a)) * t + Math.abs(a) * (a > 0 ? 1 - Math.cos((t * Math.PI) / 2) : Math.sin((t * Math.PI) / 2));
-  return remap(src, area, 'repeat', (x, y) => {
+  return { edge: 'repeat', f: (x, y) => {
     const u = (x - cx) / rx, v = (y - cy) / ry;
     if (mode === 'horizontalOnly') return Math.abs(u) >= 1 ? null : [cx + Math.sign(u) * lens(Math.abs(u)) * rx, y];
     if (mode === 'verticalOnly') return Math.abs(v) >= 1 ? null : [x, cy + Math.sign(v) * lens(Math.abs(v)) * ry];
@@ -80,7 +97,7 @@ export function spherizeImage(src: ImageData, amount: number, mode: string, area
     if (r >= 1 || r === 0) return null;
     const k = lens(r) / r;
     return [cx + u * k * rx, cy + v * k * ry];
-  });
+  } };
 }
 
 export interface WaveSettings { generators: number; wavelength: [number, number]; amplitude: [number, number]; scaleX: number; scaleY: number; type: string; edge: Edge; seed: number }
@@ -97,48 +114,60 @@ function waveform(type: string, t: number): number {
  *  across by a wave running down the frame and up and down by one running across it; the generators are averaged and
  *  scaled by Scale Horiz. and Vert. */
 export function waveImage(src: ImageData, o: WaveSettings, area: Box, scale: number): ImageData {
-  const n = Math.max(1, Math.min(999, Math.round(o.generators))), gens: Array<{ len: number; amp: number; px: number; py: number }> = [];
+  return applyWarp(src, area, waveWarp(o, area, scale));
+}
+
+export function waveWarp(o: WaveSettings, area: Box, scale: number): Warp {
+  const n =Math.max(1, Math.min(999, Math.round(o.generators))), gens: Array<{ len: number; amp: number; px: number; py: number }> = [];
   for (let i = 0; i < n; i++) {
     const pick = (lo: number, hi: number, c: number): number => lo + (hi - lo) * hash01(i, 0, c, o.seed);
     gens.push({ len: Math.max(1, pick(o.wavelength[0], o.wavelength[1], 1)) * scale, amp: pick(o.amplitude[0], o.amplitude[1], 2) * scale, px: hash01(i, 1, 3, o.seed), py: hash01(i, 2, 4, o.seed) });
   }
   const sx = o.scaleX / 100, sy = o.scaleY / 100, across = new Map<number, number>(), down = new Map<number, number>();
   const sum = (t: number, phase: 'px' | 'py'): number => { let s = 0; for (const g of gens) s += g.amp * waveform(o.type, t / g.len + g[phase]); return s / n; };
-  return remap(src, area, o.edge, (x, y) => {
+  return { edge: o.edge, f: (x, y) => {
     let dx = across.get(y), dy = down.get(x);
     if (dx === undefined) { dx = sum(y - area.y0, 'px') * sx; across.set(y, dx); }
     if (dy === undefined) { dy = sum(x - area.x0, 'py') * sy; down.set(x, dy); }
     return [x + dx, y + dy];
-  });
+  } };
 }
 
 /** Ripple: small, medium or large ripples (a wavelength of 8, 18 or 40 pixels) moving the picture across and up and
  *  down, their depth set by Amount. */
 export function rippleImage(src: ImageData, amount: number, size: string, area: Box, scale: number): ImageData {
+  return applyWarp(src, area, rippleWarp(amount, size, area, scale));
+}
+
+export function rippleWarp(amount: number, size: string, area: Box, scale: number): Warp | null {
   const len = (size === 'small' ? 8 : size === 'large' ? 40 : 18) * scale, amp = (amount / 100) * len * 0.18;
-  if (!amp) return copyImage(src);
-  return remap(src, area, 'repeat', (x, y) => {
+  if (!amp) return null;
+  return { edge: 'repeat', f: (x, y) => {
     const fx = x - area.x0, fy = y - area.y0;
     return [x + amp * Math.sin((fy / len) * TAU + 0.7 * Math.sin((fx / len) * 0.9)), y + amp * Math.sin((fx / len) * TAU + 0.7 * Math.sin((fy / len) * 0.9))];
-  });
+  } };
 }
 
 /** Polar Coordinates: Rectangular to Polar wraps the frame around its centre (its top edge becomes the centre, its left
  *  and right edges meet straight up, its bottom row stretched into the corners); Polar to Rectangular unrolls a round
  *  picture into a band. */
 export function polarImage(src: ImageData, mode: string, area: Box): ImageData {
+  return applyWarp(src, area, polarWarp(mode, area));
+}
+
+export function polarWarp(mode: string, area: Box): Warp {
   const { cx, cy, rx, ry } = centre(area), fw = rx * 2, fh = ry * 2;
   if (mode === 'polarToRectangular') {
-    return remap(src, area, 'repeat', (x, y) => {
+    return { edge: 'repeat', f: (x, y) => {
       const theta = ((x - area.x0) / fw) * TAU, r = (y - area.y0) / fh;
       return [cx + Math.sin(theta) * r * rx, cy - Math.cos(theta) * r * ry];
-    });
+    } };
   }
-  return remap(src, area, 'repeat', (x, y) => {
+  return { edge: 'repeat', f: (x, y) => {
     const u = (x - cx) / rx, v = (y - cy) / ry, r = Math.min(1, Math.hypot(u, v));
     const theta = (Math.atan2(u, -v) + TAU) % TAU;
     return [area.x0 + (theta / TAU) * fw, area.y0 + r * fh];
-  });
+  } };
 }
 
 /** A displacement map's red and green levels, two bytes a pixel; null when it is damaged. */
@@ -193,17 +222,25 @@ export function curveValue(points: readonly number[], t: number): number {
 /** Shear: each row slid across along a curve: the one through `points` (position down the frame, value in percent of
  *  half the frame's width) plus the bend through Top, Middle and Bottom. */
 export function shearImage(src: ImageData, top: number, middle: number, bottom: number, edge: Edge, area: Box, points: readonly number[] = []): ImageData {
+  return applyWarp(src, area, shearWarp(top, middle, bottom, edge, area, points));
+}
+
+export function shearWarp(top: number, middle: number, bottom: number, edge: Edge, area: Box, points: readonly number[] = []): Warp {
   const fh = area.y1 - area.y0, half = (area.x1 - area.x0) / 2, free = points.length >= 4;
   const curve = (t: number): number => (top * (2 * t - 1) * (t - 1) - middle * 4 * t * (t - 1) + bottom * t * (2 * t - 1) + (free ? curveValue(points, t) : 0)) / 100;
-  return remap(src, area, edge, (x, y) => [x - curve((y - area.y0) / fh) * half, y]);
+  return { edge, f: (x, y) => [x - curve((y - area.y0) / fh) * half, y] };
 }
 
 /** ZigZag: rings of ridges spreading from the frame's centre: Pond Ripples move pixels outward and around, Out from
  *  Center straight outward, Around Center around it; the ridges fade toward the rim. */
 export function zigZagImage(src: ImageData, amount: number, ridges: number, style: string, area: Box): ImageData {
+  return applyWarp(src, area, zigZagWarp(amount, ridges, style, area));
+}
+
+export function zigZagWarp(amount: number, ridges: number, style: string, area: Box): Warp | null {
   const { cx, cy, rx, ry } = centre(area), R = Math.min(rx, ry), a = amount / 100, n = Math.max(0, ridges);
-  if (!a || !n) return copyImage(src);
-  return remap(src, area, 'repeat', (x, y) => {
+  if (!a || !n) return null;
+  return { edge: 'repeat', f: (x, y) => {
     const dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy);
     if (r >= R || r === 0) return null;
     const t = r / R, wave = Math.sin(t * n * TAU) * (1 - t);
@@ -212,7 +249,7 @@ export function zigZagImage(src: ImageData, amount: number, ridges: number, styl
     else if (style === 'outFromCenter') rr = r + a * wave * R * 0.15;
     else { rr = r + a * wave * R * 0.1; th += a * wave * 0.25; }
     return [cx + Math.cos(th) * rr, cy + Math.sin(th) * rr];
-  });
+  } };
 }
 
 const EDGES: ReadonlyArray<readonly [string, string]> = [['wrap', 'Wrap Around'], ['repeat', 'Repeat Edge Pixels']];

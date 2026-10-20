@@ -474,10 +474,10 @@ function vignettePostPass(img: ImageData, state: DevelopState): void {
 
 /** The per-pixel develop pass: tone -> color mixer -> curves, src -> dst.
  *  Alpha passes through untouched. Deterministic (seeded grain). */
-export function developPass(src: Uint8ClampedArray, dst: Uint8ClampedArray,
+export function developPass(src: Uint8ClampedArray | Float32Array, dst: Uint8ClampedArray | Float32Array,
                             w: number, h: number, state: DevelopState,
-                            grainSeed = 7): void {
-  const t = state.tone;
+                            grainSeed = 7, float = false): void {
+  const kin = float ? 1 : 255, t = state.tone;
   const offset = t.offset, exp = t.exposure, cont = t.contrast;
   const high = t.highlights, shad = t.shadows, white = t.whites, black = t.blacks;
   const temp = t.temperature, tint = t.tint;
@@ -499,7 +499,7 @@ export function developPass(src: Uint8ClampedArray, dst: Uint8ClampedArray,
   const vcolor = vs.color ? hexRgb(vs.color) : null, vprot = clamp01((vs.protect ?? 0) / 100), vstyle = vs.style ?? 'paint', vlater = vignetteAfterGeometry(state);
 
   for (let i = 0; i < src.length; i += 4) {
-    let r = src[i] / 255, g = src[i + 1] / 255, b = src[i + 2] / 255;
+    let r = src[i] / kin, g = src[i + 1] / kin, b = src[i + 2] / kin;
 
     // temperature/tint: luminance-preserving deviation shift (no channel
     // multiplies ,  those clip highlights and fake saturation)
@@ -643,7 +643,10 @@ export function developPass(src: Uint8ClampedArray, dst: Uint8ClampedArray,
       r = clamp01(r); g = clamp01(g); b = clamp01(b);
     }
 
-    if (hasCurve) {
+    if (hasCurve && float) {
+      const at = (lut: Uint8Array, v: number): number => { const p = clamp255(v * 255), i0 = Math.min(254, Math.floor(p)), f = p - i0; return (lut[i0] * (1 - f) + lut[i0 + 1] * f) / 255; };
+      r = at(lutR!, at(lutRgb!, r)); g = at(lutG!, at(lutRgb!, g)); b = at(lutB!, at(lutRgb!, b));
+    } else if (hasCurve) {
       let ri = clamp255(Math.round(r * 255));
       let gi = clamp255(Math.round(g * 255));
       let bi = clamp255(Math.round(b * 255));
@@ -652,11 +655,22 @@ export function developPass(src: Uint8ClampedArray, dst: Uint8ClampedArray,
       r = ri / 255; g = gi / 255; b = bi / 255;
     }
 
-    dst[i] = r * 255;
-    dst[i + 1] = g * 255;
-    dst[i + 2] = b * 255;
+    dst[i] = r * kin;
+    dst[i + 1] = g * kin;
+    dst[i + 2] = b * kin;
     dst[i + 3] = src[i + 3];
   }
+}
+
+/** Develop's per-pixel pass on the float channels of a 16 or 32 bit RGB layer (interleaved with alpha last), for a state whose
+ *  every other stage is at its default; null when the state needs neighbours, a resample, Point Color, Calibration or Colour
+ *  Grading, or the layer is not RGB, which stay on the 8 bit rendition. Values clip to 0..1 as the 8 bit pass does. */
+export function developDeep(data: Float32Array, n: number, w: number, h: number, state: DevelopState, seed = 7): Float32Array | null {
+  const o = opticsOf(state);
+  if (n !== 3 || !developPerPixelOnly(state) || opticsActive(o) || pointColorActive(pointColorOf(state)) || gradingActive(gradingOf(state)) || calibrationActive(calibrationOf(state)) || parametricActive(parametricOf(state))) return null;
+  const out = new Float32Array(data.length);
+  developPass(data, out, w, h, state, seed, true);
+  return out;
 }
 
 // ------------------------------------------------------------ detail passes

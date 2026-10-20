@@ -1,4 +1,4 @@
-//! formvis pixel kernels for WebAssembly. Each cargo feature builds one module (`mask`, `tone`, `blur`, `resample`, `dither`, `heal`) that the page
+//! formvis pixel kernels for WebAssembly. Each cargo feature builds one module (`mask`, `tone`, `blur`, `resample`, `dither`, `heal`, `noise`) that the page
 //! loads on first use; every kernel reproduces its TypeScript twin byte for byte, so the page may use either.
 //! Build one module: `RUSTFLAGS="-C target-feature=+simd128" cargo build --release --target wasm32-unknown-unknown
 //! --no-default-features --features mask`.
@@ -13,6 +13,8 @@ mod dither;
 mod heal;
 #[cfg(feature = "mask")]
 mod mask;
+#[cfg(feature = "noise")]
+mod noise;
 #[cfg(feature = "resample")]
 mod resample;
 #[cfg(feature = "tone")]

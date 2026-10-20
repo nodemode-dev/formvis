@@ -1,4 +1,5 @@
 import type { Engine } from '../engine';
+import type { EngineJob } from '../engine/types';
 import { api } from '../io/api';
 import type { AgentBridge } from '../automation/agent-bridge';
 import type { Commands } from '../ui/commands';
@@ -13,14 +14,16 @@ const FRAME_STYLE = '<style>*,*::before,*::after{scrollbar-width:none!important;
 
 const RUNTIME = `<script>
 (() => {
-  const pending = new Map(), commands = {}; let n = 0, name = '';
+  const pending = new Map(), commands = {}, stoppers = []; let n = 0, name = '', current = 0, stop = false;
   const send = (m) => parent.postMessage(Object.assign({ formvisPlugin: true }, m), '*');
   const rpc = (op, args) => new Promise((ok, no) => { const id = ++n; pending.set(id, { ok, no }); send({ id, op, args }); });
   addEventListener('message', async (e) => {
     const m = e.data;
     if (!m || e.source !== parent) return;
     if (m.formvisReply && pending.has(m.id)) { const p = pending.get(m.id); pending.delete(m.id); m.error ? p.no(new Error(m.error)) : p.ok(m.result); return; }
+    if (m.formvisCancel) { if (m.runId === current) { stop = true; for (const f of stoppers) { try { f(); } catch (err) { send({ op: 'error', args: { message: String(err && err.message || err) } }); } } } return; }
     if (m.formvisRun) {
+      current = m.runId; stop = false;
       try { const f = commands[m.command]; if (!f) throw new Error('No command ' + m.command); await f(); send({ op: 'done', runId: m.runId }); }
       catch (err) { send({ op: 'done', runId: m.runId, error: String(err && err.message || err) }); }
     }
@@ -35,8 +38,11 @@ const RUNTIME = `<script>
       send({ op: 'register', args: { name, commands: list.map((c) => ({ id: String(c.id), label: String(c.label || c.id), keys: Array.isArray(c.keys) ? c.keys.map(String) : [] })) } });
     },
     call: (tool, args) => rpc('call', { tool, args: args || {} }),
-    getPixels: (target) => rpc('getPixels', { target: target === 'quickMask' ? 'quickMask' : 'layer' }),
-    putPixels: (image, how, target) => rpc('putPixels', { image, how: how === 'replace' ? 'replace' : 'new-layer', target: target === 'quickMask' ? 'quickMask' : 'layer', name }),
+    progress: (done, total) => rpc('progress', { runId: current, done: Number(done) || 0, total: Number(total) || 0 }).then((c) => { if (c) stop = true; return !c; }),
+    cancelled: () => stop,
+    onCancel: (f) => { if (typeof f === 'function') stoppers.push(f); },
+    getPixels: (target) => rpc('getPixels', { target: target === 'quickMask' || (typeof target === 'string' && target.startsWith('alpha:')) ? target : 'layer' }),
+    putPixels: (image, how, target) => rpc('putPixels', { image, how: how === 'replace' ? 'replace' : 'new-layer', target: target === 'quickMask' || (typeof target === 'string' && target.startsWith('alpha:')) ? target : 'layer', name }),
   };
 })();
 <\/script>`;
@@ -56,10 +62,14 @@ export class PluginHost {
   private readonly loaded = new Map<string, Loaded>();
   private readonly runs = new Map<number, (error?: string) => void>();
   private runId = 0;
+  private readonly jobs = new Map<number, { p: Loaded; job: EngineJob; told: boolean }>();
   onChange: () => void = () => {};
 
   constructor(private readonly engine: Engine, private readonly bridge: AgentBridge, private readonly commands: Commands, private readonly note: (text: string, kind?: 'info' | 'error') => void) {
     window.addEventListener('message', (e) => void this.receive(e));
+    engine.on('progress', () => {
+      for (const [runId, j] of this.jobs) if (j.job.cancelled && !j.told) { j.told = true; j.p.frame.contentWindow?.postMessage({ formvisCancel: true, runId }, '*'); }
+    });
   }
 
   off(): Set<string> { try { return new Set(JSON.parse(localStorage.getItem(OFF) ?? '[]') as string[]); } catch { return new Set(); } }
@@ -102,6 +112,7 @@ export class PluginHost {
     const p = this.loaded.get(name);
     if (!p) return;
     for (const c of p.commands) this.commands.remove(this.id(name, c.id));
+    for (const [runId, j] of this.jobs) if (j.p === p) { this.jobs.delete(runId); this.engine.endJob(j.job); this.runs.delete(runId); }
     p.frame.remove();
     this.loaded.delete(name);
     this.onChange();
@@ -122,8 +133,9 @@ export class PluginHost {
   private id(plugin: string, cmd: string): string { return `plugin:${plugin}:${cmd}`; }
 
   private run(p: Loaded, command: string, label: string): void {
-    const runId = ++this.runId;
-    this.runs.set(runId, (error) => { if (error) { this.fail(p, `${label}: ${error}`); this.note(`${label}: ${error}`, 'error'); } });
+    const runId = ++this.runId, job = this.engine.startJob(label);
+    this.jobs.set(runId, { p, job, told: false });
+    this.runs.set(runId, (error) => { this.jobs.delete(runId); this.engine.endJob(job); if (error) { this.fail(p, `${label}: ${error}`); this.note(`${label}: ${error}`, 'error'); } });
     p.frame.contentWindow?.postMessage({ formvisRun: true, runId, command }, '*');
   }
 
@@ -151,6 +163,14 @@ export class PluginHost {
         }
         case 'error': this.fail(p, String(m.args?.message ?? 'Script error')); return;
         case 'done': { const f = this.runs.get(m.runId ?? -1); this.runs.delete(m.runId ?? -1); f?.(m.error); return; }
+        case 'progress': {
+          const j = this.jobs.get(Number(m.args?.runId));
+          if (!j || j.p !== p) { reply(false); return; }
+          const total = Math.max(0, Number(m.args?.total) || 0), done = Math.min(total || Infinity, Math.max(0, Number(m.args?.done) || 0));
+          this.engine.jobStep(j.job, done, total);
+          reply(j.job.cancelled);
+          return;
+        }
         case 'call': case 'getPixels': case 'putPixels': {
           const out = await this.serve(m.op, m.args ?? {}, p.label);
           if ('error' in out) reply(undefined, out.error); else reply(out.result);
@@ -170,6 +190,13 @@ export class PluginHost {
           const m = this.engine.quickMaskPixels();
           return m ? { result: { width: m.width, height: m.height, data: m.data, layer: { id: 'quickMask', name: 'Quick Mask' } } } : { error: 'No document is open.' };
         }
+        if (typeof args.target === 'string' && args.target.startsWith('alpha:')) {
+          const q = this.engine.current, want = args.target.slice(6), a = q?.doc.alphas?.find((x) => x.name === want);
+          if (!q || !a) return { error: `No alpha channel named "${want}": the Channels panel lists the names.` };
+          const W = q.doc.width, H = q.doc.height, data = new Uint8ClampedArray(W * H * 4);
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; data[i] = data[i + 1] = data[i + 2] = a.mask ? a.mask.valueAt(x, y) : 0; data[i + 3] = 255; }
+          return { result: { width: W, height: H, data, layer: { id: a.id, name: a.name } } };
+        }
         const q = this.engine.current, l = q?.activeLayer;
         if (!q || !l) return { error: 'No document or layer is open.' };
         const s = this.engine.renderLayerAlone(l.id), c = s.getContext('2d') as CanvasRenderingContext2D, img = c.getImageData(0, 0, s.width, s.height);
@@ -182,6 +209,15 @@ export class PluginHost {
         if (!img || img.width !== W || img.height !== H || !(img.data instanceof Uint8ClampedArray) || img.data.length !== W * H * 4) return { error: `putPixels takes { width: ${W}, height: ${H}, data: a Uint8ClampedArray of ${W * H * 4} } (the document's size).` };
         const data = new ImageData(new Uint8ClampedArray(img.data), W, H);
         if (args.target === 'quickMask') return { result: this.engine.setQuickMaskPixels(data, label) };
+        if (typeof args.target === 'string' && args.target.startsWith('alpha:')) {
+          const want = args.target.slice(6), a = q.doc.alphas?.find((x) => x.name === want);
+          if (!a) return { error: `No alpha channel named "${want}": the Channels panel lists the names.` };
+          const { SelectionMask } = await import('../engine/selection');
+          const grey = new Uint8Array(W * H);
+          for (let i = 0; i < grey.length; i++) grey[i] = data.data[i * 4];
+          const mask = SelectionMask.cropped(0, 0, W, H, grey);
+          return { result: this.engine.edit(label, (p) => { const list = p.doc.alphas ?? []; if (!list.some((x) => x.id === a.id)) return false; p.doc = { ...p.doc, alphas: list.map((x) => (x.id === a.id ? { ...x, mask } : x)) }; return true; }) };
+        }
         if (args.how === 'replace' && q.activeLayer) {
           const mask = q.selection;
           if (mask) {

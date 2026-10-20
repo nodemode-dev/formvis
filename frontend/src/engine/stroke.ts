@@ -92,6 +92,9 @@ const MAX_SPARE_BYTES = 256 * 1024 * 1024;
 /** Layers of more pixels than this stroke in a window (1.60.6, DEV_PLAN 26.2); settable so a check can force either
  *  way on the same strokes and compare the pixels. */
 let windowFrom = 16_000_000;
+/** A tiled layer's stroke window past these is written into the tiles and begun again (flush). */
+const FLUSH_SIDE = 8192;
+const FLUSH_PIXELS = 33_554_432;
 export function setStrokeWindowFrom(px: number): void { windowFrom = px; }
 export const strokeWindowFrom = (): number => windowFrom;
 let scratch: Surface | null = null;
@@ -169,6 +172,8 @@ export class PixelStroke {
    *  grows; the stroke reads the layer from there, and commits into the tiles. Null for an ordinary layer. */
   private readonly tiled: TiledRaster | null;
   private orig: Surface | null = null;
+  /** The undo patches of the windows already written into the tiles (flush), oldest first. */
+  private flushed: PixelPatch[] = [];
   /** Where the window could not grow because tiles there were on disk (the engine brings them back). */
   missing: Rect | null = null;
   /** A blend mode the canvas has no operation for: the laid paint is blended onto the layer per pixel (blend.ts). */
@@ -221,6 +226,7 @@ export class PixelStroke {
     // of a stroke across a 600 MP picture asked for a window the size of the picture, several times over.
     const m = this.tiled ? 1024 : Math.max(512, Math.round(Math.max(u.w, u.h) / 2));
     const nx = Math.max(0, u.x - m), ny = Math.max(0, u.y - m), nw = Math.min(L, u.x + u.w + m) - nx, nh = Math.min(H, u.y + u.h + m) - ny;
+    if (this.tiled && open && (nw > FLUSH_SIDE || nh > FLUSH_SIDE || nw * nh > FLUSH_PIXELS)) { this.flush(); return this.ensure(box); }
     if (nw > CANVAS_SIDE || nh > CANVAS_SIDE || nw * nh > CANVAS_PIXELS) { this.clipped = true; return false; }
     if (this.canGrow && !this.canGrow((nw * nh - (open ? this.ww * this.wh : 0)) * (4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0) + (this.ink ? 1 : 0)) + (this.buf.ceil ? 5 : 4)))) { this.clipped = true; return false; }
     // A tiled layer's original pixels for the whole new window, read once (1.62.5); a tile there on disk stops the
@@ -256,6 +262,31 @@ export class PixelStroke {
     this.ox = nx; this.oy = ny; this.ww = nw; this.wh = nh;
     this.toWin = mul(translation(-nx, -ny), this.toLocal);
     return true;
+  }
+
+  /** A tiled layer's stroke that has outgrown its window (1.91.3, CO-0277): what the window holds is written into the
+   *  tiles, its undo patches kept for the stroke's one step, and the window shrunk to nothing, so the next dab opens a
+   *  new one where the pointer is and reads the tiles, the paint so far included. */
+  private flush(): void {
+    this.flushed = this.commitTiles();
+    this.touched = null;
+    this.pending = null;
+    for (const s of [this.working, this.paint, this.masked, this.textured, this.ink]) giveSurface(s);
+    if (this.orig) { this.orig.width = 0; this.orig.height = 0; this.orig = null; }
+    this.textured = null;
+    this.ink = null;
+    this.ww = 1; this.wh = 1; this.ox = 0; this.oy = 0;
+    this.working = takeSurface(1, 1); this.workingCtx = ctxOf(this.working);
+    this.paint = takeSurface(1, 1); this.paintCtx = ctxOf(this.paint);
+    this.masked = this.selection ? takeSurface(1, 1) : null;
+    this.buf = new StrokeBuffer(1, 1);
+    this.toWin = this.toLocal;
+  }
+
+  /** A cancelled stroke on a tiled layer: the windows already written into the tiles put back, newest first. */
+  revertFlushed(): void {
+    for (let i = this.flushed.length - 1; i >= 0; i--) { const q = this.flushed[i]; q.raster.write(q.before, q.x, q.y); }
+    this.flushed = [];
   }
 
   /** For a stroke whose working surface is read whole (Quick Mask's), before its first dab (1.60.6). */
@@ -876,7 +907,7 @@ export class PixelStroke {
   commitTiles(): PixelPatch[] {
     this.compose();
     const area = this.touched;
-    if (!area) return [];
+    if (!area) return this.flushed;
     if (this.tiled && this.orig) {   // into the tiles (1.62.5): before from the kept originals, after from the window
       const T = 512, out: PixelPatch[] = [], oc = ctxOf(this.orig);
       for (let ty = Math.floor(area.y / T) * T; ty < area.y + area.h; ty += T) {
@@ -889,7 +920,7 @@ export class PixelStroke {
           out.push({ raster: this.tiled, x, y, before, after });
         }
       }
-      return out;
+      return this.flushed.length ? [...this.flushed, ...out] : out;
     }
     const T = 512, out: PixelPatch[] = [], c = (this.raster as Raster).ctx;
     for (let ty = Math.floor(area.y / T) * T; ty < area.y + area.h; ty += T) {

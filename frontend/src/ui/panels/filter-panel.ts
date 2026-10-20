@@ -1,5 +1,5 @@
 import { blurDeep, motionBlurDeep, noiseDeep, surfaceBlurDeep, unsharpDeep } from '../../engine/deep';
-import { deepGalleryFilter, deepLibFilter, lensBlurDeep } from '../../engine/deep-filters';
+import { DEEP_DISTORT, deepGalleryFilter, deepLibFilter, lensBlurDeep } from '../../engine/deep-filters';
 import type { DeepPixels } from '../../engine/types';
 import { addNoise, defaultLensFix, gaussianBlur, gaussianMargin, lensCorrect, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine, type LensFix } from '../../engine';
 import { ScopesView } from './scopes-view';
@@ -18,7 +18,7 @@ import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams
 import { crsXmp, developFromXmp } from '../../io/crs-xmp';
 import { uprightFor, uprightFromGuides, type UprightMode } from '../../engine/upright';
 import { createDevelopProbe, type ProbeMode } from './develop-probe';
-import { HSL_BANDS, autoWhiteBalance, bandFor,bandOf,buildCurveLut, clippingView,defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, developPerPixelOnly, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
+import { HSL_BANDS, autoWhiteBalance, bandFor,bandOf,buildCurveLut, clippingView,defaultCalibration, defaultGeometry, defaultGrading, defaultNoise, defaultOptics, defaultParametric, defaultPointColor, defaultVignetteShape, developDeep, developPerPixelOnly, hslToRgb, whiteBalanceFor, type CalibrationState, type CurveChannel, type CurvePoint,type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState, type ParametricState, type PointColorState } from '../../engine/develop';
 import { gpuFilters } from '../../engine/gpu-filters';
 import { curveGraph } from './curve-graph';
 import { GalleryView } from './gallery-view';
@@ -1040,9 +1040,15 @@ export class FilterPanel extends Dialog {
   private deepFilter(kind: FilterKind, settings: Record<string, unknown>): boolean {
     const p = this.engine.current;
     if (!p || ((p.doc.depth ?? 8) === 8 && p.doc.mode !== 'cmyk')) return false;
-    if (p.selection && (kind === 'offset' || kind === 'mosaic')) return false;
+    if (p.selection && (kind === 'offset' || kind === 'mosaic' || kind === 'crystallize' || DEEP_DISTORT.includes(kind))) return false;
     const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = this.seed, ceiling = p.doc.depth === 32 ? Infinity : 1;
-    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : kind === 'radialBlur' || kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'tiltShift' || kind === 'pathBlur' ? deepGalleryFilter(kind, s.gallery) : kind === 'lensBlur' && (!s.lensIris || (s.lensIris.source === 'none' && !(s.lensIris.blades >= 3) && !(s.lensIris.noise > 0))) ? (d: DeepPixels): DeepPixels => lensBlurDeep(d, s.lensRadius, s.lensBrightness, s.lensThreshold) : isLibKind(kind) ? deepLibFilter(kind, libValues(kind, (s.lib as Record<string, unknown> | undefined)?.[kind]), ceiling) : null;
+    if (kind === 'develop') {
+      const ch = p.activeLayer?.channels, out = ch ? developDeep(ch.data, ch.n, ch.width, ch.height, s.develop) : null;
+      if (!ch || !out) return false;
+      this.engine.applyDeepFilter(FILTER_LABELS[kind], (d) => ({ ...d, data: out }));
+      return true;
+    }
+    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold, ceiling) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed, ceiling) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : kind === 'surfaceBlur' ? (d: DeepPixels): DeepPixels => surfaceBlurDeep(d, s.gallery.surfaceRadius, s.gallery.surfaceThreshold) : kind === 'radialBlur' || kind === 'fieldBlur' || kind === 'irisBlur' || kind === 'tiltShift' || kind === 'pathBlur' ? deepGalleryFilter(kind, s.gallery) : kind === 'lensBlur' && (!s.lensIris || (s.lensIris.source === 'none' && !(s.lensIris.blades >= 3) && !(s.lensIris.noise > 0))) ? (d: DeepPixels): DeepPixels => lensBlurDeep(d, s.lensRadius, s.lensBrightness, s.lensThreshold) : isLibKind(kind) ? deepLibFilter(kind, libValues(kind, (s.lib as Record<string, unknown> | undefined)?.[kind]), ceiling, seed) : null;
     if (!deep) return false;
     this.engine.applyDeepFilter(FILTER_LABELS[kind], deep);
     return true;

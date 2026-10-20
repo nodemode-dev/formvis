@@ -13,7 +13,7 @@ def drag(page, s, a, b):
 
 def opt(page, label):
     page.evaluate("document.querySelector('.cv-opt-more:not([hidden])[aria-expanded=false]')?.click()")
-    return page.locator(".cv-opt-group:not([hidden]), .cv-opt-pop").locator(".cv-opt", has_text=label)
+    return page.locator(".cv-opt-group:not([hidden]), .cv-opt-pop-sect[style*='contents']").locator(".cv-opt", has_text=label)
 
 
 def test_gradient_mode_multiplies_over_the_layer(page):

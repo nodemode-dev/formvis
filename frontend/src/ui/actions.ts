@@ -15,6 +15,7 @@ type StepKind =
   | { kind: 'stop'; label: string; message: string; allowContinue: boolean }
   | { kind: 'adjustment'; adj: string; label: string; data: Record<string, unknown>; layer: boolean; ask?: boolean }
   | { kind: 'layerStyle'; label: string; effects: Record<string, unknown> | null }
+  | { kind: 'layerProps'; label: string; name?: string; opacity?: number; visible?: boolean }
   | { kind: 'imageSize'; label: string; w: number; h: number; sampling: string; res: number; fromW?: number; fromH?: number }
   | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW?: number; fromH?: number }
   | { kind: 'fitImage'; label: string; w: number; h: number; enlarge: boolean }
@@ -65,6 +66,7 @@ export const RECORDABLE: ReadonlySet<string> = new Set([
   'frame-from-layers', 'shapes-unite', 'shapes-subtract', 'shapes-intersect', 'shapes-exclude', 'shapes-merge',
   'auto-tone', 'auto-contrast', 'auto-color', 'desaturate', 'equalize', 'equalize-layer-from-selection', 'image-crop',
   'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw',
+  'select-layer-up', 'select-layer-down', 'select-layer-top', 'select-layer-bottom',
 ]);
 
 /** A Batch output file name from a template: {name} is the source file name without its extension, {serial} counts from
@@ -86,6 +88,11 @@ function stepFrom(v: unknown): ActionStep | null {
   const ask = s.ask === true ? { ask: true } : {};
   if (s.kind === 'stop' && typeof s.message === 'string') return { kind: 'stop', label: label || 'Stop', message: s.message.slice(0, 500), allowContinue: s.allowContinue !== false };
   if (s.kind === 'layerStyle' && (s.effects === null || (s.effects && typeof s.effects === 'object'))) return { kind: 'layerStyle', label: label || 'Layer Style', effects: (s.effects as Record<string, unknown> | null) ?? null };
+  if (s.kind === 'layerProps') {
+    const name = typeof s.name === 'string' && s.name.trim() ? s.name.trim().slice(0, 200) : undefined, opacity = isNum(s.opacity) ? Math.min(100, Math.max(0, s.opacity)) : undefined, visible = typeof s.visible === 'boolean' ? s.visible : undefined;
+    if (name === undefined && opacity === undefined && visible === undefined) return null;
+    return { kind: 'layerProps', label: label || 'Set Layer', ...(name !== undefined ? { name } : {}), ...(opacity !== undefined ? { opacity } : {}), ...(visible !== undefined ? { visible } : {}) };
+  }
   if (s.kind === 'adjustment' && typeof s.adj === 'string' && (ADJUSTMENT_KINDS as readonly string[]).includes(s.adj) && s.data && typeof s.data === 'object') return { kind: 'adjustment', adj: s.adj, label: label || s.adj, data: s.data as Record<string, unknown>, layer: s.layer === true, ...(s.layer === true ? {} : ask) };
   if (s.kind === 'filter' && typeof s.filter === 'string' && s.settings && typeof s.settings === 'object') return { kind: 'filter', filter: s.filter, label: label || s.filter, settings: s.settings as Record<string, unknown>, ...ask };
   if (s.kind === 'conditional' && isTest(s.test) && typeof s.then === 'string' && typeof s.else === 'string' && (s.then || s.else)) return { kind: 'conditional', label: label || 'Conditional', test: s.test, then: s.then.slice(0, 80), else: s.else.slice(0, 80) };

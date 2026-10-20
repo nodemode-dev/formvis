@@ -11,7 +11,7 @@ function px(src: ImageData, x: number, y: number): [number, number, number, numb
 }
 
 /** The site of grid cell (i, j) of side `cell` from origin (ox, oy): a point jittered within the middle of the cell. */
-const site = (i: number, j: number, cell: number, seed: number, ox: number, oy: number): [number, number] =>
+export const site = (i: number, j: number, cell: number, seed: number, ox: number, oy: number): [number, number] =>
   [ox + (i + 0.2 + 0.6 * hash01(i, j, 31, seed)) * cell, oy + (j + 0.2 + 0.6 * hash01(i, j, 37, seed)) * cell];
 
 /** The radius, in half cells, of a round dot centred in a square cell that covers the share `m` of it: within the

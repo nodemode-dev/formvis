@@ -37,6 +37,8 @@ export interface Checker { a: [number, number, number]; b: [number, number, numb
 export interface ScreenDisplay {
   readonly canvas: HTMLCanvasElement;
   readonly maxTexture: number;
+  /** Which graphics interface draws, for the console line. */
+  readonly api?: 'webgpu' | 'webgl2' | 'native';
   onLost: (() => void) | null;
   /** Bytes of idle layer textures kept warm beyond a frame's own, the least recently drawn freed first; 0 frees them at once. */
   budgetBytes?: number;
@@ -135,6 +137,8 @@ export class GpuDisplay {
 
   /** The largest texture side this device takes (maxTextureDimension2D). */
   get maxTexture(): number { return this.device.limits.maxTextureDimension2D; }
+
+  readonly api = 'webgpu' as const;
 
   /** The pipeline for a shader and target format, made on first use: the half-float composite, the HDR present and the mip pass. */
   private pipe(kind: 'composite' | 'present' | 'mip', format: GPUTextureFormat): GPURenderPipeline {

@@ -528,13 +528,13 @@ export class Renderer {
 
   /** A styled layer's effects at document resolution, each part kept with its place, blend and opacity, cached per
    *  layer until its pixels, transform, mask or effects change. */
-  private effectParts(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: MaskInfo | null, maskPlacement: Transform | null, docW: number, docH: number, exact = false): FxPart[] {
+  private effectParts(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: MaskInfo | null, maskPlacement: Transform | null, docW: number, docH: number, exact = false, masked?: { folders: MaskInfo[]; clip: (() => Surface | null) | null; sig: string }): FxPart[] {
     const r = layer.raster, mk = layer.mask, fast = this.fastEffects && !exact;
-    const rest = JSON.stringify([r?.id ?? null, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement, mk.density ?? 100, mk.feather ?? 0] : null, fx, docW, docH, fast, layer.transparencyShapes === false]);
+    const rest = JSON.stringify([r?.id ?? null, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement, mk.density ?? 100, mk.feather ?? 0] : null, fx, docW, docH, fast, layer.transparencyShapes === false, masked?.sig ?? null]);
     const ver = r?.version ?? 0, key = `${ver}|${rest}`;
     const hit = exact || this.detached ? undefined : this.fxCache.get(layer.id);
     if (hit && hit.key === key) return hit.parts;
-    if (fast && !this.detached && this.askWorker(layer, fx, src, t, own, docW, docH, key, rest, ver)) return hit?.parts ?? [];
+    if (fast && !masked && !this.detached && this.askWorker(layer, fx, src, t, own, docW, docH, key, rest, ver)) return hit?.parts ?? [];
     this.fxFor = exact || this.detached ? null : { id: layer.id, ver, prev: hit && hit.rest === rest ? hit.ver : -1, rect: null };
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow;
     const reach = fxReach(fx) + 4;
@@ -559,7 +559,17 @@ export class Renderer {
         sil.c.fillRect(0, 0, src.width, src.height);
         sil.c.restore();
       }
-      if (own && fx.layerMaskHides !== false) this.cover(sil.c, own, view, rw, rh);
+      if (own && (fx.layerMaskHides !== false || masked)) this.cover(sil.c, own, view, rw, rh);
+      if (masked) {
+        for (const f of masked.folders) this.cover(sil.c, f, view, rw, rh);
+        if (masked.clip) {
+          const cv = masked.clip();
+          sil.c.save();
+          sil.c.setTransform(1, 0, 0, 1, 0, 0);
+          if (cv) { setMat(sil.c, view); sil.c.globalCompositeOperation = 'destination-in'; sil.c.drawImage(cv, 0, 0); } else sil.c.clearRect(0, 0, rw, rh);
+          sil.c.restore();
+        }
+      }
       const local = { x: (placed.x - region.x) * k, y: (placed.y - region.y) * k, w: placed.w * k, h: placed.h * k };
       this.exactFx = exact;
       const dm = this.fxFor && this.fxFor.prev >= 0 && this.fxFor.prev !== ver && r ? r.damageSince(this.fxFor.prev, ver) : null;
@@ -684,12 +694,30 @@ export class Renderer {
    *  at document coordinates with their alpha and blend mode, below or above the layer; [] for no active styles; null
    *  where the renderer itself would draw the effects per render instead of from the cache (a live stroke, mask edit or
    *  transform; clipped layers and folder masks are refused by the caller). */
-  gpuEffectParts(layer: Layer, ov: LayerOverride | undefined, doc: Doc): { image: Surface; matrix: Mat; alpha: number; blend: BlendMode; above: boolean }[] | null {
+  gpuEffectParts(layer: Layer, ov: LayerOverride | undefined, doc: Doc, masked = false): { image: Surface; matrix: Mat; alpha: number; blend: BlendMode; above: boolean }[] | null {
     const fx0 = ov && 'effects' in ov ? ov.effects ?? null : layer.effects ?? null, fx = fx0 ? withGlobalLight(fx0, doc.globalLight) : null;
     if (!effectsActive(fx)) return [];
     if (ov?.source || ov?.patch || ov?.maskSource || ov?.transform || !layer.raster) return null;
     const t = layer.transform, src = layer.raster.canvas;
-    const parts = this.effectParts(layer, fx as LayerEffects, src, t, this.maskOf(layer, ov, t), ov?.maskPlacement ?? null, doc.width, doc.height);
+    let cover: { folders: MaskInfo[]; clip: (() => Surface | null) | null; sig: string } | undefined;
+    if (masked) {
+      const map = new Map<ID, Layer>();
+      for (const e of hierarchy(doc)) map.set(e.layer.id, e.layer);
+      const vm = this.vectorOf(layer, doc, t), folders = [...this.folderMasks(map, layer, doc), ...(vm ? [vm] : [])];
+      const sigOf = (x: Layer): unknown => {
+        const m = x.mask, v = x.vectorMask, cov = v?.enabled ? vectorCoverage(v, doc.width, doc.height) : null;
+        return [m ? [m.raster?.id ?? null, m.raster?.version ?? 0, m.enabled, m.placement ?? x.transform, m.density ?? 100, m.feather ?? 0] : null, v ? [v.enabled, v.linked, cov ? cov.version : null] : null, x.artboard ?? null];
+      };
+      const chain: unknown[] = [...ancestors(map, layer).map(sigOf), sigOf(layer)];
+      let clip: (() => Surface | null) | null = null;
+      if (layer.clipId) {
+        const id = layer.clipId;
+        for (let b = map.get(id), n = 0; b && n < 257; b = b.clipId ? map.get(b.clipId) : undefined, n++) chain.push(['clip', b.id, b.raster?.id ?? null, b.raster?.version ?? 0, b.transform, b.opacity, b.isGroup, sigOf(b)]);
+        clip = () => this.clipCoverageOf(doc, id);
+      }
+      cover = { folders, clip, sig: JSON.stringify(chain) };
+    }
+    const parts = this.effectParts(layer, fx as LayerEffects, src, t, this.maskOf(layer, ov, t), ov?.maskPlacement ?? null, doc.width, doc.height, false, cover);
     return parts.map((p) => ({ image: p.s, matrix: [1 / p.k, 0, 0, 1 / p.k, p.x, p.y] as Mat, alpha: p.alpha, blend: p.op === 'source-over' ? 'normal' : p.op as BlendMode, above: p.above }));
   }
 
