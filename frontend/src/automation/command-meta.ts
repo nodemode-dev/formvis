@@ -651,7 +651,7 @@ const ROWS: Record<string, Row> = {
   'slice-options': ['View', 'Opens the active slice\'s name, URL, alt text and exact position and size for editing.', 'Use when a slice needs web properties or an exact rectangle.', 'm'],
   'layer-based-slice': ['View', 'Adds a slice over the visible pixels of the active layer, tied to that layer.', 'Use when a slice should follow one layer\'s bounds, such as a button or a banner.', 'm'],
   'type-work-path': ['Type', 'Traces the active type layer\'s outlines from its rendered pixels into the Work Path.', 'Use when you need a type layer\'s letter shapes as an editable path.', 'm'],
-  'type-to-shape': ['Type', 'Turns the active type layer into a shape layer in the text colour and hides the type layer.', 'Use when you want type as editable vector shapes instead of live text.', 'm'],
+  'type-to-shape': ['Type', 'Turns the active type layer into a shape layer in the text colour, in the place of the type layer; the type layer is removed, and Undo brings it back.', 'Use when you want type as editable vector shapes instead of live text.', 'm'],
   'update-all-text': ['Type', 'Re-renders every type layer from its own settings.', 'Use when text layers look stale after a font or setting change.', 'm'],
   'warp-text': ['Type', 'Opens Warp Text.', 'Use when text should arc, wave or flag.', 'm'],
   'type-path-flip': ['Type', 'Moves type set on a path to the other side of the path.', 'Use when type on a curve should hang below it instead of sitting on top.', 'm'],

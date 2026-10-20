@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.92.10 · 2026-10-20
+
+- SVG: imports are cleaned of scripts, event handlers and outside links (with a note of what was left out), drawn at the chosen width with the viewBox kept, and also take .svgz and pasted SVG text; a damaged SVG says so instead of failing quietly.
+- ICO opens with the sizes dialog (largest, each as a document, or every size as a layer); .cur cursors open too.
+- File > Open As opens the file as a new document (it was added as a layer to the current one).
+- Double-click on the canvas works again: the stage counts clicks itself (Chromium reports 0 for pointerdown), so the Boxes editor, and the double-click paths of other tools, open.
+- Edit > Paste no longer does nothing when the browser has not allowed clipboard reading: it pastes formvis's own copy and says the browser blocked clipboard access.
+- Native renderer: a clipped layer whose base layer is moved or placed falls back to the canvas renderer (the native clip drew it at the wrong place).
+- Convert to Shape's description says the type layer is replaced (Undo brings it back).
+
 ## 1.92.9 · 2026-10-20
 
 - Full Screen Mode shows the picture again: the hidden title bar no longer pushes the picture area into a 0 px row (found by using it while writing coverage tests).

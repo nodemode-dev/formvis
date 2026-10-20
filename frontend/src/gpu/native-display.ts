@@ -59,6 +59,10 @@ export class NativeDisplay implements ScreenDisplay {
 
   unsupported(layers: readonly DisplayLayer[]): string | null {
     for (const l of layers) {
+      for (let c = l.clip; c; c = c.parent) {
+        const m = c.matrix;
+        if (m[0] !== 1 || m[1] !== 0 || m[2] !== 0 || m[3] !== 1 || m[4] !== 0 || m[5] !== 0) return 'a clipped layer whose base layer is moved, scaled or placed, which the native renderer does not position yet';
+      }
       if (l.ko) {
         const back = this.unsupported(l.ko.back);
         if (back) return back;

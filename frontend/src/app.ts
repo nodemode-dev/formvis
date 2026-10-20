@@ -1140,7 +1140,7 @@ export function startApp(): void {
             if (anim) toast(`${f.name} has ${anim.frames.length} frames; only the first was placed as a layer. Open it on its own to get every frame.`, 'info');
           }
           // A TIFF with several pages asks how to open them (1.53.4).
-          if (/\.(tiff?|ico)$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
+          if (/\.(tiff?|ico|cur)$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
           if (/\.(jpe?g|tiff?)$/i.test(f.name) && noDoc() && decoded.length === 0) {
             try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { if (serviceDown()) { /* the engine service is not running: opened as RGB below */ } else { toast(message(err), 'error'); continue; } }
           }
@@ -1234,8 +1234,8 @@ export function startApp(): void {
               } catch { /* decoded as before */ }
             }
           }
-          if (/\.svg$/i.test(f.name)) {
-            const declared = await svgSize(f).catch(() => null);
+          if (/\.svgz?$/i.test(f.name)) {
+            const declared = await svgSource(f).then((t) => svgSize(new Blob([t]))).catch(() => null);
             const asked = await promptName(`Import ${f.name}: width in pixels`, String(Math.round(declared?.width ?? 1024)), 'Import');
             if (asked === null) continue;
             const px = Number(asked.replace(/\s*px$/i, ''));
@@ -3674,7 +3674,7 @@ export function startApp(): void {
   const largePicture = new LargePictureDialog(engine);
   const tiffPages = new TiffPagesDialog(engine);
   const exrChooser = new ExrPartsDialog();
-  const openAs = new OpenAsDialog((f) => importFiles([f]));
+  const openAs = new OpenAsDialog((f) => importFiles([f], undefined, 'documents'));
   const packageDialog = new PackageDialog();
   const colourView = new ColourView(engine);   // colour management (1.53.5)
   colourView.onProof = (label) => status.setProof(label);
@@ -5498,10 +5498,19 @@ export function startApp(): void {
     if (!engine.newFromClipboard()) toast('The clipboard holds no picture.');
   }
 
+  async function readClipboardItems(): Promise<ClipboardItems> {
+    const blocked = (): Error => { toast('The browser blocked clipboard access. Allow it in the site settings, or use the keyboard shortcut.', 'error'); return new Error('clipboard blocked'); };
+    const state = await navigator.permissions?.query({ name: 'clipboard-read' as PermissionName }).then((s) => s.state, () => 'prompt');
+    if (state === 'denied') throw blocked();
+    let timer = 0;
+    const wait = new Promise<never>((_, no) => { timer = window.setTimeout(() => no(blocked()), 4000); });
+    try { return await Promise.race([navigator.clipboard.read(), wait]); } finally { window.clearTimeout(timer); }
+  }
+
   async function pasteFromMenu(outside: boolean | null = null, inPlace = false): Promise<void> {
     const own = (): boolean => (outside === null ? engine.pasteClipboard(inPlace) : engine.pasteInto(outside) || true);
     try {
-      for (const item of await navigator.clipboard.read()) {
+      for (const item of await readClipboardItems()) {
         if (item.types.includes('text/plain') && engine.clipboard) {
           const text = await (await item.getType('text/plain')).text();
           if (text === `formvis:${engine.clipboard.stamp}`) { if (await askPasteProfile()) own(); return; }
@@ -6239,6 +6248,7 @@ export function startApp(): void {
     if (anyDialogOpen() || target?.closest('input, textarea, [contenteditable="true"]')) return;
     const files = Array.from(e.clipboardData?.files ?? []).filter(isImageFile);
     const marker = e.clipboardData?.getData('text/plain') ?? '';
+    if (!files.length && /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(marker)) { e.preventDefault(); void importFiles([new File([marker], 'Pasted.svg', { type: 'image/svg+xml' })]); return; }
     if (engine.clipboard && (marker === `formvis:${engine.clipboard.stamp}` || !files.length)) { e.preventDefault(); engine.pasteClipboard(); return; }
     if (!files.length) return;
     e.preventDefault();

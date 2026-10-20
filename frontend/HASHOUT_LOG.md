@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## SVG sanitising, ICO and CUR, Open As, stage click count, menu paste, native clip guard · _v1.92.10 (io/images.ts, app.ts, ui/panels/tiff-pages.ts, ui/stage.ts, gpu/native-display.ts, automation/command-meta.ts)
+
+- rasteriseSvg parses the SVG, removes script, foreignObject, iframe, object, embed, audio and video, on* attributes, hrefs that are not "#" or data:image/, and url()/@import that are not "#" or data:; sets the root width and height to the target and adds a viewBox from the declared size when there is none, so the vector is drawn sharp at that size. The browser's image-mode sandbox stays as the second layer. The removed count is the image `warning`, which the open path toasts.
+- ICO "does nothing" did not reproduce on a quiet tree (the sizes dialog shows); the earlier sighting was probably during an HMR 500. .cur joins the engine-routed list and the sizes dialog.
+- Open As called importFiles([f]), whose default is 'layers'.
+- Stage clicks: PointerEvent.detail is 0 on pointerdown in Chromium, so `clicks >= 2` never fired (Boxes editor, lasso close, rotate-view reset, crop, curvature pen). clickCount uses detail when the browser gives it, else counts presses within 500 ms and 4 px.
+- Menu paste: navigator.clipboard.read() never settles while the permission is "prompt"; readClipboardItems gives up after 4 s with a toast, and the existing catch pastes formvis's own copy. Paste Into from Paste Special shows disabled with a selection (the shortcut works): not yet found.
+- Native clip: the native Clip has no placement for its base (mask_at only), so a clip whose base has a matrix drew against the wrong coverage (12.5% of pixels off, max 115). unsupported() now refuses any clip chain with a non-identity matrix.
+
 ## Full Screen grid, CMYK 32, native masked and clipped folders · _v1.92.9 (styles/shell.css, engine/index.ts, engine/mode-ops.ts, engine/wasm-abi2.ts, app.ts, ui/panels/colour-dialogs.ts, ui/panels/filter-panel.ts, ui/app-dialogs.ts, gpu/native-display.ts)
 
 - Full Screen: `.cv-titlebar { display: none }` takes the title bar out of the grid, so every child moved up a slot and .cv-main landed in the 0 px first row (terminal.css's `:root .cv-app` rows are titlebar, 1fr, dock, status). Full screen now has its own three rows, `:root .cv-app.is-screen-full { grid-template-rows: minmax(0, 1fr) var(--ft-dock-h, 0px) var(--cv-status-h); }`.

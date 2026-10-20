@@ -9,13 +9,14 @@ import { createSurface, ctxOf } from '../engine/surface';
 import { api, serviceReady, type RawWhiteBalance } from './api';
 import { readFileMeta } from './xmp';
 import { decoderFor } from '../plugins/formats';
+import { svgSource } from './svg-layers';
 
-const NATIVE = /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i;
+const NATIVE = /\.(png|jpe?g|gif|webp|bmp|avif|svgz?)$/i;
 /** Camera RAW (decoded by the engine's LibRaw, then opened into Develop). */
 export const RAW_FILE = /\.(dng|cr2|cr3|crw|nef|nrw|arw|srf|sr2|raf|orf|rw2|pef|srw|x3f|3fr|iiq|rwl|mrw|kdc|dcr|erf|mef|mos)$/i;
-const SERVER = /\.(heic|heif|hif|tiff?|dpx|cin|dds|wbmp|qoi|tga|icb|vda|vst|ico|pcx|xpm|pbm|pgm|ppm|pnm|pam|pfm|fits|fit|fts)$/i;   // QOI, TGA, ICO, the Netpbm family and FITS (DEV_PLAN 34.7) are read by the engine (DEV_PLAN 34.1); ICO leaves the browser so the largest size opens
+const SERVER = /\.(heic|heif|hif|tiff?|dpx|cin|dds|wbmp|qoi|tga|icb|vda|vst|ico|cur|pcx|xpm|pbm|pgm|ppm|pnm|pam|pfm|fits|fit|fts)$/i;   // QOI, TGA, ICO and CUR, the Netpbm family and FITS (DEV_PLAN 34.7) are read by the engine (DEV_PLAN 34.1); ICO leaves the browser so the largest size opens
 const RAW_ACCEPT = '.dng,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,.pef,.srw,.x3f,.3fr,.iiq,.rwl,.mrw,.kdc,.dcr,.erf,.mef,.mos';
-export const IMAGE_ACCEPT = `.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,.hdr,.exr,.dpx,.cin,.dds,.wbmp,.qoi,.tga,.ico,.pcx,.xpm,.pbm,.pgm,.ppm,.pnm,.pam,.pfm,.fits,.fit,.fts,${RAW_ACCEPT},image/*`;   // .hdr, .exr: 32 bits (1.53.9); .dpx: film scans, 16 bits from the engine
+export const IMAGE_ACCEPT = `.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.svgz,.heic,.heif,.tif,.tiff,.hdr,.exr,.dpx,.cin,.dds,.wbmp,.qoi,.tga,.ico,.cur,.pcx,.xpm,.pbm,.pgm,.ppm,.pnm,.pam,.pfm,.fits,.fit,.fts,${RAW_ACCEPT},image/*`;   // .hdr, .exr: 32 bits (1.53.9); .dpx: film scans, 16 bits from the engine
 export const PROJECT_ACCEPT = ['.fvd', '.fmv', ...FORMER_PROJECT_EXTENSIONS, '.canvasor', '.comp', '.zip', '.psd', '.psb', '.psdt', '.ora', '.kra', '.krz', '.pdn', '.af', '.afphoto', '.afdesign', '.afpub'].join(',');   // OpenRaster (1.51.7)
 
 const FRONT_MAGIC: Array<[string, number, string]> = [['FUJIFILMCCD-RAW', 0, 'raf'], ['IIRO', 0, 'orf'], ['IIRS', 0, 'orf'], ['MMOR', 0, 'orf'], ['IIU\0', 0, 'rw2'], ['\0MRM', 0, 'mrw'], ['FOVb', 0, 'x3f'], ['HEAPCCDR', 6, 'crw'], ['ftypcrx ', 4, 'cr3']];
@@ -150,13 +151,41 @@ export async function svgSize(file: Blob): Promise<{ width: number; height: numb
 
 /** An SVG drawn by the browser at `width` pixels across (the height follows its shape), so it is sharp at the size chosen. */
 export async function rasteriseSvg(file: Blob, name: string, width: number): Promise<ImportedImage> {
-  const size = (await svgSize(file)) ?? { width: 1024, height: 1024 };
+  const text = await svgSource(file);
+  const size = (await svgSize(new Blob([text]))) ?? { width: 1024, height: 1024 };
   const w = Math.max(1, Math.round(width)), h = Math.max(1, Math.round(width * size.height / size.width));
   if (w > LIMITS.side || h > LIMITS.side || w * h > LIMITS.pixels) throw new Error(`${name} at ${w} by ${h} exceeds the 30,000 px side or ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
-  const img = await viaElement(new Blob([file], { type: 'image/svg+xml' }));
+  const clean = sanitiseSvg(text, w, h, size);
+  let img: HTMLImageElement;
+  try { img = await viaElement(new Blob([clean.text], { type: 'image/svg+xml' })); } catch { throw new Error(`${name} could not be drawn: its markup is damaged or uses features the browser cannot render.`); }
   const canvas = createSurface(w, h);
   ctxOf(canvas).drawImage(img, 0, 0, w, h);
-  return { source: canvas as CanvasImageSource, width: w, height: h, name };
+  return { source: canvas as CanvasImageSource, width: w, height: h, name, ...(clean.removed ? { warning: `${name}: ${clean.removed} script, event or outside-link item${clean.removed === 1 ? ' was' : 's were'} left out.` } : {}) };
+}
+
+const SVG_BLOCKED = new Set(['script', 'foreignobject', 'iframe', 'object', 'embed', 'audio', 'video']);
+
+/** The SVG with scripts, event handlers and every link that is not inside the file (an outside address, a file path) taken
+ *  out, drawn at `w` by `h` with its viewBox (or the size it declares) kept so the shape fits as the file says. */
+function sanitiseSvg(text: string, w: number, h: number, size: { width: number; height: number }): { text: string; removed: number } {
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml'), root = doc.documentElement;
+  if (!root || root.localName.toLowerCase() !== 'svg' || doc.getElementsByTagName('parsererror').length) throw new Error('That file is not a readable SVG.');
+  let removed = 0;
+  const css = (v: string): string => { const out = v.replace(/@import[^;]*;?/gi, '').replace(/url\(\s*(['"]?)(?!#|data:)[^)]*\)/gi, 'none'); if (out !== v) removed++; return out; };
+  for (const el of [root, ...Array.from(root.querySelectorAll('*'))]) {
+    if (SVG_BLOCKED.has(el.localName.toLowerCase())) { el.remove(); removed++; continue; }
+    if (el.localName.toLowerCase() === 'style') el.textContent = css(el.textContent ?? '');
+    for (const a of Array.from(el.attributes)) {
+      const n = a.name.toLowerCase(), v = a.value.trim();
+      if (n.startsWith('on')) { el.removeAttributeNode(a); removed++; }
+      else if (n === 'href' || n.endsWith(':href')) { if (!(v.startsWith('#') || /^data:image\//i.test(v))) { el.removeAttributeNode(a); removed++; } }
+      else if (/url\(|@import/i.test(v)) a.value = css(a.value);
+    }
+  }
+  root.setAttribute('width', String(w));
+  root.setAttribute('height', String(h));
+  if (!root.hasAttribute('viewBox')) root.setAttribute('viewBox', `0 0 ${size.width} ${size.height}`);
+  return { text: new XMLSerializer().serializeToString(doc), removed };
 }
 
 export interface DecodedFrames { width: number; height: number; plays: number; frames: Array<{ source: ImportedImage['source']; delay: number }> }

@@ -1503,7 +1503,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `type-range-style` | Character Range Style |  | Sets size, colour, font family, weight, bold, italic, baseline shift, tracking, language, underline, strikethrough, caps, horizontal scale (scale_x) or vertical scale (scale_y) on a character range of the selected type layers (the whole text when no range is given), or on the letters selected while typing; clear true takes the range back to the layer's own look. (changes the picture) |
 | `type-small-caps` | Small Caps |  | Sets the active type layer, and new type, in small capitals, or back to as typed. (changes the picture) |
 | `type-strikethrough` | Strikethrough |  | Strikes through the active type layer and new type, or removes it. (changes the picture) |
-| `type-to-shape` | Convert to Shape |  | Turns the active type layer into a shape layer in the text colour and hides the type layer. (changes the picture) |
+| `type-to-shape` | Convert to Shape |  | Turns the active type layer into a shape layer in the text colour, in the place of the type layer; the type layer is removed, and Undo brings it back. (changes the picture) |
 | `type-underline` | Underline |  | Underlines the active type layer and new type, or removes it. (changes the picture) |
 | `type-vertical` | Vertical |  | Sets the active type layer to vertical columns of type, running right to left. (changes the picture) |
 | `type-work-path` | Create Work Path |  | Traces the active type layer's outlines from its rendered pixels into the Work Path. (changes the picture) |

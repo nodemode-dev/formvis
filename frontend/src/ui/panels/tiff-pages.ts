@@ -27,7 +27,7 @@ export class TiffPagesDialog extends Dialog {
 
   show(file: File, pages: Page[]): void {
     this.file = file; this.pages = pages;
-    const icon = /\.ico$/i.test(file.name);   // an icon's sizes are offered the way a TIFF's pages are (DEV_PLAN 34.1), largest first
+    const icon = /\.(ico|cur)$/i.test(file.name);   // an icon's sizes are offered the way a TIFF's pages are (DEV_PLAN 34.1), largest first
     this.setTitle(icon ? 'Icon Sizes' : 'TIFF Pages');
     [`The largest ${icon ? 'size' : 'page'} only`, `Each ${icon ? 'size' : 'page'} as a document`, `Every ${icon ? 'size' : 'page'} as a layer`].forEach((t, i) => setText(this.how.options[i], t));
     setText(this.info, `${file.name} has ${pages.length} ${icon ? 'sizes' : 'pages'}: ${pages.map((p) => `${p.width} by ${p.height}`).join(', ')}.`);

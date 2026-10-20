@@ -889,6 +889,16 @@ export class Stage {
   static usePressure = true;
   static animate = true;
 
+  private lastDown = { t: -1e9, x: 0, y: 0, n: 0 };
+
+  private clickCount(e: PointerEvent): number {
+    if (e.detail > 0) return e.detail;
+    const d = this.lastDown, near = Math.abs(e.clientX - d.x) <= 4 && Math.abs(e.clientY - d.y) <= 4;
+    const n = near && e.timeStamp - d.t <= 500 ? d.n + 1 : 1;
+    this.lastDown = { t: e.timeStamp, x: e.clientX, y: e.clientY, n };
+    return n;
+  }
+
   private pointer(e: MouseEvent, clicks = 0): ToolPointer {
     const r = this.rect ?? this.host.getBoundingClientRect();
     const v = this.engine.current?.viewport;
@@ -1160,7 +1170,7 @@ export class Stage {
       const active = document.activeElement;
       if (active instanceof HTMLElement && active !== document.body) active.blur();
       e.preventDefault();
-      const p = this.pointer(e, e.detail);
+      const p = this.pointer(e, this.clickCount(e));
       const eraserEnd = Stage.controls.penEraser && Stage.isPenEraser(e);
       if (this.penBack && !eraserEnd) { const back = this.penBack; this.penBack = null; this.engine.setTool(back); }
       if (eraserEnd) {
