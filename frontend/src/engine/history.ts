@@ -124,6 +124,19 @@ export class History {
     return true;
   }
 
+  /** The last step folded into the one before it when that one is named `first`, keeping the first's name (an Alt-drag's
+   *  copy and its move undo as one); only when both carry no pixel patches and nothing is undone or open. */
+  foldInto(first: string): boolean {
+    const n = this.past.length;
+    if (n < 2 || this.depth > 0 || this.future.length) return false;
+    const a = this.past[n - 2], b = this.past[n - 1];
+    if (a.name !== first || a.patches.length || b.patches.length) return false;
+    this.past.splice(n - 1, 1);
+    a.after = b.after;
+    a.afterRev = b.afterRev;
+    return true;
+  }
+
   /** Forgets the steps undone (1.66.0: a fill layer's dialog cancelled leaves no step to redo). */
   dropRedo(): void { this.future = []; }
 

@@ -6857,6 +6857,9 @@ export class Engine {
     return true;
   }
 
+  /** An Alt-drag's copy and the move after it become one step, named for the copy. */
+  joinCopyStep(): void { if (this.current?.history.foldInto('Duplicate Layer')) this.emit('history', null); }
+
   /** The pointer is up: a plain drag commits, a pending transform holds. */
   releaseTransform(): void {
     if (this.transformPending) { this.snapGuides = null; this.emit('options', null); this.emit('overlay', null); return; }

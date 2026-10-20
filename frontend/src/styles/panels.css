@@ -340,7 +340,7 @@
 /* ── Phase 21, step 2b: the Layers group as the target's (UI_SPEC.md section 6): Layers | Paths tabs, the Kind row,
    blend and the Opacity field. ── */
 .cv-layer-props { display: block; padding: 6px 8px 2px; }
-.cv-layer-kind { display: flex; align-items: center; gap: 6px; }
+.cv-layer-props .cv-layer-kind { display: flex; align-items: center; gap: 6px; }
 .cv-kind { width: 96px; flex: none; }
 .cv-layer-filt { display: flex; gap: 4px; padding: 4px 0 0; min-width: 0; }
 .cv-layer-filt > * { flex: 1 1 0; min-width: 0; }
@@ -418,7 +418,7 @@
    Kind row takes the full width, its dropdown shrinking before the icons do. */
 /* (the Layers page's single column: .cv-layers-page) */
 .cv-layer-props { min-width: 0; }
-.cv-layer-kind { width: 100%; min-width: 0; }
+.cv-layer-props .cv-layer-kind { width: 100%; min-width: 0; }
 .cv-kind { width: auto; flex: 1 1 88px; min-width: 64px; max-width: 110px; }
 .cv-kind-icons { flex: none; }
 /* The row under Opacity: the Lock controls at the left (next), Fill at the right, as the target's. */

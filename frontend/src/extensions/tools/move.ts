@@ -286,6 +286,7 @@ export const moveTool: Tool = {
     if (ctx.engine.meshWarpEdit || ctx.engine.puppetEdit) return;
     if (cornerDrag !== null) { cornerDrag = null; distortFrom = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.endPixelMove(); return; }
+    const copied = altCopy;
     altCopy = false;
     const toTab = tabDrop, ids = [...(ctx.engine.current?.selectedIds ?? [])];
     tabDrop = null;
@@ -295,6 +296,7 @@ export const moveTool: Tool = {
       return;
     }
     ctx.engine.releaseTransform();
+    if (copied) ctx.engine.joinCopyStep();
   },
   cancel(ctx) {
     if (ctx.engine.pathTransform) { cornerDrag = null; distortFrom = null; ctx.engine.cancelPathTransformDrag(); return; }

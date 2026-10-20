@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Thumbnail clicks, Alt-drag copy as one step, pattern tile · _v1.93.7 (styles/panels.css, engine/history.ts, engine/index.ts, extensions/tools/move.ts, app.ts)
+
+- panels.css: the Kind filter row's two `.cv-layer-kind` rules (from 5c8b10e9) were unscoped and later in the file than the layer rows' `display: none`, so every row's empty kind span showed as a full-width flex box in the thumbnail's grid cell and took its clicks. Both are scoped to `.cv-layer-props` now; group and adjustment rows keep their icon (checked by screenshot, `checks/lead/layers_look.py`).
+- Alt-drag: the copy is made on pointer-down ("Duplicate Layer") and the move commits on release ("Move Layer"). History.foldInto(first) folds the last step into the one before when that one is named `first`, neither carries pixel patches, and nothing is undone or open; Engine.joinCopyStep() calls it after releaseTransform when move.ts made a copy, and emits 'history' so the panel shows one row.
+- definePattern emits 'options' after addPattern, so the Patterns panel adds the one new tile; before, the panel refreshed before the async command had added it.
+
 ## Linked dialog undo, picker first sample · _v1.93.5 (ui/dialog-history.ts, ui/panels/color-picker.ts)
 
 - dialog-history.ts: the "typing of its own" guard compared the focused field with its last settled value; a linked field (Image Size height) changed by its owner without events always differed, so Mod+Z returned early once Tab landed on it. The guard now uses a typed set filled by trusted input events and cleared when the field settles. A settled step also records, one task later, every other control the owner changed with it (linked), and undo puts the main control then the linked ones back; redo puts the linked ones first so the owner's link recomputes to the same values.

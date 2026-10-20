@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.93.7 · 2026-10-20
+
+- Layers: Ctrl-, Shift- and Alt-click on a layer thumbnail load, add or subtract its pixels as a selection again (an empty icon box sat over the thumbnail).
+- Move tool: an Alt-drag copy and its move are one history step, so one undo removes the copy.
+- Patterns panel: a pattern defined from the add button shows its tile at once.
+
 ## 1.93.6 · 2026-10-20
 
 - Linux: .psb files have their own file type (by name and by header), and the desktop entries offer formvis for them, as the desktop app's file associations already did.

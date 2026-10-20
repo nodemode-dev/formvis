@@ -2585,6 +2585,7 @@ export function startApp(): void {
     const s = createSurface(w, h);
     ctxOf(s).drawImage(flat as CanvasImageSource, -x, -y);
     addPattern(name, s);
+    engine.emit('options', null);
     if (await savePatterns()) toast(`Defined the pattern "${name}". Choose it in Layer Style > Pattern Overlay.`);
     else toast(`Defined "${name}" for this session; the pattern library is full, so it will not be kept.`, 'error');
   }
