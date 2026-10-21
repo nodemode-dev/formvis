@@ -129,7 +129,7 @@ import { selectByPoints } from './extensions/tools/object-select';
 import { commitPendingCrop, cropPending, startPerspectiveCrop } from './extensions/tools/crop';
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, serviceReady, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
-import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
+import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, dialogWatch, fileDialogReport, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
 import { depthReady, findToRemove, installModel, localDepth, localDepth16, localDepthValues, localInpaint, modelReady, skyMask, skyReady, warmLama } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
@@ -164,7 +164,7 @@ import { THEMES, readChoice, setTheme } from './ui/themes';
 import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
 import { GpuDisplay, type ScreenDisplay } from './gpu/display';
-import { benchText, runBenchmark } from './gpu/bench';
+import { runBenchmark } from './gpu/bench';
 import { GlDisplay } from './gpu/gl-display';
 import { GlFilters } from './gpu/filters';
 import { frameTrace } from './gpu/frame-trace';
@@ -3449,7 +3449,7 @@ export function startApp(): void {
     characterStyles: new CharacterStylesDialog(engine),
     glyphs: new GlyphsDialog(engine),
     toolPresets: new ToolPresetsDialog(engine),
-    benchmark: new BenchmarkDialog(async () => benchText(await runBenchmark(engine), gpuProbed ? detectedName(gpuProbe) ?? 'none found' : 'not detected yet')),
+    benchmark: new BenchmarkDialog(async (opts) => ({ result: await runBenchmark(engine, undefined, undefined, opts), adapter: gpuProbed ? detectedName(gpuProbe) ?? 'none found' : 'not detected yet' })),
     adjust: new AdjustPanel(engine),
     filter: new FilterPanel(engine),
     fade: new FadeDialog(engine),
@@ -6530,6 +6530,12 @@ export function startApp(): void {
   // The desktop shell hands the page the files the system opened formvis with (double-clicked, or a second launch) and
   // the window's close and quit requests; the app exits only after every unsaved document is saved or discarded.
   if (hasPanels()) {
+    // A system file dialog that has not come back after a while may never come (a failing desktop file portal): the
+    // person can stop waiting, and the shell says what the dialogs need here.
+    dialogWatch.slow = (stop) => toast('The system file dialog has not come back. If no dialog is on screen, the desktop file portal may have failed the request.', 'error', {
+      ms: 0,
+      actions: [{ label: 'Stop waiting', run: () => { stop(); void fileDialogReport().then((r) => { toast(`File dialog report: ${r}`, 'error', { ms: 0 }); }).catch(() => undefined); } }],
+    });
     void listenShell({
       open: (paths) => openPaths(paths),
       // Launch arguments (--command, --action, --script) run one after another; a failure is a notice and the rest still run.

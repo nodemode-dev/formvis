@@ -9,6 +9,7 @@ import { IMAGE_ACCEPT, PROJECT_ACCEPT } from '../io/images';
 import { RAW_SHARPEN_AMOUNTS, RAW_SHARPEN_CHOICES, type RawSharpen, type RawSharpenAmount } from '../io/raw-sharpen';
 import { PRESET_ACCEPT } from './panels/preset-manager-dialog';
 import { VERSION } from '../version';
+import { benchText, heapText, loadBaseline, resultWord, saveBaseline, versus, type Baseline, type BenchOptions, type BenchResult, type BenchRow } from '../gpu/bench';
 import { comboOf, formatKeys, type Commands } from './commands';
 import { LIMITS, TILED_SIDE, type RGB } from '../engine/types';
 import type { BitmapMethod, DitherKind, ForcedKind, HalftoneShape, PaletteKind } from '../engine/quantize';
@@ -1422,27 +1423,89 @@ export class ShortcutsDialog extends Dialog {
 export class BenchmarkDialog extends Dialog {
   private readonly state = el('<p class="cv-note cv-bench-state">Opens a temporary 2000 x 1500 document, times panning, adjustment layers and painting on the CPU and on each graphics processor path, then closes it. It takes under a minute.</p>');
   private readonly out = el('<pre class="cv-bench-out" hidden></pre>');
+  private readonly table = el('<div class="cv-bench-wrap" hidden><table class="cv-bench-table"><thead><tr><th>Test</th><th>Path</th><th>P50 ms</th><th>P95 ms</th><th>Budget ms</th><th>Result</th><th>Vs baseline</th></tr></thead><tbody></tbody></table></div>');
+  private readonly heap = el('<p class="cv-note cv-bench-heap" hidden></p>');
+  private readonly rowNodes = new Map<string, HTMLTableCellElement[]>();
   private readonly runBtn: HTMLButtonElement;
+  private readonly cancelBtn: HTMLButtonElement;
+  private readonly saveBtn: HTMLButtonElement;
+  private abort: AbortController | null = null;
+  private last: { result: BenchResult; adapter: string } | null = null;
+  private base: Baseline | null = null;
 
-  constructor(private readonly run: () => Promise<string>) {
-    super('Performance Benchmark', 640);
-    this.body.append(this.state, this.out, el('<p class="cv-note">Numbers from a software graphics processor (as in a test browser) are not representative; run this on the machine you edit on.</p>'));
+  constructor(private readonly run: (opts: BenchOptions) => Promise<{ result: BenchResult; adapter: string }>) {
+    super('Performance Benchmark', 860);
+    this.body.append(this.state, this.table, this.heap, this.out, el('<p class="cv-note">Numbers from a software graphics processor (as in a test browser) are not representative; run this on the machine you edit on. A path over its budget (P95) is marked over budget; a rise of more than 20 percent against the saved baseline is a regression.</p>'));
     this.button('Copy', 'ghost', () => { void navigator.clipboard?.writeText(this.out.textContent ?? ''); });
+    this.saveBtn = this.button('Save as baseline', 'ghost', () => this.saveBase());
+    this.cancelBtn = this.button('Cancel', 'ghost', () => this.abort?.abort());
     this.runBtn = this.button('Run', 'primary', () => { void this.start(); });
+    setDisabled(this.saveBtn, true);
+    setDisabled(this.cancelBtn, true);
+    this.onClose = () => this.abort?.abort();
+  }
+
+  /** One row of the table, made when its path first reports and updated in place after. */
+  private fillRow(r: BenchRow): void {
+    let cells = this.rowNodes.get(r.key);
+    if (!cells) {
+      const tr = document.createElement('tr');
+      cells = Array.from({ length: 7 }, () => tr.appendChild(document.createElement('td')));
+      this.rowNodes.set(r.key, cells);
+      q(this.table, 'tbody').appendChild(tr);
+      setText(cells[0], r.test);
+      setText(cells[1], r.path);
+    }
+    const has = r.frames > 0, v = versus(r, this.base);
+    setText(cells[2], has ? r.medianMs.toFixed(2) : '-');
+    setText(cells[3], has ? r.p95Ms.toFixed(2) : '-');
+    setText(cells[4], String(r.budgetMs));
+    setText(cells[5], r.state === 'running' ? `running, ${r.frames} frames` : resultWord(r));
+    setText(cells[6], v.text);
+    const tr = cells[0].parentElement as HTMLElement;
+    const mark = r.state === 'running' ? 'running' : r.state === 'skipped' ? 'skipped' : r.within === false ? 'over' : r.within ? 'ok' : '';
+    if (tr.dataset.mark !== mark) tr.dataset.mark = mark;
+    const reg = v.regression ? 'regression' : '';
+    if (cells[6].dataset.mark !== reg) cells[6].dataset.mark = reg;
   }
 
   private async start(): Promise<void> {
     setDisabled(this.runBtn, true);
-    setText(this.state, 'Running...');
+    setDisabled(this.saveBtn, true);
+    setDisabled(this.cancelBtn, false);
+    this.abort = new AbortController();
+    this.base = loadBaseline();
+    for (const cells of this.rowNodes.values()) { for (const i of [2, 3, 5, 6]) setText(cells[i], '-'); (cells[0].parentElement as HTMLElement).dataset.mark = ''; }
+    setHidden(this.table, false);
+    setText(this.state, 'Running... Cancel stops it. Each path stops by itself after 4 seconds.');
     try {
-      setText(this.out, await this.run());
-      setHidden(this.out, false);
-      setText(this.state, 'Done.');
+      const done = await this.run({
+        signal: this.abort.signal,
+        onRow: (r) => this.fillRow(r),
+        onProgress: (text) => setText(this.state, `Running: ${text}. Cancel stops it.`),
+      });
+      this.last = done;
+      setText(this.out, benchText(done.result, done.adapter, this.base));
+      setText(this.heap, heapText(done.result));
+      setHidden(this.heap, false);
+      setText(this.state, done.result.cancelled ? 'Cancelled. What was measured is shown.' : 'Done.');
+      setDisabled(this.saveBtn, !done.result.rows.some((r) => r.frames > 0));
     } catch (err) {
       setText(this.state, `The benchmark stopped: ${String(err)}`);
     } finally {
+      this.abort = null;
       setDisabled(this.runBtn, false);
+      setDisabled(this.cancelBtn, true);
     }
+  }
+
+  private saveBase(): void {
+    if (!this.last) return;
+    const ok = saveBaseline(this.last.result.rows);
+    this.base = ok ? loadBaseline() : null;
+    for (const r of this.last.result.rows) this.fillRow(r);
+    setText(this.out, benchText(this.last.result, this.last.adapter, this.base));
+    setText(this.state, ok ? 'Saved this run as the baseline.' : 'The baseline could not be saved in this browser.');
   }
 
   show(): void { this.open(); }

@@ -6,7 +6,7 @@ from playwright.sync_api import Error
 RUN = """async () => {
   const B = await import('/src/gpu/bench.ts'), e = window.formvis.engine;
   const res = await B.runBenchmark(e, 2, 0);
-  return { rows: res.rows.map((x) => ({ test: x.test, path: x.path, frames: x.frames, med: x.medianMs, p90: x.p90Ms })), text: B.benchText(res, 'test adapter'), tabs: e.projects.length };
+  return { rows: res.rows.map((x) => ({ test: x.test, path: x.path, frames: x.frames, med: x.medianMs, p95: x.p95Ms, state: x.state, within: x.within })), text: B.benchText(res, 'test adapter'), tabs: e.projects.length };
 }"""
 
 
@@ -37,5 +37,9 @@ def test_the_harness_reports_finite_timings_for_each_test_and_path(page):
     assert tests == {"Pan: blended and masked layers", "Pan: with Levels and Hue/Saturation layers", "Paint: a dab per frame"}, tests
     assert len({x["path"] for x in r["rows"]}) >= 2, r["rows"]
     for x in r["rows"]:
-        assert x["frames"] == 2 and 0 <= x["med"] <= x["p90"] < 60000, x
-    assert "Median ms" in r["text"] and "test adapter" in r["text"] and "CPU" in r["text"], r["text"]
+        if x["state"] == "skipped":
+            assert x["frames"] == 0, x
+        else:
+            assert 1 <= x["frames"] <= 2 and 0 <= x["med"] <= x["p95"] and isinstance(x["within"], bool), x
+    assert any(x["state"] != "skipped" for x in r["rows"]), r["rows"]
+    assert "P50 ms" in r["text"] and "P95 ms" in r["text"] and "test adapter" in r["text"] and "CPU" in r["text"], r["text"]

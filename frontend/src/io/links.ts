@@ -92,7 +92,8 @@ export async function pickLinkSource(fallback: () => Promise<File | null>): Prom
   if (inDesktopApp()) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const path = await invoke<string | null>('pick_image_path');
+      const { watched } = await import('./disk');
+      const path = await watched(invoke<string | null>('pick_image_path'), null);
       if (!path) return null;
       const source = fromPath(path);
       sources.set(id, source);

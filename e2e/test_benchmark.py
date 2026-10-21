@@ -21,9 +21,10 @@ def test_the_benchmark_times_every_test_and_restores_the_document(page):
     tests = {row.split(" | ")[0] for row in r["rows"]}
     assert tests == {"Pan: blended and masked layers", "Pan: with Levels and Hue/Saturation layers", "Paint: a dab per frame"}, tests
     paths = {row.split(" | ")[1] for row in r["rows"]}
-    assert {"CPU", "CPU (region redraw)", "WebGPU", "WebGL2"} <= paths, paths      # both GPU displays timed here
+    assert {"CPU", "CPU (region redraw)"} <= paths, paths      # both GPU displays are listed, timed or skipped with a reason
+    assert any(p.startswith("WebGPU") for p in paths) and any(p.startswith("WebGL2") for p in paths), paths
     assert not [n for n in r["notes"] if "draws on the CPU" in n], r["notes"]      # the test document stays on the GPU
-    assert "Median ms" in r["text"]
+    assert "P50 ms" in r["text"] and "P95 ms" in r["text"]
 
 
 def test_each_gpu_path_draws_what_the_cpu_draws(page):

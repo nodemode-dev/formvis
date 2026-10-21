@@ -63,15 +63,15 @@ function watchPointer(root: HTMLElement): void {
 
 /** A notice. The same text already showing is kept where it is and shown for its full time again, rather than stacked
  *  a second time, which would push the others up the screen. */
-export function toast(text: string, kind: 'info' | 'error' = 'info', opts: NoticeOptions = {}): void {
+export function toast(text: string, kind: 'info' | 'error' = 'info', opts: NoticeOptions = {}): () => void {
   record(text, kind);
   const root = document.getElementById('toast-root');
-  if (!root) return;
+  if (!root) return () => undefined;
   watchPointer(root);
   const actions = opts.actions ?? [], ms = opts.ms ?? (actions.length ? 10000 : loadPrefs().noticeSeconds * 1000 || (kind === 'error' ? 6000 : 3600)), cls = `cv-toast${kind === 'error' ? ' is-error' : ''}`;
   const arm = (n: Element): void => { window.clearTimeout(timers.get(n)); if (ms > 0) timers.set(n, window.setTimeout(() => n.remove(), ms)); };
   const same = Array.from(root.children).find((n) => (n as HTMLElement).dataset.text === text && n.className === cls && !actions.length && !actionsOf.has(n));
-  if (same) { arm(same); return; }
+  if (same) { arm(same); return () => { window.clearTimeout(timers.get(same)); same.remove(); }; }
   const node = el(`<div class="${cls}" role="status"><span class="cv-toast-text"></span><span class="cv-toast-actions"></span><button class="cv-toast-close" type="button" title="Dismiss" aria-label="Dismiss notice">${icon('close', 12)}</button></div>`);
   node.dataset.text = text;
   node.firstElementChild!.textContent = text;
@@ -84,4 +84,5 @@ export function toast(text: string, kind: 'info' | 'error' = 'info', opts: Notic
   while (root.children.length > 4) root.firstElementChild?.remove();
   clearOfPointer(root);
   arm(node);
+  return () => { window.clearTimeout(timers.get(node)); node.remove(); };
 }

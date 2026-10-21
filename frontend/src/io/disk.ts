@@ -13,15 +13,35 @@ async function invoke<T>(cmd: string, args: Record<string, unknown>): Promise<T>
   return core.invoke<T>(cmd, args);
 }
 
+/** What the page does when a system file dialog has not come back for a while: `slow` is told how to stop waiting
+ *  (the call then answers as cancelled) and returns how to take its notice down when the dialog does come back. A
+ *  desktop file portal that fails a request can leave the dialog call waiting for ever with no dialog on screen. */
+export const dialogWatch: { afterMs: number; slow: ((stop: () => void) => () => void) | null } = { afterMs: 20000, slow: null };
+
+export async function watched<T>(call: Promise<T>, cancelled: T): Promise<T> {
+  let stop: () => void = () => undefined, takeDown: (() => void) | null = null;
+  const gaveUp = new Promise<T>((done) => { stop = () => done(cancelled); });
+  const timer = window.setTimeout(() => { takeDown = dialogWatch.slow?.(stop) ?? null; }, dialogWatch.afterMs);
+  try {
+    return await Promise.race([call, gaveUp]);
+  } finally {
+    window.clearTimeout(timer);
+    (takeDown as (() => void) | null)?.();
+  }
+}
+
+/** The shell's account of what the file dialogs need here (Linux: display, session bus, portal), for the slow-dialog notice. */
+export const fileDialogReport = (): Promise<string> => invoke<string>('file_dialog_report', {});
+
 /** The save panel: the chosen path, or null when it was cancelled. The panel itself asks before replacing a file. */
 export async function chooseSavePath(title: string, defaultPath: string, filters: PanelFilter[]): Promise<string | null> {
-  const path = await invoke<string | null>('plugin:dialog|save', { options: { title, defaultPath, filters, canCreateDirectories: true } });
+  const path = await watched(invoke<string | null>('plugin:dialog|save', { options: { title, defaultPath, filters, canCreateDirectories: true } }), null);
   return typeof path === 'string' && path ? path : null;
 }
 
 /** The open panel: the chosen files, none when it was cancelled. */
 export async function chooseOpenPaths(title: string, filters: PanelFilter[], defaultPath = ''): Promise<string[]> {
-  const picked = await invoke<string | string[] | null>('plugin:dialog|open', { options: { title, multiple: true, directory: false, filters, ...(defaultPath ? { defaultPath } : {}) } });
+  const picked = await watched(invoke<string | string[] | null>('plugin:dialog|open', { options: { title, multiple: true, directory: false, filters, ...(defaultPath ? { defaultPath } : {}) } }), null);
   if (!picked) return [];
   return (Array.isArray(picked) ? picked : [picked]).filter((p): p is string => typeof p === 'string' && !!p);
 }
@@ -57,6 +77,9 @@ const isLaunchRun = (x: unknown): x is LaunchRun => !!x && typeof (x as LaunchRu
 
 /** Linux: keeps the display server chosen in Preferences > Performance (auto, x11 or wayland) for the shell to apply at the next launch. */
 export const setDisplayServer = (server: string): Promise<void> => invoke<void>('set_display_server', { server });
+
+/** The graphics API the native renderer uses from the next launch (auto, vulkan, gl, metal, dx12), kept by the shell. */
+export const setGraphicsBackend = (backend: string): Promise<void> => invoke<void>('set_graphics_backend', { backend });
 
 /** Lets the app exit: every unsaved document was saved or discarded. `cancel` instead says the person called the quit
  *  off, so an update waiting to restart the app does not. */

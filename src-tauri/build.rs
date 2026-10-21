@@ -15,10 +15,12 @@ const APP_COMMANDS: &[&str] = &[
     "native_present",
     "take_pending_opens",
     "take_pending_runs",
+    "file_dialog_report",
     "confirm_exit",
     "check_for_update",
     "install_update",
     "set_display_server",
+    "set_graphics_backend",
     "system_fonts_english",
     "ui_zoom",
 ];

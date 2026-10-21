@@ -197,7 +197,7 @@ def main() -> int:
               "user_agent": got["ua"], "frames": args.frames, "rows": got["res"]["rows"], "notes": got["res"]["notes"], "native": native,
               "matches_cpu": got["checks"], "giant_on_gpu": got["giant"]}
     base.with_suffix(".json").write_text(json.dumps(record, indent=2))
-    rows = "\n".join(f"| {r['test']} | {r['path']} | {r['medianMs']} | {r['p90Ms']} | {r['frames']} |" for r in got["res"]["rows"])
+    rows = "\n".join(f"| {r['test']} | {r['path']} | {r['medianMs']} | {r['p95Ms']} | {r['budgetMs']} | {r['state']} | {r['frames']} |" for r in got["res"]["rows"])
     notes = "\n".join(f"- {n}" for n in got["res"]["notes"]) or "- none"
     checks = "\n".join(f"| {c['path']} | {c['maxDiff']} | {c['share'] * 100:.2f}% | {'matches' if c['share'] >= 0.99 else 'DIFFERS'} |" for c in got["checks"]) or "| (no GPU path to check) | | | |"
     g = got["giant"]   # the window's own display with a giant document (1.63.0)
@@ -214,8 +214,8 @@ def main() -> int:
 | WebGL2 draws on | {got['webgl'] or 'not available'} |
 | WebGPU adapter | {got['webgpu'] or 'not available'} |
 
-| Test | Path | Median ms | 90th percentile ms | Frames |
-|---|---|---|---|---|
+| Test | Path | P50 ms | P95 ms | Budget ms | State | Frames |
+|---|---|---|---|---|---|---|
 {rows}
 
 Each GPU path's picture against the CPU's at actual size (correct when at least 99% of values are within 4 levels,

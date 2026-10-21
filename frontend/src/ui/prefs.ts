@@ -12,7 +12,7 @@ import { placePrefs } from '../engine/smart-object-ops';
 import { transformPrefs } from '../engine/transform';
 import { typePrefs } from '../engine/text';
 import { samplingDefault } from '../engine/types';
-import { hasPanels, setDisplayServer } from '../io/disk';
+import { hasPanels, setDisplayServer, setGraphicsBackend } from '../io/disk';
 import { THEMES, readChoice, setTheme } from './themes';
 import { slicePrefs } from '../extensions/tools/slice';
 import type { RawSharpen, RawSharpenAmount } from '../io/raw-sharpen';
@@ -121,11 +121,18 @@ export interface PagePrefs {
   openAsTabs: boolean;
   /** Preferences > General: Free Transform scales freely and Shift holds the proportions. Preferences > Performance: filter previews run on a small copy, and the Linux display server the desktop shell starts with. */
   legacyTransform: boolean; lowResPreviews: boolean; displayServer: DisplayServer;
+  /** Preferences > Performance: the graphics API the desktop app's native renderer asks for at its next launch. */
+  graphicsBackend: GraphicsBackend;
   /** Preferences > Performance: the plain round brush lays its dab coverage on the GPU. */
   gpuBrushCoverage: boolean;
   /** Preferences > Type: a character the font lacks is drawn in a fallback face, and font menus list the English names. */
   glyphProtection: boolean; fontNamesEnglish: boolean }
 export type DisplayServer = 'auto' | 'x11' | 'wayland';
+export type GraphicsBackend = 'auto' | 'vulkan' | 'gl' | 'metal' | 'dx12';
+/** The graphics APIs the native renderer can use on this system, Automatic first. */
+export const GRAPHICS_BACKENDS: ReadonlyArray<readonly [GraphicsBackend, string]> = /Mac/.test(navigator.platform) ? [['auto', 'Automatic'], ['metal', 'Metal']]
+  : /Win/.test(navigator.platform) ? [['auto', 'Automatic'], ['dx12', 'DirectX 12'], ['vulkan', 'Vulkan'], ['gl', 'OpenGL']]
+    : [['auto', 'Automatic'], ['vulkan', 'Vulkan'], ['gl', 'OpenGL']];
 export const DISPLAY_SERVERS: ReadonlyArray<readonly [DisplayServer, string]> = [['auto', 'Automatic'], ['x11', 'X11'], ['wayland', 'Wayland']];
 export type CanvasBorder = 'none' | 'line' | 'shadow';
 export const CANVAS_BORDERS: ReadonlyArray<readonly [CanvasBorder, string]> = [['none', 'None'], ['line', 'Line'], ['shadow', 'Drop Shadow']];
@@ -133,7 +140,7 @@ export type TypeUnits = 'px' | 'pt';
 export const PAGE_DEFAULTS: PagePrefs = { scratchFolder: '', cursorOnlyCross: false, cursorOther: 'standard', brushPreviewColor: '#ff0000', checkerA: '#ffffff', checkerB: '#cccccc',
   printRes: 300, screenRes: 72, colWidth: 15, gutter: 4.2,
   showExtPanels: true, smartQuotes: false, escCommit: false, placeholderText: false, pinchZoom: true, trackpadRotate: false, scrubAccel: 0, touchGestures: true,
-  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, canvasScrollbarsShown: false, canvasOverscroll: 100, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true, exifColourTag: false, openAsTabs: true, legacyTransform: false, lowResPreviews: false, displayServer: 'auto', gpuBrushCoverage: true, glyphProtection: true, fontNamesEnglish: false };
+  tipHardness: true, snapVectorPx: false, transformReadout: true, rolloverHighlight: true, flickPan: true, channelsColour: false, canvasBorder: 'line', dynamicSliders: true, canvasScrollbarsShown: false, canvasOverscroll: 100, askLayeredTiff: true, typeUnits: 'px', favouriteThemes: [], exportClipboard: true, exifColourTag: false, openAsTabs: true, legacyTransform: false, lowResPreviews: false, displayServer: 'auto', graphicsBackend: 'auto', gpuBrushCoverage: true, glyphProtection: true, fontNamesEnglish: false };
 const hex = (v: unknown, d: string, blank = false): string => (typeof v === 'string' && (blank ? /^(#[0-9a-f]{6})?$/i : /^#[0-9a-f]{6}$/i).test(v) ? v : d);
 const flag = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d);
 const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
@@ -150,6 +157,7 @@ const pageOf = (r: Partial<Record<keyof PagePrefs, unknown>>): PagePrefs => {
     askLayeredTiff: flag(r.askLayeredTiff, d.askLayeredTiff), typeUnits: r.typeUnits === 'pt' ? 'pt' : 'px',
     exportClipboard: flag(r.exportClipboard, d.exportClipboard), exifColourTag: flag(r.exifColourTag, d.exifColourTag), openAsTabs: flag(r.openAsTabs, d.openAsTabs),
     legacyTransform: flag(r.legacyTransform, d.legacyTransform), lowResPreviews: flag(r.lowResPreviews, d.lowResPreviews), displayServer: r.displayServer === 'x11' || r.displayServer === 'wayland' ? r.displayServer : 'auto',
+    graphicsBackend: GRAPHICS_BACKENDS.some(([k]) => k === r.graphicsBackend) ? r.graphicsBackend as GraphicsBackend : 'auto',
     gpuBrushCoverage: flag(r.gpuBrushCoverage, d.gpuBrushCoverage),
     glyphProtection: flag(r.glyphProtection, d.glyphProtection), fontNamesEnglish: flag(r.fontNamesEnglish, d.fontNamesEnglish),
     favouriteThemes: Array.isArray(r.favouriteThemes) ? Array.from(new Set(r.favouriteThemes.filter((x): x is string => typeof x === 'string' && !!THEMES[x]))).slice(0, 30) : [],
@@ -413,6 +421,14 @@ function keepDisplayServer(choice: DisplayServer): void {
   setDisplayServer(choice).catch(() => { keptServer = null; });
 }
 
+let keptBackend: GraphicsBackend | null = null;
+/** Desktop app: the native renderer's graphics API is handed to the shell once per change, for its next launch. */
+function keepGraphicsBackend(choice: GraphicsBackend): void {
+  if (choice === keptBackend || !hasPanels()) return;
+  keptBackend = choice;
+  setGraphicsBackend(choice).catch(() => { keptBackend = null; });
+}
+
 /** Scales the interface's font-size tokens (--fs-9 to --fs-18) to the chosen size, and the rules that still write a size in
  *  pixels with them. */
 export function applyUiFontSize(p: Prefs): void {
@@ -528,6 +544,7 @@ export function applyPrefs(engine: Engine, p: Prefs): void {
   samplingDefault.value = p.interpolation === 'nearest' ? 'nearest' : p.interpolation === 'smooth' || p.interpolation === 'bilinear' ? 'smooth' : 'high';
   if (typePrefs.glyphProtection !== p.glyphProtection) { typePrefs.glyphProtection = p.glyphProtection; engine.emit('render', null); }
   keepDisplayServer(p.displayServer);
+  keepGraphicsBackend(p.graphicsBackend);
   if (p.pressureCurve !== appliedCurve) { appliedCurve = p.pressureCurve; engine.pressureCurve = PRESSURE_POINTS[p.pressureCurve]; }   // only when the choice changes, so a tool's own pick is not undone by another setting
   placePrefs.fit = p.placeFit; placePrefs.smart = p.placeSmart;
   followSystemTheme(p);

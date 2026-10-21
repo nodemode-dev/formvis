@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.94.8 · 2026-10-21
+
+- File dialogs: a system file dialog that has not come back after 20 seconds (a desktop file portal that failed the request leaves it waiting with nothing on screen) brings a notice with Stop waiting, which cancels the wait and shows what the dialogs need on this computer, including whether the file portal is used.
+- Preferences > Performance: Native Renderer Graphics API (desktop app, next launch): Automatic, Vulkan or OpenGL on Linux, Metal on macOS, DirectX 12, Vulkan or OpenGL on Windows. A WGPU_BACKEND set in the environment still wins.
+- Performance Benchmark: a Run always finishes (a 4 second cap per path, a path that is unavailable or too slow skipped with the reason, progress and Cancel), reports P50 and P95 per path against a budget with the peak JavaScript heap, and compares with a saved baseline, flagging a rise over 20 percent.
+- Help: the Launch arguments section no longer outranks the agents section for questions about Claude Desktop (a unit test failed since 1.94.6).
+
 ## 1.94.7 · 2026-10-21
 
 - Color: on Linux the desktop app reads the profile of the screen its window is on (`_ICC_PROFILE_<n>` for screen n, the first screen's profile when a screen has none of its own), and reads it again when the window is moved, not only when it gains focus.

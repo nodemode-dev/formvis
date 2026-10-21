@@ -441,12 +441,19 @@ fn dialog_report() -> String {
     let uid = std::fs::metadata("/proc/self").map(|m| m.uid()).unwrap_or(0);
     let bus = var("DBUS_SESSION_BUS_ADDRESS").is_some() || std::path::Path::new(&format!("/run/user/{uid}/bus")).exists();
     let tools: Vec<&str> = ["zenity", "kdialog"].into_iter().filter(|tool| on_path(tool)).collect();
+    let sandboxed = std::path::Path::new("/.flatpak-info").exists() || var("SNAP").is_some();
+    let portal = if sandboxed || var("GTK_USE_PORTAL").as_deref() == Some("1") {
+        "used (the desktop's file portal draws the dialog; a portal that fails a request can leave it waiting with no dialog shown, see xdg-desktop-portal's log)"
+    } else {
+        "not used (GTK draws the dialog itself)"
+    };
     format!(
-        "session: {}, DISPLAY={}, WAYLAND_DISPLAY={}\nsession bus: {}\nzenity and kdialog: {}\nThe dialogs are GTK 3 and need a display; run libcheck --dialogs (installed as /usr/share/formvis/libcheck, or setup/libcheck) for the full report.",
+        "session: {}, DISPLAY={}, WAYLAND_DISPLAY={}\nsession bus: {}\nfile portal: {}\nzenity and kdialog: {}\nThe dialogs are GTK 3 and need a display; run libcheck --dialogs (installed as /usr/share/formvis/libcheck, or setup/libcheck) for the full report.",
         var("XDG_SESSION_TYPE").unwrap_or_else(|| "unknown".into()),
         var("DISPLAY").unwrap_or_else(|| "unset".into()),
         var("WAYLAND_DISPLAY").unwrap_or_else(|| "unset".into()),
         if bus { "present" } else { "none found" },
+        portal,
         if tools.is_empty() { "neither is installed (formvis does not need them)".to_string() } else { format!("{} installed", tools.join(" and ")) },
     )
 }
@@ -454,6 +461,12 @@ fn dialog_report() -> String {
 #[cfg(not(target_os = "linux"))]
 fn dialog_report() -> String {
     "The system's file dialog did not open.".to_string()
+}
+
+/// The page asks for the report when a file dialog has not come back for a while.
+#[tauri::command]
+fn file_dialog_report() -> String {
+    dialog_report()
 }
 
 /// Portable Windows zip: a file named portable or portable.txt beside the program keeps the web view's data (settings
@@ -517,6 +530,42 @@ fn set_display_server(server: String) -> Result<(), String> {
     #[cfg(not(target_os = "linux"))]
     let _ = server;
     Ok(())
+}
+
+/// The graphics API the native renderer asks wgpu for, kept beside the display server choice.
+fn graphics_backend_file() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "linux")]
+    return display_server_file().map(|f| f.with_file_name("graphics-backend"));
+    #[cfg(windows)]
+    return std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join("formvis").join("graphics-backend"));
+    #[cfg(target_os = "macos")]
+    return std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Library").join("Application Support").join("formvis").join("graphics-backend"));
+    #[allow(unreachable_code)]
+    None
+}
+
+const GRAPHICS_BACKENDS: [&str; 4] = ["vulkan", "gl", "metal", "dx12"];
+
+/// Sets WGPU_BACKEND, which the native renderer's wgpu instance reads, for an explicit choice made in Preferences; a
+/// value the person already set in the environment is never replaced. The engine and other children inherit it.
+fn apply_graphics_backend() {
+    let Some(file) = graphics_backend_file() else { return };
+    let choice = std::fs::read_to_string(file).unwrap_or_default();
+    let choice = choice.trim();
+    if GRAPHICS_BACKENDS.contains(&choice) && std::env::var_os("WGPU_BACKEND").is_none() {
+        std::env::set_var("WGPU_BACKEND", choice);
+    }
+}
+
+/// Keeps the native renderer's graphics API (auto, vulkan, gl, metal or dx12) for the next launch.
+#[tauri::command]
+fn set_graphics_backend(backend: String) -> Result<(), String> {
+    let choice = if GRAPHICS_BACKENDS.contains(&backend.as_str()) { backend.as_str() } else { "auto" };
+    let file = graphics_backend_file().ok_or_else(|| "no home folder to keep the choice in".to_string())?;
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(file, choice).map_err(|e| e.to_string())
 }
 
 /// The value of --user-data-dir in a launch's arguments, as "--user-data-dir=PATH" or "--user-data-dir PATH".
@@ -589,6 +638,7 @@ fn main() {
     portable_web_view_data();
     #[cfg(target_os = "linux")]
     apply_display_server();
+    apply_graphics_backend();
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.on_web_content_process_terminate(window_state::on_renderer_stopped);
@@ -618,9 +668,11 @@ fn main() {
             check_for_update,
             install_update,
             set_display_server,
+            set_graphics_backend,
             system_fonts,
             system_fonts_english,
             pick_image_path,
+            file_dialog_report,
             note_recent_document,
             display::display_profile,
             window_state::ui_zoom,

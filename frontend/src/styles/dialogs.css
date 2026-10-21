@@ -60,6 +60,16 @@
 /* Help > Performance Benchmark: the results, as copyable plain text. */
 .cv-bench-out { display: block; margin: 8px 0; padding: 8px 10px; max-height: 50vh; overflow: auto; white-space: pre; font: var(--fs-11)/1.5 var(--font-mono); background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; }
 .cv-bench-out[hidden] { display: none; }
+.cv-bench-wrap { margin: 8px 0; max-height: 50vh; overflow: auto; border: 1px solid var(--border-color); border-radius: 6px; }
+.cv-bench-wrap[hidden] { display: none; }
+.cv-bench-table { width: 100%; border-collapse: collapse; font-size: var(--fs-11); }
+.cv-bench-table th, .cv-bench-table td { padding: 4px 8px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--border-color); }
+.cv-bench-table td:nth-child(6) { white-space: normal; min-width: 200px; }
+.cv-bench-table th { color: var(--text-secondary); font-weight: 600; }
+.cv-bench-table tr[data-mark="over"] td:nth-child(6) { color: var(--danger-text); }
+.cv-bench-table tr[data-mark="ok"] td:nth-child(6) { color: var(--text-primary); }
+.cv-bench-table tr[data-mark="skipped"] td, .cv-bench-table tr[data-mark="running"] td { color: var(--text-secondary); }
+.cv-bench-table td[data-mark="regression"] { color: var(--danger-text); }
 /* Window > Paragraph Styles: the style list and its actions. */
 .cv-pstyle-list { width: 100%; min-height: 120px; }
 .cv-pstyle-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
