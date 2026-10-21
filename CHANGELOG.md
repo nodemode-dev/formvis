@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.94.7 · 2026-10-21
+
+- Color: on Linux the desktop app reads the profile of the screen its window is on (`_ICC_PROFILE_<n>` for screen n, the first screen's profile when a screen has none of its own), and reads it again when the window is moved, not only when it gains focus.
+- Desktop tests: the Assistant's question sets the window's urgency hint on Linux when the window is in the background, and moving the window makes the page read the monitor profile again.
+
 ## 1.94.6 · 2026-10-21
 
 - Desktop: launch arguments run things after the files they name open: `--command <id>`, `--action <name>` and `--script <file>`, in order; a second launch passes them to the open window. A script file is no longer taken for a picture to open. One that cannot run is a notice and the rest still run.

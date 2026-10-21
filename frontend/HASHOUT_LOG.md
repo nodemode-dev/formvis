@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Monitor profile per screen and on move · _v1.94.7 (src-tauri/src/display.rs, ui/colour.ts)
+
+- display.rs: display_profile takes the window and reads the profile for its screen's place among the system's screens, sorted left to right then top to bottom, as X screens of a side-by-side setup are numbered (the ICC Profiles in X convention: `_ICC_PROFILE` for the first, `_ICC_PROFILE_<n>` for screen n; a screen without its own falls back to the first). The answer carries `monitor`. macOS and Windows still read the main display only. The Rust test sets `_ICC_PROFILE_1` and reads it back for screen 1.
+- colour.ts: besides window focus, the shell's move event (settled for 400 ms) reads the profile again, so a window dragged to another screen redraws through that screen's profile without being clicked.
+- Testing: Xvfb has one output, and GDK lists only RandR monitors that have one, so two screens cannot be made here; the desktop test checks the re-read on move. Keep an X connection open while setting root properties on Xvfb: it resets, dropping them, when its last client leaves.
+- SC-AI-0108 (no code change): e2e/desktop/test_linux_desktop_attention.py shows the Assistant's question moving WM_HINTS from flags 103 to 359 (XUrgencyHint) with the window unfocused, and no change while focused. Its fake model is set on the shared engine for a few seconds and the previous row restored.
+
 ## Launch arguments that run something · _v1.94.6 (src-tauri/src/main.rs, src-tauri/build.rs, src-tauri/capabilities/default.json, io/disk.ts, app.ts)
 
 - main.rs runs_from_args: `--command`, `--action` and `--script` each take the next argument; a script is read in the shell (a page served from the engine cannot read a path) and sent as text, at most 200 KB, or as an `error` run the page reports. paths_from_args skips the value after these flags, so a .js given to `--script` is not opened as a document. The runs share OpenQueue with the files: queued until the page calls take_pending_runs, then emitted as `formvis://launch-runs`; the single-instance callback forwards a second launch's runs the same way. take_pending_runs is in build.rs APP_COMMANDS and the capability list, since the window's origin is remote.

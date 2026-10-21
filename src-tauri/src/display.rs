@@ -14,6 +14,8 @@ pub struct DisplayProfile {
     pub icc: Option<String>,
     pub bytes: usize,
     pub note: String,
+    /// The screen the profile was read for (0 is the first).
+    pub monitor: usize,
 }
 
 const MAX_BYTES: usize = 8 * 1024 * 1024;
@@ -41,8 +43,21 @@ fn base64(data: &[u8]) -> String {
     out
 }
 
+/// The X property for screen `index` under the ICC Profiles in X convention: `_ICC_PROFILE` for the first screen and
+/// `_ICC_PROFILE_<n>` for screen n. A later screen without its own property reads the first screen's, as a single
+/// profile set by a daemon for every screen is common.
 #[cfg(target_os = "linux")]
-fn x11() -> Result<Vec<u8>, String> {
+fn x11(index: usize) -> Result<Vec<u8>, String> {
+    if index > 0 {
+        if let Ok(data) = x11_atom(&format!("_ICC_PROFILE_{index}")) {
+            return Ok(data);
+        }
+    }
+    x11_atom("_ICC_PROFILE")
+}
+
+#[cfg(target_os = "linux")]
+fn x11_atom(property: &str) -> Result<Vec<u8>, String> {
     use std::ffi::{c_void, CString};
     use std::os::raw::{c_int, c_long, c_uchar, c_ulong};
     use x11_dl::xlib::{AnyPropertyType, False, Xlib};
@@ -57,7 +72,7 @@ fn x11() -> Result<Vec<u8>, String> {
             return Err("the X display could not be opened".into());
         }
         let root = (xlib.XDefaultRootWindow)(display);
-        let name = CString::new("_ICC_PROFILE").map_err(|e| e.to_string())?;
+        let name = CString::new(property).map_err(|e| e.to_string())?;
         let atom = (xlib.XInternAtom)(display, name.as_ptr(), False);
         let (mut kind, mut format, mut count, mut after): (c_ulong, c_int, c_ulong, c_ulong) = (0, 0, 0, 0);
         let mut data: *mut c_uchar = std::ptr::null_mut();
@@ -65,7 +80,7 @@ fn x11() -> Result<Vec<u8>, String> {
         let out = if status == 0 && !data.is_null() && format == 8 && count > 0 {
             Ok(std::slice::from_raw_parts(data, count as usize).to_vec())
         } else {
-            Err(format!("the X root window has no _ICC_PROFILE property (no profile is installed for this screen; request {status}, format {format}, items {count})"))
+            Err(format!("the X root window has no {property} property (no profile is installed for this screen; request {status}, format {format}, items {count})"))
         };
         if !data.is_null() {
             (xlib.XFree)(data as *mut c_void);
@@ -96,15 +111,15 @@ fn colord() -> Result<Vec<u8>, String> {
 }
 
 #[cfg(target_os = "linux")]
-fn system() -> Result<(&'static str, Vec<u8>), String> {
-    match x11() {
+fn system(index: usize) -> Result<(&'static str, Vec<u8>), String> {
+    match x11(index) {
         Ok(data) => Ok(("x11", data)),
         Err(first) => colord().map(|data| ("colord", data)).map_err(|second| format!("{first}; {second}")),
     }
 }
 
 #[cfg(target_os = "macos")]
-fn system() -> Result<(&'static str, Vec<u8>), String> {
+fn system(_index: usize) -> Result<(&'static str, Vec<u8>), String> {
     use std::ffi::c_void;
     #[link(name = "CoreGraphics", kind = "framework")]
     extern "C" {
@@ -136,7 +151,7 @@ fn system() -> Result<(&'static str, Vec<u8>), String> {
 }
 
 #[cfg(windows)]
-fn system() -> Result<(&'static str, Vec<u8>), String> {
+fn system(_index: usize) -> Result<(&'static str, Vec<u8>), String> {
     use std::ffi::c_void;
     use std::os::windows::ffi::OsStringExt;
     #[link(name = "user32")]
@@ -172,25 +187,33 @@ fn system() -> Result<(&'static str, Vec<u8>), String> {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-fn system() -> Result<(&'static str, Vec<u8>), String> {
+fn system(_index: usize) -> Result<(&'static str, Vec<u8>), String> {
     Err("this system has no display profile source".into())
 }
 
-/// What the system says about the screen's profile, as the page's `display_profile` command returns it.
-pub fn read() -> DisplayProfile {
+/// What the system says about the profile of screen `index` (0 is the first), as the page's `display_profile` command returns it.
+pub fn read(index: usize) -> DisplayProfile {
     let found = match std::env::var("FORMVIS_DISPLAY_PROFILE") {
         Ok(path) if !path.is_empty() => std::fs::read(&path).map(|data| ("file", data)).map_err(|e| format!("FORMVIS_DISPLAY_PROFILE {path}: {e}")),
-        _ => system(),
+        _ => system(index),
     };
     match found.and_then(|(source, data)| valid(&data).map(|_| (source, data))) {
-        Ok((source, data)) => DisplayProfile { available: true, source, bytes: data.len(), icc: Some(base64(&data)), note: String::new() },
-        Err(note) => DisplayProfile { available: false, source: "none", bytes: 0, icc: None, note },
+        Ok((source, data)) => DisplayProfile { available: true, source, bytes: data.len(), icc: Some(base64(&data)), note: String::new(), monitor: index },
+        Err(note) => DisplayProfile { available: false, source: "none", bytes: 0, icc: None, note, monitor: index },
     }
 }
 
+/// The place of the screen the window is on among the system's screens, ordered by position (left to right, then top
+/// to bottom) as the X screens of a side-by-side setup are numbered; 0 when it cannot be told.
+fn monitor_index(window: &tauri::WebviewWindow) -> usize {
+    let (Ok(Some(current)), Ok(mut all)) = (window.current_monitor(), window.available_monitors()) else { return 0 };
+    all.sort_by_key(|m| (m.position().x, m.position().y));
+    all.iter().position(|m| m.position() == current.position() && m.size() == current.size()).unwrap_or(0)
+}
+
 #[tauri::command]
-pub fn display_profile() -> DisplayProfile {
-    read()
+pub fn display_profile(window: tauri::WebviewWindow) -> DisplayProfile {
+    read(monitor_index(&window))
 }
 
 #[cfg(test)]
@@ -221,7 +244,7 @@ mod tests {
     fn the_x11_root_window_property_is_read_back() {
         use std::ffi::CString;
         use x11_dl::xlib::{PropModeReplace, Xlib, XA_CARDINAL};
-        let status_without = serde_json::to_string(&read()).unwrap();
+        let status_without = serde_json::to_string(&read(0)).unwrap();
         println!("status before: {status_without}");
         if std::env::var_os("DISPLAY").map_or(true, |d| d.is_empty()) {
             println!("no X display here; the status above is what the page would receive");
@@ -244,13 +267,32 @@ mod tests {
             (xlib.XSync)(display, 0);
             display
         };
-        let got = read();
+        let got = read(0);
         println!("status after: {}", serde_json::to_string(&DisplayProfile { icc: got.icc.as_ref().map(|s| format!("<{} base64 characters>", s.len())), ..got }).unwrap());
-        let again = read();
+        let again = read(0);
         assert!(again.available, "{}", again.note);
         assert_eq!(again.source, "x11");
         assert_eq!(again.bytes, profile.len());
         assert_eq!(again.icc.unwrap(), base64(&profile));
-        unsafe { (xlib.XCloseDisplay)(keep) };
+        // A second screen with its own _ICC_PROFILE_1 reads that one; a third without one reads the first screen's.
+        let mut second = profile.clone();
+        second.truncate(2000);
+        second[..4].copy_from_slice(&2000u32.to_be_bytes());
+        unsafe {
+            let root = (xlib.XDefaultRootWindow)(keep);
+            let atom = (xlib.XInternAtom)(keep, CString::new("_ICC_PROFILE_1").unwrap().as_ptr(), 0);
+            (xlib.XChangeProperty)(keep, root, atom, XA_CARDINAL, 8, PropModeReplace, second.as_ptr(), second.len() as i32);
+            (xlib.XSync)(keep, 0);
+        }
+        let on_second = read(1);
+        assert_eq!((on_second.bytes, on_second.monitor), (2000, 1));
+        assert_eq!(on_second.icc.unwrap(), base64(&second));
+        assert_eq!(read(2).bytes, profile.len());
+        unsafe {
+            let root = (xlib.XDefaultRootWindow)(keep);
+            let atom = (xlib.XInternAtom)(keep, CString::new("_ICC_PROFILE_1").unwrap().as_ptr(), 0);
+            (xlib.XDeleteProperty)(keep, root, atom);
+            (xlib.XCloseDisplay)(keep)
+        };
     }
 }

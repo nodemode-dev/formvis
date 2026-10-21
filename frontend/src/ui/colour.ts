@@ -115,6 +115,11 @@ export class ColourView {
     for (const k of ['projects', 'doc', 'active'] as const) engine.on(k, () => void this.refresh());
     void this.detect();
     window.addEventListener('focus', () => void this.detect());
+    // In the desktop app a window dragged to another screen reads that screen's profile once it settles.
+    if ('__TAURI_INTERNALS__' in window) {
+      let settle = 0;
+      void import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().onMoved(() => { window.clearTimeout(settle); settle = window.setTimeout(() => void this.detect(), 400); })).catch(() => undefined);
+    }
   }
 
   /** Chooses a built-in preset (null returns to the saved device) and turns Proof Colors on (the View > Proof Setup commands). */
