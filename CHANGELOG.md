@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.95.7 · 2026-10-21
+
+- Desktop app: fixes "The formvis engine failed to start" in 1.95.6. The frozen engine left out the fal catalogue (`backend/app/data`), and the MCP router reads it at import, so the engine exited before it listened. The freeze scripts now bundle that folder, the engine finds it under the bundle's own folder, and a missing or damaged catalogue is an empty list instead of a crash.
+- Build: `--selfcheck` now imports the whole app as the server does and fails the freeze when the catalogue is empty, so this kind of miss stops `./build_app` instead of the app. The Windows freeze script also gained a missing space before `--add-data`.
+
 ## 1.95.6 · 2026-10-21
 
 - fal models: a curated catalogue of 51 fal endpoints (`backend/app/data/fal_models.json`, built from the fal model schemas the owner keeps in NodeMode) for the models the ledger had deferred or declined, and nothing else. The engine runs them through fal's queue (`/api/fal/models`, `/api/fal/run`), checks every input against the model's own schema and sends pictures and masks to the schema's own keys.

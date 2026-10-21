@@ -21,8 +21,20 @@ def selfcheck() -> int:
 
     info["formvis"] = __version__
     info["dist_bundled"] = os.path.isdir(os.path.join(resource_dir(), "frontend_dist"))
+    # The whole app is imported as the server would import it, so a module that fails at import (a data file left out
+    # of the bundle, 1.95.7) fails the build here instead of the engine failing to start on the person's computer.
+    try:
+        import app.main  # noqa: F401
+        from app.services import fal_run
+
+        info["app"] = "ok"
+        info["fal_models"] = len(fal_run.models())
+    except Exception as exc:
+        info["app"] = f"failed: {exc!r}"
+        print(json.dumps(info))
+        return 1
     print(json.dumps(info))
-    return 0
+    return 0 if info["fal_models"] else 1
 
 
 def watch_parent() -> None:

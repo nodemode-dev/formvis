@@ -10,6 +10,7 @@ import io
 import json
 import os
 import re
+import sys
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -20,7 +21,7 @@ from PIL import Image
 from app.services import generative
 from app.services.generative import GenerativeError
 
-CATALOGUE = Path(__file__).resolve().parent.parent / "data" / "fal_models.json"
+CATALOGUE = Path(getattr(sys, "_MEIPASS", str(Path(__file__).resolve().parent.parent))) / "data" / "fal_models.json"
 POLL_LIMIT = 600
 IMAGE_KEY = re.compile(r"^(?:[a-z0-9_]*image|[a-z0-9_]*mask)_urls?$")
 MAX_IMAGE_BYTES = 60 * 1024 * 1024
@@ -39,7 +40,12 @@ def _poll_seconds() -> float:
 
 @lru_cache(maxsize=1)
 def _catalogue() -> dict:
-    return json.loads(CATALOGUE.read_text(encoding="utf-8"))
+    """The catalogue, or an empty one when the file is missing or damaged: the engine must start without it."""
+    try:
+        data = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"models": []}
+    return data if isinstance(data, dict) and isinstance(data.get("models"), list) else {"models": []}
 
 
 def models() -> list[dict]:

@@ -17,6 +17,7 @@ pyinstaller --noconfirm --clean --onefile --name formvis-engine \
   --distpath dist-engine --workpath build/pyinstaller --specpath build/pyinstaller \
   --add-data "$FORMVIS_ROOT/frontend/dist${sep}frontend_dist" \
   --add-data "$FORMVIS_ROOT/backend/app/profiles${sep}profiles" \
+  --add-data "$FORMVIS_ROOT/backend/app/data${sep}data" \
   --add-data "$FORMVIS_ROOT/setup/mcp_stdio.py${sep}setup" --add-data "$FORMVIS_ROOT/setup/agents.py${sep}setup" \
   --collect-submodules app --collect-submodules uvicorn --collect-submodules keyring --hidden-import cv2 --hidden-import OpenEXR \
   --exclude-module pillow_heif "${extra[@]}" \
