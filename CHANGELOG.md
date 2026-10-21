@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.95.9 · 2026-10-21
+
+- macOS app: the traffic lights are centred in the title row. 1.95.8 placed them more often but with the same arithmetic as before, which never moved them vertically; the shell now sets their height as well as their left edge, and no longer lets the window layer reapply its own placement on redraw.
+
 ## 1.95.8 · 2026-10-21
 
 - macOS app: the traffic lights sit in the title row on the Home screen too, not only once a document is open. The shell places them again after every title change, page load, resize, focus change and theme or screen change, since macOS puts them back at its own place whenever it lays the title bar out.

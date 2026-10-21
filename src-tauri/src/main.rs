@@ -788,8 +788,7 @@ fn main() {
                         #[cfg(target_os = "macos")]
                         let builder = builder
                             .title_bar_style(tauri::TitleBarStyle::Overlay)
-                            .hidden_title(true)
-                            .traffic_light_position(tauri::LogicalPosition::new(traffic_lights::INSET.0, traffic_lights::INSET.1));
+                            .hidden_title(true);
                         let builder = builder.on_page_load(|window, payload| {
                             if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
                                 traffic_lights::place(&window.as_ref().window());
