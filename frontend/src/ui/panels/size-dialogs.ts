@@ -43,6 +43,7 @@ export class CanvasSizeDialog extends Dialog {
 
   constructor(private readonly engine: Engine) {
     super('Canvas Size', 420);
+    this.scrim.classList.add('cv-scrim-size');
     const grid = el('<div class="cv-anchor-grid" role="group" aria-label="Anchor"></div>');
     for (let i = 0; i < 9; i++) {
       const b = el(`<button type="button" class="cv-anchor" aria-label="Anchor ${i + 1}"></button>`) as HTMLButtonElement;
@@ -185,6 +186,7 @@ export class ImageSizeDialog extends Dialog {
 
   constructor(private readonly engine: Engine) {
     super('Image Size', 420);
+    this.scrim.classList.add('cv-scrim-size');
     this.body.append(this.note, this.width.el, this.height.el, this.units.el, this.resolution.el, this.lock.el, this.resampleOn.el, this.resample.el, this.styles.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());

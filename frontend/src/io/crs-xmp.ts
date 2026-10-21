@@ -1,4 +1,4 @@
-import { defaultDevelopState, defaultNoise, defaultParametric, HSL_BANDS, type CurvePoint, type DevelopState, type HslBand } from '../engine/develop';
+import { defaultDevelopState, defaultNoise, defaultParametric, glowOf, HSL_BANDS, type CurvePoint, type DevelopState, type GlowState, type HslBand } from '../engine/develop';
 
 /** Camera Raw settings as an .xmp sidecar: the Develop state's light, colour, mixer, curves, detail, noise and effects
  *  written as raw-settings attributes, and read back from any such file (settings this editor has no control for are
@@ -16,6 +16,10 @@ const FIELDS: Field[] = [
   tone('exposure', 'Exposure2012', 100), tone('contrast', 'Contrast2012'), tone('highlights', 'Highlights2012'), tone('shadows', 'Shadows2012'),
   tone('whites', 'Whites2012'), tone('blacks', 'Blacks2012'), tone('temperature', 'IncrementalTemperature'), tone('tint', 'IncrementalTint'),
   tone('vibrance', 'Vibrance'), tone('saturation', 'Saturation'), tone('dehaze', 'Dehaze'), tone('vignette', 'PostCropVignetteAmount'), tone('grain', 'GrainAmount'),
+  ...(['amount:GlowAmount', 'radius:GlowRadius', 'threshold:GlowThreshold', 'warmth:GlowWarmth', 'diffusion:GlowDiffusion'] as const).map((pair): Field => {
+    const [k, attr] = pair.split(':') as [keyof GlowState, string];
+    return { attr, get: (s) => glowOf(s)[k], set: (s, v) => { s.glow = { ...glowOf(s), [k]: v }; } };
+  }),
   { attr: 'Clarity2012', get: (s) => s.detail.clarity, set: (s, v) => { s.detail.clarity = v; } },
   { attr: 'Texture', get: (s) => s.detail.texture, set: (s, v) => { s.detail.texture = v; } },
   { attr: 'Sharpness', scale: 1 / 1.5, get: (s) => s.detail.sharpen, set: (s, v) => { s.detail.sharpen = v; } },

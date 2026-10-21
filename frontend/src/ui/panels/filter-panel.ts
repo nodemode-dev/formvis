@@ -1118,7 +1118,7 @@ export class FilterPanel extends Dialog {
     }
     if (kind === 'lensBlur') { const i = settings.lensIris as Partial<LensIris> | undefined; return (i?.source === 'depthMap' || i?.source === 'channel') && !i.depth; }
     if (!isLibKind(kind)) return false;
-    const values = libValues(kind, (settings.lib as Record<string, unknown> | undefined)?.[kind]), gap = libFilter(kind).params.find((p) => p.kind === 'image' && !values[p.key]), why = libFilter(kind).invalid?.(values);
+    const values = libValues(kind, (settings.lib as Record<string, unknown> | undefined)?.[kind]), gap = libFilter(kind).params.find((p) => p.kind === 'image' && !p.optional && !values[p.key]), why = libFilter(kind).invalid?.(values);
     if (why) { this.engine.notice(why); return true; }
     if (gap) this.engine.notice(`${FILTER_LABELS[kind]} needs its ${gap.label.toLowerCase()}: choose an open document.`);
     const raw = (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind], named = gap ? undefined : libPathParams(kind).find((k) => typeof raw?.[k] === 'string');

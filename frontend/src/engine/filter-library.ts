@@ -46,7 +46,7 @@ export type LibParam =
   | { readonly key: string; readonly label: string; readonly kind: 'curve'; readonly min: number; readonly max: number; readonly def: readonly number[] }
   | { readonly key: string; readonly label: string; readonly kind: 'seed'; readonly def: number }
   | { readonly key: string; readonly label: string; readonly kind: 'color'; readonly def: string }
-  | { readonly key: string; readonly label: string; readonly kind: 'image'; readonly def: null }
+  | { readonly key: string; readonly label: string; readonly kind: 'image'; readonly def: null; readonly optional?: boolean }
   | { readonly key: string; readonly label: string; readonly kind: 'path'; readonly def: null }
   | { readonly key: string; readonly label: string; readonly kind: 'effects'; readonly def: readonly LibEffect[]; readonly clean: (v: unknown, sane: (p: LibParam, v: unknown) => LibValue) => LibEffect[] };
 

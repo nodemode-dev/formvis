@@ -292,7 +292,7 @@ export const DITHER_FILTERS: LibFilter[] = [
     id: 'haze', label: 'Haze by Depth', group: 'Render', grows: false,
     note: 'Without a depth picture the haze grows toward the top of the frame.',
     params: [
-      { key: 'depth', label: 'Depth Picture (white is far)', kind: 'image', def: null },
+      { key: 'depth', label: 'Depth Picture (white is far)', kind: 'image', def: null, optional: true },
       { key: 'invert', label: 'Invert Depth', kind: 'check', def: false },
       { key: 'colour', label: 'Haze Color', kind: 'color', def: '#c9d6e6' },
       { key: 'density', label: 'Density (%)', kind: 'range', min: 0, max: 100, step: 1, def: 60 },

@@ -742,7 +742,7 @@ export class PropertiesColumn {
       const face = `${t.family}|${t.bold}|${t.italic}`;
       if (face !== axesFace) {
         axesFace = face;
-        void axesOf(t.family, t.bold, t.italic).then((found) => { if (axesFace === face) axes.placeholder = found?.length ? found.map((a) => `${a.tag} ${a.min}-${a.max}`).join(', ') : 'No variable axes in this font'; });
+        void axesOf(t.family, t.bold, t.italic).then((found) => { if (axesFace === face) axes.placeholder = found?.length ? found.map((a) => `${a.tag} ${a.min}-${a.max}`).join(', ') : 'No variable axes'; });
       }
     });
   }

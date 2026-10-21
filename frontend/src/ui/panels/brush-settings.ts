@@ -24,7 +24,8 @@ export class BrushSettingsDialog extends Dialog {
   private redraw: () => void = () => undefined;
 
   constructor(private readonly engine: Engine) {
-    super('Brush Settings', 440);
+    super('Brush Settings', 520);
+    this.scrim.classList.add('cv-scrim-brushset');
     const s = (): BrushShape => this.engine.brushShape;
     // The shape last set stays across reloads: it is put back here, when the app builds, so the first stroke uses it.
     const kept = recalled('Brush Settings', 'shape');

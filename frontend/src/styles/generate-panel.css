@@ -13,7 +13,7 @@
 
 /* Generate */
 .cv-genp-prompt { width: 100%; height: auto; min-height: 54px; padding: 6px var(--space-2); resize: vertical; line-height: 1.4; font-family: inherit; }
-.cv-genp-row { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: var(--space-2); color: var(--text-secondary); font-size: var(--fs-12); }
+.cv-genp-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: var(--space-2); color: var(--text-secondary); font-size: var(--fs-12); }
 .cv-genp-row .cv-input { width: 100%; }
 .cv-genp-custom[hidden] { display: none; }
 .cv-genp-check { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }

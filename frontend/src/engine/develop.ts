@@ -696,7 +696,7 @@ export function developDeep(data: Float32Array, n: number, w: number, h: number,
   const out = new Float32Array(data.length);
   developPass(src, out, w, h, st, seed, true);
   const parametric = parametricOf(state), point = pointColorOf(state), grading = gradingOf(state), calibration = calibrationOf(state), d = state.detail;
-  const later = parametricActive(parametric) || pointColorActive(point) || gradingActive(grading) || calibrationActive(calibration) || detailActive(d) || opticsActive(optics) || geometryActive(geometry);
+  const glow = glowOf(state), later = parametricActive(parametric) || pointColorActive(point) || gradingActive(grading) || calibrationActive(calibration) || detailActive(d) || opticsActive(optics) || geometryActive(geometry) || glowActive(glow);
   if (!later) return out;
   let img: Px = { width: w, height: h, data: scaled(out, 255) };
   if (parametricActive(parametric)) {
@@ -711,6 +711,7 @@ export function developDeep(data: Float32Array, n: number, w: number, h: number,
   if (opticsActive(optics)) img = opticsPass(img, optics);
   if (geometryActive(geometry)) img = geometryPass(img, geometry);
   if (post) vignettePostPass(img, state);
+  if (glowActive(glow)) bloom(glow.amount / 100, glow.radius, glow.threshold / 100, null, glow.warmth, glow.diffusion)(img.data, { width: w, height: h, originX: 0, originY: 0, unitsPerPixel: 1 });
   return scaled(img.data as Float32Array, 1 / 255);
 }
 

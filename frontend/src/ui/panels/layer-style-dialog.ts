@@ -38,7 +38,8 @@ export class LayerStyleDialog extends Dialog {
   private readonly syncs: Array<() => void> = [];
 
   constructor(private readonly engine: Engine, private readonly deliver: (blob: Blob, name: string) => Promise<void>) {
-    super('Layer Style', 420);
+    super('Layer Style', 480);
+    this.scrim.classList.add('cv-scrim-lstyle');
     const fx = (): LayerEffects => this.fx;
     const check = (label: string, get: () => boolean, set: (v: boolean) => void): void => {
       const row = checkRow(label, (v) => { set(v); this.changed(); });
@@ -124,7 +125,7 @@ export class LayerStyleDialog extends Dialog {
       presetPick.value = '';
     });
     const bl = (): LayerStyleDialog['blending'] => this.blending;
-    this.body.appendChild(el('<p class="cv-dialog-note">Blending Options (M2): Knockout punches through what lies below; Blend If shows the layer only inside each range, each end feathered between its two values.</p>'));
+    this.body.appendChild(el('<p class="cv-dialog-note">Blending Options: Knockout punches through what lies below; Blend If shows the layer only inside each range, each end feathered between its two values.</p>'));
     choice('Layer blend mode', blends, () => bl().blend, (v) => { bl().blend = v as BlendMode; });
     slider('Layer opacity (%)', 0, 100, () => Math.round(bl().opacity * 100), (v) => { bl().opacity = v / 100; });
     slider('Fill opacity (%)', 0, 100, () => Math.round(bl().fill * 100), (v) => { bl().fill = v / 100; });

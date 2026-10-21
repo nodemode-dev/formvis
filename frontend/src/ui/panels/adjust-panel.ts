@@ -98,6 +98,19 @@ export class AdjustPanel extends Dialog {
     this.okBtn = this.button('OK', 'primary', () => this.commit());
     this.onClose = () => { this.engine.showLimit(null); this.abandon(); };
     for (const ev of ['active', 'projects'] as const) engine.on(ev, () => { const id = engine.current?.activeLayer?.id ?? ''; if (this.isOpen && this.mode === 'image' && !this.asking && id !== this.seenLayer) this.close(); });
+    engine.on('doc', () => this.adoptOutside());
+  }
+
+  /** The Properties column edits the same layer while the dialog is open: its change lands in the layer, and this takes
+   *  it into the dialog's draft and rows (values only), so the next dialog edit does not write the old value back. */
+  private adoptOutside(): void {
+    if (!this.isOpen || this.mode !== 'layer' || !this.previewOn || !this.layerId || !isParamKind(this.kind)) return;
+    const a = this.engine.current?.layer(this.layerId)?.adjustment;
+    if (!a || a.kind !== this.kind) return;
+    const live = paramValues(this.kind, a.data.params);
+    if (JSON.stringify(live) === JSON.stringify(paramValues(this.kind, this.data.params))) return;
+    this.data.params = structuredClone(live);
+    this.sections.get(this.kind)?.sync();
   }
 
   openForLayer(id: ID, made = false): void {

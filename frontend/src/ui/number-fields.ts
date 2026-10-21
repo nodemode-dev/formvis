@@ -143,8 +143,14 @@ function showPop(f: HTMLInputElement): void {
   popFor = f;
   paintPop(f);
   box.style.width = `${w}px`;
-  box.style.left = `${Math.round(Math.max(4, Math.min(r.left, window.innerWidth - w - 4)))}px`;
-  box.style.top = `${Math.round(Math.min(r.bottom + 4, window.innerHeight - 30))}px`;
+  const frame = f.closest<HTMLElement>('.cv-dialog')?.getBoundingClientRect();
+  let left = Math.max(4, Math.min(r.left, window.innerWidth - w - 4)), top = Math.min(r.bottom + 4, window.innerHeight - 30);
+  if (frame) {
+    if (frame.right + 8 + w <= window.innerWidth - 4) { left = frame.right + 8; top = r.top + (r.height - 22) / 2; }
+    else if (frame.left - 8 - w >= 4) { left = frame.left - 8 - w; top = r.top + (r.height - 22) / 2; }
+  }
+  box.style.left = `${Math.round(left)}px`;
+  box.style.top = `${Math.round(Math.max(4, top))}px`;
   box.hidden = false;
 }
 

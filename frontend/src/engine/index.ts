@@ -8172,6 +8172,9 @@ export class Engine {
   /** The artboard New Guide Layout and Clear Selected Artboard Guides act on. */
   get guideArtboard(): Layer | null { return this.current ? GD.activeBoard(this.current) : null; }
 
+  /** True while a live edit (an open adjustment dialog or a run of Properties edits) holds the history step. */
+  get liveActive(): boolean { return this.liveOpen !== null; }
+
   beginLive(name: string): boolean {
     const p = this.current;
     if (!p || this.stroke || this.liveOpen) return false;

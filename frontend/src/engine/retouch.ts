@@ -878,7 +878,8 @@ export class WarpStroke {
 }
 
 /** Frequency separation of `img`: `low` is the picture blurred by `radius` (colour and tone), `high` holds the detail
- *  as (picture - low) / 2 + 128, so that `high` over `low` in Linear Light reproduces the picture (to within a level). */
+ *  as (picture - low + 255) / 2, so that `high` over `low` in Linear Light reproduces the picture exactly for odd
+ *  differences and to within a level, alternating up and down on a checkerboard, for even ones. */
 export function frequencySplit(img: ImageData, radius: number): { low: ImageData; high: ImageData } {
   const { width: w, height: ht } = img, m = gaussianMargin(Math.max(0.1, radius)), pw = w + 2 * m, padded = new ImageData(pw, ht + 2 * m);
   for (let y = 0; y < padded.height; y++) {
@@ -887,8 +888,9 @@ export function frequencySplit(img: ImageData, radius: number): { low: ImageData
   }
   const blurred = gaussianBlur(padded, Math.max(0.1, radius)), low = new ImageData(w, ht), high = new ImageData(w, ht), s = img.data, l = low.data, h = high.data;
   for (let y = 0; y < ht; y++) l.set(blurred.data.subarray(((y + m) * pw + m) * 4, ((y + m) * pw + m + w) * 4), y * w * 4);
-  for (let i = 0; i < s.length; i += 4) {
-    for (let c = 0; c < 3; c++) h[i + c] = clamp(Math.round((s[i + c] - l[i + c]) / 2 + 128), 0, 255);
+  for (let i = 0, p = 0; i < s.length; i += 4, p++) {
+    const odd = (p % w + ((p / w) | 0)) & 1;
+    for (let c = 0; c < 3; c++) { const q = s[i + c] - l[i + c] + 255; h[i + c] = (q >> 1) + ((q & 1) & odd); }
     h[i + 3] = s[i + 3];
   }
   return { low, high };

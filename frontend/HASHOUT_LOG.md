@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Frequency split rounding, deep Glow and XMP, Properties into an open dialog, Haze optional depth, UI audit 2 · _v1.94.0 (engine/retouch.ts, bloom.ts, develop.ts, io/crs-xmp.ts, engine/index.ts, ui/adjust-props.ts, ui/panels/adjust-panel.ts, engine/filter-library.ts, filters-lib/dither.ts, ui/panels/filter-panel.ts, ui/status.ts, ui/number-fields.ts and dialog and panel styles)
+
+- frequencySplit: Linear Light rebuilds low + 2*high - 255, so high must be (diff+255)/2, a half for even differences. The old `h[i + c] = clamp(Math.round((s[i + c] - l[i + c]) / 2 + 128), 0, 255);` (removed) biased +1 or +2. Now floor((diff+255)/2), plus 1 for even differences where x+y is odd: exact for odd, a zero-mean checkerboard of 1 for even (measured max 1, mean 0.00).
+- bloom takes Float32 data unrounded, so developDeep runs Glow last without quantising a deep layer. crs-xmp writes and reads GlowAmount, GlowRadius, GlowThreshold, GlowWarmth, GlowDiffusion (formvis's own names; they round-trip within formvis).
+- The adjustment dialog holds the one live-edit session, so the Properties panel's own beginLive returned false and dropped the change. Engine.liveActive lets adjust-props write into the open session, and the dialog's adoptOutside() pulls the changed params into its draft on 'doc' (layer mode, preview on, parametric kinds).
+- Haze by Depth: the filter panel refused any image param left empty; LibParam image params may be `optional`, and Haze's depth is.
+- Status bar: the busy slot (296 px reserved) and the proof slot (170 px) held the space before the hint. The busy slot moves to the end and shows only while a job runs, and the proof slot collapses when empty. fitHint() keeps whole " · " parts that fit (ResizeObserver), with the full text as the title.
+- Number scrub popup: placed beside the dialog frame, centred on the field (right if it fits, else left, else below).
+- Layer Style note: the internal tag "(M2)" removed from the user-facing text.
+
 ## Layer row spacing, Background vacated fill, Develop Glow, UI audit · _v1.93.9 (styles/panels.css, dialogs.css, shell.css, engine/pixel-move.ts, engine/index.ts, engine/bloom.ts, engine/adjust-params.ts, engine/develop.ts, ui/panels/filter-panel.ts, ui/properties.ts)
 
 - Layer rows (the owner: "a large gap between the eye icon and the layer thumbnail"): the grid is `24px 0px auto thumb auto 1fr` with no column gap; the disclose arrow is display none off folder rows (it was a hidden 16 px cell on every row), the thumbnail and a present mask take a 4 px left margin, the name 8 px. The fx and smart filter lists start at 24px + 4px to sit under the thumbnail.

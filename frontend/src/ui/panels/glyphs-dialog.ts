@@ -56,7 +56,7 @@ export class GlyphsDialog extends Dialog {
   private mapped: Set<number> | null = null;
   private mapSeq = 0;
   private readonly grid = el('<div class="cv-glyph-grid" role="grid" style="display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin-top: 8px"></div>');
-  private readonly recentRow = el('<div class="cv-glyph-recent" style="display: flex; gap: 2px; min-height: 30px; margin-top: 8px" aria-label="Recently used"></div>');
+  private readonly recentRow = el('<div class="cv-glyph-recent" style="display: flex; gap: 2px; min-height: 30px; margin-top: -8px" aria-label="Recently used"></div>');
   private readonly altRow = el('<div class="cv-glyph-alts" style="display: flex; flex-wrap: wrap; gap: 4px" aria-label="Alternates"></div>');
   private readonly altNote = el('<p class="cv-dialog-note"></p>');
   private altSeq = 0;

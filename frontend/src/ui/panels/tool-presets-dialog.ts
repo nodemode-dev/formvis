@@ -58,6 +58,7 @@ export class ToolPresetsDialog extends Dialog {
 
   constructor(private readonly engine: Engine) {
     super('Tool Presets', 600);
+    this.scrim.classList.add('cv-scrim-tpreset');
     this.only = checkRow('Current Tool Only', (v) => { this.currentOnly = v; this.paint(); });
     this.only.set(true);
     this.colour = checkRow('Include Colour (the foreground and background colours)', (v) => { this.withColour = v; });

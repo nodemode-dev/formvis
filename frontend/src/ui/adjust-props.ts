@@ -38,7 +38,7 @@ export function adjustSection(e: Engine, run: (cmd: string) => void): { head: HT
   const put = (kind: ParamKind, key: string, value: unknown): void => {
     const id = e.activeLayer?.id, l = id ? e.current?.layer(id) : null;
     if (!id || !l?.adjustment || l.adjustment.kind !== kind) return;
-    if (!session) {
+    if (!session && !e.liveActive) {
       if (!e.beginLive(`Edit ${ADJUSTMENT_LABELS[kind]}`)) return;
       session = id;
     }

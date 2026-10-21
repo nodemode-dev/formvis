@@ -1,10 +1,10 @@
-import type { Kernel } from './kernels';
+import type { KernelContext } from './kernels';
 
 const lum = (r: number, g: number, b: number): number => 0.299 * r + 0.587 * g + 0.114 * b;
 
 /** Halation and Glow: what is brighter than `threshold` blurred by `radius` document pixels (three box passes, close to
  *  a Gaussian), tinted (Halation) or in its own colour (Glow), and screened back over the picture by `amount`. */
-export function bloom(amount: number, radius: number, threshold: number, tint: [number, number, number] | null, warmth = 0, diffusion = 0): Kernel {
+export function bloom(amount: number, radius: number, threshold: number, tint: [number, number, number] | null, warmth = 0, diffusion = 0): (px: Uint8ClampedArray | Float32Array, ctx?: KernelContext) => void {
   return (px, ctx) => {
     if (!ctx || amount <= 0) return;
     const W = ctx.width, H = ctx.height, r = Math.max(1, Math.round(radius / Math.max(1e-6, ctx.unitsPerPixel) / 2));
@@ -19,7 +19,8 @@ export function bloom(amount: number, radius: number, threshold: number, tint: [
     if (wide) { const d = Math.min(1, diffusion / 100) * 0.7; for (let k = 0; k < 3; k++) for (let j = 0; j < W * H; j++) ch[k][j] = ch[k][j] * (1 - d) + wide[k][j] * d * 1.6; }
     for (let i = 0, j = 0; j < W * H; i += 4, j++) for (let k = 0; k < 3; k++) {
       const base = px[i + k] / 255, add = Math.min(1, ch[k][j] * amount * 1.6);
-      px[i + k] = Math.round((1 - (1 - base) * (1 - add)) * 255);
+      const lit = (1 - (1 - base) * (1 - add)) * 255;
+      px[i + k] = px instanceof Float32Array ? lit : Math.round(lit);
     }
   };
 }

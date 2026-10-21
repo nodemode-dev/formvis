@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.94.0 · 2026-10-21
+
+- Frequency Separation: Low plus High rebuilds the picture within one level and with no overall brightening (it was about one level too bright).
+- Develop: Glow also works in 16- and 32-bit documents, and Save and Load Settings keep it.
+- Adjustments: a change in the Properties panel while the adjustment's dialog is open now changes the layer and the dialog.
+- Haze by Depth runs without a depth picture, hazing from the top of the frame as its note says.
+- Status bar: the tool hint uses the free width and shows whole parts, with the full text as a tooltip; the busy area sits at the far right and only while a job runs.
+- Dialogs: Layer Style, Image Size, Canvas Size, Tool Presets, Brush Settings, Character Styles and Generate labels no longer wrap; the Layer Style note loses a stray internal tag; New Document's selects line up and Save as Preset is not cut off; the number scrub popup opens beside the dialog instead of over the next field; Levels rows have room between their boxes.
+- Panels: Channels reads "Cmd- or Ctrl-click"; the Actions buttons are one height; the Character axes note fits; Properties quick actions wrap inside the panel; the Home screen sizes sit in two full rows.
+
 ## 1.93.9 · 2026-10-20
 
 - Layers panel: no gap between the eye and the thumbnail; the folder arrow takes space only on folder rows; the footer's nine buttons all fit the default width (the first one was cut off).

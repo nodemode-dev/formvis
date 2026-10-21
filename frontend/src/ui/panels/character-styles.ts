@@ -12,7 +12,7 @@ export class CharacterStylesDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="Style name">');
 
   constructor(private readonly engine: Engine) {
-    super('Character Styles', 400);
+    super('Character Styles', 480);
     const nameRow = el('<label class="cv-field"><span>Name</span></label>');
     nameRow.append(this.name);
     const act = (label: string, run: () => void | Promise<void>): HTMLButtonElement => {

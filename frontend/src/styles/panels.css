@@ -387,6 +387,8 @@
 .cv-props-section[aria-expanded="false"] .icon { transform: rotate(-90deg); }
 .cv-props-section[hidden], .cv-props-transform[hidden], .cv-props-none[hidden] { display: none; }
 .cv-props-transform { display: flex; align-items: center; gap: 8px; }
+.cv-props-quick { flex-wrap: wrap; }
+.cv-props-quick .cv-btn { flex: 1 1 auto; min-width: 0; }
 .cv-props-adj { display: grid; gap: var(--space-3); }
 .cv-props-adj[hidden] { display: none; }
 .cv-props-adj .cv-field { grid-template-columns: 84px minmax(0, 1fr); }

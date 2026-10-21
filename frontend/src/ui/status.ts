@@ -23,6 +23,7 @@ export class StatusBar {
   private readonly engineState: HTMLElement;
   private readonly gpu: HTMLElement;
   private readonly hint: HTMLElement;
+  private hintSegs: string[] = [];
   private dismiss: Disposer | null = null;
 
   constructor(root: HTMLElement, private readonly engine: Engine) {
@@ -38,7 +39,7 @@ export class StatusBar {
       '</div>' +
       '<span class="cv-st-dims"></span>' +
       '<button class="cv-st-info" type="button"></button>' +
-      `<span class="cv-st-busy">${icon('loading', 12)}</span><span class="cv-st-engine"></span><span class="cv-st-gpu"></span><span class="cv-st-mem" title="Pixels formvis holds, of what this computer allows it"></span><span class="cv-st-proof"></span><span class="cv-st-hint"></span>`);
+      `<span class="cv-st-engine"></span><span class="cv-st-gpu"></span><span class="cv-st-mem" title="Pixels formvis holds, of what this computer allows it"></span><span class="cv-st-proof"></span><span class="cv-st-hint"></span><span class="cv-st-busy">${icon('loading', 12)}</span>`);
     this.proof = q(root, '.cv-st-proof');
     this.mem = q(root, '.cv-st-mem');   // 1.60.2, DEV_PLAN 26.1
     for (const k of ['doc', 'history', 'projects'] as const) engine.on(k, () => this.syncMemory());
@@ -96,6 +97,7 @@ export class StatusBar {
     this.engineState = q(root, '.cv-st-engine');
     this.gpu = q(root, '.cv-st-gpu');
     this.hint = q(root, '.cv-st-hint');
+    new ResizeObserver(() => this.fitHint()).observe(this.hint);
     for (const k of ['viewport', 'projects'] as const) engine.on(k, () => this.syncView());
     for (const k of ['tool', 'options'] as const) engine.on(k, () => this.syncHint());
     engine.on('busy', (on: boolean) => {
@@ -268,6 +270,17 @@ export class StatusBar {
       const m = /^Drag to draw (an? [a-z ]+) \(([a-z ]+)\)$/.exec(s);
       return m ? t('Drag to draw {shape} ({mode})').replace('{shape}', t(m[1])).replace('{mode}', t(m[2])) : t(s);
     };
-    setText(this.hint, raw.split(' · ').map(seg).join(' · '));
+    this.hintSegs = raw.split(' · ').map(seg);
+    this.fitHint();
+  }
+
+  /** Shows as many whole ' · ' parts as the slot holds, never a part cut mid-word; the full text rides in the tooltip. */
+  private fitHint(): void {
+    const segs = this.hintSegs;
+    if (!segs.length || this.errText || this.agentText) return;
+    let n = segs.length;
+    setText(this.hint, segs.join(' · '));
+    while (n > 1 && this.hint.scrollWidth > this.hint.clientWidth) { n--; setText(this.hint, segs.slice(0, n).join(' · ')); }
+    setTitle(this.hint, n < segs.length ? segs.join(' · ') : '');
   }
 }
