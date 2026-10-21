@@ -2,6 +2,11 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Splash corners clipped natively on macOS · _v1.96.1 (src-tauri/src/reveal.rs, src-tauri/src/main.rs, src-tauri/tauri.conf.json, src-tauri/Cargo.toml)
+
+- The owner's 1.96.0 Mac build: the splash card's rounding showed but its corners were not cut away; the window and web view still painted a square behind the CSS card. reveal::round_splash, called first in setup: the splash NSWindow is made non-opaque with NSColor clearColor as its background, its content view is layer-backed, and that layer gets cornerRadius 16 (the card's radius) and masksToBounds, so everything outside the rounded rectangle is clipped, the web view's own background included; then the shadow is invalidated and the splash shown. The splash is now `"visible": false` in tauri.conf.json so no square frame can show before the mask; elsewhere round_splash only shows it. objc2-app-kit gains NSColor; the layer calls go through msg_send (no QuartzCore crate).
+- Checked: the AppKit code type-checks for aarch64-apple-darwin; the real debug shell under Xvfb still maps the splash (1.3 s) and closes it on the page's app_ready (9.1 s on this software renderer). Not run on a Mac.
+
 ## fal key field, Get a key, splash with a bar, the window shown whole · _v1.96.0 (ui/panels/connection-settings.ts, io/api.ts, styles/dialogs.css, ui/dom.ts, public/splash.html, src-tauri/src/reveal.rs, src-tauri/src/main.rs, src-tauri/build.rs, src-tauri/capabilities/default.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml)
 
 - ApiKeysSection: the fal row gains a form (password input, Save key, Enter submits) built once in `create`; `update` patches only the placeholder ("Paste your fal key" or "Paste a new fal key to replace it"). `save` sends the key to `/generative/key` (secrets.put: the system's password store, else a file only the user can read), clears the field and says where it went. GenerativeStatus gains the `store` field the engine already sent. Checked in Chromium against the engine, also at 4x CPU and network throttling: 0 nodes removed, 0 px height change.
