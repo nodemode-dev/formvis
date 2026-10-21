@@ -36,7 +36,7 @@ def test_black_background(page):
 def test_custom_background_uses_the_hex_colour(page):
     d = open_dialog(page)
     d.locator("select[aria-label='Background Contents']").select_option("custom")
-    d.locator("input[aria-label='Custom background colour']").fill("#336699")
+    d.locator("input[aria-label='Custom background color']").fill("#336699")
     make(page, d)
     assert page.evaluate(PX, [10, 10]) == [0x33, 0x66, 0x99, 255]
 
@@ -60,11 +60,11 @@ def test_the_colour_field_keeps_its_space_when_switching(page):
     page.keyboard.press("Escape")
 
 
-def test_cmyk_is_not_offered_at_32_bits_and_lab_is(page):
+def test_cmyk_and_lab_are_both_offered_at_8_16_and_32_bits(page):
     d = open_dialog(page)
     mode, depth = d.locator("select[aria-label='Color Mode']"), d.locator("select[aria-label='Bit depth']")
     mode.select_option("cmyk")
-    assert depth.locator("option").evaluate_all("o => o.map(x => x.value)") == ["8", "16"]
+    assert depth.locator("option").evaluate_all("o => o.map(x => x.value)") == ["8", "16", "32"]
     mode.select_option("lab")
     assert depth.locator("option").evaluate_all("o => o.map(x => x.value)") == ["8", "16", "32"]
     mode.select_option("rgb")

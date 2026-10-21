@@ -97,8 +97,9 @@ def test_only_changed_layers_are_sent_again_and_a_clip_names_its_base(context):
 def test_what_it_cannot_draw_yet_falls_back_with_the_reason(context):
     page = app(context)
     page.evaluate(SCENE)
-    page.evaluate("window.formvis.engine.addAdjustmentLayer('hsv')")   # a 3D lookup table
+    # 3D lookup tables draw natively since the native 3D tables; a neighborhood adjustment in a blend mode of its own does not yet.
+    page.evaluate("() => { const e = window.formvis.engine; e.addAdjustmentLayer('shadowsHighlights'); e.current.activeLayer.blend = 'multiply'; e.emit('render', null); }")
     page.wait_for_function("document.querySelector('.cv-st-gpu')?.textContent === 'GPU: CPU'", timeout=10000)
     reason = page.evaluate("document.querySelector('.cv-st-gpu').title")
-    assert "3D lookup table" in reason, reason
+    assert "Shadows/Highlights" in reason, reason
     page.close()

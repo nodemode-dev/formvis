@@ -25,7 +25,7 @@ def test_the_info_panel_and_color_samplers(page):
         page.evaluate("window.formvis.commands.run('panel-info')")
         x, y = scr(page, 50.5, 80.5); page.mouse.move(x, y); page.wait_for_timeout(200)
         rows = page.evaluate(INFO)
-        assert "Colour R 220 G 20 B 20" in rows and "X, Y 50, 80 px" in rows, rows
+        assert "Color R 220 G 20 B 20" in rows and "X, Y 50, 80 px" in rows, rows
         page.evaluate("window.formvis.engine.setTool('colorSampler')")
         for (px, py) in [(30, 30), (170, 30)]:
             x, y = scr(page, px + 0.5, py + 0.5); page.mouse.click(x, y)

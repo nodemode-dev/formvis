@@ -540,6 +540,17 @@ function psdResolution(buf: ArrayBuffer): number | null {
 
 /** The file with zeros added where it ends before its layer section does, so the layers that are whole still read;
  *  null when the file is not short that way. */
+/** A PSD cut short before its layers (inside its image resources, say) still names its size in the header: it opens as a
+ *  blank canvas of that size with a note, rather than nothing. */
+function blankFromHeader(buf: ArrayBuffer): { doc: Doc; notes: string[]; activeId: ID | null; paths: null; report: PsdReport } | null {
+  if (buf.byteLength < 26) return null;
+  const v = new DataView(buf), version = v.getUint16(4), height = v.getUint32(14), width = v.getUint32(18);
+  if (v.getUint32(0) !== 0x38425053 || (version !== 1 && version !== 2) || !width || !height || width > 30000 || height > 30000) return null;
+  const base: Doc = { id: uid(), width, height, resolution: psdResolution(buf) ?? 72, layers: [] };
+  const layer = newLayer('Background', base), notes = ['This PSD is cut short before its layers: none of its pictures could be read, so it opens as a blank canvas of its size.'];
+  return { doc: { ...base, layers: [layer] }, notes, activeId: layer.id, paths: null, report: reportOf(1, [], notes) };
+}
+
 function padToLayers(buf: ArrayBuffer): ArrayBuffer | null {
   const s = psdSections(buf);
   if (!s) return null;
@@ -700,8 +711,8 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
     // A file cut short loses its merged image first, then its last layers; what is whole still reads.
     try { psd = readPsd(buffer, { skipThumbnail: true, skipCompositeImageData: true }); cut = 'merged'; } catch {
       const padded = padToLayers(buffer);
-      if (!padded) throw err;
-      try { psd = readPsd(padded, { skipThumbnail: true, skipCompositeImageData: true }); cut = 'layers'; } catch { throw err; }
+      if (!padded) { const blank = blankFromHeader(buffer); if (blank) return blank; throw err; }
+      try { psd = readPsd(padded, { skipThumbnail: true, skipCompositeImageData: true }); cut = 'layers'; } catch { const blank = blankFromHeader(buffer); if (blank) return blank; throw err; }
     }
   }
   // Smart objects' embedded contents, decoded before the layers are built.

@@ -20,7 +20,7 @@ def test_gradient_editor_adds_a_stop_and_saves(page):
     d.locator(".cv-grad-strip").last.wait_for(state="visible")                                 # the opacity strip is first, the colour strip last
     box = d.locator(".cv-grad-strip").last.bounding_box()
     page.mouse.click(box["x"] + box["width"] * 0.5, box["y"] + box["height"] / 2)
-    d.locator(".cv-field", has_text="Stop colour").locator("input[type=color]").evaluate("(i) => { i.value = '#ff0000'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); }")
+    d.locator(".cv-field", has_text="Stop color").locator("input[type=color]").evaluate("(i) => { i.value = '#ff0000'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); }")
     d.locator("input[type=text]").fill("Black red white")
     d.locator("button", has_text="New").click()
     stored = page.evaluate("JSON.parse(localStorage.getItem('formvis.gradients')).map((g) => [g.label, g.stops.length])")

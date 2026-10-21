@@ -223,7 +223,7 @@ def test_an_svg_asks_for_its_pixel_size_then_imports_rasterised(page, tmp_path):
     page.set_input_files("input[data-role='open-files']", str(svg))
     dlg = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
     dlg.wait_for(timeout=20000)
-    assert "pic.svg" in dlg.inner_text() and "width in pixels" in dlg.inner_text()
+    assert "pic.svg" in dlg.inner_text() and "width in pixels" in dlg.inner_text().lower()
     dlg.locator(".cv-dialog-foot button", has_text="Import").click()
     page.wait_for_function("window.formvis.engine.current.doc.width >= 40 || window.formvis.engine.current.doc.layers.length > 1", timeout=20000)
     w, h = page.evaluate("[window.formvis.engine.current.doc.width, window.formvis.engine.current.doc.height]")

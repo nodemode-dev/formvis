@@ -78,7 +78,18 @@ def test_jobs_list_and_cancel_answer_without_a_window_and_say_when_nothing_match
     assert "Give the job id" in text(call("jobs_cancel"))
 
 
-def test_replies_are_cut_at_the_text_budget_with_a_note(tmp_path):
+@pytest.fixture()
+def window(page):
+    """list_commands is answered by an open window that allows this client; without one the call waits for a window."""
+    pol = lambda p: urllib.request.urlopen(urllib.request.Request(BASE + "/api/agents/policy", json.dumps({"client": "covcli-eng", "policy": p}).encode(), {"Content-Type": "application/json"}), timeout=10)
+    pol("allow")
+    page.evaluate("() => { localStorage.setItem('formvis.prefs', JSON.stringify({ ...JSON.parse(localStorage.getItem('formvis.prefs') || '{}'), agentsAllowed: true })); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: true })); }")
+    page.wait_for_timeout(1500)
+    yield page
+    pol("ask")
+
+
+def test_replies_are_cut_at_the_text_budget_with_a_note(tmp_path, window):
     assert limits(text_chars=10)[0] == 422 and limits(image_bytes=10)[0] == 422
     try:
         assert limits(text_chars=1000)[1]["text_chars"] == 1000

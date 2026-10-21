@@ -1,7 +1,7 @@
 SET = """([label, v]) => { const i = [...document.querySelectorAll('input')].find((n) => n.getAttribute('aria-label') === label && n.getClientRects().length);
   if (!i) throw new Error('no control ' + label);
   i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); }"""
-MIX = """([label, v]) => { const sw = document.querySelector("[role=group][aria-label=Colours]"); const all = [...document.querySelectorAll('input')];
+MIX = """([label, v]) => { const sw = document.querySelector("[role=group][aria-label=Colors]"); const all = [...document.querySelectorAll('input')];
   const i = all.find((n) => n.getAttribute('aria-label') === label && n.getClientRects().length && (sw.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING));
   i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); }"""
 GET = "(label) => { const i = [...document.querySelectorAll('input')].find((n) => n.getAttribute('aria-label') === label && n.getClientRects().length); return i ? i.value : null; }"
@@ -50,7 +50,7 @@ def test_develop_settings_save_to_xmp_and_load_back_into_the_controls(page, tmp_
     f = tmp_path / "look.xmp"
     f.write_text(text)
     page.evaluate(SET, ["Exposure (EV)", 0])
-    page.locator("button[aria-label='All colours']").click()
+    page.locator("button[aria-label='All colors']").click()
     assert page.evaluate(GET, "Exposure (EV)") == "0"
     with page.expect_file_chooser() as fc:
         page.locator("button", has_text="Load Settings...").click()

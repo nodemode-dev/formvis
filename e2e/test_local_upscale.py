@@ -1,6 +1,22 @@
 # Image > Upscale on this computer (1.53.1), against the real engine and the real Real-ESRGAN model (downloaded by the
 # engine's test of it into the models folder the engine uses); nothing stood in for.
+import json
+import urllib.request
+
+import pytest
+
 DLG = ".cv-scrim:not([hidden]) .cv-dialog"
+
+
+def _upscaler_ready() -> bool:
+    try:
+        models = json.loads(urllib.request.urlopen("http://127.0.0.1:8190/api/models", timeout=10).read())
+    except Exception:
+        return False
+    return bool(next((m for m in models if m["id"] == "ai-upscale"), {}).get("ready"))
+
+
+pytestmark = pytest.mark.skipif(not _upscaler_ready(), reason="the Real-ESRGAN model (ai-upscale) is not installed on this machine (the engine's /api/models reports it not ready)")
 
 
 def test_upscale_runs_real_esrgan_on_this_computer(page):

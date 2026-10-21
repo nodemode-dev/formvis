@@ -21,7 +21,7 @@ EXPORT = """async ([format, profile]) => {
   if (!window.formvis.commands.run('export-as')) throw new Error('export-as');
   const field = (label) => { const f = [...document.querySelectorAll('.cv-scrim:not([hidden]) .cv-field')].find((x) => x.textContent.trim().startsWith(label)); if (!f) throw new Error('missing ' + label); return f.querySelector('select'); };
   const pick = (label, v) => { const s = field(label); s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); };
-  pick('Format', format); pick('Colour profile', profile);
+  pick('Format', format); pick('Color profile', profile);
   const b = [...document.querySelectorAll('.cv-scrim:not([hidden]) .cv-dialog-foot button')].find((x) => x.textContent === 'Export'); if (!b) throw new Error('missing export'); b.click();
   return await Promise.race([got, new Promise((r) => setTimeout(() => r(null), 20000))]);
 }"""

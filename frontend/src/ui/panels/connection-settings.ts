@@ -32,7 +32,7 @@ export class ComfyAuthSection {
     this.mode.addEventListener('change', () => this.showFields());
     save.addEventListener('click', () => void this.save(false));
     forget.addEventListener('click', () => void this.save(true));
-    for (const i of [this.user, this.header, this.secret]) i.addEventListener('keydown', (e) => e.stopPropagation());
+    for (const i of [this.user, this.header, this.secret]) i.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
     this.showFields();
   }
 
@@ -87,7 +87,7 @@ export class ModelFolderSection {
     reset.addEventListener('click', () => void this.save(''));
     scan.addEventListener('click', () => void this.scan());
     same.addEventListener('click', () => { setValue(this.path, this.scanPath.value.trim()); void this.save(this.scanPath.value.trim()); });
-    for (const i of [this.path, this.scanPath]) i.addEventListener('keydown', (e) => e.stopPropagation());
+    for (const i of [this.path, this.scanPath]) i.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
   }
 
   private async scan(): Promise<void> {
@@ -132,7 +132,7 @@ export class PluginsFolderSection {
     this.el.append(row('Folder', this.path), buttons, this.note);
     use.addEventListener('click', () => void this.save(this.path.value));
     clear.addEventListener('click', () => void this.save(''));
-    this.path.addEventListener('keydown', (e) => e.stopPropagation());
+    this.path.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
   }
 
   private show(f: { path: string; data: string }): void {
@@ -546,7 +546,7 @@ export class HuggingFaceToken {
     this.el.append(row('Token', this.token), buttons, this.note);
     save.addEventListener('click', () => void this.save(false));
     forget.addEventListener('click', () => void this.save(true));
-    this.token.addEventListener('keydown', (e) => e.stopPropagation());
+    this.token.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
   }
 
   private show(s: { hasKey: boolean; last4: string }): void {
@@ -584,7 +584,7 @@ export class LlmRows {
     const add = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">New</button>'), del = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Remove</button>'), bar = el('<div class="cv-improve"></div>');
     bar.append(add, del);
     this.el.append(row('Saved models', this.pick), bar, row('Name', this.name), row('Reads pictures', toggleOf(this.vision)));
-    this.name.addEventListener('keydown', (e) => e.stopPropagation());
+    this.name.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
     this.pick.addEventListener('change', () => void this.use());
     add.addEventListener('click', () => {
       this.adding = true;

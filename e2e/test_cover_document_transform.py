@@ -46,7 +46,7 @@ def test_trim_by_top_left_colour_and_with_a_side_left_out(page):
     # PC-UI-0174 PC-EN-0007
     page.evaluate(SCENE, [200, 100, 50, 30, 41, 41])
     menu(page, "Image", "Trim")
-    dialog(page).locator("select").first.select_option(label="Top left pixel colour")
+    dialog(page).locator("select").first.select_option(label="Top left pixel color")
     page.click(OK)
     page.wait_for_function("window.formvis.engine.current.doc.width === 41")
     assert page.evaluate(DIM) == [41, 41]
@@ -55,7 +55,7 @@ def test_trim_by_top_left_colour_and_with_a_side_left_out(page):
     assert page.evaluate(DIM) == [200, 100]
     menu(page, "Image", "Trim")
     d = dialog(page)
-    d.locator("select").first.select_option(label="Top left pixel colour")
+    d.locator("select").first.select_option(label="Top left pixel color")
     d.locator("input[type=checkbox]").nth(2).uncheck()
     page.click(OK)
     page.wait_for_function("window.formvis.engine.current.doc.width === 91")

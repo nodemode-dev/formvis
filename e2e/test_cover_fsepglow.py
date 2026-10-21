@@ -101,4 +101,4 @@ def test_normalise_mode_changed_in_properties_while_its_dialog_is_open_changes_t
     page.locator(".cv-scrim:not([hidden]) .cv-dialog-foot button", has_text="OK").last.click()
     page.wait_for_timeout(500)
     assert page.evaluate(params)["mode"] == "mean"
-    assert page.evaluate("window.formvis.engine.historySteps.names.filter((n) => n === 'Edit Normalise').length") == 1
+    assert page.evaluate("window.formvis.engine.historySteps.names.filter((n) => n === 'Edit Normalize').length") == 1

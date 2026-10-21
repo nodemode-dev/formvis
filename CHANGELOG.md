@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.94.4 · 2026-10-21
+
+- Tests: the browser, desktop and engine suites the owner had moved out are back in the repo, now with 245 more browser test files, 12 more engine test files and independent sample files (`e2e/fixtures`, rebuilt by `make_fixtures.py`). `./formvis test` runs them all.
+- Full run on this release:
+  - 194 unit tests: all pass.
+  - 200 engine tests: all pass.
+  - 1,595 browser tests: all pass but 7 that skip with their reason (3 opt-in large-document tests, 1 that needs a GPU display, 3 that need a model not installed here).
+  - 48 Linux desktop tests (a debug build under Xvfb): all pass.
+  - 23 tests written before later changes were brought up to date: US spelling, CMYK at 32 bits, the native 3D tables and extra GPU blends, the tick column in every menu, number fields that take arithmetic, the Open PSD report sheet.
+- PSD: a file cut short before its layers opens as a blank canvas of its size, with a note, instead of nothing.
+- Preferences: Escape closes the dialog from the ComfyUI, NodeMode, language model and scratch folder fields (they kept the key to themselves).
+- Upscale: the dialog asks ComfyUI for its upscalers only when ComfyUI is running, so opening it no longer logs a failed request.
+
 ## 1.94.3 · 2026-10-21
 
 - Shapes: Warp, Distort and Perspective on a plain rectangle or ellipse shape layer keep it a vector shape (it was turned into pixels); fill and stroke stay editable, and the edge matches the raster warp within one pixel.

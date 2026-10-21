@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Tests back in the repo, PSD cut before layers, Escape in Preferences fields, Upscale probe · _v1.94.4 (e2e, e2e/desktop, e2e/fixtures, backend/tests, io/psd.ts, ui/panels/connection-settings.ts, ui/panels/scratch-section.ts, ui/panels/generative-dialog.ts)
+
+- Tests: the owner's ruling (1.94.4) is that tests live in the repo. The sidecar harness files were copied in unchanged, then their default paths made relative to the file (15 sites that named this machine). The harness's conftest only joined the sidecar folders onto the repo's `e2e` and `tests` packages, so the files run under the repo's own conftests. e2e/test_cover_def2_engine_routes.py puts `backend` on sys.path itself (it imports the app in process).
+- io/psd.ts blankFromHeader: when neither the layers nor a padded copy reads (a cut inside the image resources, where the thumbnail takes most of a small file), the header's size opens as a blank canvas with a left-out note, shown on the Open PSD report sheet. Sizes over 30,000 a side still refuse.
+- connection-settings.ts and scratch-section.ts: their fields stopped every keydown to keep app shortcuts out, which also kept Escape from the Preferences dialog; Escape now passes.
+- generative-dialog.ts loadComfyUpscalers: asks /comfyui/status first and lists upscalers only when ComfyUI runs; with no ComfyUI the upscale-models route answered 502, which the browser logs as an error on every Upscale open.
+
 ## Live shapes warp as vectors, Chromatic Shift, gallery commands, filter dialog preview and reset, spelling keys · _v1.94.3 (engine/index.ts, engine/transform-entry.ts, engine/filters-lib/distort.ts, engine/filter-library.ts, app.ts, ui/panels/filter-panel.ts, ui/panels/controls.ts, automation/command-meta.ts, backend/app/routers/mcp.py, i18n tables, about 40 UI and engine files for spelling)
 
 - applyMeshWarp and shapeThrough (Distort, Perspective): a plain Rectangle or Ellipse layer (`layer.shape`, no `layer.vector`, no pixel mask) is converted with liveShapeVector inside the same history step, then reshaped through warpVector; before, reshape returned early and the raster path ran. `layer.shape` is cleared on purpose: it is the parametric record, and a warped outline is no longer a rectangle or ellipse, so the layer continues as a vector shape. Checked: masks agree within 1 px dilation in 9 cases (drag, arc, wave, flag, fisheye, twist).

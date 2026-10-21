@@ -50,4 +50,9 @@ def test_d27_a_truncated_psd_opens_something_instead_of_nothing(page, tmp_path):
     cut.write_bytes(raw[: int(len(raw) * 0.6)])
     page.evaluate("window.formvis.engine.newDocument(5, 5, 'Before', 'white')")
     open_file(page, cut)
+    sheet = page.locator(".cv-scrim:not([hidden]) .cv-dialog", has_text="Open PSD")             # the report sheet says what was lost
+    sheet.wait_for(timeout=20000)
+    assert "cut short" in sheet.inner_text()
+    sheet.locator("button", has_text="Import").click()
     page.wait_for_function("window.formvis.engine.current && window.formvis.engine.current.doc.width === 16", timeout=20000)
+    assert page.evaluate("window.formvis.engine.current.doc.height") > 0

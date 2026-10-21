@@ -21,7 +21,7 @@ def test_grayscale_and_indexed_psds_from_a_hand_written_layout_keep_their_mode_a
     opened, report = open_fixture(page, "psd_mode_indexed_rle.psd")
     d = page.evaluate(DOC)
     assert d["mode"] == "indexed" and d["palette"] == 256, d
-    assert "Indexed Color with 256 colours" in report
+    assert "Indexed Color with 256 colors" in report
     for x in (0, 1, 2, 3):
         assert near(page.evaluate(PIXEL, [x, 3]), truth("psd_mode_indexed_rle.psd", x, 3), 1), x
     assert page.evaluate(PIXEL, [1, 3])[:3] == [60, 195, 164]
@@ -33,7 +33,7 @@ def test_an_indexed_psd_with_a_raw_merged_image_opens_as_indexed_with_its_palett
     assert opened
     d = page.evaluate(DOC)
     assert (d["w"], d["h"], d["mode"], d["palette"], d["layers"]) == (32, 24, "indexed", 256, 1), d
-    assert report and "Indexed Color with 256 colours" in report, report
+    assert report and "Indexed Color with 256 colors" in report, report
     assert "damaged" not in report, report
     for x in (0, 1, 2, 3):
         assert near(page.evaluate(PIXEL, [x, 3]), truth("psd_mode_indexed.psd", x, 3), 1), x

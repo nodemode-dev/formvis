@@ -32,8 +32,8 @@ def test_local_models_licence_install_and_loras(page, tmp_path):
         assert "has not been accepted" in krea.locator(".cv-local-state").inner_text()
         install = krea.get_by_role("button", name="Install Krea 2")
         assert install.is_disabled() and krea.locator(".cv-local-summary li").count() >= 2
-        assert krea.locator("a", has_text="The licence").get_attribute("href").startswith("https://www.krea.ai/")
-        krea.locator("input[aria-label='Accept the Krea 2 licence']").check()
+        assert krea.locator("a", has_text="The license").get_attribute("href").startswith("https://www.krea.ai/")
+        krea.locator("input[aria-label='Accept the Krea 2 license']").check()
         page.wait_for_function("() => !document.querySelector('.cv-local-models [data-model=\"krea-2\"] button.cv-btn-primary').disabled")
         assert json.loads(urllib.request.urlopen("http://127.0.0.1:8190/api/models/krea-2/status").read())["licenceAccepted"] is True   # recorded in the engine
         krea.get_by_role("button", name="Install Krea 2").click()

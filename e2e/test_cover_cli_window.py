@@ -56,7 +56,7 @@ def test_cli_run_describes_and_runs_a_command_in_the_open_window(agent):
     tool("new_document", width=20, height=10, background="white", name="cliA")
     assert pixel(agent, 2, 2)[:3] == [255, 255, 255]
     code, out = cli(agent, "describe", "invert")
-    assert code == 0 and "invert  (command, Image)" in out and "Inverts the colours of the active layer." in out and "keys: Mod+I" in out
+    assert code == 0 and "invert  (command, Image)" in out and "Inverts the colors of the active layer." in out and "keys: Mod+I" in out
     code, out = cli(agent, "run", "invert")
     assert code == 0 and out.startswith("Ran Invert.")
     assert pixel(agent, 2, 2)[:3] == [0, 0, 0]

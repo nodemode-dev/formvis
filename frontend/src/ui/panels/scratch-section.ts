@@ -20,7 +20,7 @@ export class ScratchSection {
     this.el.append(row, buttons, this.note);
     use.addEventListener('click', () => void this.save(this.path.value.trim()));
     reset.addEventListener('click', () => void this.save(''));
-    this.path.addEventListener('keydown', (e) => e.stopPropagation());
+    this.path.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
     window.addEventListener('formvis:scratch', () => void this.refresh());
   }
 

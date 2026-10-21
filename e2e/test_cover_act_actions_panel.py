@@ -46,7 +46,7 @@ def test_button_mode_dialog_options_and_function_key_refusal(page, tmp_path):
     assert [s["label"] for s in stored(page)[0]["steps"]] == ["Flip Canvas Horizontal"]
 
     set_field(page, "Set", "MySet")
-    dlg_select(page, "Button colour", "red")
+    dlg_select(page, "Button color", "red")
     dlg_select(page, "Function key", "F5")
     page.wait_for_function("document.body.innerText.includes('F5 already runs')", timeout=5000)
     assert "key" not in stored(page)[0]

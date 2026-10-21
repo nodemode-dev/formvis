@@ -7,13 +7,13 @@ AFTER_GROUP = """([label, group, value]) => { const g = document.querySelector(`
   while ((n = n.nextElementSibling)) { const c = n.querySelector && n.querySelector('input[type=range]'); if (c && c.getAttribute('aria-label') === label) { r = c; break; } }
   if (value !== null) { r.value = value; r.dispatchEvent(new Event('input', { bubbles: true })); r.dispatchEvent(new Event('change', { bubbles: true })); }
   return r.value; }"""
-AFTER_WHEEL = """(label) => { let n = document.querySelector('canvas[aria-label="Colour grading wheel"]').parentElement;
+AFTER_WHEEL = """(label) => { let n = document.querySelector('canvas[aria-label="Color grading wheel"]').parentElement;
   while ((n = n.nextElementSibling)) { const c = n.querySelector && n.querySelector('input[type=range]'); if (c && c.getAttribute('aria-label') === label) return c.value; } return null; }"""
 
 
 def open_develop(page):
     assert page.evaluate("window.formvis.commands.run('filter-develop')")
-    page.wait_for_selector("canvas[aria-label='Colour grading wheel']", state="attached", timeout=8000)
+    page.wait_for_selector("canvas[aria-label='Color grading wheel']", state="attached", timeout=8000)
     page.wait_for_timeout(1500)
 
 
@@ -28,7 +28,7 @@ def test_colour_mixer_blues_swatch_desaturates_only_the_blue_pixels(page):
     assert page.evaluate(PX, [10, 30])[:3] == [40, 80, 200]
     page.locator("button[aria-label=Blues]:visible").first.click()
     page.wait_for_timeout(300)
-    assert page.evaluate(AFTER_GROUP, ["Saturation", "Colours", -100]) == "-100"
+    assert page.evaluate(AFTER_GROUP, ["Saturation", "Colors", -100]) == "-100"
     page.wait_for_timeout(2000)
     ok(page)
     r, g, b, _ = page.evaluate(PX, [10, 30])
@@ -39,14 +39,14 @@ def test_colour_mixer_blues_swatch_desaturates_only_the_blue_pixels(page):
 def test_colour_mixer_has_a_swatch_for_each_of_eight_colours_and_all_colours(page):
     page.evaluate(HALVES)
     open_develop(page)
-    names = page.evaluate("[...document.querySelectorAll('[role=group][aria-label=Colours] button')].map((b) => b.getAttribute('aria-label'))")
-    assert names == ["All colours", "Reds", "Oranges", "Yellows", "Greens", "Aquas", "Blues", "Purples", "Magentas"], names
+    names = page.evaluate("[...document.querySelectorAll('[role=group][aria-label=Colors] button')].map((b) => b.getAttribute('aria-label'))")
+    assert names == ["All colors", "Reds", "Oranges", "Yellows", "Greens", "Aquas", "Blues", "Purples", "Magentas"], names
 
 
 def test_clicking_the_grading_wheel_toward_red_tints_grey_and_double_click_resets_it(page):
     page.evaluate(GREY)
     open_develop(page)
-    wheel = page.locator("canvas[aria-label='Colour grading wheel']:visible").first
+    wheel = page.locator("canvas[aria-label='Color grading wheel']:visible").first
     wheel.scroll_into_view_if_needed()
     wheel.click(position={"x": 90, "y": 48})
     page.wait_for_timeout(1500)

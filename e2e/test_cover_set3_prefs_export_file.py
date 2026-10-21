@@ -66,7 +66,8 @@ def test_export_and_file_handling_boxes_change_the_saved_preference_and_are_kept
 
 
 def export_name(page):
-    page.evaluate("window.formvis.engine.newDocument(200, 120, 'E', 'white')")
+    # A second open document named E would be called "E 2", so earlier ones close first.
+    page.evaluate("() => { const e = window.formvis.engine; for (const p of [...e.projects]) e.closeProject(p.id); e.newDocument(200, 120, 'E', 'white'); }")
     page.wait_for_timeout(600)
     with page.expect_download(timeout=15000) as d:
         page.evaluate("window.formvis.commands.run('export-png')")

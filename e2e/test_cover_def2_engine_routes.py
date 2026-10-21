@@ -1,9 +1,13 @@
 # D35 desktop exports accepted by name, D36 and D39 sky and MoGe-2 are installable models, D42 mirror setting reachable.
 # Uses an in-process TestClient on a scratch FORMVIS_DATA_DIR; the shared engine and its sources.json are not touched.
+import sys
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+if str(Path(__file__).resolve().parent.parent / "backend") not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 NAMES = ["a.gif", "a.mp4", "a.zip", "a.psb", "a.ora", "a.hdr", "a.exr", "a.csv", "a.json", "a.cube", "a.atn", "a.ai", "a.abr", "a.asl", "a.sh", "a.webm"]
 

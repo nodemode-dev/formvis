@@ -78,7 +78,7 @@ def test_the_develop_dialog_shows_every_panel(page):
     page.evaluate("window.formvis.engine.newDocument(80, 60, 'D', 'white')")
     assert page.evaluate("window.formvis.commands.run('filter-develop')")
     notes = page.evaluate("[...document.querySelectorAll('.cv-scrim:not([hidden]) .cv-note')].filter((n) => n.offsetParent !== null).map((n) => n.querySelector('button')?.textContent ?? n.textContent)")
-    for heading in ("Point Curve", "Colour Mixer", "Colour Grading", "Optics", "Geometry", "Calibration"):
+    for heading in ("Point Curve", "Color Mixer", "Color Grading", "Optics", "Geometry", "Calibration"):
         assert heading in notes, (heading, notes)
     assert page.evaluate("!!document.querySelector('.cv-scrim:not([hidden]) canvas.cv-curves')?.offsetParent")
     page.keyboard.press("Escape")

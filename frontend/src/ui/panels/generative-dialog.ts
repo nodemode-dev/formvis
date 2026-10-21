@@ -182,7 +182,10 @@ export class GenerativeDialog extends Dialog {
    *  the nodes it lacks are named in a greyed entry. */
   private async loadComfyUpscalers(): Promise<void> {
     let listed: { models: string[]; missing: string[] } | null = null;
-    try { listed = await api.comfyuiUpscaleModels(loadPrefs().comfyuiUrl); } catch { listed = null; }
+    const url = loadPrefs().comfyuiUrl;
+    if ((await api.comfyuiStatus(url))?.running) {
+      try { listed = await api.comfyuiUpscaleModels(url); } catch { listed = null; }
+    }
     if (this.mode !== 'upscale') return;
     const key = listed ? JSON.stringify(listed) : '';
     if (key === this.comfyListed) return;

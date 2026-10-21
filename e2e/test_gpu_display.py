@@ -88,8 +88,9 @@ def test_the_engine_names_what_the_gpu_cannot_draw_yet(page):
     assert page.evaluate("'layers' in window.formvis.engine.gpuLayers()")               # masks draw on the GPU since 1.22.0
     page.evaluate("window.formvis.engine.undo()")
     assert len(page.evaluate("window.formvis.engine.gpuLayers().layers")) == 2
-    page.evaluate("window.formvis.engine.current.activeLayer.blend = 'negation'")
-    assert page.evaluate("window.formvis.engine.gpuLayers().reason") == "a layer in Negation, Reflect, Glow or Xor mode"
+    for mode in ("negation", "reflect", "glow"):                                                  # drawn on the GPU since the extra blends
+        page.evaluate(f"window.formvis.engine.current.activeLayer.blend = '{mode}'")
+        assert page.evaluate("'layers' in window.formvis.engine.gpuLayers()"), mode
 
 
 def test_destroying_a_display_on_purpose_is_not_a_lost_device(page):

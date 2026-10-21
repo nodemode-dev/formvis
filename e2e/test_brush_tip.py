@@ -22,11 +22,21 @@ def test_a_preset_brings_its_shape_and_the_next_one_its_own(page):
     assert page.evaluate(SHAPE) == {"a": 0, "r": 100}                                   # nothing lingers
 
 
-def test_a_menu_has_a_tick_column_only_where_a_tick_can_show(page):
+TICK_SLOTS = """(() => {
+  const m = [...document.querySelectorAll('.cv-menu')].find((x) => !x.hidden);
+  const rows = [...m.querySelectorAll('.cv-menu-item')].filter((r) => r.offsetParent);
+  return rows.map((r) => { const c = r.querySelector('.cv-menu-check'); return c ? Math.round(c.getBoundingClientRect().width) : 0; });
+})()"""
+
+
+def test_every_menu_keeps_one_tick_column_so_labels_line_up(page):
     page.evaluate("window.formvis.engine.newDocument(200, 100, 'M', 'white')")
-    page.locator(".cv-menu-btn", has_text="Filter").click()
-    assert page.evaluate("[...document.querySelectorAll('.cv-menu')].find((m) => !m.hidden).classList.contains('has-checks')") is False
-    page.keyboard.press("Escape")
-    page.locator(".cv-menu-btn", has_text="Window").click()
-    assert page.evaluate("[...document.querySelectorAll('.cv-menu')].find((m) => !m.hidden).classList.contains('has-checks')") is True
-    page.keyboard.press("Escape")
+    for menu in ("Filter", "Window", "Edit"):
+        page.locator(".cv-menu-btn", has_text=menu).click()
+        widths = page.evaluate(TICK_SLOTS)
+        assert widths and set(widths) == {16}, (menu, widths)
+        for _ in range(3):                                                                         # a submenu closes first
+            if page.evaluate("[...document.querySelectorAll('.cv-menu')].every((m) => m.hidden)"):
+                break
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(150)

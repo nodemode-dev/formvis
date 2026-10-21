@@ -14,8 +14,8 @@ def test_new_guide_dialog_undo_and_round_trip(page):
     page.evaluate("window.formvis.commands.run('new-guide')")
     page.wait_for_timeout(200)
     dlg = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
-    dlg.locator("select").select_option("x")
-    dlg.locator("input[type=number]").fill("123.3")
+    dlg.locator("select").first.select_option("x")
+    dlg.locator("input[type=number], input[data-numtext]").first.fill("123.3")
     dlg.locator(".cv-dialog-foot button", has_text="OK").click()
     assert guides(page) == [["x", 123.5]]
     assert page.evaluate("window.formvis.engine.historySteps.names.slice(-1)[0]") == "New Guide"
