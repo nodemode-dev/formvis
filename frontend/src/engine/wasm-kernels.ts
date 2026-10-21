@@ -289,6 +289,19 @@ export function wasmHealFull(before: Uint8ClampedArray, out: Uint8ClampedArray, 
   }) === true;
 }
 
+/** The healing tools' harmonic membrane (twin of `solveMembrane` in retouch.ts: states 0 excluded, 1 fixed, 2 free) over `v` in place; false where the TypeScript must run. */
+export function wasmMembrane(v: Float32Array, state: Uint8Array, w: number, h: number): boolean {
+  const n = w * h;
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1 || n < 256 || v.length !== n * 4 || state.length !== n) return false;
+  return run('heal', [n * 16, n], (chunk, [pv, ps]) => {
+    new Float32Array(chunk.memory.buffer, pv, n * 4).set(v);
+    bytes(chunk, ps, n).set(state);
+    chunk.fn.fv_membrane(pv, ps, w, h);
+    v.set(new Float32Array(chunk.memory.buffer, pv, n * 4));
+    return true;
+  }) === true;
+}
+
 /** The Patch tool's Diffusion and Color correction over `out` in place (twin of `scaleHealCorrection`); false where the TypeScript must run. */
 export function wasmPatchCorrect(out: Uint8ClampedArray, before: Uint8ClampedArray, coverage: Uint8Array, w: number, h: number, dx: number, dy: number, diffusion: number, colour: number, opacity: number, source?: Uint8ClampedArray): boolean {
   const n = w * h;

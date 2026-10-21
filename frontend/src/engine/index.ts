@@ -30,7 +30,7 @@ import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './hi
 import { restrictPatches, type RgbTarget } from './channel-target';
 import { alphaPlane, alphaRaster, planeMask, rasterMask } from './alpha-target';
 import { Renderer, dropHalved, halvedBytes, renderDoc, type LayerOverride } from './renderer';
-import { compositeFlat, compositeKey, compositeOnWorkers } from './composite-bands';
+import { compositeFlat, compositeFlatRaster, compositeKey, compositeOnWorkers, flatOnWorkers } from './composite-bands';
 import { effectWorker } from './fx-jobs';
 import { wasmHealFull } from './wasm-kernels';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
@@ -115,7 +115,7 @@ import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
 import type { FilterKind, FilterSettings } from './filter-jobs';
 import { POOL_FROM, bandPlan, bandPoolReady, bandPoolSize, bandsShared, runBandOnPool, runDeepBandOnPool, runSharedBandOnPool } from './band-pool';
-import { deepBandRun, deepBandable } from './deep-bands';
+import { deepBandRows, deepBandRun, deepBandable } from './deep-bands';
 import { WAND_FROM, findRegion, findRegionOffThread, growRegion, growRegionOffThread } from './wand-jobs';
 import { sharpenSample } from './filters-more';
 import { clampMid, colorAt, diamondFill, presetById, reflectStops, resolveStops, type GradientPreset, type GradientType } from './gradients';
@@ -4508,6 +4508,21 @@ export class Engine {
       void this.mergeBanded('Merge Visible', ids, ids, shown[0].id, shown[0].name);
       return;
     }
+    const d = q?.doc, shown = d ? d.layers.filter((l) => l.visible) : [];
+    if (q && d && !this.stroke && !this.busyWith && shown.length > 1 && (d.depth ?? 8) === 8 && (d.mode ?? 'rgb') === 'rgb' && d.layers.every((l) => !l.isGroup && !l.parentId) &&
+      shown.every((l) => !l.raster || (l.transform.x >= 0 && l.transform.y >= 0 && l.transform.x + l.transform.w <= d.width && l.transform.y + l.transform.h <= d.height)) && flatOnWorkers({ ...d, layers: shown })) {
+      void (async () => {
+        this.busyWith = 'Merge Visible';
+        let r: Raster | null = null;
+        try { r = await compositeFlatRaster({ ...d, layers: shown }); } finally { this.busyWith = null; }
+        if (this.current === q) this.mergeVisibleWith(r);
+      })();
+      return;
+    }
+    this.mergeVisibleWith(null);
+  }
+
+  private mergeVisibleWith(pre: Raster | null): void {
     this.edit('Merge Visible', (p) => {
       const map = byId(p.doc), board = (l: Layer | undefined): boolean => !!l?.isGroup && !l.parentId && !!l.artboard;
       const shown = new Set(hierarchy(p.doc).filter((e) => e.visible).map((e) => e.layer.id));
@@ -4530,9 +4545,10 @@ export class Engine {
         let r = integral(b);
         if (r.w > LIMITS.side || r.h > LIMITS.side || r.w * r.h > LIMITS.pixels) r = intersectRect(r, canvas) ?? r;
         if (!this.room(r.w * r.h * 4, 'Merge Visible')) return false;
-        const s = createSurface(r.w, r.h);
-        this.work.render({ doc: p.doc, target: s, view: translation(-r.x, -r.y), only: set, quality: 'high' });
-        merged.set(list[0].id, newLayer(list[0].name, p.doc, { raster: Raster.from(s, r.w, r.h), parentId: parent, transform: { ...docTransform(r.w, r.h), x: r.x, y: r.y } }));
+        const own = pre && plans.length === 1 && r.x === 0 && r.y === 0 && r.w === p.doc.width && r.h === p.doc.height ? pre : null;
+        let s: Surface | null = null;
+        if (!own) { s = createSurface(r.w, r.h); this.work.render({ doc: p.doc, target: s, view: translation(-r.x, -r.y), only: set, quality: 'high' }); }
+        merged.set(list[0].id, newLayer(list[0].name, p.doc, { raster: own ?? Raster.from(s as Surface, r.w, r.h), parentId: parent, transform: { ...docTransform(r.w, r.h), x: r.x, y: r.y } }));
         lifted.set(list[0].id, out);
         for (const id of set) gone.add(id);
         for (const l of out) gone.add(l.id);
@@ -12063,6 +12079,29 @@ export class Engine {
   flattenImage(): boolean {
     const p = this.current;
     if (p && this.tiledPastCanvas(p)) { void this.mergeBanded('Flatten Image', null, null, null); return true; }
+    if (p && !this.stroke && !this.busyWith && (p.doc.depth ?? 8) === 8 && (p.doc.mode ?? 'rgb') === 'rgb' && p.doc.layers.every((l) => !l.isGroup) && flatOnWorkers({ ...p.doc, layers: p.doc.layers.filter((l) => l.visible) })) {
+      void this.flattenOnWorkers(p);
+      return true;
+    }
+    return this.flattenOnMain(p);
+  }
+
+  private async flattenOnWorkers(p: Project): Promise<void> {
+    this.busyWith = 'Flatten Image';
+    let r: Raster | null = null;
+    try { r = await compositeFlatRaster({ ...p.doc, layers: p.doc.layers.filter((l) => l.visible) }); } finally { this.busyWith = null; }
+    if (this.current !== p) return;
+    if (!r) { this.flattenOnMain(p); return; }
+    const made = r;
+    this.edit('Flatten Image', (pp) => {
+      const l = newLayer('Background', pp.doc, { raster: made });
+      pp.doc = { ...pp.doc, layers: [l] };
+      pp.activeId = l.id;
+      return true;
+    });
+  }
+
+  private flattenOnMain(p: Project | null): boolean {
     const flat = this.flattened();
     if (!p || !flat) return false;
     return this.edit('Flatten Image', (pp) => {
@@ -12451,7 +12490,7 @@ export class Engine {
     const p = this.current, l = p?.activeLayer, ch = l?.channels;
     if (!p || !l || !ch || ch.mode !== 'rgb' || !deepBandable(job.kind) || ch.width * ch.height <= Math.max(this.bandFrom, POOL_FROM) || !bandPoolReady()) return false;
     const W = ch.width, H = ch.height, S = ch.n + 1, A = Math.max(0, Math.ceil(apron)), ceiling = p.doc.depth === 32 ? Infinity : 1, s = job.settings;
-    const B = Math.max(512, A), plan = bandPlan(H, A, B), rows = (a0: number, a1: number): Float32Array => ch.data.slice(a0 * W * S, a1 * W * S);
+    const B = deepBandRows(job.kind, A), plan = bandPlan(H, A, B), rows = (a0: number, a1: number): Float32Array => ch.data.slice(a0 * W * S, a1 * W * S);
     const N = bandPoolSize(), flight = Math.max(2, N * 2), shared = bandsShared(), bytes = ch.data.byteLength;
     if (!this.room(bytes * (shared ? 2 : 1) + flight * (B + 2 * A) * W * S * 4 * 2 + W * H * 4, name)) return 'refused';
     let sab: SharedArrayBuffer | null = null;

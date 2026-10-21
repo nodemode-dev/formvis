@@ -1,5 +1,6 @@
 import { bandPlan, bandPoolSize } from './band-pool';
 import { shapedMask } from './layer-masks';
+import { Raster } from './surface';
 import { effectsActive, blendIfActive, type BlendMode, type Doc, type Layer, type Transform } from './types';
 import type { Mat } from './geometry';
 import { deepFromRaster } from './deep';
@@ -15,11 +16,11 @@ import type { FloatComposite } from './compose-float';
 export interface WireLayer { id: string; name: string; isGroup: boolean; parentId: string | null; visible: boolean; opacity: number; fill?: number; blend: BlendMode; transform: Transform; raster: string | null; mask: { raster: string; enabled: boolean; placement: Transform | null } | null }
 export type CompIn =
   | { type: 'put'; key: string; width: number; height: number; pixels: ArrayBufferLike }
-  | { type: 'band'; id: number; width: number; height: number; layers: WireLayer[]; keys: string[]; y0: number; y1: number; matrix: Mat; quality: ImageSmoothingQuality; out?: SharedArrayBuffer }
+  | { type: 'band'; id: number; width: number; height: number; layers: WireLayer[]; keys: string[]; y0: number; y1: number; matrix: Mat; quality: ImageSmoothingQuality; out?: SharedArrayBuffer; bitmap?: boolean }
   | { type: 'fput'; key: string; width: number; height: number; pixels: ArrayBufferLike }
   | { type: 'fband'; id: number; width: number; height: number; layers: WireLayer[]; linear: boolean; y0: number; y1: number; out?: SharedArrayBuffer }
   | { type: 'fdrop' };
-export interface CompOut { id: number; y0: number; y1: number; pixels?: ArrayBuffer; error?: string }
+export interface CompOut { id: number; y0: number; y1: number; pixels?: ArrayBuffer; bitmap?: ImageBitmap; error?: string }
 
 export const COMPOSITE_MIN_PIXELS = 1_000_000;
 const WORKER_BUDGET = 1_200_000_000;
@@ -136,7 +137,9 @@ const idle = (): Promise<void> => new Promise((done) => {
   if (typeof ric === 'function') ric(() => done(), { timeout: 40 }); else setTimeout(done, 0);
 });
 
-async function run(doc: Doc, width: number, height: number, matrix: Mat, quality: ImageSmoothingQuality): Promise<ImageData | null> {
+async function run(doc: Doc, width: number, height: number, matrix: Mat, quality: ImageSmoothingQuality, bitmaps?: false): Promise<ImageData | null>;
+async function run(doc: Doc, width: number, height: number, matrix: Mat, quality: ImageSmoothingQuality, bitmaps: true): Promise<CompOut[] | null>;
+async function run(doc: Doc, width: number, height: number, matrix: Mat, quality: ImageSmoothingQuality, bitmaps = false): Promise<ImageData | CompOut[] | null> {
   if (failed || width * height < COMPOSITE_MIN_PIXELS || !squareView(matrix)) return null;
   const prep = prepare(doc);
   if (!prep || !prep.layers.some((l) => l.raster)) return null;
@@ -168,17 +171,18 @@ async function run(doc: Doc, width: number, height: number, matrix: Mat, quality
   }
   await idle();
   const plan = bandPlan(height, 0, Math.max(16, Math.ceil(height / (pool.length * 2))));
-  const out = share ? new SharedArrayBuffer(width * height * 4) : null, whole = out ? null : new Uint8ClampedArray(width * height * 4);
+  const out = share && !bitmaps ? new SharedArrayBuffer(width * height * 4) : null, whole = out || bitmaps ? null : new Uint8ClampedArray(width * height * 4);
   const jobs = plan.map((b, i) => new Promise<CompOut>((resolve) => {
     const id = nextId++, s = pool[i % pool.length];
     waiting.set(id, { resolve });
     try {
-      s.w.postMessage({ type: 'band', id, width, height, layers: prep.layers, keys, y0: b.y0, y1: b.y1, matrix, quality, ...(out ? { out } : {}) } satisfies CompIn);
+      s.w.postMessage({ type: 'band', id, width, height, layers: prep.layers, keys, y0: b.y0, y1: b.y1, matrix, quality, ...(out ? { out } : {}), ...(bitmaps ? { bitmap: true } : {}) } satisfies CompIn);
     } catch { waiting.delete(id); failed = true; resolve({ id, y0: b.y0, y1: b.y1, error: 'post' }); }
   }));
   const done = await Promise.all(jobs);
   if (done.some((d) => d.error)) { if (done.some((d) => d.error !== 'ended')) failed = true; endCompositePool(); return null; }
   bytes.runs++; bytes.bands += done.length;
+  if (bitmaps) return done;
   if (whole) for (const d of done) if (d.pixels) whole.set(new Uint8ClampedArray(d.pixels), d.y0 * width * 4);
   const data: Uint8ClampedArray<ArrayBuffer> = out ? new Uint8ClampedArray(out).slice() : whole as Uint8ClampedArray<ArrayBuffer>;
   return new ImageData(data, width, height);
@@ -202,6 +206,27 @@ export function compositeFlat(doc: Doc): Promise<ImageData | null> {
     const d = img.data;
     for (let i = 3; i < d.length; i += 4) if (d[i] !== 255) return null;
     return img;
+  });
+}
+
+/** Whether `compositeFlatRaster` would take the document now: the switch on, the pool alive, a document the bands draw at 1:1. */
+export function flatOnWorkers(doc: Doc): boolean {
+  return compositeKey(doc, doc.width, doc.height, [1, 0, 0, 1, 0, 0], 'high') !== null;
+}
+
+/** The document composited at 1:1 on the workers as a new raster for Flatten Image and Merge Visible, or null where the
+ *  caller composites it itself. The bands come back as bitmaps of the workers' own canvases and are copied onto the raster
+ *  as they are, so a translucent pixel keeps the canvas's premultiplied bytes (the route through ImageData would not).
+ *  Runs after viewport frames. */
+export function compositeFlatRaster(doc: Doc): Promise<Raster | null> {
+  if (!compositeOn) return Promise.resolve(null);
+  return inTurn(1, async () => {
+    const done = await run(doc, doc.width, doc.height, [1, 0, 0, 1, 0, 0], 'high', true);
+    if (!done) return null;
+    const r = new Raster(doc.width, doc.height), c = r.ctx;
+    for (const d of done) if (d.bitmap) { c.drawImage(d.bitmap, 0, d.y0); d.bitmap.close(); }
+    r.touch();
+    return r;
   });
 }
 

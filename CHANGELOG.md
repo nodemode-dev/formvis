@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.95.0 · 2026-10-21
+
+- Workers: Flatten Image and Merge Visible composite on the worker threads when Composite on Worker Threads is on; the bands come back as bitmaps, so partly transparent pixels keep their exact bytes. The Paint Bucket's region has run on the wand worker since 1.92.7 and now has a test of it.
+- Workers: Box Blur at 16 and 32 bits runs in bands on the worker pool, bit-identical to the whole layer (its summed-area table is rebuilt per 512-row block), joining Gaussian Blur, Unsharp Mask, Motion Blur, Surface Blur, Add Noise and the neighborhood filters.
+- WebAssembly: Healing Brush, Spot Healing, Patch and Fill Transparent solve their membrane in WebAssembly, 2 to 4 times faster and byte-identical to the TypeScript solver, which stays as the fallback. The Magic Wand, the heal blend, the patch correction and uniform noise were already WebAssembly and now have tests that prove it.
+- On this release's 2-core test machine the pool has one worker, so these routes free the main thread but take longer overall; the gain needs four or more cores.
+
 ## 1.94.9 · 2026-10-21
 
 - Open: .af, .afphoto, .afdesign and .afpub files open with their raster layers (names, positions, opacity, visibility, blend modes, folders, clipping) instead of only their preview. Vector shapes, text, adjustments, live filters, effects and masks are listed as not read, and the file's own preview rides along as a hidden layer. Checked on real sample files (MIT, credited in NOTICE.md).

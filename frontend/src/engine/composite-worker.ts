@@ -94,6 +94,11 @@ scope.onmessage = (e: MessageEvent<CompIn | FxPut | FxJob>) => {
     const doc = { width: m.width, height: m.height, layers: m.layers.map(layerOf) } as unknown as Doc;
     const bh = m.y1 - m.y0, target = createSurface(m.width, bh), v = m.matrix;
     renderer.render({ doc, target, view: [v[0], v[1], v[2], v[3], v[4], v[5] - m.y0], quality: m.quality, background: null });
+    if (m.bitmap) {
+      const bitmap = (target as OffscreenCanvas).transferToImageBitmap();
+      scope.postMessage({ id: m.id, y0: m.y0, y1: m.y1, bitmap } satisfies CompOut, [bitmap]);
+      return;
+    }
     const px = ctxOf(target).getImageData(0, 0, m.width, bh).data;
     if (m.out) {
       new Uint8ClampedArray(m.out, m.y0 * m.width * 4, m.width * bh * 4).set(px);

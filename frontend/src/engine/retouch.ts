@@ -1,7 +1,7 @@
 import { clamp, type Pt, type Rect } from './types';
 import { gaussianBlur, gaussianMargin } from './filters';
 import type { GpuSmudge } from './gpu-filters';
-import { wasmPatchCorrect } from './wasm-kernels';
+import { wasmMembrane, wasmPatchCorrect } from './wasm-kernels';
 
 /** Retouching for formvis, written from published methods. Spot Healing picks a source patch whose surrounding ring
  *  best matches the spot's own ring (least squared difference), then heals it as in Poisson image editing (Perez,
@@ -98,6 +98,7 @@ const EXCLUDED = 0, FIXED = 1, FREE = 2;
  *  size version is solved first and spread back up as the starting point, then successive over-relaxation settles
  *  this size; the coarsest grid starts from the mean of its fixed cells. */
 function solveMembrane(v: Float32Array, state: Uint8Array, w: number, h: number): void {
+  if (wasmMembrane(v, state, w, h)) return;
   let free = 0, fixed = 0;
   for (let i = 0; i < state.length; i++) { if (state[i] === FREE) free++; else if (state[i] === FIXED) fixed++; }
   if (!free) return;

@@ -165,15 +165,42 @@ export const DEEP_GALLERY_KINDS: readonly string[] = ['radialBlur', 'fieldBlur',
  *  through 8 bits: Blur, Blur More, Box Blur, Sharpen, Sharpen More, Sharpen Edges, High Pass, Maximum, Minimum, Median and Dust and Scratches (any radius), Emboss and Find Edges.
  *  Pixels are interleaved channels with alpha last; colour is averaged with alpha as the weight. */
 
-export function boxBlurDeep(src: DeepPixels, radius: number): DeepPixels {
+export const BOX_BLOCK = 512;
+
+/** `boxMean` with its summed-area table rebuilt for each block of 512 rows of the layer (from `r` rows above the block),
+ *  so that a band starting at a multiple of 512 rows, with its apron, adds the same numbers in the same order as the
+ *  whole layer and gets the same bits. `row0` is the layer row of the picture's first row. */
+function boxMeanBlocked(src: Float32Array, w: number, h: number, r: number, row0: number): Float32Array {
+  const out = new Float32Array(w * h), W1 = w + 1, sat = new Float64Array(W1 * (Math.min(h, BOX_BLOCK + 2 * r) + 1));
+  for (let start = 0; start < h; start += BOX_BLOCK - ((row0 + start) % BOX_BLOCK)) {
+    const end = Math.min(h, start + BOX_BLOCK - ((row0 + start) % BOX_BLOCK)), s0 = Math.max(0, start - r), s1 = Math.min(h, end + r);
+    sat.fill(0, 0, W1);
+    for (let y = s0; y < s1; y++) {
+      const o = (y - s0) * W1;
+      sat[o + W1] = 0;
+      let row = 0;
+      for (let x = 0; x < w; x++) { row += src[y * w + x]; sat[o + W1 + x + 1] = sat[o + x + 1] + row; }
+    }
+    for (let y = start; y < end; y++) {
+      const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1), a = (y0 - s0) * W1, b = (y1 - s0) * W1;
+      for (let x = 0; x < w; x++) {
+        const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
+        out[y * w + x] = (sat[b + x1] - sat[a + x1] - sat[b + x0] + sat[a + x0]) / ((x1 - x0) * (y1 - y0));
+      }
+    }
+  }
+  return out;
+}
+
+export function boxBlurDeep(src: DeepPixels, radius: number, row0 = 0): DeepPixels {
   const r = Math.round(radius), { width: w, height: h } = src, S = src.n + 1, A = src.n, N = w * h;
   if (r < 1) return { ...src, data: new Float32Array(src.data) };
   const out = new Float32Array(src.data), alpha = new Float32Array(N), plane = new Float32Array(N);
   for (let p = 0; p < N; p++) alpha[p] = src.data[p * S + A];
-  const ma = boxMean(alpha, w, h, r);
+  const ma = boxMeanBlocked(alpha, w, h, r, row0);
   for (let c = 0; c < A; c++) {
     for (let p = 0; p < N; p++) plane[p] = src.data[p * S + c] * alpha[p];
-    const m = boxMean(plane, w, h, r);
+    const m = boxMeanBlocked(plane, w, h, r, row0);
     for (let p = 0; p < N; p++) out[p * S + c] = ma[p] > 0 ? m[p] / ma[p] : 0;
   }
   for (let p = 0; p < N; p++) out[p * S + A] = ma[p];
