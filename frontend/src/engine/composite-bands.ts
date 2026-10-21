@@ -28,7 +28,28 @@ interface Slot { w: Worker; has: Set<string> }
 let slots: Slot[] = [];
 let failed = false;
 let nextId = 1;
-let chain: Promise<unknown> = Promise.resolve();
+interface Turn { priority: number; seq: number; go: () => Promise<unknown> }
+const turns: Turn[] = [];
+let turnSeq = 0;
+let turning = false;
+
+/** One run at a time; the waiting run with the lowest priority number goes next (first come first among equals), so a
+ *  viewport frame (0) is not held behind an export or a flatten (1) that was asked for earlier. */
+function inTurn<T>(priority: number, run: () => Promise<T | null>): Promise<T | null> {
+  return new Promise<T | null>((resolve) => {
+    turns.push({ priority, seq: turnSeq++, go: () => run().then(resolve, () => resolve(null)) });
+    if (turning) return;
+    turning = true;
+    void (async () => {
+      while (turns.length) {
+        let at = 0;
+        for (let i = 1; i < turns.length; i++) if (turns[i].priority < turns[at].priority || (turns[i].priority === turns[at].priority && turns[i].seq < turns[at].seq)) at = i;
+        await turns.splice(at, 1)[0].go();
+      }
+      turning = false;
+    })();
+  });
+}
 const waiting = new Map<number, { resolve: (m: CompOut) => void }>();
 const bytes = { shared: 0, sent: 0, runs: 0, bands: 0 };
 
@@ -167,9 +188,21 @@ async function run(doc: Doc, width: number, height: number, matrix: Mat, quality
  *  the machine is not suited and the caller composites it itself. One run at a time; the layers' pixels travel only when
  *  they have changed since a worker last held them. */
 export function compositeOnWorkers(doc: Doc, width: number, height: number, matrix: Mat, quality: ImageSmoothingQuality = 'high'): Promise<ImageData | null> {
-  const next = chain.then(() => run(doc, width, height, matrix, quality), () => run(doc, width, height, matrix, quality));
-  chain = next.catch(() => null);
-  return next.catch(() => null);
+  return inTurn(0, () => run(doc, width, height, matrix, quality));
+}
+
+/** The whole document composited at 1:1 on the workers for an export, on the Composite on worker threads switch, or
+ *  null where the caller renders it itself: the switch off, a document the bands do not take, or any pixel not fully
+ *  opaque (an ImageData round trip would not return a translucent pixel's bytes exactly). Runs after viewport frames. */
+export function compositeFlat(doc: Doc): Promise<ImageData | null> {
+  if (!compositeOn) return Promise.resolve(null);
+  return inTurn(1, async () => {
+    const img = await run(doc, doc.width, doc.height, [1, 0, 0, 1, 0, 0], 'high');
+    if (!img) return null;
+    const d = img.data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] !== 255) return null;
+    return img;
+  });
 }
 
 const plainFloat = (l: Layer): boolean => plain({ ...l, channels: undefined }) && l.blend !== 'dissolve' && !l.mask;
@@ -239,7 +272,5 @@ async function runFloat(doc: Doc): Promise<FloatComposite | null> {
  *  composed by `composeFloat` itself on a document of that band's rows), or null where the document or machine is not
  *  suited and the caller composes it itself. Shares the one-run-at-a-time chain and the Preferences switch of `compositeOnWorkers`. */
 export function composeFloatOnWorkers(doc: Doc): Promise<FloatComposite | null> {
-  const next = chain.then(() => runFloat(doc), () => runFloat(doc));
-  chain = next.catch(() => null);
-  return next.catch(() => null);
+  return inTurn(0, () => runFloat(doc));
 }

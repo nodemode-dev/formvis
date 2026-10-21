@@ -231,6 +231,7 @@ export interface Taps { start: Int32Array; offs: Uint32Array; weights: Float32Ar
 export function wasmResample(src: Uint8ClampedArray, sw: number, sh: number, w: number, h: number, hx: Taps, vy: Taps): Uint8ClampedArray | null {
   if (![sw, sh, w, h].every((v) => Number.isInteger(v) && v > 0) || src.length !== sw * sh * 4 || sw * sh < 4096) return null;
   if (hx.start.length !== w || hx.offs.length !== w + 1 || vy.start.length !== h || vy.offs.length !== h + 1) return null;
+  if (w * h * 5 > sw * sh * 3) return null;
   const out = w * h * 4;
   return run('resample', [src.length, w * sh * 16, out, hx.start.byteLength, hx.offs.byteLength, hx.weights.byteLength, vy.start.byteLength, vy.offs.byteLength, vy.weights.byteLength], (chunk, [ps, pm, po, phs, pho, phw, pvs, pvo, pvw]) => {
     const mem = chunk.memory.buffer;

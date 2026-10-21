@@ -30,7 +30,7 @@ import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './hi
 import { restrictPatches, type RgbTarget } from './channel-target';
 import { alphaPlane, alphaRaster, planeMask, rasterMask } from './alpha-target';
 import { Renderer, dropHalved, halvedBytes, renderDoc, type LayerOverride } from './renderer';
-import { compositeKey, compositeOnWorkers } from './composite-bands';
+import { compositeFlat, compositeKey, compositeOnWorkers } from './composite-bands';
 import { effectWorker } from './fx-jobs';
 import { wasmHealFull } from './wasm-kernels';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
@@ -11978,7 +11978,12 @@ export class Engine {
   async exportBlob(type: 'image/png' | 'image/jpeg' | 'image/webp', quality = 0.92): Promise<Blob | null> {
     const p = this.current;
     if (!p) return null;
-    const blob = await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality);
+    let flat: Surface | null = null;
+    if (type !== 'image/jpeg') {
+      const img = await compositeFlat(p.doc);
+      if (img && this.current === p) { flat = createSurface(img.width, img.height); ctxOf(flat).putImageData(img, 0, 0); }
+    }
+    const blob = await toBlob(flat ?? renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality);
     return blob ? withResolution(blob, p.doc.resolution) : null;
   }
 

@@ -88,10 +88,16 @@ function pump(): void {
     const q = queue.splice(at, 1)[0];
     waiting.set(q.job.id, { slot, done: q.done });
     slot.busy++;
+    if (q.job.shared) sent.shared++; else sent.copied++;
     try { slot.w.postMessage(q.job, q.job.shared ? [] : [q.job.pixels]); }
     catch { waiting.delete(q.job.id); slot.busy--; failed = true; q.done(null); lose(slot); }
   }
 }
+
+const sent = { shared: 0, copied: 0 };
+
+/** Bands sent so far, read in place from a shared picture or carried as a copy. */
+export const bandPoolStats = (): { shared: number; copied: number } => ({ ...sent });
 
 /** Whether bands can be read from a SharedArrayBuffer: the page is cross-origin isolated. */
 export const bandsShared = (): boolean => typeof SharedArrayBuffer === 'function' && (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;

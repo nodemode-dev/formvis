@@ -230,7 +230,8 @@ import { CameraRawDialog, type RawChoice } from './ui/panels/camera-raw';
 import { ColourView, PROOF_KINDS } from './ui/colour';
 import { composeDeep, deepFromU16, deepToU16, deepToned, place, srgbToLinear } from './engine/deep';
 import { composeFloat } from './engine/compose-float';
-import { composeFloatOnWorkers } from './engine/composite-bands';
+import { composeFloatOnWorkers, compositeOnWorkers, compositeStats, setCompositeOnWorkers } from './engine/composite-bands';
+import { bandPoolSize, bandPoolStats, bandsShared } from './engine/band-pool';
 import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './engine/channels';
 import { applyLut, type Lut3x4, type Lut4 } from './engine/colour-lut';
 import type { ChannelPixels, DocMode, DocProfile, ID } from './engine/types';
@@ -6435,7 +6436,7 @@ export function startApp(): void {
     applyRelight: (content) => relight.apply(content),
   });
   (window as unknown as { formvis: unknown }).formvis = { catalogue };
-  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { engine, commands, actions, agents, animation: dialogs.animation, colour: colourView });
+  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { engine, commands, actions, agents, animation: dialogs.animation, colour: colourView, workers: { bandStats: bandPoolStats, bandsShared, compositeStats, setComposite: setCompositeOnWorkers, compositeOnWorkers, poolSize: bandPoolSize } });
 
   // Session restore (1.52.4): every open document is kept on this device (a copy per document, rewritten when it
   // changes, is saved, or moves library entry) with the tab order and the active tab, and reopens at the next start.

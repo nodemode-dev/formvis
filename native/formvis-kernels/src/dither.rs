@@ -26,13 +26,28 @@ pub unsafe extern "C" fn fv_dither(px: *mut u8, len: usize, w: usize, mat: *cons
     let ink = [ink_r, ink_g, ink_b];
     let paper = [paper_r, paper_g, paper_b];
     let mut i = 0usize;
+    let mut col = 0usize;
+    let mut row = 0usize;
+    let mut row_base = 0usize;
+    let mut row_ready = false;
     while i + 3 < len {
-        let p = i / 4;
-        let x = (p % w) as f64 + ox;
-        let y = (p / w) as f64 + oy;
-        let rx = (((x / pix).floor() % nf) + nf) % nf;
-        let ry = (((y / pix).floor() % nf) + nf) % nf;
-        let t = (m[(ry as usize) * n + rx as usize] as f64 + 0.5) / nn;
+        if !row_ready {
+            let y = row as f64 + oy;
+            let fl = (y / pix).floor();
+            let ry = fl - (fl / nf).floor() * nf;
+            row_base = (ry as usize) * n;
+            row_ready = true;
+        }
+        let x = col as f64 + ox;
+        let fl = (x / pix).floor();
+        let rx = fl - (fl / nf).floor() * nf;
+        let t = (m[row_base + rx as usize] as f64 + 0.5) / nn;
+        col += 1;
+        if col == w {
+            col = 0;
+            row += 1;
+            row_ready = false;
+        }
         if colour != 0 {
             for c in 0..3 {
                 d[i + c] = clamp_u8(cut(d[i + c] as f64, t, q, a) * 255.0);

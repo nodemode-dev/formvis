@@ -49,10 +49,11 @@ def test_a_comp_package_folder_opens(client):
     assert r.json()["name"] == "Old Work"
 
 
-def test_versions_one_to_seven_open_and_others_are_refused(client):
-    for v in range(1, 8):
+def test_versions_one_to_fifteen_open_and_others_are_refused(client):
+    for v in range(1, 16):
         assert _post(client, "v.comp", _comp(version=v)[0]).status_code == 200, v
-    assert _post(client, "v.comp", _comp(version=8)[0]).status_code == 422
+    refused = _post(client, "v.comp", _comp(version=16)[0])
+    assert refused.status_code == 422 and "format version 16" in refused.text
     assert _post(client, "v.comp", _comp(fmt="com.example.other")[0]).status_code == 422    # not a project id
     assert _post(client, "v.comp", _comp(fmt="project")[0]).status_code == 422
 

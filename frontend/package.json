@@ -23,6 +23,7 @@
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "ag-psd": "31.0.2",
+    "fzstd": "0.1.1",
     "opentype.js": "2.0.0",
     "three": "0.186.1",
     "utif2": "4.1.0"

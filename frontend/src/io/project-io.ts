@@ -32,6 +32,22 @@ const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.
 const pair = (v: unknown): [number, number] | null => (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' ? [v[0], v[1]] : null);
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 
+/** A .comp version 9 adjustment names its settings blurRadius, motionAngle and motionDistance, noiseAmount,
+ *  noiseGaussian, noiseMonochromatic and noiseSeed; they become the keys formvis's own adjustments use, where those are
+ *  not already set. Anything else passes through unchanged. */
+function compAdjustment(a: Json): Json {
+  const out: Json = { ...a }, put = (key: string, v: unknown): void => { if (out[key] === undefined && v !== undefined) out[key] = v; };
+  if (a.kind === 'Gaussian Blur') put('radius', a.blurRadius);
+  if (a.kind === 'Motion Blur') { put('angle', a.motionAngle); put('distance', a.motionDistance); }
+  if (a.kind === 'Add Noise') {
+    put('amount', a.noiseAmount);
+    if (typeof a.noiseGaussian === 'boolean') put('distribution', a.noiseGaussian ? 'gaussian' : 'uniform');
+    if (typeof a.noiseMonochromatic === 'boolean') put('mono', a.noiseMonochromatic);
+    if (typeof a.noiseSeed === 'number') put('seed', Math.abs(Math.round(a.noiseSeed)) % 10000);
+  }
+  return out;
+}
+
 export function transformRecord(t: Transform): Json {
   return { origin: [t.x, t.y], size: [t.w, t.h], rotation: t.rotation, flipX: t.flipX, flipY: t.flipY, sampling: SAMPLING_LABELS[t.sampling] };
 }
@@ -467,7 +483,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const mask: Mask | null = maskPicture
       ? { raster: grayToMask(maskPicture), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskPicture.width, maskPicture.height) : null, ...(typeof r.maskDensity === 'number' ? { density: r.maskDensity } : {}), ...(typeof r.maskFeather === 'number' ? { feather: r.maskFeather } : {}) }
       : null;
-    const adj = obj(r.adjustment), kind = KINDS[str(adj.kind) ?? ''] ?? null;
+    const adj = compAdjustment(obj(r.adjustment)), kind = KINDS[str(adj.kind) ?? ''] ?? null;
     return {
       id: str(r.id) ?? uid(),
       name: str(r.name) ?? 'Layer',
@@ -494,7 +510,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       ...(r.locks && typeof r.locks === 'object' ? (() => { const k = r.locks as Record<string, unknown>, out = Object.fromEntries((['transparency', 'pixels', 'position', 'all'] as const).filter((n) => k[n] === true).map((n) => [n, true])); return Object.keys(out).length ? { locks: out } : {}; })() : {}),
       ...(str(r.linkID) ? { link: (str(r.linkID) as string).slice(0, 120) } : {}),
       ...(generationFrom(r.generation) ? { generation: generationFrom(r.generation) as GenerationInfo } : {}),
-      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, ...(r.video && raster ? { video: videoFrom(r.video) } : {}), vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null, ...(r.extrude3d && typeof r.extrude3d === 'object' ? { extrude3d: r.extrude3d } : {}),
+      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: Array.isArray(obj(r.text).colorRuns) || Array.isArray(obj(r.text).fontRuns) ? null : textFromData(r.text, raster), smart, ...(r.video && raster ? { video: videoFrom(r.video) } : {}), vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null, ...(r.extrude3d && typeof r.extrude3d === 'object' ? { extrude3d: r.extrude3d } : {}),
       ...(r.isGroup === true && !str(r.parentID) && r.artboard ? { artboard: artboardFromData(r.artboard) } : {}),
       ...(raster && r.fillContent ? { fillContent: fillContentFrom(r.fillContent) } : {}),
       ...(raster && r.relight ? { relight: relightFrom(r.relight) } : {}),
@@ -504,7 +520,8 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   for (const b of bitmaps.values()) b.close();
   const comps = parseComps(manifest.comps);
   const guides = (Array.isArray(manifest.guides) ? manifest.guides : []).flatMap((g) => {
-    const o = obj(g), axis: 'x' | 'y' | null = o.axis === 'x' || o.axis === 'y' ? o.axis : null, at = num(o.at, NaN);
+    // A .comp guide (version 8) is { axis: vertical or horizontal, position }: a vertical line stands at an x.
+    const o = obj(g), axis: 'x' | 'y' | null = o.axis === 'x' || o.axis === 'vertical' ? 'x' : o.axis === 'y' || o.axis === 'horizontal' ? 'y' : null, at = num(o.at, num(o.position, NaN));
     const color = typeof o.color === 'string' && /^#[0-9a-f]{6}$/i.test(o.color) ? o.color.toLowerCase() : undefined;
     const board = typeof o.board === 'string' && o.board ? o.board : undefined;
     return axis && Number.isFinite(at) && at >= 0 && at <= (axis === 'x' ? width : height) ? [{ axis, at, ...(color ? { color } : {}), ...(board ? { board } : {}) }] : [];

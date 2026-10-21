@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.94.9 · 2026-10-21
+
+- Open: .af, .afphoto, .afdesign and .afpub files open with their raster layers (names, positions, opacity, visibility, blend modes, folders, clipping) instead of only their preview. Vector shapes, text, adjustments, live filters, effects and masks are listed as not read, and the file's own preview rides along as a hidden layer. Checked on real sample files (MIT, credited in NOTICE.md).
+- Open: .comp projects of format versions 8 to 15 open (versions 1 to 7 before): folder opacity and guides, Gaussian Blur, Motion Blur and Add Noise adjustment layers, text with letter runs (kept as pixels), 16-bit PNG layers (read at 8 bits), OpenEXR layers (clipped to white, as the writing app shows them) and shape style fields. Version 16 and later are refused with the version named.
+- Workers: the composite queue runs viewport frames before exports; PNG and WebP export composite on the shared-memory workers when Composite on Worker Threads is on, byte for byte the same file.
+- WebAssembly kernels: ordered Dither is twice as fast in gray, Image Size uses WebAssembly only when scaling down (it was slower for enlarging), `native/formvis-kernels/build.sh` rebuilds the modules, and tests prove byte identity with the TypeScript kernels.
+
 ## 1.94.8 · 2026-10-21
 
 - File dialogs: a system file dialog that has not come back after 20 seconds (a desktop file portal that failed the request leaves it waiting with nothing on screen) brings a notice with Stop waiting, which cancels the wait and shows what the dialogs need on this computer, including whether the file portal is used.

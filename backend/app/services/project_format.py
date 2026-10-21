@@ -19,7 +19,10 @@ QUICKLOOK = ("QuickLook/Thumbnail.png", "QuickLook/Preview.png")
 # at versions 1 to 7. They are recognised by that shape and then held to the full validation below, not by matching a
 # particular label.
 COMP_LABEL = re.compile(r"^[a-z0-9]+(\.[a-z0-9-]+)+\.project$")
-COMP_VERSIONS = range(1, 8)
+# Versions 8 to 15 (its published format notes): folder opacity and guides (8), Gaussian Blur, Motion Blur and Add Noise
+# adjustments (9), text colour and face runs (10, 11), 16-bit PNG layers (12), OpenEXR layers named <id>.exr (13), and
+# shape style fields (14, 15) that sit beside an ordinary raster. The page maps what it can and keeps the pixels.
+COMP_VERSIONS = range(1, 16)
 GIANT_SIDE = 300_000
 
 
@@ -41,10 +44,10 @@ def validate(manifest: dict, files: set[str]) -> None:
     if not isinstance(manifest, dict):
         raise ProjectError("The manifest is not a JSON object.")
     fmt, version = manifest.get("format"), manifest.get("version")
-    if not is_comp(manifest):
-        if fmt not in SUPPORTED:
-            raise ProjectError("This is not a formvis, canvasor or .comp project.")
-    allowed = COMP_VERSIONS if is_comp(manifest) else SUPPORTED[fmt]
+    comp_shaped = isinstance(fmt, str) and bool(COMP_LABEL.match(fmt)) and fmt not in SUPPORTED
+    if not comp_shaped and fmt not in SUPPORTED:
+        raise ProjectError("This is not a formvis, canvasor or .comp project.")
+    allowed = COMP_VERSIONS if comp_shaped else SUPPORTED[fmt]
     if type(version) is not int or version not in allowed:
         raise ProjectError(f"This project uses format version {version}, which this build cannot read.")
     size = (manifest.get("width"), manifest.get("height"))
@@ -133,7 +136,45 @@ def _collect(entries: list[tuple[str, int, callable]]) -> tuple[dict, dict[str, 
         if size > config.MAX_ASSET_BYTES:
             raise ProjectError("An image in the project is larger than 512 MiB.")
         assets[name] = reader()
+    if is_comp(manifest):
+        _comp_hdr_layers(manifest, assets)
     return manifest, assets, root
+
+
+def _comp_hdr_layers(manifest: dict, assets: dict[str, bytes]) -> None:
+    """A .comp version 13 layer may be OpenEXR (extended sRGB half floats, white is 1, premultiplied). The page reads
+    PNG, so each one becomes an 8-bit PNG clipped to white, as the writing app itself shows and edits it, and the record
+    points at that; the layer is marked so the open can say its brighter-than-white values were clipped. An EXR that
+    cannot be decoded is left as it is, and the missing-image check that follows refuses the project."""
+    from PIL import Image
+    import numpy as np
+    from app.services import contained
+    layers = manifest.get("layers") if isinstance(manifest.get("layers"), list) else []
+    for record in layers:
+        name = record.get("imageFile") if isinstance(record, dict) else None
+        if not isinstance(name, str) or not name.lower().endswith(".exr") or name not in assets:
+            continue
+        img = contained.decode_exr(assets[name])
+        if img is None or img.ndim not in (2, 3):
+            continue
+        img = np.nan_to_num(img.astype(np.float32), nan=0.0, posinf=1.0, neginf=0.0)
+        if img.ndim == 2:
+            img = np.stack([img, img, img], axis=-1)
+        rgb, alpha = img[..., 2::-1][..., :3], (img[..., 3] if img.shape[-1] >= 4 else np.ones(img.shape[:2], np.float32))
+        alpha = np.clip(alpha, 0.0, 1.0)
+        straight = np.where(alpha[..., None] > 0, rgb / np.maximum(alpha[..., None], 1e-6), 0.0)
+        over = bool((straight > 1.0).any())
+        rgba = np.concatenate([np.clip(straight, 0.0, 1.0), alpha[..., None]], axis=-1)
+        out = io.BytesIO()
+        Image.fromarray(np.round(rgba * 255).astype(np.uint8), "RGBA").save(out, "PNG")
+        png = name[:-4] + ".png"
+        if png in assets:
+            png = name[:-4] + ".hdr.png"
+        assets[png] = out.getvalue()
+        del assets[name]
+        record["imageFile"] = png
+        if over:
+            record["hdrClipped"] = True
 
 
 def read_zip(data: bytes) -> tuple[dict, dict[str, bytes]]:

@@ -10,6 +10,10 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | `paintbrush` icon from Remix Icon | Apache-2.0 | `frontend/src/ui/icons.ts` |
 | `hand` icon (cursor-hand) from Remix Icon | Apache-2.0 | `frontend/src/ui/icons.ts` |
 | Tauri sidecar shell template (tauri-compiler-skill) | MIT | `src-tauri/src/main.rs` |
+| .af, .afphoto, .afdesign and .afpub reading (container, object graph, tiles), the read direction of schist's crates/codec-affinity ported to TypeScript | MIT, Copyright (c) 2026 Infrawrench LLC | `frontend/src/io/af-read.ts` |
+| Test documents lf_gauss10.af, shp_arrow.af, exposure.af (schist fixtures) | MIT, Copyright (c) 2026 Infrawrench LLC | `e2e/fixtures/af/` |
+| Test documents raster_test.afdesign, layer_test.afdesign, layer_mode.afdesign (AFDesignLoad) | MIT, Copyright (c) 2015 Nick Beeuwsaert | `e2e/fixtures/af/` |
+| Test document poster.af (filex-media-thumbs) | MIT, Copyright (c) 2026 BRF Tech | `e2e/fixtures/af/` |
 
 ## Distributed with the app
 
@@ -19,6 +23,7 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | Lato 1.104, Montserrat 9.000, Open Sans 3.003, Roboto 3.015, Lora 3.008, Merriweather 2.100, Playfair Display 1.203, Anton 2.116, Bebas Neue 2.000, Oswald 4.103, Caveat 2.000, Dancing Script 2.001, Pacifico 3.001, IBM Plex Mono 2.3, Source Code Pro 1.026 (via @fontsource 5.3.0 and 5.3.1) | SIL OFL 1.1 fonts, MIT packaging | latin woff2 text fonts in `frontend/public/fonts/[family]/`, each with its licence text, registered on first use (1.90.7) |
 | Rust core and alloc inside `frontend/src/engine/kernels-wasm/*.wasm` | MIT OR Apache-2.0 | the WebAssembly pixel kernels built from `native/formvis-kernels` (no other crates), loaded on first use (1.90.7) |
 | ag-psd, with pako and base64-js | MIT (pako: MIT and Zlib) | layered PSD open and export, loaded on first use |
+| fzstd (0.1.1) | MIT, Copyright (c) 2020 Arjun Barrett | reading zstd-compressed entries of .af, .afphoto, .afdesign and .afpub files (`frontend/src/io/af-read.ts`), loaded on first use |
 | three.js | MIT | Place 3D Model (.glb and .gltf), loaded on first use |
 | opentype.js (2.0.0) | MIT | reading glyph outlines from font files for Create Work Path, Convert to Shape and the Glyphs panel (`frontend/src/engine/glyph-outlines.ts`), loaded on first use |
 | utif2 (4.1.0, with pako) | MIT (pako: MIT and Zlib) | opening a TIFF in the browser when the engine service is not running (`frontend/src/io/tiff-browser.ts`), loaded on first use |
