@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.95.5 · 2026-10-21
+
+- Preferences > Performance: the graphics API row is named Native Graphics API (desktop app, next launch). Its 1.94.8 name contained "Renderer", so the Renderer choice could no longer be found by its label (two GPU preference tests failed).
+- Tests: the full browser-suite run reached 384 of 442 files, every file passing apart from the label clash above, now fixed. The offered-options walk (about 26 minutes) outlasts the runner's 10-minute limit per file and is run on its own. No other product change.
+
 ## 1.95.4 · 2026-10-21
 
 - Tests: the full browser-suite run continues, 306 of 442 files now done (1,014 tests passed in the runs), every file passing. The docking tests failed while the development server had been serving hot updates for hours, because the test's own import of the panel module got a second copy of it; they passed on a freshly started server. No product change.

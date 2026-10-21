@@ -14,10 +14,10 @@ def test_the_choice_is_written_and_offers_the_linux_apis(fresh):
     fresh.launch()
     open_preferences(fresh)
     shown = fresh.ok("ui_dialog", {"action": "list"})
-    field = next(f for d in shown["dialogs"] for f in d["fields"] if f["field"].startswith("Native Renderer Graphics API"))
+    field = next(f for d in shown["dialogs"] for f in d["fields"] if f["field"].startswith("Native Graphics API"))
     assert field["options"] == ["Automatic", "Vulkan", "OpenGL"]
     for choice, kept in (("OpenGL", "gl"), ("Vulkan", "vulkan"), ("Automatic", "auto")):
-        preference(fresh, "Native Renderer Graphics API", choice)
+        preference(fresh, "Native Graphics API", choice)
         fresh.wait_for(lambda: backend_file(fresh).exists() and backend_file(fresh).read_text() == kept, timeout=20, what=f"{kept} kept in graphics-backend")
 
 

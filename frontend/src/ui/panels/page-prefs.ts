@@ -60,7 +60,7 @@ export class PagePrefsRows {
   private readonly lowRes = checkRow('Low-Resolution Previews', (v) => this.change({ lowResPreviews: v }));
   private readonly gpuBrush = checkRow('GPU Brush Coverage', (v) => this.change({ gpuBrushCoverage: v }));
   private readonly displayServer = selectRow('Linux Display Server (desktop app, next launch)', DISPLAY_SERVERS, (v) => this.change({ displayServer: v === 'x11' || v === 'wayland' ? v : 'auto' }));
-  private readonly graphicsBackend = selectRow('Native Renderer Graphics API (desktop app, next launch)', GRAPHICS_BACKENDS, (v) => this.change({ graphicsBackend: GRAPHICS_BACKENDS.find(([k]) => k === v)?.[0] ?? 'auto' }));
+  private readonly graphicsBackend = selectRow('Native Graphics API (desktop app, next launch)', GRAPHICS_BACKENDS, (v) => this.change({ graphicsBackend: GRAPHICS_BACKENDS.find(([k]) => k === v)?.[0] ?? 'auto' }));
   private readonly glyphProtection = checkRow('Enable Missing Glyph Protection', (v) => this.change({ glyphProtection: v }));
   private readonly fontNamesEnglish = checkRow('Show Font Names in English (next launch)', (v) => this.change({ fontNamesEnglish: v }));
   private readonly memoryLine = el('<p class="cv-note" role="status" style="min-height: 2.8em"></p>');
