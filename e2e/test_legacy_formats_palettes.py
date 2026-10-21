@@ -43,14 +43,16 @@ def test_shc_contours_are_laid_out_as_documented_and_read_back(page):
     pts = [{"x": 0, "y": 0}, {"x": 0.5, "y": 0.25}, {"x": 1, "y": 1}]
     r = page.evaluate(RT, ["shc", "writeShc", "readShc", [[{"name": "Soft", "points": pts}, {"name": "Flat", "points": [{"x": 0, "y": 0.5}, {"x": 1, "y": 0.5}]}]]])
     b = bytes(r["bytes"])
-    assert be16(b, 0) == 1 and be16(b, 2) == 2
-    n = be32(b, 4)
+    assert b[:4] == b"8BFS" and be16(b, 4) == 1 and be32(b, 6) == 2
+    assert be32(b, 10) == 2
+    n = be32(b, 14)
     assert n == len("Soft") + 1
-    assert b[8:8 + 8].decode("utf-16-be") == "Soft"
-    o = 8 + 2 * (n - 1)
-    assert b[o:o + 2] == b"\x00\x00" and be16(b, o + 2) == 3
+    assert b[18:18 + 8].decode("utf-16-be") == "Soft"
+    o = 18 + 2 * n
+    assert be16(b, o) == 2 and be16(b, o + 2) == 3
     o += 4
-    assert [(be16(b, o + i * 5), be16(b, o + i * 5 + 2), b[o + i * 5 + 4]) for i in range(3)] == [(0, 0, 0), (64, 128, 0), (255, 255, 0)]
+    assert [(be16(b, o + i * 4), be16(b, o + i * 4 + 2)) for i in range(3)] == [(0, 0), (64, 128), (255, 255)]
+    assert list(b[o + 12:o + 15]) == [1, 1, 1] and be32(b, o + 15) == 0 and be32(b, o + 19) == 0
     back = r["back"]
     assert back["skipped"] == 0 and [c["name"] for c in back["contours"]] == ["Soft", "Flat"]
     assert [round(p["y"] * 255) for p in back["contours"][0]["points"]] == [0, 64, 255]
@@ -62,7 +64,7 @@ def test_shc_reader_refuses_other_files_and_stops_at_a_cut_contour(page):
     r = page.evaluate("""async () => {
       const m = await import('/src/io/shc.ts');
       let err = '';
-      try { m.readShc(new Uint8Array([0, 40, 0, 1]).buffer); } catch (e) { err = String(e.message); }
+      try { m.readShc(new Uint8Array([0, 40, 0, 1, 0, 0, 0, 0, 0, 0]).buffer); } catch (e) { err = String(e.message); }
       const good = m.writeShc([{ name: 'A', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }, { name: 'B', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }]);
       const cut = m.readShc(good.slice(0, good.length - 8).buffer);
       return { err, names: cut.contours.map((c) => c.name), skipped: cut.skipped };

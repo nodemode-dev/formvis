@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## .shc in the published layout; native dialogs and low latency checked · _v1.95.1 (io/shc.ts)
+
+- shc.ts (agent shc): the old private layout (u16 version, u16 count, 5-byte points) became the published one: 8BFS, u16 version, u32 count; per contour u32 record version 1 or 2, a UTF-16BE name with its u32 length counting the final null, u16 curve format (2), u16 point count, u16 vertical then u16 horizontal per point, version 2's u8 smooth flags after the pairs, u32 min and max input. Corner flags are read past and written back as smooth. No shareable third-party .shc was found; the fixtures are hand-written to the layout and decoded independently in the test.
+- Native dialogs (desktop, no code change): under Xvfb without a window manager the GTK dialog needs XSetInputFocus before typing, and a leading slash opens the Open dialog's location field. Save As always ends in .fvd: a typed name ending in another extension gets .fvd added.
+- Low-latency drawing (no code change): the CPU scene canvas reports desynchronized true only with the preference on; predicted events drive the tip hover only; coalesced events are replayed whatever the preference. The WebGPU and native displays take the option and ignore it.
+
 ## Flatten on workers, deep Box Blur bands, WebAssembly membrane · _v1.95.0 (engine/composite-bands.ts, engine/composite-worker.ts, engine/index.ts, engine/deep-bands.ts, engine/deep-filters.ts, engine/retouch.ts, engine/wasm-kernels.ts, native/formvis-kernels/src/heal.rs)
 
 - compositeFlatRaster (agent arena2): workers return each band as transferToImageBitmap and the page draws it source-over onto a transparent Raster, which keeps the premultiplied bytes, so Flatten and Merge Visible match the main thread for alpha below 255 too. compositeFlat (ImageData, export) still declines alpha below 255: getImageData then putImageData unpremultiplies and premultiplies again. Qualifying: 8-bit RGB, no folders, no tiled layers; Merge Visible also needs every visible layer inside the canvas. busyWith is set while it runs; flattenImage returns at once. The old bodies are flattenOnMain and mergeVisibleWith(null).

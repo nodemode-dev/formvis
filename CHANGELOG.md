@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.95.1 · 2026-10-21
+
+- Contours: .shc contour preset files are read and written in the published layout (the 8BFS signature, record versions 1 and 2, curve format and input bounds). The earlier reader used a layout of its own and would have refused every .shc made by other software.
+- Desktop tests: Save As and Open use the system's file dialogs on Linux, the window keeps answering while one is open, and the path typed into the dialog is where the project is written and what is opened.
+- Tests: Low-latency drawing sets the canvas hint and reads predicted pointer events only when it is on, and coalesced pointer events are always laid along the stroke.
+
 ## 1.95.0 · 2026-10-21
 
 - Workers: Flatten Image and Merge Visible composite on the worker threads when Composite on Worker Threads is on; the bands come back as bitmaps, so partly transparent pixels keep their exact bytes. The Paint Bucket's region has run on the wand worker since 1.92.7 and now has a test of it.
