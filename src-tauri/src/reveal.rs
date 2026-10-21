@@ -84,3 +84,38 @@ fn set_seen<R: Runtime>(window: &WebviewWindow<R>, seen: bool) {
 
 #[cfg(not(target_os = "macos"))]
 fn set_seen<R: Runtime>(_window: &WebviewWindow<R>, _seen: bool) {}
+
+/// The splash card's corners (1.96.1): the page draws a rounded card, but on macOS the window and the web view still
+/// painted a square behind it. The window is made non-opaque with a clear background, and its content layer is masked
+/// to the card's radius, so whatever lies outside the rounded rectangle is cut away, the web view included.
+#[cfg(target_os = "macos")]
+pub fn round_splash<R: Runtime>(app: &tauri::AppHandle<R>) {
+    const RADIUS: f64 = 16.0;
+    let Some(splash) = app.get_webview_window("splash") else { return };
+    let Ok(ns_window) = splash.ns_window() else { return };
+    let address = ns_window as usize;
+    let _ = splash.run_on_main_thread(move || unsafe {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+        let Some(window) = (address as *const objc2_app_kit::NSWindow).as_ref() else { return };
+        window.setOpaque(false);
+        window.setBackgroundColor(Some(&objc2_app_kit::NSColor::clearColor()));
+        let Some(content) = window.contentView() else { return };
+        content.setWantsLayer(true);
+        let layer: *mut AnyObject = msg_send![&*content, layer];
+        if let Some(layer) = layer.as_ref() {
+            let _: () = msg_send![layer, setCornerRadius: RADIUS];
+            let _: () = msg_send![layer, setMasksToBounds: true];
+        }
+        window.invalidateShadow();
+    });
+    let _ = splash.show();
+}
+
+/// Elsewhere the splash, built hidden like on macOS, is shown as it is.
+#[cfg(not(target_os = "macos"))]
+pub fn round_splash<R: Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(splash) = app.get_webview_window("splash") {
+        let _ = splash.show();
+    }
+}

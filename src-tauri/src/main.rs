@@ -703,6 +703,7 @@ fn main() {
         .manage(Backend(Mutex::new(None)))
         .setup(|app| {
             let handle = app.handle().clone();
+            reveal::round_splash(&handle);
             // A project or picture the system launched formvis with (Windows and Linux; macOS sends RunEvent::Opened).
             let launch_args: Vec<String> = std::env::args().collect();
             open_paths(&handle, paths_from_args(&launch_args, None));
