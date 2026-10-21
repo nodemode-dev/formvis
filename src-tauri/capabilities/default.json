@@ -19,6 +19,7 @@
     "core:window:allow-set-size",
     "core:event:default",
     "dialog:allow-open",
+    "shell:allow-open",
     "dialog:allow-save",
     "allow-system-fonts",
     "allow-pick-image-path",

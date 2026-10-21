@@ -40,7 +40,7 @@ export interface ModelsFolder { active: string; saved: string; env: string; rest
 export interface OutputItem { name: string; path: string; modified: number; size: number; kind: string }
 /** Marks the calls that read or write files by path (1.87.0): the engine answers them only for formvis's own window. */
 const LOCAL = { 'X-Formvis': '1' };
-export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; last4?: string; refused?: boolean; /** Seconds since 1970 when the service refused the key, 0 when it has not. */ refusedAt?: number; fillModel: string; eraseModel: string; upscaleModel: string }
+export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; last4?: string; refused?: boolean; /** Seconds since 1970 when the service refused the key, 0 when it has not. */ refusedAt?: number; fillModel: string; eraseModel: string; upscaleModel: string; store?: 'system' | 'file' }
 export interface LlmRow { id: string; name: string; baseUrl: string; model: string; vision: boolean; hasKey: boolean; last4?: string; refusedAt?: number }
 export interface LlmStatus { configured: boolean; baseUrl: string; model: string; vision: boolean; active: string; hasKey: boolean; rows: LlmRow[]; store: 'system' | 'file' }
 export interface HfToken { hasKey: boolean; last4: string; store: 'system' | 'file' }

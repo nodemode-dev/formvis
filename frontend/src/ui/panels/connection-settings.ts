@@ -665,6 +665,12 @@ export class ApiKeysSection {
         const link = KEY_LINKS[r.id];
         if (link) { const a = line.querySelector('a') as HTMLAnchorElement; a.href = link; setHidden(a, false); }
         (line.querySelector('button') as HTMLButtonElement).addEventListener('click', () => void this.clear(r.id, r.name));
+        if (r.id === 'fal') {
+          const paste = el('<form class="cv-api-key-paste"><input class="cv-input" type="password" autocomplete="off" spellcheck="false" aria-label="fal API key"><button type="submit" class="cv-btn">Save key</button></form>');
+          const input = paste.querySelector('input') as HTMLInputElement;
+          paste.addEventListener('submit', (e) => { e.preventDefault(); void this.save(input, r.name); });
+          line.append(paste);
+        }
         return line;
       },
       update: (node, r) => {
@@ -672,8 +678,24 @@ export class ApiKeysSection {
         node.dataset.stale = r.refusedAt ? 'true' : 'false';
         const b = node.querySelector('button') as HTMLButtonElement;
         b.disabled = !r.configured || r.source === 'environment';
+        const input = node.querySelector<HTMLInputElement>('.cv-api-key-paste input');
+        const hint = r.configured ? `Paste a new ${r.name} key to replace it` : `Paste your ${r.name} key`;
+        if (input && input.placeholder !== hint) input.placeholder = hint;
       },
     });
+  }
+
+  /** The pasted fal key goes to the engine, which keeps it in the system's password store (the macOS Keychain, Windows
+   *  Credential Manager, the Secret Service) and uses it for every fal call, the agents' MCP tools included. */
+  private async save(input: HTMLInputElement, name: string): Promise<void> {
+    const key = input.value.trim();
+    if (!key) { setText(this.note, `Paste a ${name} key first.`); input.focus(); return; }
+    try {
+      const s = await api.saveGenerativeKey(key);
+      input.value = '';
+      setText(this.note, `${name} key saved ${s.store === 'file' ? 'in a file on this computer only you can read' : 'in your system\'s password store'}${s.last4 ? `, ends ${s.last4}` : ''}.`);
+    } catch (err) { setText(this.note, failure(err, 'Could not save the key.')); }
+    await this.refresh();
   }
 
   private async clear(id: string, name: string): Promise<void> {
