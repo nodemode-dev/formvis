@@ -14,7 +14,7 @@ tauri-build = { version = "2", features = [] }
 # devtools (1.86.4): the Web Inspector in release builds too (right-click > Inspect Element), so a slow desktop window
 # can be profiled where it runs (Timelines) and `formvisPerf.record(10)` run in its console. Tauri notes it uses
 # private macOS API, which matters only for the Mac App Store.
-tauri = { version = "2", features = ["devtools"] }
+tauri = { version = "2", features = ["devtools", "macos-private-api"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
@@ -46,7 +46,7 @@ windows-sys = { version = "0.61", features = ["Win32_UI_Shell"] }
 # macOS: NSDocumentController's recent documents (Apple menu, Dock menu), through the bindings Tauri's window layer already builds (MIT or Apache-2.0 or zlib).
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSDocumentController", "NSWindow", "NSButton", "NSControl", "NSView", "NSResponder"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSDocumentController", "NSWindow", "NSButton", "NSControl", "NSView", "NSResponder", "objc2-core-foundation"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSGeometry"] }
 
 [profile.release]

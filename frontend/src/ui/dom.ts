@@ -112,10 +112,15 @@ export function reserve(el: HTMLElement, box: { width?: number; height?: number;
 
 /** The app's boot reveal: #app is visibility:hidden from the critical inline
  * style; call this exactly once after the first render is in the DOM. Two
- * frames so fonts and layout settle before the single reveal. */
+ * frames so fonts and layout settle before the single reveal. The desktop shell
+ * keeps the window unseen behind its splash until the frame after that, then
+ * shows it whole (src-tauri/src/reveal.rs). */
 export function revealApp(): void {
   if (document.body.classList.contains('app-ready')) return;
-  requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add('app-ready')));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.body.classList.add('app-ready');
+    if ('__TAURI_INTERNALS__' in window) requestAnimationFrame(() => { void import('@tauri-apps/api/core').then((m) => m.invoke('app_ready')).catch(() => undefined); });
+  }));
 }
 
 /** Mount a fresh subtree from a template string ONCE into an empty host.

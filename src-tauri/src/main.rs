@@ -14,6 +14,7 @@ mod display;
 mod integration;
 mod native;
 mod packaged;
+mod reveal;
 mod traffic_lights;
 mod window_state;
 
@@ -633,6 +634,7 @@ fn single_instance() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 }
 
 fn main() {
+    reveal::mark_launch();
     if let Some(code) = packaged::command_line() {
         std::process::exit(code);
     }
@@ -684,6 +686,7 @@ fn main() {
             display::display_profile,
             window_state::ui_zoom,
             traffic_lights::set_window_title,
+            reveal::app_ready,
             native::native_start,
             native::native_stop,
             native::native_doc,
@@ -763,6 +766,8 @@ fn main() {
                         };
                         let builder = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url.parse().unwrap()))
                             .title("formvis")
+                            .visible(reveal::BUILD_VISIBLE)
+                            .background_color(reveal::BACKGROUND)
                             .inner_size(width, height)
                             .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
                             // Files dropped on the window reach the page as ordinary drop events (1.86.1): Tauri's own
@@ -795,11 +800,13 @@ fn main() {
                             }
                         });
                         if let Ok(window) = builder.build() {
+                            reveal::conceal(&window);
                             traffic_lights::place(&window.as_ref().window());
                             window_state::restore(&window, &place);
                             window_state::watch_renderer(&window);
+                        } else {
+                            close_splash(&handle);
                         }
-                        close_splash(&handle);
                         #[cfg(target_os = "linux")]
                         integration::first_run(&handle);
                     }

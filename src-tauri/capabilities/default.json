@@ -43,6 +43,7 @@
     "allow-set-graphics-backend",
     "allow-system-fonts-english",
     "allow-ui-zoom",
-    "allow-set-window-title"
+    "allow-set-window-title",
+    "allow-app-ready"
   ]
 }

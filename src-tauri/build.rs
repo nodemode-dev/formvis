@@ -24,6 +24,7 @@ const APP_COMMANDS: &[&str] = &[
     "system_fonts_english",
     "ui_zoom",
     "set_window_title",
+    "app_ready",
 ];
 
 fn main() {
