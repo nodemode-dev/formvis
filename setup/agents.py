@@ -45,8 +45,8 @@ def tools_reference() -> str:
     groups = [("Look", {"get_document", "get_image", "get_selection", "get_layer_tree"}), ("Commands", {"list_commands", "describe_command", "run_command", "run_commands"}),("Files and documents", {"new_document", "open_file", "save_project", "export_image", "switch_document"}),
               ("Size and shape", {"resize_image", "resize_canvas", "crop", "flip_canvas", "upscale", "generative_expand"}),
               ("Layers", {"add_layer", "set_layer", "delete_layer", "transform_layer", "duplicate_layer", "move_layer", "merge_layers", "flatten_image", "rasterize_layer", "place_image"}),
-              ("Text and shapes", {"add_text", "draw_shape"}), ("Selecting", {"select", "select_subject", "select_color_range"}),
-              ("Painting and generating", {"fill", "generative_fill", "generate_image", "remove_background"}),
+              ("Text and shapes", {"add_text", "draw_shape"}), ("Selecting", {"select", "select_subject", "select_by_text", "select_color_range"}),
+              ("Painting and generating", {"fill", "generative_fill", "generate_image", "fal_models", "remove_background"}),
               ("Colour, filters and looks", {"add_adjustment", "set_adjustment", "apply_filter", "color_match", "add_film_layer"}), ("History", {"undo", "redo"}),
               ("Files without the window, and jobs", {"file_info", "convert_file", "improve_prompt", "jobs_list", "jobs_cancel"}),
               ("The window itself", {"ui_inspect", "ui_state", "ui_screenshot", "ui_menu_list", "ui_menu_invoke", "ui_set", "ui_dialog", "ui_pointer", "ui_key", "ui_window", "control_call", "file_roots"})]

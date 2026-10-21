@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.95.6 · 2026-10-21
+
+- fal models: a curated catalogue of 51 fal endpoints (`backend/app/data/fal_models.json`, built from the fal model schemas the owner keeps in NodeMode) for the models the ledger had deferred or declined, and nothing else. The engine runs them through fal's queue (`/api/fal/models`, `/api/fal/run`), checks every input against the model's own schema and sends pictures and masks to the schema's own keys.
+- Generate Image, Generative Fill, Generative Expand and Upscale list the catalogue models of their kind beside today's choices, with each model's options built from its schema and its price shown. Remove Background offers Cutout (fal). New commands: Select > Subject by Text (SAM 3) and Filter > Render > Relight with fal (IC-Light).
+- Agents: new MCP tools `fal_models` and `select_by_text`; `generate_image` and `upscale` take a catalogue `model` with `seed`, `size`, `aspect_ratio`, `negative_prompt` and `options`.
+- Checked against a stub of fal's queue, not live fal (no key on the test machine).
+
 ## 1.95.5 · 2026-10-21
 
 - Preferences > Performance: the graphics API row is named Native Graphics API (desktop app, next launch). Its 1.94.8 name contained "Renderer", so the Renderer choice could no longer be found by its label (two GPU preference tests failed).

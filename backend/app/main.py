@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
 
 from app.core import config, runtime
+from app.routers import fal as _fal_router
 from app.routers import comfyui, generative, io, large, llm, mcp, ops, plugins, projects, system, nodemode, colour
 from app.services import claude_code as _claude_service, sessions, terminal as _terminal_service
 
@@ -89,6 +90,7 @@ from app.routers import bands  # noqa: E402  (pictures written a band at a time,
 app.include_router(bands.router)
 bands.clear()
 app.include_router(generative.router, prefix="/api/generative")
+app.include_router(_fal_router.router, prefix="/api/fal")
 app.include_router(nodemode.router)   # Send to NodeMode, standalone (1.50.8); its prefix is its own
 if runtime.switches()["noComfy"] is False:   # --no-comfy leaves Send to ComfyUI out
     app.include_router(comfyui.router)   # Send to ComfyUI (1.50.9); its prefix is its own

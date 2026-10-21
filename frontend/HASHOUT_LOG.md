@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## fal catalogue in the dialogs and agents · _v1.95.6 (io/api.ts, io/fal.ts, ui/panels/fal-options.ts, ui/panels/fal-task-dialog.ts, ui/panels/generative-dialog.ts, ui/panels/generate-image.ts, ui/panels/background-panel.ts, automation/fal-agent.ts, automation/fal-tools.ts, automation/agent-bridge.ts, app.ts)
+
+- Catalogue models join the existing Model pickers as `falcat:<id>`, so nothing changes until one is picked. FalOptions builds its fields from the schema once per model change, replacing only its fields container, and sends only values the person changed. Never offered as options: prompt, text_prompt, the picture and mask `*_url(s)` keys, image_size, num_images, output_format, sync_mode, objects and lists.
+- Fill sends the selection mask only when the schema has a mask key; Expand crops the original back out and sends the margins as expand_* (the outpaint model grows the canvas itself), while the reframe model gets image_size set to the new canvas.
+- Remove Background and Select Subject share subjectMask; the `fal-cutout` matting choice routes to the cutout model. Subject by Text and Relight with fal share FalTaskDialog. The Generate panel keeps its old list; only the Generate Image dialog lists the generate models.
+- Not yet: reference chips as extra pictures for edit models with image_urls.
+
 ## .shc in the published layout; native dialogs and low latency checked · _v1.95.1 (io/shc.ts)
 
 - shc.ts (agent shc): the old private layout (u16 version, u16 count, 5-byte points) became the published one: 8BFS, u16 version, u32 count; per contour u32 record version 1 or 2, a UTF-16BE name with its u32 length counting the final null, u16 curve format (2), u16 point count, u16 vertical then u16 horizontal per point, version 2's u8 smooth flags after the pairs, u32 min and max input. Corner flags are read past and written back as smooth. No shareable third-party .shc was found; the fixtures are hand-written to the layout and decoded independently in the test.

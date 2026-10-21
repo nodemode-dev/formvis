@@ -1,19 +1,19 @@
 # formvis commands
 
-Generated from the window's command catalogue (1664 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1666 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 108
 - File: 102
-- Filter: 141
+- Filter: 142
 - Generate: 6
 - Help: 5
 - Image: 122
 - Layer: 282
 - Paint: 1
 - Paths: 12
-- Select: 46
+- Select: 47
 - Tool options: 467
 - Tools: 53
 - Type: 66
@@ -351,6 +351,7 @@ Generated from the window's command catalogue (1664 commands) by `./formvis agen
 | `filter-radialBlur` | Radial Blur... |  | Opens the Radial Blur filter on the active layer. (changes the picture) |
 | `filter-reduceNoise` | Reduce Noise... |  | Opens the Reduce Noise filter on the active layer. (changes the picture) |
 | `filter-relight` | Relight... |  | Starts Relight from the Filter menu: adds a Relight layer above the active layer and opens its lights. (changes the picture) |
+| `filter-relight-fal` | Relight with fal... |  | Opens Relight with fal: describe the light and the fal relighting model returns the picture lit that way, as a new layer above the others. (changes the picture) |
 | `filter-ripple` | Ripple... |  | Opens the Ripple filter on the active layer. (changes the picture) |
 | `filter-scanlines` | Scanlines... |  | Opens the Scanlines filter on the active layer. (changes the picture) |
 | `filter-shakeReduction` | Shake Reduction... |  | Opens the Shake Reduction filter on the active layer. (changes the picture) |
@@ -925,6 +926,7 @@ Generated from the window's command catalogue (1664 commands) by `./formvis agen
 | `select-object` | Object in Selection |  | Selects the object inside the current selection. (changes the picture) |
 | `select-sky` | Sky |  | Selects the sky. (changes the picture) |
 | `select-subject` | Subject |  | Selects the main subject. (changes the picture) |
+| `select-subject-text` | Subject by Text... |  | Opens Subject by Text: name what to select and the fal segmentation model returns the mask, which becomes the selection. (changes the picture) |
 | `select.ellipse` | Elliptical Selection |  | Selects the ellipse inside a box in document pixels. (changes the picture) |
 | `select.lasso` | Lasso Selection |  | Selects the polygon through the points. (changes the picture) |
 | `select.rect` | Rectangular Selection |  | Selects a rectangle in document pixels. (changes the picture) |

@@ -352,6 +352,12 @@
 .cv-gen-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cv-gen-log { margin: 4px 0; font-size: 12px; }
 .cv-gen-logtext { max-height: 110px; overflow: auto; margin: 4px 0; font-size: 11px; white-space: pre; user-select: text; }
+/* Options of a fal catalogue model, built from its schema under More options. */
+.cv-fal { margin: 6px 0; }
+.cv-fal[hidden], .cv-fal-more[hidden] { display: none; }
+.cv-fal-more { margin: 4px 0; font-size: 12px; }
+.cv-fal-more > summary { cursor: pointer; color: var(--text-muted); }
+.cv-fal-fields { display: grid; gap: var(--space-2); margin-top: 6px; max-height: 220px; overflow: auto; }
 /* Improve Prompt (1.51.5). */
 .cv-improve { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 2px 0 6px; }
 .cv-improve select { max-width: 160px; }

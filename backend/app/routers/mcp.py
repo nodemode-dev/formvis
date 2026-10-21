@@ -23,7 +23,7 @@ from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app import __version__
-from app.services import agents
+from app.services import agents, fal_run
 from app.routers.mcp_pack import PACK_TOOLS, PACK_USE_WHEN
 from app.routers.terminal import server_port
 
@@ -42,7 +42,7 @@ STRATEGY = """How to edit a picture in formvis with these tools.
 
 1. Look first. get_document gives the size, the layers bottom to top with their ids and kinds, and the open documents. get_image shows the picture; call it again after each change to check the result before going on.
 2. Work on the right thing. Most tools act on the active layer: set_layer with active true chooses it. A new element goes on its own layer (add_layer, add_text, draw_shape, generate_image, place_image), so it can be moved or removed later.
-3. Remove something from a photo: select it (select_subject for the main subject; select with a rectangle or ellipse around it; select_color_range for a colour), then generative_fill with no prompt. On this computer LaMa fills from the surroundings.
+3. Remove something from a photo: select it (select_subject for the main subject; select_by_text for a thing named in words; select with a rectangle or ellipse around it; select_color_range for a colour), then generative_fill with no prompt. On this computer LaMa fills from the surroundings.
 4. Add something to a photo: select where it goes, then generative_fill with a prompt describing it. model auto uses Krea 2 here when installed, else fal (the person is asked first).
 5. Text and titles: add_text with size, colour and font; transform_layer to place it; draw_shape for a plate behind it (move_layer to put the plate below the text).
 6. Colour and looks: add_adjustment (curves, levels, hsv, exposure, splitToning, halation, glow and more) keeps the picture editable; set_adjustment changes it later. color_match fits a pasted element to its background. add_film_layer adds a light leak or a frame. apply_filter blurs, sharpens or adds noise, on pixels only (rasterize_layer first for text and shapes).
@@ -62,6 +62,16 @@ def _tool(name: str, description: str, props: dict, required: list[str] | None =
 CONTROL_METHODS = {"ui.inspect": "ui_inspect", "ui.state": "ui_state", "ui.screenshot": "ui_screenshot", "ui.menu.list": "ui_menu_list", "ui.menu.invoke": "ui_menu_invoke", "ui.set": "ui_set", "ui.dialog": "ui_dialog",
                    "ui.pointer": "ui_pointer", "ui.key": "ui_key", "window": "ui_window", "app.open": "open_file", "app.save": "save_project", "app.export": "export_image", "app.roots": "file_roots"}
 _ID = {"type": "string", "description": "A layer id from get_document."}
+
+
+def _fal_ids(role: str) -> list[str]:
+    return [m["id"] for m in fal_run.models() if m.get("role") == role]
+
+
+_FAL_ROLES = sorted({m["role"] for m in fal_run.models()})
+_FAL_MORE = {"seed": {"type": "integer", "minimum": 0, "maximum": 4294967295, "description": "The model's seed, for a repeatable result; only for a model that takes one (fal_models)."},
+             "negative_prompt": {"type": "string", "maxLength": 2000, "description": "What to keep out of the picture; only for a model that takes one (fal_models)."},
+             "options": {"type": "object", "description": "Other inputs of the chosen model by their names (fal_models lists them), for example {guidance_scale: 4}. The engine checks each against the model's own schema."}}
 _OVERWRITE = {"type": "boolean", "default": False, "description": "Replace a file already at the path. Without it an existing file is not touched."}
 TOOLS = [
     _tool("get_document", "The open document: name, size, resolution, colour mode (rgb, cmyk, grayscale...), bit depth, colour profile, the layers bottom to top (id, name, kind, visible, opacity, blend, parent group), the active layer and the selection's bounds.", {}, read=True, idempotent=True),
@@ -100,10 +110,17 @@ TOOLS = [
           {"left": {"type": "integer", "minimum": 0, "maximum": 8000, "default": 0}, "top": {"type": "integer", "minimum": 0, "maximum": 8000, "default": 0},
            "right": {"type": "integer", "minimum": 0, "maximum": 8000, "default": 0}, "bottom": {"type": "integer", "minimum": 0, "maximum": 8000, "default": 0},
            "prompt": {"type": "string", "maxLength": 2000, "default": ""}, "model": {"type": "string", "enum": ["auto", "lama", "krea-2", "fal"], "default": "auto", "description": "auto: on this computer first (LaMa with no prompt, Krea 2 with one), fal last (asks the person, costs money)."}}, open=True),
-    _tool("generate_image", "Generates a picture from a prompt as a new layer the size of the document. model auto uses Krea 2 or FLUX.2 [klein] on this computer when installed, else FLUX1.1 [pro] on fal, which asks the person first.",
-          {"prompt": {"type": "string", "maxLength": 2000}, "model": {"type": "string", "enum": ["auto", "krea-2", "flux2-klein-4b", "fal"], "default": "auto"}}, ["prompt"], open=True),
-    _tool("upscale", "Enlarges what the document shows 2 or 4 times into a new document. model auto uses Real-ESRGAN on this computer when downloaded, else Real-ESRGAN on fal (asks first).",
-          {"scale": {"type": "integer", "enum": [2, 4], "default": 2}, "model": {"type": "string", "enum": ["auto", "local", "fal"], "default": "auto"}}, open=True),
+    _tool("generate_image", "Generates a picture from a prompt as a new layer, the size of the document unless size or aspect_ratio is given (then the picture keeps that shape and is centred, fitted inside the document). model auto uses Krea 2 or FLUX.2 [klein] on this computer when installed, else FLUX1.1 [pro] on fal, which asks the person first. model can also be the id of a generate model from fal_models (always fal, asks first): only those models take seed, negative_prompt and options, and size or aspect_ratio, by whichever of image_size or aspect_ratio the model has.",
+          {"prompt": {"type": "string", "maxLength": 2000}, "model": {"type": "string", "enum": ["auto", "krea-2", "flux2-klein-4b", "fal", *_fal_ids("generate")], "default": "auto"},
+           "size": {"type": "object", "properties": {"width": {"type": "integer", "minimum": 64, "maximum": 8192}, "height": {"type": "integer", "minimum": 64, "maximum": 8192}}, "required": ["width", "height"], "additionalProperties": False, "description": "The picture's size in pixels; for a fal_models generate model."},
+           "aspect_ratio": {"type": "string", "pattern": "^[0-9]+:[0-9]+$", "description": "For example 16:9; for a fal_models generate model (one with an aspect_ratio input takes the values it lists)."}, **_FAL_MORE}, ["prompt"], open=True),
+    _tool("upscale", "Enlarges what the document shows 2 or 4 times into a new document. model auto uses Real-ESRGAN on this computer when downloaded, else Real-ESRGAN on fal (asks first). model can also be the id of an upscale model from fal_models (fal, asks first); seed, negative_prompt and options then apply as that model's inputs allow.",
+          {"scale": {"type": "integer", "enum": [2, 4], "default": 2}, "model": {"type": "string", "enum": ["auto", "local", "fal", *_fal_ids("upscale")], "default": "auto"}, **_FAL_MORE}, open=True),
+    _tool("fal_models", "Lists the fal models formvis may use (the owner's catalogue, no others) with their roles: " + ", ".join(_FAL_ROLES) + ". With role, only that role's models; with model, one model's inputs (key, type, default, enum, range) for the options of generate_image and upscale. Changes nothing, costs nothing, needs no window.",
+          {"role": {"type": "string", "enum": _FAL_ROLES}, "model": {"type": "string", "maxLength": 120}}, read=True, idempotent=True),
+    _tool("select_by_text", "Selects what a short description names, for example 'the red car' or 'all the people', by sending the document's picture and the words to SAM 3 on fal (asks the person first, costs money); the returned mask becomes the selection, combined by mode. Fails with a message when nothing matches. Follow with generative_fill, fill or any selection edit.",
+          {"prompt": {"type": "string", "minLength": 1, "maxLength": 300}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"},
+           "options": {"type": "object", "description": "Other SAM 3 inputs by name (fal_models with model fal-ai/sam-3/image), for example {output_format: 'png'}."}}, ["prompt"], open=True),
     _tool("remove_background", "Removes the active layer's background on this computer, keeping the subject (a mask on the layer; undoable).", {}),
     # Files, read and written by the engine at absolute paths (~ is expanded).
     _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw, SVG drawn to pixels at svg_width) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document. into replace opens a picture in place of the active document (its unsaved changes are discarded), into layer adds it as a layer of the active document (as place_image does; reference true flags it as a reference picture). The file is remembered, so save_project or export_image with no path writes the document back to it.",
@@ -398,6 +415,8 @@ USE_WHEN = {
     "generative_expand": "the canvas should grow and the new border be painted in.",
     "generate_image": "a whole new picture is wanted from a description.",
     "upscale": "the picture needs more pixels with detail kept.",
+    "fal_models": "you need the fal models formvis may use, their roles and their inputs before choosing a model for generate_image, upscale or select_by_text.",
+    "select_by_text": "a thing is named in words (a car, the sky, all the people) rather than drawn or picked by colour.",
     "remove_background": "the subject of the active layer should be kept and its background dropped.",
     "open_file": "the person gives a path to a picture or project to work on.",
     "save_project": "the work should be kept with layers still editable.",
@@ -898,6 +917,19 @@ async def _run(name: str, args: dict) -> dict:
             state = ("the window is open and agents are allowed" if info["window"] and info["allowed"] else "the window is open but outside agents are not allowed (the first edit asks the person)" if info["window"]
                      else "no window is open (the first edit opens one)")
             return {"content": [{"type": "text", "text": f"formvis {__version__}: {state}; {len(info['documents'])} open document{'' if len(info['documents']) == 1 else 's'}."}], "structuredContent": info}
+        if name == "fal_models":
+            shown = fal_run.listing()
+            wanted, found = args.get("role"), args.get("model")
+            if found:
+                hit = next((m for m in shown["models"] if m["id"] == found), None)
+                if hit is None:
+                    return _fail(f"{found} is not in the formvis catalogue: call fal_models without model for the list.")
+                keep = ("key", "type", "required", "default", "enum", "min", "max", "maxItems")
+                data = {"ready": shown["ready"], "model": {"id": hit["id"], "label": hit["label"], "role": hit["role"], "inputs": [{k: i[k] for k in keep if k in i} for i in hit["inputs"]]}}
+                return {"content": [{"type": "text", "text": f"{hit['label']} ({hit['role']}): {len(hit['inputs'])} inputs. {json.dumps(data['model']['inputs'])}"}], "structuredContent": data}
+            rows = [{"id": m["id"], "label": m["label"], "role": m["role"], "inputs": [i["key"] for i in m["inputs"]]} for m in shown["models"] if not wanted or m["role"] == wanted]
+            said = f"{len(rows)} fal model{'' if len(rows) == 1 else 's'}" + (f" of role {wanted}" if wanted else "") + ("" if shown["ready"] else "; fal has no key yet, the person adds one in Edit > Generative Fill") + "."
+            return {"content": [{"type": "text", "text": said + " " + json.dumps(rows)}], "structuredContent": {"ready": shown["ready"], "roles": _FAL_ROLES, "models": rows}}
         if name == "file_roots":
             lim = agents.limits()
             env = [r for r in os.environ.get("FORMVIS_AGENT_ROOTS", "").split(os.pathsep) if r.strip()]

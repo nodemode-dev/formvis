@@ -5,7 +5,7 @@ description: AI-assisted edits in formvis through its MCP tools. Use to remove a
 
 # generation-and-ai
 
-Tools: `generative_fill`, `generative_expand`, `generate_image`, `upscale`, with `select`, `select_subject` and `remove_background` to aim them.
+Tools: `generative_fill`, `generative_expand`, `generate_image`, `upscale`, `fal_models`, with `select`, `select_subject`, `select_by_text` and `remove_background` to aim them.
 
 ## Local first, fal last
 
@@ -19,8 +19,9 @@ If nothing can run, the error names exactly what to download (Preferences > Plug
 | --- | --- | --- |
 | `generative_fill` | `prompt` (up to 2000 characters, default empty), `model` (`auto`, `lama`, `krea-2`, `fal`), `influence` (0 to 1, default 0.4, Krea 2 only) | Needs a selection ("Generative Fill needs a selection: call select, select_subject or select_color_range first"). No prompt removes what the selection covers; a prompt paints that. Result is a new layer masked to the selection |
 | `generative_expand` | `left`, `top`, `right`, `bottom` (pixels, 0 to 8000), `prompt`, `model` | Grows the canvas by the margins and fills the new border, continuing the picture. At least one margin |
-| `generate_image` | `prompt` (required), `model` (`auto`, `krea-2`, `flux2-klein-4b`, `fal`) | A new layer the size of the document; make or open a document of the right size first |
-| `upscale` | `scale` (2 or 4), `model` (`auto`, `local`, `fal`) | Enlarges what the document shows into a new document, which becomes current |
+| `generate_image` | `prompt` (required), `model` (`auto`, `krea-2`, `flux2-klein-4b`, `fal`, or a generate model id from `fal_models`), `seed`, `size` (`width`, `height`), `aspect_ratio` (such as `16:9`), `negative_prompt`, `options` | A new layer the size of the document; make or open a document of the right size first. With a catalogue model it asks the person, runs on fal, and `seed`, `size`, `aspect_ratio`, `negative_prompt` and `options` apply as that model's inputs allow (a reply names what the model lacks); with `size` or `aspect_ratio` the layer keeps that shape, centred and fitted inside the document |
+| `upscale` | `scale` (2 or 4), `model` (`auto`, `local`, `fal`, or an upscale model id from `fal_models`), `seed`, `negative_prompt`, `options` | Enlarges what the document shows into a new document, which becomes current |
+| `fal_models` | `role` (generate, edit, upscale and the rest), `model` | Lists the fal models formvis may use, by role; with `model`, that model's inputs for `options`. Read only, no window needed |
 | `remove_background` | none | Acts on the active layer; keeps the subject as a layer mask. Local, free |
 
 `model: "auto"` picks LaMa for a fill without a prompt and Krea 2 for one with a prompt, falling back to fal (with consent), and says in the reply which ran. If a prompt is given but only LaMa exists, LaMa runs without it and the reply says so; read that reply and tell the person.

@@ -19,6 +19,7 @@ import { liveText } from '../engine/text';
 import { allBrushPresets } from '../engine/brush-dynamics';
 import { isLibKind } from '../engine/filter-library';
 import { PACK_TOOLS, labelExport, packTool } from './pack-tools';
+import { falGenerate, falSelectByText, falUpscaler } from './fal-tools';
 import type { UiControl } from './ui-control';
 
 /** Outside agents in the window (1.52.1): while Allow outside agents is on (Preferences > Plugins), the window collects
@@ -894,6 +895,8 @@ export class AgentBridge {
         case 'generate_image': {
           const prompt = str('prompt').trim(), want = str('model') || 'auto';
           if (!prompt) return fail('Give a prompt.');
+          if (want.includes('/')) return falGenerate(e, (t, b) => this.deps.ask(t, b), a, want, prompt);
+          if (a.seed !== undefined || a.negative_prompt !== undefined || a.options !== undefined || a.size !== undefined || a.aspect_ratio !== undefined) return fail('seed, negative_prompt, size, aspect_ratio and options go with a catalogue model: set model to a generate model id from fal_models.');
           const locals = (await localModels()).filter((m) => m.ready), fal = !!(await api.generativeStatus())?.configured;
           const local = want === 'auto' ? locals.find((m) => m.id === 'local:krea-2') ?? locals[0] : want === 'fal' ? undefined : locals.find((m) => m.id === `local:${want}`);
           if (want !== 'auto' && want !== 'fal' && !local) return fail(`${want} is not installed: Preferences > Plugins > Local models.`);
@@ -914,7 +917,15 @@ export class AgentBridge {
           return text(`Generated with ${used}; the result is a new layer (id ${e.activeLayer?.id}).${notice}`, { id: e.activeLayer?.id });
         }
         case 'upscale': {
-          const scale = num('scale', 2) >= 4 ? 4 : 2, want = str('model') || 'auto', here = await modelReady('ai-upscale');
+          const scale = num('scale', 2) >= 4 ? 4 : 2, want = str('model') || 'auto';
+          if (want.includes('/')) {
+            const up = await falUpscaler((t, b) => this.deps.ask(t, b), a, want, scale);
+            if ('content' in up) return up;
+            const done = await e.task(() => e.upscaleToDocument(scale, up.run));
+            return done === false ? fail('Upscale did not complete: see the formvis window.') : text(`Upscaled ${scale}x with ${up.label} on fal${up.fixed ? ' (the model sets its own factor; the result was fitted to the size asked)' : ''} into a new document, ${e.current?.doc.width} by ${e.current?.doc.height}, now the one tools act on.`, { id: e.current?.id, model: want });
+          }
+          if (a.seed !== undefined || a.negative_prompt !== undefined || a.options !== undefined) return fail('seed, negative_prompt and options go with a catalogue model: set model to an upscale model id from fal_models.');
+          const here = await modelReady('ai-upscale');
           const local = want === 'local' || (want === 'auto' && here);
           if (local && !here) return fail('Real-ESRGAN is not downloaded: Preferences > Plugins > Local models (about 67 MB).');
           if (!local) {
@@ -924,6 +935,7 @@ export class AgentBridge {
           const ok = await e.task(() => e.upscaleToDocument(scale, local ? localUpscale(scale) : (image) => api.upscale(image, scale)));
           return ok === false ? fail('Upscale did not complete: see the formvis window.') : text(`Upscaled ${scale}x ${local ? 'on this computer' : 'on fal'} into a new document, ${e.current?.doc.width} by ${e.current?.doc.height}, now the one tools act on.`, { id: e.current?.id });
         }
+        case 'select_by_text': return falSelectByText(e, (t, b) => this.deps.ask(t, b), a, modeOf(a.mode));
         case 'get_selection': {
           const s = p.selection, data = { selection: s ? { x: s.x, y: s.y, width: s.w, height: s.h } : null };
           return text(s ? `The selection is ${s.w} by ${s.h} at ${s.x}, ${s.y}.` : 'Nothing is selected.', data);

@@ -265,6 +265,8 @@ import { ContactSheetDialog } from './ui/panels/contact-sheet-dialog';
 import { LoadStackDialog } from './ui/panels/load-stack-dialog';
 import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { BackgroundPanel, mattingChoice } from './ui/panels/background-panel';
+import { subjectMask } from './io/fal';
+import { FalTaskDialog } from './ui/panels/fal-task-dialog';
 import { ColorPickerDialog } from './ui/panels/color-picker';
 import { LiveMaskDialog } from './ui/panels/live-mask-dialog';
 import { Commands, comboOf, type Command, type CommandParam } from './ui/commands';
@@ -2899,7 +2901,7 @@ export function startApp(): void {
     await engine.task(async () => {
       try {
         const choice = mattingChoice(), file = choice && choice !== 'grabcut' ? choice : '';
-        const { mask, method: used } = await api.removeBackground(await toBlob(raster.canvas), choice === 'grabcut' ? 'lite' : method, file);
+        const { mask, method: used } = await subjectMask(await toBlob(raster.canvas), choice === 'grabcut' ? 'lite' : method, file);
         const bitmap = await createImageBitmap(mask);
         if (engine.activeLayer?.id !== l.id) { bitmap.close(); if (agent) throw new Error('The active layer changed before the mask was ready.'); return; }
         const by = used === 'file' ? file : used === 'ml' ? 'ML' : 'lightweight';
@@ -2910,7 +2912,7 @@ export function startApp(): void {
         }
         dialogs.background.rerun = async (pick) => {
           try {
-            const again = await api.removeBackground(await toBlob(raster.canvas), pick === 'grabcut' ? 'lite' : 'auto', pick && pick !== 'grabcut' ? pick : '');
+            const again = await subjectMask(await toBlob(raster.canvas), pick === 'grabcut' ? 'lite' : 'auto', pick && pick !== 'grabcut' ? pick : '');
             return await createImageBitmap(again.mask);
           } catch (err) { toast(message(err), 'error'); return null; }
         };
@@ -3017,7 +3019,7 @@ export function startApp(): void {
     await engine.task(async () => {
       try {
         const choice = mattingChoice();
-        const { mask, method: used } = await api.removeBackground(await toBlob(crop), choice === 'grabcut' ? 'lite' : 'auto', choice && choice !== 'grabcut' ? choice : '');
+        const { mask, method: used } = await subjectMask(await toBlob(crop), choice === 'grabcut' ? 'lite' : 'auto', choice && choice !== 'grabcut' ? choice : '');
         const bitmap = await createImageBitmap(mask), m = createSurface(box.w, box.h), c = ctxOf(m);
         c.drawImage(bitmap, 0, 0, box.w, box.h);
         bitmap.close();
@@ -3427,6 +3429,7 @@ export function startApp(): void {
     lensBatch: new LensBatchDialog((o, f) => runLensBatch(o, f)),
     imageProcessor: new ImageProcessorDialog(actions, (o) => imageProcessor(o)),
     generative: new GenerativeDialog(engine),
+    falTask: new FalTaskDialog(engine),
     layerStyle: new LayerStyleDialog(engine, deliver),
     text: new TextDialog(engine),
     newCanvas: new NewCanvasDialog(engine),
@@ -4673,6 +4676,7 @@ export function startApp(): void {
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
     { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },
     { id: 'select-subject', label: 'Subject', enabled: () => !!engine.current, params: AUTO_SELECT_PARAMS, run: (a) => void selectSubject(false, a) },
+    { id: 'select-subject-text', label: 'Subject by Text...', enabled: () => !!engine.current, run: () => { void dialogs.falTask.show('segment'); } },
     { id: 'select-sky', label: 'Sky', enabled: () => !!engine.current, params: { ...AUTO_SELECT_PARAMS, sensitivity: { type: 'number', min: 0, max: 100, description: 'How readily faint sky counts: 50 keeps the model as it is, higher grows the sky, lower tightens it. The saved setting when left out.' }, softness: { type: 'number', min: 0, max: 250, description: 'Edge softness in pixels (a feather); the saved setting when left out.' }, method: { type: 'string', enum: ['quick', 'model'], description: 'quick finds the sky by color and smoothness with no model; model uses the downloaded sky model. When left out the model is used if downloaded, else the quick method.' } }, run: (a) => void selectSky(a) },
     { id: 'auto-select-sample-all', label: 'Sample All Layers', checked: () => engine.autoSel.sampleAll, run: () => engine.setAutoSel({ sampleAll: !engine.autoSel.sampleAll }) },
     { id: 'sky-sensitivity', label: 'Sky Sensitivity...', run: () => void (async () => { const v = await promptName('Sky Sensitivity (0 to 100, 50 keeps the model as it is)', String(engine.autoSel.skySensitivity), 'Set'); if (v !== null && v.trim() !== '' && Number.isFinite(Number(v))) engine.setAutoSel({ skySensitivity: Math.max(0, Math.min(100, Number(v))) }); })() },
@@ -5844,6 +5848,7 @@ export function startApp(): void {
     { id: 'new-fill-adjustment', label: 'New Fill or Adjustment Layer', enabled: has, run: () => { const b = root.querySelector<HTMLElement>('.cv-layers [data-cmd="new-fill-adjustment"]'), r = b?.getBoundingClientRect(); fillMenu.openAt(r ? r.left : 40, r ? r.bottom : 40); } },
     { id: 'new-relight-layer', label: 'Relight Layer...', icon: 'relight', enabled: () => has() && !relight.editing, run: () => { void relight.begin(); } },
     { id: 'filter-relight', label: 'Relight...', icon: 'relight', enabled: () => has() && !relight.editing, run: () => { void relight.begin(); } },
+    { id: 'filter-relight-fal', label: 'Relight with fal...', icon: 'relight', enabled: has, run: () => { void dialogs.falTask.show('relight'); } },
     { id: 'edit-relight', label: 'Edit Lighting...', icon: 'relight', enabled: () => !!layer()?.relight && !relight.editing, run: () => { const l = layer(); if (l?.relight) void relight.begin(l.id); } },
     { id: 'layer-content-options', label: 'Layer Content Options...', enabled: () => !!layer()?.adjustment || !!layer()?.fillContent || !!layer()?.relight || !!layer()?.vector || !!layer()?.text || !!layer()?.smart, run: () => { const l = layer(); if (l?.fillContent) dialogs.fillLayer.showEdit(l.id); else if (l?.adjustment) { if (l.adjustment.kind === 'filter') editFilterLayer(l.id); else dialogs.adjust.openForLayer(l.id); } else if (l?.relight) void relight.begin(l.id); else if (l?.vector) dialogs.shapeStyle.show(); else if (l?.text) document.dispatchEvent(new CustomEvent('cv:type', { detail: { layerId: l.id } })); else if (l?.smart) engine.editContents(); } },
     { id: 'film-leak', label: 'Light Leak...', enabled: () => !!engine.current, run: () => filmLayer.show('leak') },   // 1.51.6
@@ -6027,7 +6032,7 @@ export function startApp(): void {
       'lock-transparency', 'lock-layers', '-', 'link-layers', 'select-linked', '-',
       'merge', 'merge-visible', 'stamp-visible', 'frequency-separation', 'stamp-down', 'flatten', '-', 'show-only-layer', 'show-all-layers', { label: 'Color Label', items: ['layer-label-none', '-', ...LAYER_LABELS.map((c) => `layer-label-${c}`)] }, { label: 'Role', items: ['layer-role-none', '-', ...LAYER_ROLES.map((r) => `layer-role-${r}`)] }, '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
-    { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'select-by-depth', 'focus-area', 'select-subject', 'select-sky', 'select-object', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', 'select-and-mask-dialog', '-', 'layer-pixels', 'mask-black', '-',
+    { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', 'convert-to-shape-tolerance', 'selection-to-work-path', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'select-by-depth', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-subject-text', { label: 'Subject and Sky Options', items: ['auto-select-sample-all', 'sky-sensitivity', 'sky-softness'] }, 'select-and-mask', 'select-and-mask-dialog', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', 'transform-selection-numeric', 'select-float', 'select-drop', '-', 'quick-mask', '-', 'load-selection', 'load-luminosity', 'load-selection-vector-mask', 'save-selection', { label: 'Channel', items: ['new-channel', 'new-spot-channel', 'duplicate-channel', 'channel-options', '-', 'channel-up', 'channel-down'] }, 'path-selection', 'path-selection-dialog', 'delete-path'] },
     { label: 'Filter', items: ['filter-last', 'filter-convert-smart', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
@@ -6035,7 +6040,7 @@ export function startApp(): void {
       { label: 'Distort', items: filterGroup('Distort', []) },
       { label: 'Noise', items: filterGroup('Noise', ['filter-addNoise']) },
       { label: 'Pixelate', items: filterGroup('Pixelate', []) },
-      { label: 'Render', items: [...drawnFirst, '-', ...filterGroup('Render', []).filter((id) => !drawnFirst.includes(id))] },
+      { label: 'Render', items: [...drawnFirst, 'filter-relight-fal', '-', ...filterGroup('Render', []).filter((id) => !drawnFirst.includes(id))] },
       { label: 'Sharpen', items: filterGroup('Sharpen', ['filter-smartSharpen', 'filter-shakeReduction', 'filter-unsharpMask']) },
       { label: 'Stylize', items: filterGroup('Stylize', []) },
       { label: 'Video', items: filterGroup('Video', []) },

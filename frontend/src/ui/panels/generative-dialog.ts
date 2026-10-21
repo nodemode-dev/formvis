@@ -13,6 +13,9 @@ import { generatePrompt } from '../../io/prompt-templates';
 import { cappedFill, cappedUpscale, comfyReadiness, resolveReferenceTokens, stoppable, stoppableFill } from './generate-image';
 import { PromptImprover, areaView, referenceViews } from './prompt-improver';
 import { GenerationOptions } from './generation-options';
+import { FalOptions } from './fal-options';
+import { falCatalogue, falIdOf, falMaskKey, falModelsOf, falRunImage, falValue } from '../../io/fal';
+import type { FalModel } from '../../io/api';
 
 type Mode = 'fill' | 'expand' | 'upscale';
 
@@ -59,6 +62,9 @@ export class GenerativeDialog extends Dialog {
   private readonly addFile = el<HTMLInputElement>('<input type="file" accept=".json,application/json" aria-label="Add ComfyUI workflow" hidden>');
   private readonly comfyGroup = el<HTMLOptGroupElement>('<optgroup label="ComfyUI upscaler"></optgroup>');
   private comfyListed = '';
+  private readonly fal = new FalOptions();
+  private readonly falGroup = el<HTMLOptGroupElement>('<optgroup label="fal models"></optgroup>');
+  private catalogue: FalModel[] = [];
 
   constructor(private readonly engine: Engine) {
     super('Generative Fill', 440);
@@ -70,6 +76,7 @@ export class GenerativeDialog extends Dialog {
     this.model.addEventListener('change', () => { this.picked = true; this.sync(); });
     this.modelRow.append(this.model, add, remove, this.addFile);
     this.body.appendChild(this.modelRow);
+    this.body.appendChild(this.fal.el);
     this.scopeRow.append(this.scope);
     this.body.appendChild(this.scopeRow);
     this.influenceRow.append(this.influence);
@@ -136,6 +143,8 @@ export class GenerativeDialog extends Dialog {
     // Upscale: Real-ESRGAN on fal or on this computer (1.53.1); the fill models otherwise.
     for (const b of this.modelRow.querySelectorAll('button')) setHidden(b as HTMLElement, mode === 'upscale');
     this.status = await api.generativeStatus();   // first, so the default knows whether fal has a key (1.58.5)
+    this.catalogue = falModelsOf(await falCatalogue(), ...(mode === 'upscale' ? ['upscale' as const] : mode === 'expand' ? ['expand' as const] : ['edit' as const, 'inpaint' as const]));
+    this.falGroup.replaceChildren(...this.catalogue.map((m) => Object.assign(document.createElement('option'), { value: falValue(m), textContent: m.label })));
     if (mode === 'upscale') { this.upscaleModels(await upscalerReady(), await upscaleFiles()); void this.loadComfyUpscalers(); }
     else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.problems = await comfyReadiness(); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
     this.refs.refresh(!this.model.value.startsWith('comfy:'));
@@ -173,6 +182,7 @@ export class GenerativeDialog extends Dialog {
     });
     this.model.replaceChildren(el('<option value="fal">Real-ESRGAN (fal)</option>'), here, ...chosen);
     if (this.comfyGroup.children.length) this.model.append(this.comfyGroup);
+    if (this.falGroup.children.length) this.model.append(this.falGroup);
     // The person's choice while it stands; else fal when it has a key, this computer when not (1.58.5).
     const stands = was === 'fal' || (was === 'local:ai-upscale' && ready) || [...this.model.options].some((o) => o.value === was && !o.disabled && o.value !== 'fal');
     this.model.value = this.picked && stands ? was : this.status?.configured ? 'fal' : ready ? 'local:ai-upscale' : 'fal';
@@ -211,6 +221,7 @@ export class GenerativeDialog extends Dialog {
     const lama = el<HTMLOptionElement>('<option value="local:lama">LaMa, no prompt (this computer)</option>');
     lama.disabled = !this.lama; if (!this.lama) lama.title = 'Download it in Preferences > Plugins > Local models';
     this.model.append(lama);
+    if (this.falGroup.children.length) this.model.append(this.falGroup);
     // The person's choice while it stands; else fal when it has a key; else this computer: a ready fill model, then
     // LaMa; else fal, whose key the dialog then asks for (1.58.5).
     const local = this.locals.find((m) => m.ready)?.id ?? (this.lama ? 'local:lama' : null);
@@ -242,8 +253,11 @@ export class GenerativeDialog extends Dialog {
   private get upscaleFile(): string { return this.model.value.startsWith('local-file:') ? this.model.value.slice('local-file:'.length) : ''; }
   private get local(): LocalModel | undefined { return this.mode !== 'upscale' ? this.locals.find((m) => m.id === this.model.value) : undefined; }
 
+  private get falModel(): FalModel | null { const id = falIdOf(this.model.value); return id ? this.catalogue.find((m) => m.id === id) ?? null : null; }
+
   private sync(): void {
     const s = this.status, local = this.local;
+    this.fal.show(this.falModel, this.mode === 'expand' ? ['expand_top', 'expand_bottom', 'expand_left', 'expand_right'] : []);
     this.opts.forModel(this.lamaHere || this.upscaleHere ? 'lama' : this.model.value);
     this.refs.forFal(!this.comfy);
     setHidden(this.influenceRow, !local);
@@ -291,6 +305,34 @@ export class GenerativeDialog extends Dialog {
     const e = this.engine;
     const capped = cappedUpscale(run, scale);
     return scope === 'here' ? e.upscaleInDocument(scale, capped) : scope === 'selection' ? e.upscaleSelection(scale, capped) : e.upscaleToDocument(scale, capped);
+  }
+
+  /** A catalogue model's run through the engine's /fal/run: the picture (and the selection's mask when the model has a mask key) go by the schema's image keys, the options set go as inputs, and the answer lands the way the dialog's own results do. */
+  private async generateWith(cat: FalModel): Promise<void> {
+    const prompt = this.prompt.value.trim(), mode = this.mode, scale = this.scale, e = this.engine, scope = this.scope.value, extra = this.fal.values();
+    const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
+    const takesPrompt = cat.inputs.some((i) => i.key === 'prompt');
+    if (takesPrompt && mode !== 'upscale' && !prompt && cat.inputs.some((i) => i.key === 'prompt' && i.required) && cat.role !== 'expand') { setText(this.state, 'Describe the change first.'); this.prompt.focus(); return; }
+    const withPrompt = (): Record<string, unknown> => ({ ...(takesPrompt && prompt ? { prompt } : {}), ...extra });
+    this.close();
+    if (mode === 'upscale') { await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable(async () => (await falRunImage(cat, extra, image)).blob))); return; }
+    if (mode === 'expand') {
+      const fill = stoppableFill(() => async (image: Blob): Promise<Blob> => {
+        const bmp = await createImageBitmap(image), w = bmp.width, h = bmp.height, iw = Math.max(1, w - margins.left - margins.right), ih = Math.max(1, h - margins.top - margins.bottom);
+        const c = new OffscreenCanvas(iw, ih), g = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+        g.drawImage(bmp, -margins.left, -margins.top);
+        bmp.close();
+        const inner = await c.convertToBlob({ type: 'image/png' });
+        const keys = new Set(cat.inputs.map((i) => i.key));
+        const sent = { ...withPrompt(), ...(keys.has('expand_left') ? { expand_left: margins.left, expand_right: margins.right, expand_top: margins.top, expand_bottom: margins.bottom } : {}), ...(keys.has('image_size') ? { image_size: { width: w, height: h } } : {}) };
+        return (await falRunImage(cat, sent, inner)).blob;
+      });
+      await e.task(() => e.generativeExpand(margins, prompt, fill));
+      return;
+    }
+    const maskKey = falMaskKey(cat);
+    const fill = stoppableFill(() => cappedFill(async (image: Blob, mask: Blob): Promise<Blob> => (await falRunImage(cat, withPrompt(), image, maskKey ? mask : null)).blob));
+    await e.task(() => e.generativeFill(prompt, fill));
   }
 
   private async generate(): Promise<void> {
@@ -348,6 +390,8 @@ export class GenerativeDialog extends Dialog {
       this.key.value = '';
       this.sync();
     }
+    const cat = this.falModel;
+    if (cat) { await this.generateWith(cat); return; }
     const prompt = this.prompt.value, mode = this.mode, scale = this.scale, e = this.engine, scope = this.scope.value, { seed } = this.opts.request();
     const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
     const sent = await generatePrompt(prompt, 'fal');

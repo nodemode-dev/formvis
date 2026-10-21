@@ -1,0 +1,4881 @@
+{
+ "source": "fal model schemas as kept by NodeMode 8.87.0",
+ "models": [
+  {
+   "id": "fal-ai/boogu-image",
+   "label": "Boogu Image",
+   "role": "generate",
+   "row": "SC-AI-0010",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.04/megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The instruction describing the image to generate. Boogu-Image is bilingual — English and Chinese instructions are both supported. Detailed, descriptive prompts produce the best results.",
+     "required": true
+    },
+    {
+     "key": "negative_prompt",
+     "type": "string",
+     "label": "Negative Prompt",
+     "description": "Describes what should NOT appear in the image. Used for classifier-free guidance; leave empty to disable text negative guidance."
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. The model's maximum native resolution is 2K; larger requests are clamped. Dimensions are aligned to multiples of 16.",
+     "default": "square_hd"
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Num Inference Steps",
+     "description": "The number of denoising steps to perform.",
+     "default": 30,
+     "min": 20,
+     "max": 50,
+     "step": 1
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance Scale",
+     "description": "Controls how closely generation follows the text instruction. Higher values stick more closely to the prompt. A value of 1.0 disables text classifier-free guidance.",
+     "default": 4,
+     "min": 1,
+     "max": 8,
+     "step": 0.01
+    },
+    {
+     "key": "cfg_range_start",
+     "type": "number",
+     "label": "Cfg Range Start",
+     "description": "Start of the timestep fraction over which CFG is applied.",
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "cfg_range_end",
+     "type": "number",
+     "label": "Cfg Range End",
+     "description": "End of the timestep fraction over which CFG is applied.",
+     "default": 1,
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The same seed and the same prompt given to the same version of the model will output the same image every time.",
+     "step": 1
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If true, the safety checker is run on the generated images. Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If true, the media is returned as a data URI and the output is not available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/boogu-image/edit",
+   "label": "Boogu Image Edit",
+   "role": "edit",
+   "row": "SC-AI-0010",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.04/megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The edit instruction describing how to transform the input image. Boogu-Image supports English and Chinese instructions.",
+     "required": true
+    },
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "URL of the input image to edit.",
+     "required": true
+    },
+    {
+     "key": "negative_prompt",
+     "type": "string",
+     "label": "Negative Prompt",
+     "description": "Describes what should NOT appear in the edited image. Used for classifier-free guidance; leave empty to disable text negative guidance."
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The output size. If omitted, the edited image follows the input image aspect ratio while respecting the model's 2K native limit."
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Num Inference Steps",
+     "description": "The number of denoising steps to perform.",
+     "default": 30,
+     "min": 20,
+     "max": 50,
+     "step": 1
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance Scale",
+     "description": "Controls how closely the edit follows the text instruction. Higher values stick more closely to the prompt.",
+     "default": 4,
+     "min": 1,
+     "max": 8,
+     "step": 0.01
+    },
+    {
+     "key": "image_guidance_scale",
+     "type": "number",
+     "label": "Image Guidance Scale",
+     "description": "Reference-image guidance strength. A value of 1.0 disables image CFG; higher values preserve the input image more strongly.",
+     "default": 1,
+     "min": 1,
+     "max": 8,
+     "step": 0.01
+    },
+    {
+     "key": "cfg_range_start",
+     "type": "number",
+     "label": "Cfg Range Start",
+     "description": "Start of the timestep fraction over which CFG is applied.",
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "cfg_range_end",
+     "type": "number",
+     "label": "Cfg Range End",
+     "description": "End of the timestep fraction over which CFG is applied.",
+     "default": 1,
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "The number of edited images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The same seed, prompt, and input image given to the same version of the model will output the same image every time.",
+     "step": 1
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If true, the safety checker is run on the input and output images. Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If true, the media is returned as a data URI and the output is not available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/flux-2/edit",
+   "label": "FLUX.2 [dev] Edit",
+   "role": "edit",
+   "row": "SC-AI-0011",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.012/processed megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to edit the image.",
+     "required": true
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance Scale",
+     "description": "Guidance Scale is a measure of how close you want the model to stick to your prompt when looking for a related image to show you.",
+     "default": 2.5,
+     "max": 20,
+     "step": 0.01
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for the generation. If not provided, a random seed will be used.",
+     "step": 1
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Number of Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 28,
+     "min": 4,
+     "max": 50,
+     "step": 1
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the image to generate. The width and height must be between 512 and 2048 pixels."
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "acceleration",
+     "type": "string",
+     "label": "Acceleration",
+     "description": "The acceleration level to use for the image generation.",
+     "default": "regular",
+     "enum": [
+      "none",
+      "regular",
+      "high"
+     ]
+    },
+    {
+     "key": "enable_prompt_expansion",
+     "type": "boolean",
+     "label": "Enable Prompt Expansion",
+     "description": "If set to true, the prompt will be expanded for better results."
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "The URLs of the images for editing. A maximum of 4 images are allowed, if more are provided, only the first 4 will be used.",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string"
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/flux-2/klein/9b/base",
+   "label": "FLUX.2 [klein] 9B Base",
+   "role": "generate",
+   "row": "SC-AI-0012",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.011/megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "negative_prompt",
+     "type": "string",
+     "label": "Negative Prompt",
+     "description": "Negative prompt for classifier-free guidance. Describes what to avoid in the image."
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance Scale",
+     "description": "Guidance scale for classifier-free guidance.",
+     "default": 5,
+     "max": 20,
+     "step": 0.01
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for the generation. If not provided, a random seed will be used.",
+     "step": 1
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Number of Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 28,
+     "min": 4,
+     "max": 50,
+     "step": 1
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the image to generate.",
+     "default": "landscape_4_3"
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "acceleration",
+     "type": "string",
+     "label": "Acceleration",
+     "description": "The acceleration level to use for image generation.",
+     "default": "regular",
+     "enum": [
+      "none",
+      "regular",
+      "high"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI. Output is not stored when this is True."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/flux-2/klein/9b/base/edit",
+   "label": "FLUX.2 [klein] 9B Base Edit",
+   "role": "edit",
+   "row": "SC-AI-0013",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.011/megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to edit the image.",
+     "required": true
+    },
+    {
+     "key": "negative_prompt",
+     "type": "string",
+     "label": "Negative Prompt",
+     "description": "Negative prompt for classifier-free guidance. Describes what to avoid in the image."
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance Scale",
+     "description": "Guidance scale for classifier-free guidance.",
+     "default": 5,
+     "max": 20,
+     "step": 0.01
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for the generation. If not provided, a random seed will be used.",
+     "step": 1
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Number of Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 28,
+     "min": 4,
+     "max": 50,
+     "step": 1
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. If not provided, uses the input image size."
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "acceleration",
+     "type": "string",
+     "label": "Acceleration",
+     "description": "The acceleration level to use for image generation.",
+     "default": "regular",
+     "enum": [
+      "none",
+      "regular",
+      "high"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI. Output is not stored when this is True."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "The URLs of the images for editing. A maximum of 4 images are allowed.",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string"
+    }
+   ]
+  },
+  {
+   "id": "ideogram/v4",
+   "label": "Ideogram 4",
+   "role": "generate",
+   "row": "SC-AI-0032",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.01/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "expansion_model",
+     "type": "string",
+     "label": "Expansion Model",
+     "description": "Which model expands the prompt. 'None' disables prompt expansion and skips its fee; 'Medium' is fast; 'Large' uses Ideogram's Magic Prompt for the highest quality.",
+     "default": "Medium",
+     "enum": [
+      "None",
+      "Medium",
+      "Large"
+     ]
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The resolution of the generated image.",
+     "default": "square_hd"
+    },
+    {
+     "key": "rendering_speed",
+     "type": "string",
+     "label": "Rendering Speed",
+     "description": "The rendering speed to use. Faster speeds use fewer denoising steps.",
+     "default": "BALANCED",
+     "enum": [
+      "TURBO",
+      "BALANCED",
+      "QUALITY"
+     ]
+    },
+    {
+     "key": "acceleration",
+     "type": "string",
+     "label": "Acceleration",
+     "description": "The acceleration level to use for the image generation.",
+     "default": "none",
+     "enum": [
+      "none",
+      "low",
+      "regular",
+      "high"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for generation. If not provided, a random seed will be used.",
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the image is returned as a data URI and is not stored."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ideogram/v4/fast",
+   "label": "Ideogram 4 Fast",
+   "role": "generate",
+   "row": "SC-AI-0014",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.007/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "expansion_model",
+     "type": "string",
+     "label": "Expansion Model",
+     "description": "Which model expands the prompt. 'None' disables expansion; 'Medium' uses the fast magic prompt model.",
+     "default": "Medium",
+     "enum": [
+      "None",
+      "Medium"
+     ]
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The resolution of the generated image.",
+     "default": "square_hd"
+    },
+    {
+     "key": "rendering_speed",
+     "type": "string",
+     "label": "Rendering Speed",
+     "description": "The rendering speed to use. Faster speeds use fewer denoising steps.",
+     "default": "BALANCED",
+     "enum": [
+      "TURBO",
+      "BALANCED",
+      "QUALITY"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for generation. If not provided, a random seed will be used.",
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the image is returned as a data URI and is not stored."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ideogram/v4/image-to-image",
+   "label": "Ideogram 4 Image to Image",
+   "role": "edit",
+   "row": "SC-AI-0032",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.01/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "expansion_model",
+     "type": "string",
+     "label": "Expansion Model",
+     "description": "Which model expands the prompt. 'None' disables prompt expansion and skips its fee; 'Medium' is fast; 'Large' uses Ideogram's Magic Prompt for the highest quality.",
+     "default": "Medium",
+     "enum": [
+      "None",
+      "Medium",
+      "Large"
+     ]
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The output image size. Use 'auto' to match the input image size (capped at ~25MP, up to 8192px per side).",
+     "default": "auto"
+    },
+    {
+     "key": "rendering_speed",
+     "type": "string",
+     "label": "Rendering Speed",
+     "description": "The rendering speed to use. Faster speeds use fewer denoising steps.",
+     "default": "BALANCED",
+     "enum": [
+      "TURBO",
+      "BALANCED",
+      "QUALITY"
+     ]
+    },
+    {
+     "key": "acceleration",
+     "type": "string",
+     "label": "Acceleration",
+     "description": "The acceleration level to use for the image generation.",
+     "default": "none",
+     "enum": [
+      "none",
+      "low",
+      "regular",
+      "high"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for generation. If not provided, a random seed will be used.",
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the image is returned as a data URI and is not stored."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image URL",
+     "description": "URL of the input image for image-to-image generation.",
+     "required": true
+    },
+    {
+     "key": "strength",
+     "type": "number",
+     "label": "Strength",
+     "description": "How much to transform the input image. 1.0 ignores the input image entirely; lower values stay closer to it.",
+     "default": 0.8,
+     "max": 1,
+     "step": 0.01
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/qwen-image-edit",
+   "label": "Qwen Image Edit",
+   "role": "edit",
+   "row": "SC-AI-0043",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.03/megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate the image with",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image."
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Num Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 30,
+     "min": 2,
+     "max": 50,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "\n            The same seed and the same prompt given to the same version of the model\n            will output the same image every time.\n        ",
+     "step": 1
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance scale",
+     "description": "\n            The CFG (Classifier Free Guidance) scale is a measure of how close you want\n            the model to stick to your prompt when looking for a related image to show you.\n        ",
+     "default": 4,
+     "max": 20,
+     "step": 0.01
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image URL",
+     "description": "The URL of the image to edit.",
+     "required": true
+    },
+    {
+     "key": "negative_prompt",
+     "type": "string",
+     "label": "Negative Prompt",
+     "description": "The negative prompt for the generation",
+     "default": " "
+    },
+    {
+     "key": "acceleration",
+     "type": "string",
+     "label": "Acceleration",
+     "description": "Acceleration level for image generation. Options: 'none', 'regular'. Higher acceleration increases speed. 'regular' balances speed and quality.",
+     "default": "regular",
+     "enum": [
+      "none",
+      "regular",
+      "high"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/qwen-image-edit/inpaint",
+   "label": "Qwen Image Edit Inpaint",
+   "role": "inpaint",
+   "row": "SC-AI-0043",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.03/megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate the image with",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image."
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Num Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 30,
+     "min": 2,
+     "max": 50,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "\n            The same seed and the same prompt given to the same version of the model\n            will output the same image every time.\n        ",
+     "step": 1
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance scale",
+     "description": "\n            The CFG (Classifier Free Guidance) scale is a measure of how close you want\n            the model to stick to your prompt when looking for a related image to show you.\n        ",
+     "default": 4,
+     "max": 20,
+     "step": 0.01
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image URL",
+     "description": "The URL of the image to edit.",
+     "required": true
+    },
+    {
+     "key": "negative_prompt",
+     "type": "string",
+     "label": "Negative Prompt",
+     "description": "The negative prompt for the generation",
+     "default": " "
+    },
+    {
+     "key": "acceleration",
+     "type": "string",
+     "label": "Acceleration",
+     "description": "Acceleration level for image generation. Options: 'none', 'regular'. Higher acceleration increases speed. 'regular' balances speed and quality.",
+     "default": "regular",
+     "enum": [
+      "none",
+      "regular",
+      "high"
+     ]
+    },
+    {
+     "key": "mask_url",
+     "type": "string",
+     "label": "Mask URL",
+     "description": "The URL of the mask for inpainting",
+     "required": true
+    },
+    {
+     "key": "strength",
+     "type": "number",
+     "label": "Strength",
+     "description": "Strength of noising process for inpainting",
+     "default": 0.93,
+     "min": 0.01,
+     "max": 1,
+     "step": 0.01
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/qwen-image-edit-2509",
+   "label": "Qwen Image Edit 2509",
+   "role": "edit",
+   "row": "SC-AI-0019",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": null,
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate the image with",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image.",
+     "default": "square_hd"
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Num Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 50,
+     "min": 2,
+     "max": 100,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "\n            The same seed and the same prompt given to the same version of the model\n            will output the same image every time.\n        ",
+     "step": 1
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance scale",
+     "description": "\n            The CFG (Classifier Free Guidance) scale is a measure of how close you want\n            the model to stick to your prompt when looking for a related image to show you.\n        ",
+     "default": 4,
+     "max": 20,
+     "step": 0.01
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "The URLs of the images to edit.",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string"
+    },
+    {
+     "key": "negative_prompt",
+     "type": "string",
+     "label": "Negative Prompt",
+     "description": "The negative prompt for the generation",
+     "default": " "
+    },
+    {
+     "key": "acceleration",
+     "type": "string",
+     "label": "Acceleration",
+     "description": "Acceleration level for image generation. Options: 'none', 'regular'. Higher acceleration increases speed. 'regular' balances speed and quality.",
+     "default": "regular",
+     "enum": [
+      "none",
+      "regular"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/z-image/turbo",
+   "label": "Z-Image Turbo",
+   "role": "generate",
+   "row": "SC-AI-0020",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.005/megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image.",
+     "default": "landscape_4_3"
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Number of Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 8,
+     "min": 1,
+     "max": 8,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "\n            The same seed and the same prompt given to the same version of the model\n            will output the same image every time.\n        ",
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked, and images flagged as unsafe are returned as black images.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "acceleration",
+     "type": "string",
+     "label": "Acceleration",
+     "description": "The acceleration level to use.",
+     "default": "regular",
+     "enum": [
+      "none",
+      "regular",
+      "high"
+     ]
+    },
+    {
+     "key": "enable_prompt_expansion",
+     "type": "boolean",
+     "label": "Enable Prompt Expansion",
+     "description": "Whether to enable prompt expansion. Note: this will increase the price by 0.0025 credits per request."
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/flux-2-flex",
+   "label": "FLUX.2 [flex]",
+   "role": "generate",
+   "row": "SC-AI-0022",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.05/processed megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image.",
+     "default": "landscape_4_3"
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for the generation.",
+     "step": 1
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for the generated image. 1 being the most strict and 5 being the most permissive.",
+     "default": "2",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ]
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "Whether to enable the safety checker. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance Scale",
+     "description": "The guidance scale to use for the generation.",
+     "default": 3.5,
+     "min": 1.5,
+     "max": 10,
+     "step": 0.01
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Number of Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 28,
+     "min": 2,
+     "max": 50,
+     "step": 1
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/flux-2-flex/edit",
+   "label": "FLUX.2 [flex] Edit",
+   "role": "edit",
+   "row": "SC-AI-0022",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.05/processed megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. If `auto`, the size will be determined by the model.",
+     "default": "auto"
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for the generation.",
+     "step": 1
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for the generated image. 1 being the most strict and 5 being the most permissive.",
+     "default": "2",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ]
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "Whether to enable the safety checker. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "List of URLs of input images for editing",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string"
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance Scale",
+     "description": "The guidance scale to use for the generation.",
+     "default": 3.5,
+     "min": 1.5,
+     "max": 10,
+     "step": 0.01
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Number of Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 28,
+     "min": 2,
+     "max": 50,
+     "step": 1
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/flux-2-max",
+   "label": "FLUX.2 [max]",
+   "role": "generate",
+   "row": "SC-AI-0024",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.07/megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image.",
+     "default": "landscape_4_3"
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for the generation.",
+     "step": 1
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for the generated image. 1 being the most strict and 5 being the most permissive.",
+     "default": "2",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ]
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "Whether to enable the safety checker. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/flux-2-max/edit",
+   "label": "FLUX.2 [max] Edit",
+   "role": "edit",
+   "row": "SC-AI-0024",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.07/processed megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. If `auto`, the size will be determined by the model.",
+     "default": "auto"
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for the generation.",
+     "step": 1
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for the generated image. 1 being the most strict and 5 being the most permissive.",
+     "default": "2",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ]
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "Whether to enable the safety checker. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "List of URLs of input images for editing",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string"
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/flux-2-pro",
+   "label": "FLUX.2 [pro]",
+   "role": "generate",
+   "row": "SC-AI-0025",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.03/processed megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image.",
+     "default": "landscape_4_3"
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for the generation.",
+     "step": 1
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for the generated image. 1 being the most strict and 5 being the most permissive.",
+     "default": "2",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ]
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "Whether to enable the safety checker. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/flux-2-pro/edit",
+   "label": "FLUX.2 [pro] Edit",
+   "role": "edit",
+   "row": "SC-AI-0025",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.03/processed megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. If `auto`, the size will be determined by the model.",
+     "default": "auto"
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed to use for the generation.",
+     "step": 1
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for the generated image. 1 being the most strict and 5 being the most permissive.",
+     "default": "2",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ]
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "Whether to enable the safety checker. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "List of URLs of input images for editing",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string"
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/flux-2-pro/outpaint",
+   "label": "FLUX.2 [pro] Outpaint",
+   "role": "expand",
+   "row": "SC-AI-0051",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.03/processed megapixels",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image URL",
+     "description": "The image URL to expand using outpainting.",
+     "required": true
+    },
+    {
+     "key": "expand_top",
+     "type": "integer",
+     "label": "Expand Top",
+     "description": "Pixels to expand at the top of the image.",
+     "max": 2048,
+     "step": 1
+    },
+    {
+     "key": "expand_bottom",
+     "type": "integer",
+     "label": "Expand Bottom",
+     "description": "Pixels to expand at the bottom of the image.",
+     "max": 2048,
+     "step": 1
+    },
+    {
+     "key": "expand_left",
+     "type": "integer",
+     "label": "Expand Left",
+     "description": "Pixels to expand on the left of the image.",
+     "max": 2048,
+     "step": 1
+    },
+    {
+     "key": "expand_right",
+     "type": "integer",
+     "label": "Expand Right",
+     "description": "Pixels to expand on the right of the image.",
+     "max": 2048,
+     "step": 1
+    },
+    {
+     "key": "auto_crop",
+     "type": "boolean",
+     "label": "Auto Crop",
+     "description": "Whether to automatically crop the reference image when the expanded canvas does not fully contain it."
+    },
+    {
+     "key": "mode",
+     "type": "string",
+     "label": "Mode",
+     "description": "Quality/speed trade-off for outpainting. `high` (default) delivers the highest-fidelity results; `fast` is significantly faster and extends most scenes well but may produce lower fidelity.",
+     "default": "high",
+     "enum": [
+      "high",
+      "fast"
+     ]
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "Whether to enable the safety checker. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "openai/gpt-image-2",
+   "label": "GPT Image 2",
+   "role": "generate",
+   "row": "SC-AI-0027",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$1/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt for image generation",
+     "required": true,
+     "maxLength": 32000
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. Supports preset names, explicit {width, height}, or 'auto' to let the model pick the best size. Concrete sizes must have both dimensions as multiples of 16, max edge 3840px, aspect ratio <= 3:1, total pixels between 655,360 and 8,294,400.",
+     "default": "landscape_4_3"
+    },
+    {
+     "key": "background",
+     "type": "string",
+     "label": "Background",
+     "description": "Background for the generated image",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "transparent",
+      "opaque"
+     ]
+    },
+    {
+     "key": "quality",
+     "type": "string",
+     "label": "Quality",
+     "description": "Quality for the generated image. Use 'auto' to let the model pick the best quality for the prompt.",
+     "default": "high",
+     "enum": [
+      "auto",
+      "low",
+      "medium",
+      "high"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "Output format for the images",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "openai/gpt-image-2/edit",
+   "label": "GPT Image 2 Edit",
+   "role": "edit",
+   "row": "SC-AI-0027",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$1/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt for image generation",
+     "required": true,
+     "maxLength": 32000
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "The URLs of the images to use as a reference for the generation. A maximum of 16 images are allowed.",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string",
+     "maxItems": 16
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. Use 'auto' to infer from input images.",
+     "default": "auto"
+    },
+    {
+     "key": "background",
+     "type": "string",
+     "label": "Background",
+     "description": "Background for the generated image",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "transparent",
+      "opaque"
+     ]
+    },
+    {
+     "key": "quality",
+     "type": "string",
+     "label": "Quality",
+     "description": "Quality for the generated image. Use 'auto' to let the model pick the best quality for the prompt.",
+     "default": "high",
+     "enum": [
+      "auto",
+      "low",
+      "medium",
+      "high"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "Output format for the images",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "mask_url",
+     "type": "string",
+     "label": "Mask URL",
+     "description": "The URL of the mask image to use for the generation. This indicates what part of the image to edit."
+    }
+   ]
+  },
+  {
+   "id": "openai/gpt-image-2.5/flare/text-to-image",
+   "label": "GPT Image 2.5 Flare",
+   "role": "generate",
+   "row": "SC-AI-0028",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$1/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt for image generation",
+     "required": true,
+     "maxLength": 32000
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. Supports preset names, explicit {width, height}, or 'auto' to let the model pick the best size. Concrete sizes must have both dimensions as multiples of 16, max edge 3840px, aspect ratio <= 3:1, total pixels between 655,360 and 8,294,400.",
+     "default": "landscape_4_3"
+    },
+    {
+     "key": "background",
+     "type": "string",
+     "label": "Background",
+     "description": "Background for the generated image",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "transparent",
+      "opaque"
+     ]
+    },
+    {
+     "key": "quality",
+     "type": "string",
+     "label": "Quality",
+     "description": "Quality for the generated image. Higher settings increase detail, latency, and token usage. Use 'auto' to let the model choose.",
+     "default": "high",
+     "enum": [
+      "auto",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate",
+     "default": 1,
+     "min": 1,
+     "max": 10,
+     "step": 1
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "Output format for the images",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "output_compression",
+     "type": "integer",
+     "label": "Output Compression",
+     "description": "Compression level from 0 to 100. Only supported when output_format is 'jpeg' or 'webp'.",
+     "max": 100,
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "openai/gpt-image-2.5/flare/edit",
+   "label": "GPT Image 2.5 Flare Edit",
+   "role": "edit",
+   "row": "SC-AI-0028",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$1/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt for image generation",
+     "required": true,
+     "maxLength": 32000
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "The URLs of the images to use as a reference for the generation. A maximum of 16 images are allowed.",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string",
+     "maxItems": 16
+    },
+    {
+     "key": "mask_url",
+     "type": "string",
+     "label": "Mask URL",
+     "description": "The URL of the mask image to use for the generation. This indicates what part of the image to edit."
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. Use 'auto' to infer from input images.",
+     "default": "auto"
+    },
+    {
+     "key": "background",
+     "type": "string",
+     "label": "Background",
+     "description": "Background for the generated image",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "transparent",
+      "opaque"
+     ]
+    },
+    {
+     "key": "quality",
+     "type": "string",
+     "label": "Quality",
+     "description": "Quality for the generated image. Higher settings increase detail, latency, and token usage. Use 'auto' to let the model choose.",
+     "default": "high",
+     "enum": [
+      "auto",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate",
+     "default": 1,
+     "min": 1,
+     "max": 10,
+     "step": 1
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "Output format for the images",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "output_compression",
+     "type": "integer",
+     "label": "Output Compression",
+     "description": "Compression level from 0 to 100. Only supported when output_format is 'jpeg' or 'webp'.",
+     "max": 100,
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "openai/gpt-image-2.5/sunburst/text-to-image",
+   "label": "GPT Image 2.5 Sunburst",
+   "role": "generate",
+   "row": "SC-AI-0029",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$1/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt for image generation",
+     "required": true,
+     "maxLength": 32000
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. Supports preset names, explicit {width, height}, or 'auto' to let the model pick the best size. Concrete sizes must have both dimensions as multiples of 16, max edge 3840px, aspect ratio <= 3:1, total pixels between 655,360 and 8,294,400.",
+     "default": "landscape_4_3"
+    },
+    {
+     "key": "background",
+     "type": "string",
+     "label": "Background",
+     "description": "Background for the generated image",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "transparent",
+      "opaque"
+     ]
+    },
+    {
+     "key": "quality",
+     "type": "string",
+     "label": "Quality",
+     "description": "Quality for the generated image. Higher settings increase detail, latency, and token usage. Use 'auto' to let the model choose.",
+     "default": "high",
+     "enum": [
+      "auto",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate",
+     "default": 1,
+     "min": 1,
+     "max": 10,
+     "step": 1
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "Output format for the images",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "output_compression",
+     "type": "integer",
+     "label": "Output Compression",
+     "description": "Compression level from 0 to 100. Only supported when output_format is 'jpeg' or 'webp'.",
+     "max": 100,
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "openai/gpt-image-2.5/sunburst/edit",
+   "label": "GPT Image 2.5 Sunburst Edit",
+   "role": "edit",
+   "row": "SC-AI-0029",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$1/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt for image generation",
+     "required": true,
+     "maxLength": 32000
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "The URLs of the images to use as a reference for the generation. A maximum of 16 images are allowed.",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string",
+     "maxItems": 16
+    },
+    {
+     "key": "mask_url",
+     "type": "string",
+     "label": "Mask URL",
+     "description": "The URL of the mask image to use for the generation. This indicates what part of the image to edit."
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. Use 'auto' to infer from input images.",
+     "default": "auto"
+    },
+    {
+     "key": "background",
+     "type": "string",
+     "label": "Background",
+     "description": "Background for the generated image",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "transparent",
+      "opaque"
+     ]
+    },
+    {
+     "key": "quality",
+     "type": "string",
+     "label": "Quality",
+     "description": "Quality for the generated image. Higher settings increase detail, latency, and token usage. Use 'auto' to let the model choose.",
+     "default": "high",
+     "enum": [
+      "auto",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate",
+     "default": 1,
+     "min": 1,
+     "max": 10,
+     "step": 1
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "Output format for the images",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "output_compression",
+     "type": "integer",
+     "label": "Output Compression",
+     "description": "Compression level from 0 to 100. Only supported when output_format is 'jpeg' or 'webp'.",
+     "max": 100,
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "xai/grok-imagine-image/v2.0/text-to-image",
+   "label": "Grok Imagine 2.0",
+   "role": "generate",
+   "row": "SC-AI-0030",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.01/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "Text description of the desired image.",
+     "required": true,
+     "maxLength": 8000
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "aspect_ratio",
+     "type": "string",
+     "label": "Aspect Ratio",
+     "description": "Aspect ratio of the generated image.",
+     "default": "1:1",
+     "enum": [
+      "2:1",
+      "20:9",
+      "19.5:9",
+      "16:9",
+      "4:3",
+      "3:2",
+      "1:1",
+      "2:3",
+      "3:4",
+      "9:16",
+      "9:19.5",
+      "9:20",
+      "1:2"
+     ]
+    },
+    {
+     "key": "resolution",
+     "type": "string",
+     "label": "Resolution",
+     "description": "Resolution of the generated image. `1k` for standard resolution, `2k` for high resolution.",
+     "default": "1k",
+     "enum": [
+      "1k",
+      "2k"
+     ]
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "quality",
+     "type": "string",
+     "label": "Quality",
+     "description": "Quality level of the generated image.",
+     "default": "medium",
+     "enum": [
+      "low",
+      "medium"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "xai/grok-imagine-image/v2.0/edit",
+   "label": "Grok Imagine 2.0 Edit",
+   "role": "edit",
+   "row": "SC-AI-0030",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.01/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "Text description of the desired image.",
+     "required": true,
+     "maxLength": 8000
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "Number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "aspect_ratio",
+     "type": "string",
+     "label": "Aspect Ratio",
+     "description": "Aspect ratio of the edited image. When set to `auto` (the default), the output preserves the aspect ratio of the first input image.",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "2:1",
+      "20:9",
+      "19.5:9",
+      "16:9",
+      "4:3",
+      "3:2",
+      "1:1",
+      "2:3",
+      "3:4",
+      "9:16",
+      "9:19.5",
+      "9:20",
+      "1:2"
+     ]
+    },
+    {
+     "key": "resolution",
+     "type": "string",
+     "label": "Resolution",
+     "description": "Resolution of the generated image. `1k` for standard resolution, `2k` for high resolution.",
+     "default": "1k",
+     "enum": [
+      "1k",
+      "2k"
+     ]
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "List of URLs of the images to edit. A maximum of 3 images are supported.",
+     "isArray": true,
+     "arrayItemType": "string"
+    },
+    {
+     "key": "quality",
+     "type": "string",
+     "label": "Quality",
+     "description": "Quality level of the edited image.",
+     "default": "medium",
+     "enum": [
+      "low",
+      "medium"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "krea/v2/large/text-to-image",
+   "label": "Krea 2 [large]",
+   "role": "generate",
+   "row": "SC-AI-0035",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.001/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "Text description of the image to generate.",
+     "required": true,
+     "maxLength": 5000
+    },
+    {
+     "key": "aspect_ratio",
+     "type": "string",
+     "label": "Aspect Ratio",
+     "description": "Aspect ratio of the generated image.",
+     "default": "1:1",
+     "enum": [
+      "1:1",
+      "4:3",
+      "3:2",
+      "16:9",
+      "2.35:1",
+      "4:5",
+      "2:3",
+      "9:16"
+     ]
+    },
+    {
+     "key": "creativity",
+     "type": "string",
+     "label": "Creativity",
+     "description": "Controls how loosely the model interprets the prompt. Higher values produce more creative results that may drift from the prompt; lower values stay closer to the prompt.",
+     "default": "medium",
+     "enum": [
+      "raw",
+      "low",
+      "medium",
+      "high"
+     ]
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "Random seed for reproducible generation.",
+     "step": 1
+    },
+    {
+     "key": "image_style_references",
+     "type": "array",
+     "label": "Image Style References",
+     "description": "Optional list of reference images that guide the style of the generated image. At most 10 entries.",
+     "default": [],
+     "isArray": true,
+     "arrayItemType": "object",
+     "maxItems": 10
+    },
+    {
+     "key": "styles",
+     "type": "array",
+     "label": "Styles",
+     "description": "Optional list of Krea preset styles (LoRA-based) to apply. Each entry references a style by `id` from the Krea styles catalog. At most 10 entries.",
+     "default": [],
+     "isArray": true,
+     "arrayItemType": "object",
+     "maxItems": 10
+    },
+    {
+     "key": "moodboards",
+     "type": "array",
+     "label": "Moodboards",
+     "description": "Optional moodboard to apply to the generation. Krea currently accepts at most one moodboard per request. Each entry references a moodboard by `id` (UUID).",
+     "default": [],
+     "isArray": true,
+     "arrayItemType": "object",
+     "maxItems": 1
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/nano-banana-2",
+   "label": "Nano Banana 2",
+   "role": "generate",
+   "row": "SC-AI-0038",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.08/images",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The text prompt to generate an image from.",
+     "required": true,
+     "maxLength": 50000
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed for the random number generator.",
+     "step": 1
+    },
+    {
+     "key": "aspect_ratio",
+     "type": "string",
+     "label": "Aspect Ratio",
+     "description": "The aspect ratio of the generated image. Supports extreme ratios: 4:1, 1:4, 8:1, 1:8. Use \"auto\" to let the model decide based on the prompt.",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "21:9",
+      "16:9",
+      "3:2",
+      "4:3",
+      "5:4",
+      "1:1",
+      "4:5",
+      "3:4",
+      "2:3",
+      "9:16",
+      "4:1",
+      "1:4",
+      "8:1",
+      "1:8"
+     ]
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for content moderation. 1 is the most strict (blocks most content), 6 is the least strict.",
+     "default": "4",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "system_prompt",
+     "type": "string",
+     "label": "System Prompt",
+     "description": "Optional system instruction that steers the model's persona and output style across the request. Leave blank to omit; when provided, it is sent as the system instruction to Gemini (or as a system message on OpenAI-compatible providers).",
+     "maxLength": 50000
+    },
+    {
+     "key": "resolution",
+     "type": "string",
+     "label": "Resolution",
+     "description": "The resolution of the image to generate.",
+     "default": "1K",
+     "enum": [
+      "0.5K",
+      "1K",
+      "2K",
+      "4K"
+     ]
+    },
+    {
+     "key": "limit_generations",
+     "type": "boolean",
+     "label": "Limit Generations",
+     "description": "Experimental parameter to limit the number of generations from each round of prompting to 1. Set to `True` to to disregard any instructions in the prompt regarding the number of images to generate and ignore any intermediate images generated by the model. This may affect generation quality.",
+     "default": true
+    },
+    {
+     "key": "enable_web_search",
+     "type": "boolean",
+     "label": "Enable Web Search",
+     "description": "Enable web search for the image generation task. This will allow the model to use the latest information from the web to generate the image."
+    },
+    {
+     "key": "thinking_level",
+     "type": "string",
+     "label": "Thinking Level",
+     "description": "When set, enables model thinking with the given level ('minimal' or 'high') and includes thoughts in the generation. Omit to disable.",
+     "enum": [
+      "minimal",
+      "high"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/nano-banana-2/edit",
+   "label": "Nano Banana 2 Edit",
+   "role": "edit",
+   "row": "SC-AI-0038",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.08/images",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt for image editing.",
+     "required": true,
+     "maxLength": 50000
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed for the random number generator.",
+     "step": 1
+    },
+    {
+     "key": "aspect_ratio",
+     "type": "string",
+     "label": "Aspect Ratio",
+     "description": "The aspect ratio of the generated image. Supports extreme ratios: 4:1, 1:4, 8:1, 1:8.",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "21:9",
+      "16:9",
+      "3:2",
+      "4:3",
+      "5:4",
+      "1:1",
+      "4:5",
+      "3:4",
+      "2:3",
+      "9:16",
+      "4:1",
+      "1:4",
+      "8:1",
+      "1:8"
+     ]
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for content moderation. 1 is the most strict (blocks most content), 6 is the least strict.",
+     "default": "4",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "The URLs of the images to use for image-to-image generation or image editing. Optional when at least one of `video_url`, `audio_url`, or `pdf_url` is provided.",
+     "isArray": true,
+     "arrayItemType": "string"
+    },
+    {
+     "key": "system_prompt",
+     "type": "string",
+     "label": "System Prompt",
+     "description": "Optional system instruction that steers the model's persona and output style across the request. Leave blank to omit; when provided, it is sent as the system instruction to Gemini (or as a system message on OpenAI-compatible providers).",
+     "maxLength": 50000
+    },
+    {
+     "key": "resolution",
+     "type": "string",
+     "label": "Resolution",
+     "description": "The resolution of the image to generate.",
+     "default": "1K",
+     "enum": [
+      "0.5K",
+      "1K",
+      "2K",
+      "4K"
+     ]
+    },
+    {
+     "key": "video_url",
+     "type": "string",
+     "label": "Video URL",
+     "description": "Optional video to use as input context. Accepts an http(s)/data URL to a video file (downloaded and sent inline, max 15MB) or a YouTube URL (passed through to the model without downloading)."
+    },
+    {
+     "key": "audio_url",
+     "type": "string",
+     "label": "Audio URL",
+     "description": "Optional audio file to use as input context. Accepts an http(s)/data URL (downloaded and sent inline, max 15MB)."
+    },
+    {
+     "key": "pdf_url",
+     "type": "string",
+     "label": "PDF URL",
+     "description": "Optional PDF document to use as input context. Accepts an http(s)/data URL (downloaded and sent inline, max 15MB)."
+    },
+    {
+     "key": "limit_generations",
+     "type": "boolean",
+     "label": "Limit Generations",
+     "description": "Experimental parameter to limit the number of generations from each round of prompting to 1. Set to `True` to to disregard any instructions in the prompt regarding the number of images to generate and ignore any intermediate images generated by the model. This may affect generation quality.",
+     "default": true
+    },
+    {
+     "key": "enable_web_search",
+     "type": "boolean",
+     "label": "Enable Web Search",
+     "description": "Enable web search for the image generation task. This will allow the model to use the latest information from the web to generate the image."
+    },
+    {
+     "key": "thinking_level",
+     "type": "string",
+     "label": "Thinking Level",
+     "description": "When set, enables model thinking with the given level ('minimal' or 'high') and includes thoughts in the generation. Omit to disable.",
+     "enum": [
+      "minimal",
+      "high"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "google/nano-banana-2-lite",
+   "label": "Nano Banana 2 Lite",
+   "role": "generate",
+   "row": "SC-AI-0040",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$1/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The text prompt to generate an image from.",
+     "required": true,
+     "maxLength": 50000
+    },
+    {
+     "key": "system_prompt",
+     "type": "string",
+     "label": "System Prompt",
+     "description": "Optional system instruction that steers the model's persona and output style across the request. Leave blank to omit; when provided, it is sent as the system instruction to Gemini (or as a system message on OpenAI-compatible providers).",
+     "maxLength": 50000
+    },
+    {
+     "key": "aspect_ratio",
+     "type": "string",
+     "label": "Aspect Ratio",
+     "description": "The aspect ratio of the generated image. Supports extreme ratios: 4:1, 1:4, 8:1, 1:8. Use \"auto\" to let the model decide based on the prompt.",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "21:9",
+      "16:9",
+      "3:2",
+      "4:3",
+      "5:4",
+      "1:1",
+      "4:5",
+      "3:4",
+      "2:3",
+      "9:16",
+      "4:1",
+      "1:4",
+      "8:1",
+      "1:8"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed for the random number generator.",
+     "step": 1
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for content moderation. 1 is the most strict (blocks most content), 6 is the least strict.",
+     "default": "4",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "limit_generations",
+     "type": "boolean",
+     "label": "Limit Generations",
+     "description": "Experimental parameter to limit the number of generations from each round of prompting to 1. Set to `True` to to disregard any instructions in the prompt regarding the number of images to generate and ignore any intermediate images generated by the model. This may affect generation quality.",
+     "default": true
+    },
+    {
+     "key": "thinking_level",
+     "type": "string",
+     "label": "Thinking Level",
+     "description": "When set, enables model thinking with the given level ('minimal' or 'high') and includes thoughts in the generation. Omit to disable.",
+     "enum": [
+      "minimal",
+      "high"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/nano-banana-pro",
+   "label": "Nano Banana Pro",
+   "role": "generate",
+   "row": "SC-AI-0041",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.15/images",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The text prompt to generate an image from.",
+     "required": true,
+     "maxLength": 50000
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed for the random number generator.",
+     "step": 1
+    },
+    {
+     "key": "aspect_ratio",
+     "type": "string",
+     "label": "Aspect Ratio",
+     "description": "The aspect ratio of the generated image.",
+     "default": "1:1",
+     "enum": [
+      "auto",
+      "21:9",
+      "16:9",
+      "3:2",
+      "4:3",
+      "5:4",
+      "1:1",
+      "4:5",
+      "3:4",
+      "2:3",
+      "9:16"
+     ]
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for content moderation. 1 is the most strict (blocks most content), 6 is the least strict.",
+     "default": "4",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "system_prompt",
+     "type": "string",
+     "label": "System Prompt",
+     "description": "Optional system instruction that steers the model's persona and output style across the request. Leave blank to omit; when provided, it is sent as the system instruction to Gemini (or as a system message on OpenAI-compatible providers).",
+     "maxLength": 50000
+    },
+    {
+     "key": "resolution",
+     "type": "string",
+     "label": "Resolution",
+     "description": "The resolution of the image to generate.",
+     "default": "1K",
+     "enum": [
+      "1K",
+      "2K",
+      "4K"
+     ]
+    },
+    {
+     "key": "limit_generations",
+     "type": "boolean",
+     "label": "Limit Generations",
+     "description": "Experimental parameter to limit the number of generations from each round of prompting to 1. Set to `True` to to disregard any instructions in the prompt regarding the number of images to generate.",
+     "default": true
+    },
+    {
+     "key": "enable_web_search",
+     "type": "boolean",
+     "label": "Enable Web Search",
+     "description": "Enable web search for the image generation task. This will allow the model to use the latest information from the web to generate the image."
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/nano-banana-pro/edit",
+   "label": "Nano Banana Pro Edit",
+   "role": "edit",
+   "row": "SC-AI-0041",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.15/images",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt for image editing.",
+     "required": true,
+     "maxLength": 50000
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Number of Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The seed for the random number generator.",
+     "step": 1
+    },
+    {
+     "key": "aspect_ratio",
+     "type": "string",
+     "label": "Aspect Ratio",
+     "description": "The aspect ratio of the generated image.",
+     "default": "auto",
+     "enum": [
+      "auto",
+      "21:9",
+      "16:9",
+      "3:2",
+      "4:3",
+      "5:4",
+      "1:1",
+      "4:5",
+      "3:4",
+      "2:3",
+      "9:16"
+     ]
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "safety_tolerance",
+     "type": "string",
+     "label": "Safety Tolerance",
+     "description": "The safety tolerance level for content moderation. 1 is the most strict (blocks most content), 6 is the least strict.",
+     "default": "4",
+     "enum": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "The URLs of the images to use for image-to-image generation or image editing.",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string"
+    },
+    {
+     "key": "system_prompt",
+     "type": "string",
+     "label": "System Prompt",
+     "description": "Optional system instruction that steers the model's persona and output style across the request. Leave blank to omit; when provided, it is sent as the system instruction to Gemini (or as a system message on OpenAI-compatible providers).",
+     "maxLength": 50000
+    },
+    {
+     "key": "resolution",
+     "type": "string",
+     "label": "Resolution",
+     "description": "The resolution of the image to generate.",
+     "default": "1K",
+     "enum": [
+      "1K",
+      "2K",
+      "4K"
+     ]
+    },
+    {
+     "key": "limit_generations",
+     "type": "boolean",
+     "label": "Limit Generations",
+     "description": "Experimental parameter to limit the number of generations from each round of prompting to 1. Set to `True` to to disregard any instructions in the prompt regarding the number of images to generate.",
+     "default": true
+    },
+    {
+     "key": "enable_web_search",
+     "type": "boolean",
+     "label": "Enable Web Search",
+     "description": "Enable web search for the image generation task. This will allow the model to use the latest information from the web to generate the image."
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/recraft/v4/text-to-image",
+   "label": "Recraft V4",
+   "role": "generate",
+   "row": "SC-AI-0044",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.04/images",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "required": true,
+     "maxLength": 10000
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "default": "square_hd"
+    },
+    {
+     "key": "colors",
+     "type": "array",
+     "label": "Colors",
+     "description": "An array of preferable colors",
+     "default": [],
+     "isArray": true,
+     "arrayItemType": "object"
+    },
+    {
+     "key": "background_color",
+     "type": "object",
+     "label": "RGBColor",
+     "description": "The preferable background color of the generated images."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/recraft/v4/pro/text-to-image",
+   "label": "Recraft V4 Pro",
+   "role": "generate",
+   "row": "SC-AI-0044",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.25/images",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "required": true,
+     "maxLength": 10000
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "default": "square_hd"
+    },
+    {
+     "key": "colors",
+     "type": "array",
+     "label": "Colors",
+     "description": "An array of preferable colors",
+     "default": [],
+     "isArray": true,
+     "arrayItemType": "object"
+    },
+    {
+     "key": "background_color",
+     "type": "object",
+     "label": "RGBColor",
+     "description": "The preferable background color of the generated images."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/bytedance/seedream/v4.5/text-to-image",
+   "label": "Seedream 4.5",
+   "role": "generate",
+   "row": "SC-AI-0046",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.04/images",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The text prompt used to generate the image",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. Width and height must be between 1920 and 4096, or total number of pixels must be between 2560*1440 and 4096*4096.",
+     "default": {
+      "height": 2048,
+      "width": 2048
+     }
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "Number of separate model generations to be run with the prompt.",
+     "default": 1,
+     "min": 1,
+     "max": 6,
+     "step": 1
+    },
+    {
+     "key": "max_images",
+     "type": "integer",
+     "label": "Max Images",
+     "description": "If set to a number greater than one, enables multi-image generation. The model will potentially return up to `max_images` images every generation, and in total, `num_images` generations will be carried out. In total, the number of images generated will be between `num_images` and `max_images*num_ima",
+     "default": 1,
+     "min": 1,
+     "max": 6,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "Random seed to control the stochasticity of image generation.",
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/bytedance/seedream/v4.5/edit",
+   "label": "Seedream 4.5 Edit",
+   "role": "edit",
+   "row": "SC-AI-0046",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.04/images",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The text prompt used to edit the image",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. Width and height must be between 1920 and 4096, or total number of pixels must be between 2560*1440 and 4096*4096.",
+     "default": {
+      "height": 2048,
+      "width": 2048
+     }
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "Number of separate model generations to be run with the prompt.",
+     "default": 1,
+     "min": 1,
+     "max": 6,
+     "step": 1
+    },
+    {
+     "key": "max_images",
+     "type": "integer",
+     "label": "Max Images",
+     "description": "If set to a number greater than one, enables multi-image generation. The model will potentially return up to `max_images` images every generation, and in total, `num_images` generations will be carried out. In total, the number of images generated will be between `num_images` and `max_images*num_ima",
+     "default": 1,
+     "min": 1,
+     "max": 6,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "Random seed to control the stochasticity of image generation.",
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "List of URLs of input images for editing. Presently, up to 10 image inputs are allowed. If over 10 images are sent, only the last 10 will be used.",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string"
+    }
+   ]
+  },
+  {
+   "id": "bytedance/seedream/v5/pro/text-to-image",
+   "label": "Seedream 5.0 Pro",
+   "role": "generate",
+   "row": "SC-AI-0048",
+   "category": "text-to-image",
+   "license": "commercial",
+   "pricing": "$0.0675/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The text prompt used to generate the image.",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. Total pixels must be between 1024x1024 and 2048x2048, with aspect ratio between 1/16 and 16.",
+     "default": "auto_2K"
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "Number of separate model generations to run with the prompt.",
+     "default": 1,
+     "min": 1,
+     "max": 6,
+     "step": 1
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The file format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    }
+   ]
+  },
+  {
+   "id": "bytedance/seedream/v5/pro/edit",
+   "label": "Seedream 5.0 Pro Edit",
+   "role": "edit",
+   "row": "SC-AI-0048",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.0675/units",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The text prompt used to edit the image.",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image. Total pixels must be between 1024x1024 and 2048x2048, with aspect ratio between 1/16 and 16.",
+     "default": "auto_2K"
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "Number of separate model generations to run with the prompt.",
+     "default": 1,
+     "min": 1,
+     "max": 6,
+     "step": 1
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The file format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image URLs",
+     "description": "List of URLs of input reference images. Up to 10 images are supported; if more are sent, only the last 10 are used.",
+     "required": true,
+     "isArray": true,
+     "arrayItemType": "string"
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/ideogram/v3/reframe",
+   "label": "Ideogram Reframe",
+   "role": "expand",
+   "row": "SC-AI-0052",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.03/images",
+   "inputs": [
+    {
+     "key": "image_urls",
+     "type": "array",
+     "label": "Image Urls",
+     "description": "A set of images to use as style references (maximum total size 10MB across all style references). The images should be in JPEG, PNG or WebP format",
+     "isArray": true,
+     "arrayItemType": "string"
+    },
+    {
+     "key": "rendering_speed",
+     "type": "string",
+     "label": "Rendering Speed",
+     "description": "The rendering speed to use.",
+     "default": "BALANCED",
+     "enum": [
+      "TURBO",
+      "BALANCED",
+      "QUALITY"
+     ]
+    },
+    {
+     "key": "color_palette",
+     "type": "object",
+     "label": "ColorPalette",
+     "description": "A color palette for generation, must EITHER be specified via one of the presets (name) or explicitly via hexadecimal representations of the color with optional weights (members)"
+    },
+    {
+     "key": "style_codes",
+     "type": "array",
+     "label": "Style Codes",
+     "description": "A list of 8 character hexadecimal codes representing the style of the image. Cannot be used in conjunction with style_reference_images or style",
+     "isArray": true,
+     "arrayItemType": "string"
+    },
+    {
+     "key": "style",
+     "type": "string",
+     "label": "Style",
+     "description": "The style type to generate with. Cannot be used with style_codes.",
+     "enum": [
+      "AUTO",
+      "GENERAL",
+      "REALISTIC",
+      "DESIGN"
+     ]
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "Number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 8,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "Seed for the random number generator",
+     "step": 1
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "style_preset",
+     "type": "string",
+     "label": "Style Preset",
+     "description": "Style preset for generation. The chosen style preset will guide the generation.",
+     "enum": [
+      "80S_ILLUSTRATION",
+      "90S_NOSTALGIA",
+      "ABSTRACT_ORGANIC",
+      "ANALOG_NOSTALGIA",
+      "ART_BRUT",
+      "ART_DECO",
+      "ART_POSTER",
+      "AURA",
+      "AVANT_GARDE",
+      "BAUHAUS",
+      "BLUEPRINT",
+      "BLURRY_MOTION",
+      "BRIGHT_ART",
+      "C4D_CARTOON",
+      "CHILDRENS_BOOK",
+      "COLLAGE",
+      "COLORING_BOOK_I",
+      "COLORING_BOOK_II",
+      "CUBISM",
+      "DARK_AURA",
+      "DOODLE",
+      "DOUBLE_EXPOSURE",
+      "DRAMATIC_CINEMA",
+      "EDITORIAL",
+      "EMOTIONAL_MINIMAL",
+      "ETHEREAL_PARTY",
+      "EXPIRED_FILM",
+      "FLAT_ART",
+      "FLAT_VECTOR",
+      "FOREST_REVERIE",
+      "GEO_MINIMALIST",
+      "GLASS_PRISM",
+      "GOLDEN_HOUR",
+      "GRAFFITI_I",
+      "GRAFFITI_II",
+      "HALFTONE_PRINT",
+      "HIGH_CONTRAST",
+      "HIPPIE_ERA",
+      "ICONIC",
+      "JAPANDI_FUSION",
+      "JAZZY",
+      "LONG_EXPOSURE",
+      "MAGAZINE_EDITORIAL",
+      "MINIMAL_ILLUSTRATION",
+      "MIXED_MEDIA",
+      "MONOCHROME",
+      "NIGHTLIFE",
+      "OIL_PAINTING",
+      "OLD_CARTOONS",
+      "PAINT_GESTURE",
+      "POP_ART",
+      "RETRO_ETCHING",
+      "RIVIERA_POP",
+      "SPOTLIGHT_80S",
+      "STYLIZED_RED",
+      "SURREAL_COLLAGE",
+      "TRAVEL_POSTER",
+      "VINTAGE_GEO",
+      "VINTAGE_POSTER",
+      "WATERCOLOR",
+      "WEIRD",
+      "WOODBLOCK_PRINT"
+     ]
+    },
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image URL",
+     "description": "The image URL to reframe",
+     "required": true
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The resolution for the reframed output image",
+     "required": true
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/clarity-upscaler",
+   "label": "Clarity Upscaler",
+   "role": "upscale",
+   "row": "SC-AI-0054",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.03/megapixels",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "The URL of the image to upscale.",
+     "required": true
+    },
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to use for generating the image. Be as descriptive as possible for best results.",
+     "default": "masterpiece, best quality, highres"
+    },
+    {
+     "key": "upscale_factor",
+     "type": "number",
+     "label": "Upscale Factor",
+     "description": "The upscale factor",
+     "default": 2,
+     "min": 1,
+     "max": 4,
+     "step": 0.01
+    },
+    {
+     "key": "negative_prompt",
+     "type": "string",
+     "label": "Negative Prompt",
+     "description": "The negative prompt to use. Use it to address details that you don't want in the image.",
+     "default": "(worst quality, low quality, normal quality:2)"
+    },
+    {
+     "key": "creativity",
+     "type": "number",
+     "label": "Creativity",
+     "description": "\n            The creativity of the model. The higher the creativity, the more the model will deviate from the prompt.\n            Refers to the denoise strength of the sampling.\n        ",
+     "default": 0.35,
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "resemblance",
+     "type": "number",
+     "label": "Resemblance",
+     "description": "\n            The resemblance of the upscaled image to the original image. The higher the resemblance, the more the model will try to keep the original image.\n            Refers to the strength of the ControlNet.\n        ",
+     "default": 0.6,
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance scale (CFG)",
+     "description": "\n            The CFG (Classifier Free Guidance) scale is a measure of how close you want\n            the model to stick to your prompt when looking for a related image to show you.\n        ",
+     "default": 4,
+     "max": 20,
+     "step": 0.01
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Num Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 18,
+     "min": 4,
+     "max": 50,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "\n            The same seed and the same prompt given to the same version of Stable Diffusion\n            will output the same image every time.\n        ",
+     "step": 1
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to false, the safety checker will be disabled.",
+     "default": true
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/recraft/upscale/creative",
+   "label": "Recraft Creative Upscale",
+   "role": "upscale",
+   "row": "SC-AI-0057",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.25/images",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "The URL of the image to be upscaled. Must be in PNG format.",
+     "required": true
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked."
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/recraft/upscale/crisp",
+   "label": "Recraft Crisp Upscale",
+   "role": "upscale",
+   "row": "SC-AI-0058",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.004/images",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "The URL of the image to be upscaled. Must be in PNG format.",
+     "required": true
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked."
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/seedvr/upscale/image",
+   "label": "SeedVR2 Upscale",
+   "role": "upscale",
+   "row": "SC-AI-0060",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.001/megapixels",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "The input image to be processed",
+     "required": true
+    },
+    {
+     "key": "upscale_mode",
+     "type": "string",
+     "label": "Upscale Mode",
+     "description": "The mode to use for the upscale. If 'target', the upscale factor will be calculated based on the target resolution. If 'factor', the upscale factor will be used directly.",
+     "default": "factor",
+     "enum": [
+      "target",
+      "factor"
+     ]
+    },
+    {
+     "key": "upscale_factor",
+     "type": "number",
+     "label": "Upscale Factor",
+     "description": "Upscaling factor to be used. Will multiply the dimensions with this factor when `upscale_mode` is `factor`.",
+     "default": 2,
+     "min": 1,
+     "max": 10,
+     "step": 0.01
+    },
+    {
+     "key": "target_resolution",
+     "type": "string",
+     "label": "Target Resolution",
+     "description": "The target resolution to upscale to when `upscale_mode` is `target`.",
+     "default": "1080p",
+     "enum": [
+      "720p",
+      "1080p",
+      "1440p",
+      "2160p"
+     ]
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "The random seed used for the generation process.",
+     "step": 1
+    },
+    {
+     "key": "noise_scale",
+     "type": "number",
+     "label": "Noise Scale",
+     "description": "The noise scale to use for the generation process.",
+     "default": 0.1,
+     "max": 1,
+     "step": 0.001
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the output image.",
+     "default": "jpg",
+     "enum": [
+      "png",
+      "jpg",
+      "webp"
+     ]
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "topaz/upscale/image/creative",
+   "label": "Topaz Creative Upscale (Bloom)",
+   "role": "upscale",
+   "row": "SC-AI-0061",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.01/units",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "Url of the image to be upscaled",
+     "required": true
+    },
+    {
+     "key": "model",
+     "type": "string",
+     "label": "Model",
+     "description": "Creative (Bloom) upscaling model. Bloom 2 is the latest and most capable; Bloom creatively upscales and transforms AI-generated images; Bloom Realism biases the added detail toward photorealism.",
+     "default": "Bloom 2",
+     "enum": [
+      "Bloom 2",
+      "Bloom",
+      "Bloom Realism"
+     ]
+    },
+    {
+     "key": "upscale_factor",
+     "type": "number",
+     "label": "Upscale Factor",
+     "description": "Factor to upscale the image by (e.g. 2.0 doubles width and height)",
+     "default": 2,
+     "min": 1,
+     "max": 4,
+     "step": 0.01
+    },
+    {
+     "key": "autoprompt",
+     "type": "boolean",
+     "label": "Autoprompt",
+     "description": "Enable automatic prompt generation. Applies to Bloom 2 only; Topaz defaults it to true when omitted."
+    },
+    {
+     "key": "creativity",
+     "type": "integer",
+     "label": "Creativity",
+     "description": "Creativity level (1-9). Higher values produce more creative/hallucinated details. Applies to Bloom 2 only.",
+     "min": 1,
+     "max": 9,
+     "step": 1
+    },
+    {
+     "key": "color_preservation",
+     "type": "boolean",
+     "label": "Color Preservation",
+     "description": "Preserve the source image's colors in the output. Applies to Bloom 2 only."
+    },
+    {
+     "key": "crop_to_fill",
+     "type": "boolean",
+     "label": "Crop To Fill"
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "Output format of the upscaled image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "topaz/upscale/image/generative",
+   "label": "Topaz Generative Upscale (Wonder, Redefine)",
+   "role": "upscale",
+   "row": "SC-AI-0062",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.01/units",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "Url of the image to be upscaled",
+     "required": true
+    },
+    {
+     "key": "model",
+     "type": "string",
+     "label": "Model",
+     "description": "Generative upscaling model. Wonder 3.5 is the latest Wonder with finer detail and fewer repetitive patterns; Wonder 3 is Topaz's most advanced generative realism model (Wonder 2/Wonder are earlier generations); Recover 3 rebuilds natural detail; Standard MAX is high-quality precision-leaning upscali",
+     "default": "Wonder 3",
+     "enum": [
+      "Wonder 3.5",
+      "Wonder 3",
+      "Wonder 2",
+      "Wonder",
+      "Recover 3",
+      "Standard MAX",
+      "Redefine",
+      "Recovery V2",
+      "Recovery"
+     ]
+    },
+    {
+     "key": "upscale_factor",
+     "type": "number",
+     "label": "Upscale Factor",
+     "description": "Factor to upscale the image by (e.g. 2.0 doubles width and height)",
+     "default": 2,
+     "min": 1,
+     "max": 4,
+     "step": 0.01
+    },
+    {
+     "key": "crop_to_fill",
+     "type": "boolean",
+     "label": "Crop To Fill"
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "Output format of the upscaled image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "subject_detection",
+     "type": "string",
+     "label": "Subject Detection",
+     "description": "Subject detection mode for the image enhancement. Applies to Wonder 3, Recovery and Recovery V2 models.",
+     "default": "All",
+     "enum": [
+      "All",
+      "Foreground",
+      "Background"
+     ]
+    },
+    {
+     "key": "face_enhancement",
+     "type": "boolean",
+     "label": "Face Enhancement",
+     "description": "Whether to apply face enhancement to the image.",
+     "default": true
+    },
+    {
+     "key": "face_enhancement_creativity",
+     "type": "number",
+     "label": "Face Enhancement Creativity",
+     "description": "Creativity level for face enhancement. 0.0 means no creativity, 1.0 means maximum creativity. Ignored if face enhancement is disabled.",
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "face_enhancement_strength",
+     "type": "number",
+     "label": "Face Enhancement Strength",
+     "description": "Strength of the face enhancement. 0.0 means no enhancement, 1.0 means maximum enhancement. Ignored if face enhancement is disabled.",
+     "default": 0.8,
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "enhancement_strength",
+     "type": "string",
+     "label": "Enhancement Strength",
+     "description": "Enhancement strength for generative upscaling. Applies to Wonder 3 and Wonder 3.5 models. When omitted, Topaz auto-configures it.",
+     "enum": [
+      "low",
+      "medium",
+      "high"
+     ]
+    },
+    {
+     "key": "creativity",
+     "type": "integer",
+     "label": "Creativity",
+     "description": "Creativity level for generative upscaling (1-6). Higher values produce more creative/hallucinated details. Applies to Redefine model only.",
+     "min": 1,
+     "max": 6,
+     "step": 1
+    },
+    {
+     "key": "texture",
+     "type": "integer",
+     "label": "Texture",
+     "description": "Texture detail level for generative upscaling (1-5). Applies to Redefine model only.",
+     "min": 1,
+     "max": 5,
+     "step": 1
+    },
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "Text prompt to guide generative upscaling (max 1024 chars). Applies to Redefine model only.",
+     "maxLength": 1024
+    },
+    {
+     "key": "autoprompt",
+     "type": "boolean",
+     "label": "Autoprompt",
+     "description": "Enable automatic prompt generation for generative upscaling. Applies to Redefine model only."
+    },
+    {
+     "key": "sharpen",
+     "type": "number",
+     "label": "Sharpen",
+     "description": "Sharpening level (0.0-1.0). Applies to Redefine model only.",
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "denoise",
+     "type": "number",
+     "label": "Denoise",
+     "description": "Denoising level (0.0-1.0). Applies to Redefine model only.",
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "detail",
+     "type": "number",
+     "label": "Detail",
+     "description": "Detail recovery level (0.0-1.0). Applies to Recovery V2 model only.",
+     "max": 1,
+     "step": 0.01
+    }
+   ]
+  },
+  {
+   "id": "topaz/restore/image",
+   "label": "Topaz Restore (Recover)",
+   "role": "upscale",
+   "row": "SC-AI-0062",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.01/units",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "Url of the image to process",
+     "required": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "Output format of the processed image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "model",
+     "type": "string",
+     "label": "Model",
+     "description": "Restoration. Recover 3 rebuilds natural detail; Dust-Scratch V2 cleans up film dust and scratches; Faces restores facial detail with Face Recovery 3.",
+     "default": "Recover 3",
+     "enum": [
+      "Recover 3",
+      "Dust-Scratch V2",
+      "Faces"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "topaz/upscale/image/precision",
+   "label": "Topaz Precision Upscale",
+   "role": "upscale",
+   "row": "SC-AI-0063",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.01/units",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "Url of the image to be upscaled",
+     "required": true
+    },
+    {
+     "key": "model",
+     "type": "string",
+     "label": "Model",
+     "description": "Precision upscaling model. Standard V2 fits most photos; High Fidelity V3/V2 preserve detail in professional shots; Low Resolution V2 recovers compressed sources; CGI targets art and rendered graphics; Text Refine keeps text and shapes crisp; Faces restores facial detail with Face Recovery 3.",
+     "default": "Standard V2",
+     "enum": [
+      "Standard V2",
+      "High Fidelity V3",
+      "High Fidelity V2",
+      "Low Resolution V2",
+      "CGI",
+      "Text Refine",
+      "Faces"
+     ]
+    },
+    {
+     "key": "upscale_factor",
+     "type": "number",
+     "label": "Upscale Factor",
+     "description": "Factor to upscale the image by (e.g. 2.0 doubles width and height)",
+     "default": 2,
+     "min": 1,
+     "max": 4,
+     "step": 0.01
+    },
+    {
+     "key": "crop_to_fill",
+     "type": "boolean",
+     "label": "Crop To Fill"
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "Output format of the upscaled image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    },
+    {
+     "key": "subject_detection",
+     "type": "string",
+     "label": "Subject Detection",
+     "description": "Subject detection mode for the image enhancement.",
+     "default": "All",
+     "enum": [
+      "All",
+      "Foreground",
+      "Background"
+     ]
+    },
+    {
+     "key": "face_enhancement",
+     "type": "boolean",
+     "label": "Face Enhancement",
+     "description": "Whether to apply face enhancement to the image.",
+     "default": true
+    },
+    {
+     "key": "face_enhancement_creativity",
+     "type": "number",
+     "label": "Face Enhancement Creativity",
+     "description": "Creativity level for face enhancement. 0.0 means no creativity, 1.0 means maximum creativity. Ignored if face enhancement is disabled.",
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "face_enhancement_strength",
+     "type": "number",
+     "label": "Face Enhancement Strength",
+     "description": "Strength of the face enhancement. 0.0 means no enhancement, 1.0 means maximum enhancement. Ignored if face enhancement is disabled.",
+     "default": 0.8,
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "sharpen",
+     "type": "number",
+     "label": "Sharpen",
+     "description": "Sharpening level (0.0-1.0). Default varies by model.",
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "denoise",
+     "type": "number",
+     "label": "Denoise",
+     "description": "Denoising level (0.0-1.0). Default varies by model.",
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "fix_compression",
+     "type": "number",
+     "label": "Fix Compression",
+     "description": "Compression artifact removal level (0.0-1.0). Not supported by the CGI model.",
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "strength",
+     "type": "number",
+     "label": "Strength",
+     "description": "Enhancement strength (0.01-1.0). Applies to Text Refine model only.",
+     "min": 0.01,
+     "max": 1,
+     "step": 0.01
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/iclight-v2",
+   "label": "IC-Light v2 Relight",
+   "role": "relight",
+   "row": "SC-ED-0235",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.1/megapixels",
+   "inputs": [
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "The prompt to generate an image from.",
+     "required": true
+    },
+    {
+     "key": "negative_prompt",
+     "type": "string",
+     "label": "Negative Prompt",
+     "description": "Negative Prompt for the image"
+    },
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "URL of image to be used for relighting",
+     "required": true
+    },
+    {
+     "key": "mask_image_url",
+     "type": "string",
+     "label": "Mask Image Url",
+     "description": "URL of mask to be used for ic-light conditioning image"
+    },
+    {
+     "key": "background_threshold",
+     "type": "number",
+     "label": "Background Threshold",
+     "description": "Threshold for the background removal algorithm. A high threshold will produce sharper masks. Note: This parameter is currently deprecated and has no effect on the output.",
+     "default": 0.67,
+     "min": 0.01,
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "image_size",
+     "type": "object",
+     "label": "Image Size",
+     "description": "The size of the generated image."
+    },
+    {
+     "key": "num_inference_steps",
+     "type": "integer",
+     "label": "Num Inference Steps",
+     "description": "The number of inference steps to perform.",
+     "default": 28,
+     "min": 1,
+     "max": 50,
+     "step": 1
+    },
+    {
+     "key": "seed",
+     "type": "integer",
+     "label": "Seed",
+     "description": "\n            The same seed and the same prompt given to the same version of the model\n            will output the same image every time.\n        ",
+     "step": 1
+    },
+    {
+     "key": "initial_latent",
+     "type": "string",
+     "label": "Initial Latent",
+     "description": "\n            Provide lighting conditions for the model\n        ",
+     "default": "None",
+     "enum": [
+      "None",
+      "Left",
+      "Right",
+      "Top",
+      "Bottom"
+     ]
+    },
+    {
+     "key": "enable_hr_fix",
+     "type": "boolean",
+     "label": "Enable Hr Fix",
+     "description": "Use HR fix"
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    },
+    {
+     "key": "num_images",
+     "type": "integer",
+     "label": "Num Images",
+     "description": "The number of images to generate.",
+     "default": 1,
+     "min": 1,
+     "max": 4,
+     "step": 1
+    },
+    {
+     "key": "cfg",
+     "type": "number",
+     "label": "Cfg",
+     "description": "The real classifier-free-guidance scale for the generation.",
+     "default": 1,
+     "min": 0.01,
+     "max": 5,
+     "step": 0.01
+    },
+    {
+     "key": "lowres_denoise",
+     "type": "number",
+     "label": "Lowres Denoise",
+     "description": "Strength for low-resolution pass.",
+     "default": 0.98,
+     "min": 0.01,
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "highres_denoise",
+     "type": "number",
+     "label": "Highres Denoise",
+     "description": "Strength for high-resolution pass. Only used if enable_hr_fix is True.",
+     "default": 0.95,
+     "min": 0.01,
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "hr_downscale",
+     "type": "number",
+     "label": "Hr Downscale",
+     "default": 0.5,
+     "min": 0.01,
+     "max": 1,
+     "step": 0.01
+    },
+    {
+     "key": "guidance_scale",
+     "type": "number",
+     "label": "Guidance scale (CFG)",
+     "description": "\n            The CFG (Classifier Free Guidance) scale is a measure of how close you want\n            the model to stick to your prompt when looking for a related image to show you.\n        ",
+     "default": 5,
+     "max": 20,
+     "step": 0.01
+    },
+    {
+     "key": "enable_safety_checker",
+     "type": "boolean",
+     "label": "Enable Safety Checker",
+     "description": "If set to true, the safety checker will be enabled. Disabling it requires account authorization; unauthorized requests are always checked.",
+     "default": true
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "jpeg",
+     "enum": [
+      "jpeg",
+      "png"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/bria/background/remove",
+   "label": "Bria RMBG 2.0 Background Removal",
+   "role": "cutout",
+   "row": "SC-AI-0127",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.018/generations",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "Input Image to erase from",
+     "required": true
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If `True`, the media will be returned as a data URI and the output data won't be available in the request history."
+    }
+   ]
+  },
+  {
+   "id": "fal-ai/sam-3/image",
+   "label": "SAM 3 Select by Text",
+   "role": "segment",
+   "row": "SC-AI-0134",
+   "category": "image-to-image",
+   "license": "commercial",
+   "pricing": "$0.005/units",
+   "inputs": [
+    {
+     "key": "image_url",
+     "type": "string",
+     "label": "Image Url",
+     "description": "URL of the image to be segmented",
+     "required": true
+    },
+    {
+     "key": "prompt",
+     "type": "string",
+     "label": "Prompt",
+     "description": "Text prompt for segmentation",
+     "default": "wheel"
+    },
+    {
+     "key": "text_prompt",
+     "type": "string",
+     "label": "Text Prompt",
+     "description": "[DEPRECATED] Use 'prompt' instead. Kept for backward compatibility."
+    },
+    {
+     "key": "point_prompts",
+     "type": "array",
+     "label": "Point Prompts",
+     "description": "List of point prompts",
+     "default": [],
+     "isArray": true,
+     "arrayItemType": "object"
+    },
+    {
+     "key": "box_prompts",
+     "type": "array",
+     "label": "Box Prompts",
+     "description": "Box prompt coordinates (x_min, y_min, x_max, y_max). Multiple boxes supported - use object_id to group boxes for the same object or leave empty for separate objects.",
+     "default": [],
+     "isArray": true,
+     "arrayItemType": "object"
+    },
+    {
+     "key": "apply_mask",
+     "type": "boolean",
+     "label": "Apply Mask",
+     "description": "Apply the mask on the image.",
+     "default": true
+    },
+    {
+     "key": "sync_mode",
+     "type": "boolean",
+     "label": "Sync Mode",
+     "description": "If True, the media will be returned as a data URI."
+    },
+    {
+     "key": "output_format",
+     "type": "string",
+     "label": "Output Format",
+     "description": "The format of the generated image.",
+     "default": "png",
+     "enum": [
+      "jpeg",
+      "png",
+      "webp"
+     ]
+    },
+    {
+     "key": "return_multiple_masks",
+     "type": "boolean",
+     "label": "Return Multiple Masks",
+     "description": "If True, upload and return multiple generated masks as defined by `max_masks`."
+    },
+    {
+     "key": "max_masks",
+     "type": "integer",
+     "label": "Max Masks",
+     "description": "Maximum number of masks to return when `return_multiple_masks` is enabled.",
+     "default": 3,
+     "min": 1,
+     "max": 32,
+     "step": 1
+    },
+    {
+     "key": "include_scores",
+     "type": "boolean",
+     "label": "Include Scores",
+     "description": "Whether to include mask confidence scores."
+    },
+    {
+     "key": "include_boxes",
+     "type": "boolean",
+     "label": "Include Boxes",
+     "description": "Whether to include bounding boxes for each mask (when available)."
+    }
+   ]
+  }
+ ]
+}

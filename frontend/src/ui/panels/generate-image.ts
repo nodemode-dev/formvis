@@ -13,6 +13,9 @@ import { ReferencePicker } from './references';
 import { ReferenceChips } from './reference-chips';
 import { PromptImprover, areaView, referenceViews } from './prompt-improver';
 import { GenerationOptions } from './generation-options';
+import { FalOptions } from './fal-options';
+import { FAL_PREFIX, falCatalogue, falIdOf, falModelsOf, falRunImage, falValue } from '../../io/fal';
+import type { FalModel } from '../../io/api';
 
 /** The shapes Generate offers beside the picture's own: name, words, pixels (multiples of 16, within every local model's range). */
 export const SIZES: ReadonlyArray<readonly [string, string, number, number]> = [
@@ -40,14 +43,14 @@ export function atClass(w: number, h: number, side: number): readonly [number, n
 
 /** The shapes the model chosen offers: fal's own, a model on this computer's catalogue sizes (`local`, "WxH"), else the common five. */
 export function shapesFor(choice: string, local: readonly string[] = []): ReadonlyArray<Shape> {
-  if (choice === 'fal') return FAL_SHAPES;
+  if (choice === 'fal' || choice.startsWith(FAL_PREFIX)) return FAL_SHAPES;
   const own = choice.startsWith('local:') ? local.map((s): Shape => { const [w, h] = s.split('x').map(Number); return [s, `${w} x ${h}`, w, h]; }) : [];
   return own.length ? own : SIZES;
 }
 
 /** One model Generate Image can use: its value in the picker, its words, and why it cannot be chosen when it cannot. */
 export interface GenerationModel { value: string; label: string; disabled: boolean; reason: string }
-export interface GenerationModels { models: GenerationModel[]; preferred: string; fal: GenerativeStatus | null; sizes: Record<string, string[]> }
+export interface GenerationModels { models: GenerationModel[]; preferred: string; fal: GenerativeStatus | null; sizes: Record<string, string[]>; catalogue: FalModel[] }
 
 /** One line of the run log: a generation, whichever model ran it, with how long it took and how it ended. */
 export interface RunLogEntry { id: number; time: number; choice: string; prompt: string; ms: number; ok: boolean; note: string }
@@ -174,17 +177,19 @@ export async function comfyReadiness(): Promise<Map<string, string>> {
 /** The models Generate Image offers, from the one source the Generate Image dialog and the Generate panel share: fal,
  *  the kept ComfyUI workflows (left out when `comfy` is false: the panel offers them only while
  *  ComfyUI answers) and the models on this computer. `preferred` is the default: fal with a key, else a model here. */
-export async function generationModels(comfy = true): Promise<GenerationModels> {
+export async function generationModels(comfy = true, withCatalogue = false): Promise<GenerationModels> {
   const locals = await localModels();   // the local models (1.52.9)
   const problems = comfy ? await comfyReadiness() : new Map<string, string>();
+  const catalogue = withCatalogue ? falModelsOf(await falCatalogue(), 'generate') : [];
   const models: GenerationModel[] = [
     { value: 'fal', label: 'FLUX1.1 [pro] (fal)', disabled: false, reason: '' },
+    ...catalogue.map((m) => ({ value: falValue(m), label: `${m.label} (fal)`, disabled: false, reason: '' })),
     ...(comfy ? recipes().map((r) => ({ value: r.name, label: `${r.name} (ComfyUI)`, disabled: problems.has(r.name), reason: problems.get(r.name) ?? '' })) : []),
     ...locals.map((m) => ({ value: m.id, label: `${m.label.replace(/ \(local\)$/, '')} (this computer)`, disabled: !m.ready, reason: !m.ready && m.reason ? m.reason : '' })),
   ];
   // fal, the cloud default, when it has a key; else a model on this computer; else fal, whose key is then asked for (1.58.5).
   const fal = await api.generativeStatus(), local = locals.find((m) => m.ready)?.id ?? null;
-  return { models, preferred: fal?.configured ? 'fal' : local ?? 'fal', fal, sizes: Object.fromEntries(locals.map((m) => [m.id, m.sizes])) };
+  return { models, preferred: fal?.configured ? 'fal' : local ?? 'fal', fal, sizes: Object.fromEntries(locals.map((m) => [m.id, m.sizes])), catalogue };
 }
 
 const applyModel = (o: HTMLOptionElement, m: GenerationModel): void => {
@@ -222,6 +227,8 @@ export interface GenerationRequest {
   negative?: string;
   steps?: number;
   guidance?: number;
+  /** The options set for a fal catalogue model, by schema key. */
+  falInputs?: Record<string, unknown>;
   onSeed?: (seed: number | undefined) => void;
   /** Called when stopGenerations stops this run, so the caller can say so. */
   onStop?: () => void;
@@ -320,11 +327,11 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
   if (fresh) engine.newDocument(req.size?.width ?? 1024, req.size?.height ?? 1024, 'Generated', 'white');
   const p = engine.current;
   if (!p) return false;
-  const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { choice } = req, prompt = await generatePrompt(withBoxes(req.prompt, p.doc), choice === 'fal' ? 'fal' : /^local:/.test(choice) ? choice.replace(/^[a-z]+:/, '') : 'comfyui');   // the layout boxes follow the words, one line each
+  const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { choice } = req, prompt = await generatePrompt(withBoxes(req.prompt, p.doc), choice === 'fal' || choice.startsWith(FAL_PREFIX) ? 'fal' : /^local:/.test(choice) ? choice.replace(/^[a-z]+:/, '') : 'comfyui');   // the layout boxes follow the words, one line each
   const hint = req.keyHint ?? { fal: t('Add a fal API key first, in Edit > Generative Fill.') };
   let blob: Blob;
   let generation: GenerationInfo | undefined;
-  const referenced = !(choice === 'fal' || choice.startsWith('local:'));
+  const referenced = !(choice === 'fal' || choice.startsWith('local:') || choice.startsWith(FAL_PREFIX));
   if (!referenced && hasTokens(prompt)) throw new Error(t('This model takes no references: remove the @img tokens from the prompt, or choose a ComfyUI workflow.'));
   if (choice.startsWith('local:')) {
     // On this computer: the shape asked within the model's 2048 pixels, in multiples of 16.
@@ -341,6 +348,17 @@ async function generateOnce(engine: Engine, req: GenerationRequest): Promise<boo
     req.status(t('Generating on fal...'));
     blob = await api.generateImage(prompt, w, h, req.seed);
     req.onSeed?.(req.seed);
+  } else if (choice.startsWith(FAL_PREFIX)) {
+    const st = await api.generativeStatus();
+    if (!st) throw new Error(t('The formvis engine is offline. Start it with ./formvis boot.'));
+    if (!st.configured) throw new Error(hint.fal);
+    const cat = falModelsOf(await falCatalogue(), 'generate').find((m) => m.id === falIdOf(choice));
+    if (!cat) throw new Error(t('That fal model is not in the catalogue.'));
+    req.status(t('Generating on fal...'));
+    const sent = { prompt, ...(cat.inputs.some((i) => i.key === 'image_size') ? { image_size: { width: w, height: h } } : {}), ...(req.seed !== undefined && cat.inputs.some((i) => i.key === 'seed') ? { seed: req.seed } : {}), ...(req.falInputs ?? {}) };
+    const r = await falRunImage(cat, sent, null);
+    blob = r.blob;
+    req.onSeed?.(r.result.seed ?? req.seed);
   } else {
     const recipe = recipes().find((r) => r.name === choice);
     if (!recipe) throw new Error(t('That workflow is no longer kept: add it again in Edit > Generative Fill.'));
@@ -385,6 +403,8 @@ export class GenerateImageDialog extends Dialog {
   private readonly chips: ReferenceChips;
   private readonly improver: PromptImprover;
   private readonly opts = new GenerationOptions();
+  private readonly fal = new FalOptions();
+  private catalogue: FalModel[] = [];
   private stopped = false;
   private picked = false;     // the person chose the model (1.58.5); until then the default is fal with a key, else local
   // Earlier results (add again, or take back their prompt) and the run log of every generation, built once and patched.
@@ -398,7 +418,7 @@ export class GenerateImageDialog extends Dialog {
     row.append(this.model);
     this.refs = new ReferencePicker(engine);
     this.chips = new ReferenceChips(this.refs, this.prompt);
-    this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.opts.forModel(this.model.value); this.paintShapes(); });
+    this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.opts.forModel(this.model.value); this.fal.show(this.catalogue.find((m) => m.id === falIdOf(this.model.value)) ?? null); this.paintShapes(); });
     this.improver = new PromptImprover(this.prompt, 'Richer detail');
     this.improver.view = areaView(engine, false);
     this.improver.refs = referenceViews(() => this.chips.ordered());
@@ -410,7 +430,7 @@ export class GenerateImageDialog extends Dialog {
     const capRow = el('<label class="cv-dialog-row"><span>Working size</span></label>');
     capRow.append(this.cap);
     this.clearRow.prepend(this.clear);
-    this.body.append(this.prompt, this.improver.el, row, shape, capRow, this.clearRow, this.opts.el, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
+    this.body.append(this.prompt, this.improver.el, row, this.fal.el, shape, capRow, this.clearRow, this.opts.el, this.refs.el, this.chips.el, this.status, this.hist, this.logBox);
     this.hist.addEventListener('click', (ev) => {
       const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
       if (!b) return;
@@ -433,14 +453,16 @@ export class GenerateImageDialog extends Dialog {
 
   async show(): Promise<void> {
     const was = this.model.value;
-    const { models, preferred, sizes } = await generationModels();   // the models the Generate panel offers too
+    const { models, preferred, sizes, catalogue } = await generationModels(true, true);   // the models the Generate panel offers too, and the fal catalogue's generate models
     this.localSizes = sizes;
+    this.catalogue = catalogue;
     fillModelPicker(this.model, models);
     // The person's choice while it stands; else the default (fal with a key, else a model on this computer).
     if (this.picked && [...this.model.options].some((o) => o.value === was && !o.disabled)) this.model.value = was;
     else this.model.value = preferred;
     this.refs.refresh(this.model.value === 'fal');
     this.opts.forModel(this.model.value);
+    this.fal.show(this.catalogue.find((m) => m.id === falIdOf(this.model.value)) ?? null);
     this.paintShapes();
     this.improver.refresh();
     setText(this.status, 'Your ComfyUI workflows are added in Edit > Generative Fill.');
@@ -511,7 +533,7 @@ export class GenerateImageDialog extends Dialog {
     this.stopped = false;
     try {
       // The same generation the Generate panel runs; a new layer at the document's size (a new document when none is open).
-      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, size: this.asked(), cap: Number(this.cap.value), target: this.target.value === 'document' ? 'document' : this.target.value === 'base' ? 'base' : 'layer', transparent: this.clear.checked, references: () => this.chips.ordered(), ...this.opts.request(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
+      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, size: this.asked(), cap: Number(this.cap.value), target: this.target.value === 'document' ? 'document' : this.target.value === 'base' ? 'base' : 'layer', transparent: this.clear.checked, references: () => this.chips.ordered(), ...this.opts.request(), falInputs: this.fal.values(), onSeed: (s) => this.opts.used(s), onStop: () => { this.stopped = true; setText(this.status, 'Stopped.'); }, status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
       if (!added) return;
       this.close();
       this.toast(this.target.value === 'base' ? 'The generated image replaced the picture. Undo brings it back.' : 'The generated image was added as a layer.');

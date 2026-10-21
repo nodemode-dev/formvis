@@ -10,8 +10,8 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - Size and shape: `generative_expand`, `upscale`, `resize_image`, `resize_canvas`, `crop`, `flip_canvas`
 - Layers: `add_layer`, `set_layer`, `delete_layer`, `place_image`, `transform_layer`, `rasterize_layer`, `duplicate_layer`, `move_layer`, `merge_layers`, `flatten_image`
 - Text and shapes: `add_text`, `draw_shape`
-- Selecting: `select`, `select_subject`, `select_color_range`
-- Painting and generating: `fill`, `generative_fill`, `generate_image`, `remove_background`
+- Selecting: `select`, `select_by_text`, `select_subject`, `select_color_range`
+- Painting and generating: `fill`, `generative_fill`, `generate_image`, `fal_models`, `remove_background`
 - Colour, filters and looks: `add_adjustment`, `apply_filter`, `set_adjustment`, `color_match`, `add_film_layer`
 - History: `undo`, `redo`
 - Files without the window, and jobs: `file_info`, `improve_prompt`, `convert_file`, `jobs_list`, `jobs_cancel`
@@ -160,19 +160,46 @@ Note: may use fal.
 
 ## generate_image
 
-Generates a picture from a prompt as a new layer the size of the document. model auto uses Krea 2 or FLUX.2 [klein] on this computer when installed, else FLUX1.1 [pro] on fal, which asks the person first. Use when a whole new picture is wanted from a description.
+Generates a picture from a prompt as a new layer, the size of the document unless size or aspect_ratio is given (then the picture keeps that shape and is centred, fitted inside the document). model auto uses Krea 2 or FLUX.2 [klein] on this computer when installed, else FLUX1.1 [pro] on fal, which asks the person first. model can also be the id of a generate model from fal_models (always fal, asks first): only those models take seed, negative_prompt and options, and size or aspect_ratio, by whichever of image_size or aspect_ratio the model has. Use when a whole new picture is wanted from a description.
 
 - `prompt`: string; required
-- `model`: string (auto | krea-2 | flux2-klein-4b | fal); default "auto"
+- `model`: string (auto | krea-2 | flux2-klein-4b | fal | fal-ai/boogu-image | fal-ai/flux-2/klein/9b/base | ideogram/v4 | ideogram/v4/fast | fal-ai/z-image/turbo | fal-ai/flux-2-flex | fal-ai/flux-2-max | fal-ai/flux-2-pro | openai/gpt-image-2 | openai/gpt-image-2.5/flare/text-to-image | openai/gpt-image-2.5/sunburst/text-to-image | xai/grok-imagine-image/v2.0/text-to-image | krea/v2/large/text-to-image | fal-ai/nano-banana-2 | google/nano-banana-2-lite | fal-ai/nano-banana-pro | fal-ai/recraft/v4/text-to-image | fal-ai/recraft/v4/pro/text-to-image | fal-ai/bytedance/seedream/v4.5/text-to-image | bytedance/seedream/v5/pro/text-to-image); default "auto"
+- `size`: object; The picture's size in pixels; for a fal_models generate model.
+- `aspect_ratio`: string; For example 16:9; for a fal_models generate model (one with an aspect_ratio input takes the values it lists).
+- `seed`: integer; The model's seed, for a repeatable result; only for a model that takes one (fal_models).
+- `negative_prompt`: string; What to keep out of the picture; only for a model that takes one (fal_models).
+- `options`: object; Other inputs of the chosen model by their names (fal_models lists them), for example {guidance_scale: 4}. The engine checks each against the model's own schema.
 
 Note: may use fal.
 
 ## upscale
 
-Enlarges what the document shows 2 or 4 times into a new document. model auto uses Real-ESRGAN on this computer when downloaded, else Real-ESRGAN on fal (asks first). Use when the picture needs more pixels with detail kept.
+Enlarges what the document shows 2 or 4 times into a new document. model auto uses Real-ESRGAN on this computer when downloaded, else Real-ESRGAN on fal (asks first). model can also be the id of an upscale model from fal_models (fal, asks first); seed, negative_prompt and options then apply as that model's inputs allow. Use when the picture needs more pixels with detail kept.
 
 - `scale`: integer (2 | 4); default 2
-- `model`: string (auto | local | fal); default "auto"
+- `model`: string (auto | local | fal | fal-ai/clarity-upscaler | fal-ai/recraft/upscale/creative | fal-ai/recraft/upscale/crisp | fal-ai/seedvr/upscale/image | topaz/upscale/image/creative | topaz/upscale/image/generative | topaz/restore/image | topaz/upscale/image/precision); default "auto"
+- `seed`: integer; The model's seed, for a repeatable result; only for a model that takes one (fal_models).
+- `negative_prompt`: string; What to keep out of the picture; only for a model that takes one (fal_models).
+- `options`: object; Other inputs of the chosen model by their names (fal_models lists them), for example {guidance_scale: 4}. The engine checks each against the model's own schema.
+
+Note: may use fal.
+
+## fal_models
+
+Lists the fal models formvis may use (the owner's catalogue, no others) with their roles: cutout, edit, expand, generate, inpaint, relight, segment, upscale. With role, only that role's models; with model, one model's inputs (key, type, default, enum, range) for the options of generate_image and upscale. Changes nothing, costs nothing, needs no window. Use when you need the fal models formvis may use, their roles and their inputs before choosing a model for generate_image, upscale or select_by_text.
+
+- `role`: string (cutout | edit | expand | generate | inpaint | relight | segment | upscale)
+- `model`: string
+
+Note: read-only.
+
+## select_by_text
+
+Selects what a short description names, for example 'the red car' or 'all the people', by sending the document's picture and the words to SAM 3 on fal (asks the person first, costs money); the returned mask becomes the selection, combined by mode. Fails with a message when nothing matches. Follow with generative_fill, fill or any selection edit. Use when a thing is named in words (a car, the sky, all the people) rather than drawn or picked by colour.
+
+- `prompt`: string; required
+- `mode`: string (replace | add | subtract | intersect); default "replace"
+- `options`: object; Other SAM 3 inputs by name (fal_models with model fal-ai/sam-3/image), for example {output_format: 'png'}.
 
 Note: may use fal.
 

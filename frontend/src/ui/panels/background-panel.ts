@@ -5,6 +5,7 @@ import { el, setHidden } from '../dom';
 import { recalled, remembered } from '../prefs';
 import { selectRow, sliderRow } from './controls';
 import { api } from '../../io/api';
+import { FAL_CUTOUT, falCatalogue, falModelsOf } from '../../io/fal';
 
 /** The model choice Remove Background and Select Subject remember: '' U2-Net, 'grabcut' the lightweight engine, else a file in the matting folder. */
 export const mattingChoice = (): string => { const v = recalled('Remove Background', 'model'); return typeof v === 'string' ? v : ''; };
@@ -55,10 +56,10 @@ export class BackgroundPanel extends Dialog {
 
   /** The model list keeps its place: U2-Net and GrabCut, then the loadable files of the matting folder. */
   private async fillModels(): Promise<void> {
-    const n = ++this.seq, files = (await api.mattingModels()).filter((m) => m.loadable);
+    const n = ++this.seq, files = (await api.mattingModels()).filter((m) => m.loadable), cutout = falModelsOf(await falCatalogue(), 'cutout').length > 0;
     if (n !== this.seq || !this.isOpen) return;
     const sel = this.model.el.querySelector('select') as HTMLSelectElement;
-    const want: Array<readonly [string, string]> = [['', 'U2-Net'], ['grabcut', 'GrabCut'], ...files.map((m) => [m.file, m.file] as const)];
+    const want: Array<readonly [string, string]> = [['', 'U2-Net'], ['grabcut', 'GrabCut'], ...(cutout ? [[FAL_CUTOUT, 'Cutout (fal)'] as const] : []), ...files.map((m) => [m.file, m.file] as const)];
     const choice = mattingChoice();
     if (choice && !want.some(([v]) => v === choice)) want.push([choice, `${choice} (missing)`]);
     while (sel.options.length > want.length) sel.remove(sel.options.length - 1);

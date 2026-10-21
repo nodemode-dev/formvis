@@ -5,7 +5,7 @@ description: Making and changing selections in formvis through its MCP tools. Us
 
 # selections
 
-Tools: `select`, `select_subject`, `select_color_range`. The selection limits what `fill`, `generative_fill` and `apply_filter` change. `get_document` reports it as `selection` (`x`, `y`, `width`, `height`, or null).
+Tools: `select`, `select_subject`, `select_by_text`, `select_color_range`. The selection limits what `fill`, `generative_fill` and `apply_filter` change. `get_document` reports it as `selection` (`x`, `y`, `width`, `height`, or null).
 
 ## What each tool does
 
@@ -13,6 +13,7 @@ Tools: `select`, `select_subject`, `select_color_range`. The selection limits wh
 | --- | --- | --- |
 | `select` | `shape` (`rectangle`, `ellipse`, `all`, `none`, `invert`), `x`, `y`, `width`, `height`, `mode` (`replace`, `add`, `subtract`, `intersect`) | Rectangle and ellipse are in pixels from the picture's top-left; `mode` combines with the selection already there; `all`, `none`, `invert` ignore the geometry |
 | `select_subject` | none | Finds the main subject (a person, animal or object) on this computer; replaces the selection. Needs the subject model, fetched on first use |
+| `select_by_text` | `prompt` (what to select, in words), `mode` (`replace`, `add`, `subtract`, `intersect`) | Sends the picture and the words to SAM 3 on fal after asking the person; the returned mask becomes the selection. Fails with a message when nothing matches |
 | `select_color_range` | `color` (`#rrggbb`), `fuzziness` 0 to 200, default 40 | Selects pixels near that colour in the active layer; widen `fuzziness` for gradients and noise |
 
 There is no lasso, magic wand, path or feather tool. Approximate an irregular area with several `select` calls using `mode: "add"` or `"subtract"` (rectangles and ellipses), or with `select_subject` then `select` with `mode: "subtract"`. Tell the person if an area needs hand selection in the window.

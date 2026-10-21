@@ -157,6 +157,11 @@ export function socketTo(path: string): WebSocket {
   return new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api${path}`);
 }
 
+export type FalRole = 'generate' | 'edit' | 'inpaint' | 'expand' | 'upscale' | 'relight' | 'cutout' | 'segment';
+export interface FalInput { key: string; type: string; label: string; description?: string; required?: boolean; default?: unknown; enum?: string[]; min?: number; max?: number; step?: number; isArray?: boolean }
+export interface FalModel { id: string; label: string; role: FalRole; row?: string; category?: string; pricing?: string | null; license?: string; inputs: FalInput[] }
+export interface FalRunResult { images: Array<{ png: string; width: number; height: number }>; masks?: Array<{ png: string; width: number; height: number }>; seed?: number; model?: string }
+
 function json(body: unknown): RequestInit {
   return { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 }
@@ -390,6 +395,14 @@ export const api = {
     f.append('image', image, 'image.png');
     f.append('scale', String(scale));
     return (await request('/generative/upscale', { method: 'POST', body: f })).blob();
+  },
+  /** The fal catalogue the owner chose: each model with its role and the inputs its schema takes; `ready` once a key is set. */
+  async falModels(): Promise<{ ready: boolean; models: FalModel[] }> {
+    return (await (await request('/fal/models')).json()) as { ready: boolean; models: FalModel[] };
+  },
+  /** One run of a catalogue model: `inputs` by schema key, `images` by schema image key (data addresses, or a list for an array key). */
+  async falRun(model: string, inputs: Record<string, unknown>, images: Record<string, string | string[]>): Promise<FalRunResult> {
+    return (await (await request('/fal/run', json({ model, inputs, images }))).json()) as FalRunResult;
   },
   async decode(file: Blob, name: string, page = 0, cameraProfile?: string, raw?: RawWhiteBalance): Promise<Blob> {
     return (await request('/io/decode', { method: 'POST', body: form({ ...(page ? { page: String(page) } : {}), ...(cameraProfile ? { camera_profile: cameraProfile } : {}), ...rawFields(raw) }, [{ name, blob: file }], 'file') })).blob();

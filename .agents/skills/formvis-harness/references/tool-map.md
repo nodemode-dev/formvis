@@ -1,6 +1,6 @@
 # Tool map
 
-Generated from the MCP catalogue (136 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
+Generated from the MCP catalogue (138 tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.
 
 ## Contents
 
@@ -26,6 +26,8 @@ Generated from the MCP catalogue (136 tools, `TOOLS` in `backend/app/routers/mcp
 | `generative_expand` | adds or changes | `generation-and-ai`, `transform-and-warp` |
 | `generate_image` | adds or changes | `generation-and-ai`, `layers-and-masks`, `painting-and-brushes`, `type-and-shapes` |
 | `upscale` | adds or changes | `documents-and-files`, `generation-and-ai`, `transform-and-warp` |
+| `fal_models` | reads only | `generation-and-ai` |
+| `select_by_text` | adds or changes | `generation-and-ai`, `selections` |
 | `remove_background` | adds or changes | `export`, `generation-and-ai`, `layers-and-masks` |
 | `open_file` | adds or changes | `documents-and-files`, `export`, `terminal`, `timeline-and-video`, `type-and-shapes` |
 | `save_project` | replaces or removes | `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks` |
