@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.94.5 · 2026-10-21
+
+- Color Lookup: reads Iridas/SpeedGrade .look files beside .cube and .3dl (also inside a PSD's Color Lookup layer).
+- Color Lookup: the Load button opens the file chooser again. Its file field was built outside the page and never attached, so the click went nowhere; every element the interface builds now belongs to the page from the start.
+- Lights tool: a click on empty canvas adds a light (it used to move the selected one there; drag a handle or use the arrow keys to move), the wheel changes Intensity and Shift+wheel Diffusion anywhere on the canvas, and handles hidden with H can no longer be grabbed. L stays with the Lasso tool.
+
 ## 1.94.4 · 2026-10-21
 
 - Tests: the browser, desktop and engine suites the owner had moved out are back in the repo, now with 245 more browser test files, 12 more engine test files and independent sample files (`e2e/fixtures`, rebuilt by `make_fixtures.py`). `./formvis test` runs them all.

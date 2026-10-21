@@ -97,7 +97,7 @@ export function toPsdAdjustment(a: Adjustment): PsdAdjustment | null {
       // Only a loaded .cube or .3dl table has a PSD form; the built-in looks do not.
       const cube = typeof d.cube === 'string' ? d.cube : '';
       if (!cube) return null;
-      const title = String(d.cubeName || 'formvis').replace(/\.(cube|3dl)$/i, '');
+      const title = String(d.cubeName || 'formvis').replace(/\.(cube|3dl|look)$/i, '');
       return { type: 'color lookup', lookupType: '3dlut', name: title, dither: d.dither === true, lutFormat: 'cube', dataOrder: 'rgb', tableOrder: 'rgb', lut3DFileData: new TextEncoder().encode(cube), lut3DFileName: `${title}.cube` };
     }
     default: return null;
@@ -195,7 +195,7 @@ export function fromPsdAdjustment(p: PsdAdjustment): Adjustment | null {
       // A 3D table held as .cube or .3dl text opens live; a profile lookup or a .look file stays with the layer as the file had it.
       const raw = o.lut3DFileData, file = typeof o.lut3DFileName === 'string' ? o.lut3DFileName : '', title = typeof o.name === 'string' ? o.name : '';
       if (!(raw instanceof Uint8Array) || !raw.length || raw.length > 64_000_000 || (o.lookupType !== undefined && o.lookupType !== '3dlut')) return null;
-      const cube = lutFileToCube(/\.(cube|3dl)$/i.test(file) ? file : `${file || title || 'lut'}.${o.lutFormat === '3dl' ? '3dl' : 'cube'}`, new TextDecoder().decode(raw));
+      const cube = lutFileToCube(/\.(cube|3dl|look)$/i.test(file) ? file : `${file || title || 'lut'}.${o.lutFormat === '3dl' ? '3dl' : 'cube'}`, new TextDecoder().decode(raw));
       return cube ? mk('colorLookup', { cube, cubeName: file || title, dither: o.dither === true }) : null;
     }
     default: return null;

@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Color Lookup .look, el() adopts its node · _v1.94.5 (engine/lut-read.ts, ui/dom.ts, ui/panels/adjust-panel.ts, io/psd-adjust.ts)
+
+- lut-read.ts fromLook: an Iridas .look is XML whose first LUT element carries a quoted size and a quoted hex string, eight hex digits per little-endian float32, three per node, red fastest like .cube; it becomes .cube text so the rest of Color Lookup is unchanged. Found by the XML as well as by name. The order is checked in lut-read.test.ts with a channel-rotating table.
+- dom.ts el(): a node taken from a template's content belongs to the template's inert document. Once appended it is adopted, but a file input that is clicked while detached (Color Lookup's Load...) opens no chooser at all. el() now adopts the node into the page's document before returning it; nothing else about the node changes.
+- extensions/tools/relight.ts (SC-ED-0167): Delete, H, the wheel over a handle and Ctrl-click add were already there. A plain click on empty canvas now adds a light and drags it; Alt and Shift empty-canvas drags still move the aim and the pattern center. The wheel acts on the light under the pointer or else the selected one, by 3 per notch through the session's adjust (no separate undo step); Ctrl, Meta and Alt pass through to zoom. Hidden handles are not hit-tested, a click while hidden does nothing, and the flag resets when the session ends. L belongs to the Lasso tool, so the Lights tool keeps no key.
+
 ## Tests back in the repo, PSD cut before layers, Escape in Preferences fields, Upscale probe · _v1.94.4 (e2e, e2e/desktop, e2e/fixtures, backend/tests, io/psd.ts, ui/panels/connection-settings.ts, ui/panels/scratch-section.ts, ui/panels/generative-dialog.ts)
 
 - Tests: the owner's ruling (1.94.4) is that tests live in the repo. The sidecar harness files were copied in unchanged, then their default paths made relative to the file (15 sites that named this machine). The harness's conftest only joined the sidecar folders onto the repo's `e2e` and `tests` packages, so the files run under the repo's own conftests. e2e/test_cover_def2_engine_routes.py puts `backend` on sys.path itself (it imports the app in process).

@@ -131,7 +131,7 @@ export function mountOnce(host: HTMLElement, html: string): void {
 export function el<T extends HTMLElement = HTMLElement>(html: string): T {
   const t = document.createElement('template');
   t.innerHTML = html.trim();
-  return t.content.firstElementChild as T;
+  return document.adoptNode(t.content.firstElementChild as T);
 }
 
 export function q<T extends Element = HTMLElement>(root: ParentNode, sel: string): T {

@@ -3,7 +3,29 @@
  *  is converted to red-fastest floats. Anything else, a 1D table or an unknown format, gives null. */
 export function lutFileToCube(name: string, text: string): string | null {
   if (/^\s*LUT_3D_SIZE\s/m.test(text)) return text;
+  if (/\.look$/i.test(name) || /<look[\s>]/i.test(text)) return fromLook(text);
   return /\.3dl$/i.test(name) ? fromThreeDl(text) : null;
+}
+
+/** An Iridas/SpeedGrade .look: XML whose LUT element holds a quoted size and a quoted hex string of little-endian
+ *  32-bit floats, three per node with red changing fastest (the .cube order). */
+function fromLook(text: string): string | null {
+  const lut = /<LUT>([\s\S]*?)<\/LUT>/i.exec(text)?.[1];
+  if (!lut) return null;
+  const size = Number(/<size>\s*"?\s*(\d+)\s*"?\s*<\/size>/i.exec(lut)?.[1]);
+  const hex = (/<data>\s*"?([0-9a-fA-F\s]*)"?\s*<\/data>/i.exec(lut)?.[1] ?? '').replace(/\s+/g, '');
+  if (!Number.isInteger(size) || size < 2 || size > 256 || hex.length !== size ** 3 * 3 * 8) return null;
+  const view = new DataView(new ArrayBuffer(4)), out = new Array<string>(size ** 3), v = [0, 0, 0];
+  for (let n = 0; n < size ** 3; n++) {
+    for (let ch = 0; ch < 3; ch++) {
+      const at = (n * 3 + ch) * 8;
+      for (let k = 0; k < 4; k++) view.setUint8(k, parseInt(hex.slice(at + k * 2, at + k * 2 + 2), 16));
+      v[ch] = view.getFloat32(0, true);
+      if (!Number.isFinite(v[ch])) return null;
+    }
+    out[n] = `${v[0].toFixed(6)} ${v[1].toFixed(6)} ${v[2].toFixed(6)}`;
+  }
+  return `LUT_3D_SIZE ${size}\n${out.join('\n')}\n`;
 }
 
 function fromThreeDl(text: string): string | null {

@@ -35,7 +35,7 @@ const docOf = (l: RelightLight, part: 'pos' | 'aim' | 'center', s: { w: number; 
 };
 
 function hit(ctx: ToolContext, screen: Pt): Drag {
-  if (!host?.active()) return null;
+  if (!host?.active() || hidden) return null;
   const v = ctx.view(), s = host.size(), sel = host.selected();
   const order = [...host.lights()].sort((a, b) => (a.id === sel ? -1 : b.id === sel ? 1 : 0));
   for (const l of order) {
@@ -56,14 +56,22 @@ export const relightTool: Tool = {
   group: 'relight',
   order: 69,
   icon: () => 'relight',
-  hint: () => (host?.active() ? 'Drag a light on the image, Ctrl-click to add one, wheel over a light for intensity (Shift: diffusion), Delete removes, H hides the handles.' : 'Click the Relight tool to light the picture with virtual lights, or open Filter > Relight.'),
+  hint: () => (host?.active() ? 'Drag a light on the image, click empty canvas to add one, wheel over a light for intensity (Shift: diffusion), Delete removes, H hides the handles.' : 'Click the Relight tool to light the picture with virtual lights, or open Filter > Relight.'),
   cursor: (ctx, p) => (p && hit(ctx, p.screen) ? 'grab' : 'crosshair'),
   down(ctx, p) {
     if (!host?.active()) return;
     drag = hit(ctx, p.screen);
     const sel = host.selected();
-    if (!drag && p.mod) { host.add(frac(p.doc, host.size())); return; }
-    if (!drag && sel) drag = { id: sel, part: p.alt ? 'aim' : p.shift ? 'center' : 'pos' };
+    if (!drag && hidden) return;
+    if (!drag && (p.mod || (!p.alt && !p.shift))) {
+      const n = host.lights().length;
+      host.add(frac(p.doc, host.size()));
+      const made = host.selected();
+      if (host.lights().length > n && made) drag = { id: made, part: 'pos' };
+      ctx.engine.emit('overlay', null);
+      return;
+    }
+    if (!drag && sel) drag = { id: sel, part: p.alt ? 'aim' : 'center' };
     if (!drag) return;
     host.select(drag.id);
     host.move(drag.id, drag.part, frac(p.doc, host.size()), false);
@@ -80,10 +88,10 @@ export const relightTool: Tool = {
   },
   hover(_ctx, p) { over = p ? p.screen : null; },
   wheel(ctx, ev) {
-    if (!host?.active() || !over || hidden) return false;
-    const h = hit(ctx, over);
-    if (!h) return false;
-    host.adjust(h.id, ev.shiftKey ? 'diffusion' : 'intensity', ev.deltaY < 0 ? 3 : -3);
+    if (!host?.active() || ev.ctrlKey || ev.metaKey || ev.altKey) return false;
+    const id = (!hidden && over ? hit(ctx, over)?.id : null) ?? host.selected();
+    if (!id) return false;
+    host.adjust(id, ev.shiftKey ? 'diffusion' : 'intensity', ev.deltaY < 0 ? 3 : -3);
     ctx.engine.emit('overlay', null);
     return true;
   },
@@ -101,7 +109,8 @@ export const relightTool: Tool = {
   },
   cancel() { drag = null; },
   overlay(ctx, g) {
-    if (!host?.active() || hidden) return;
+    if (!host?.active()) { hidden = false; return; }
+    if (hidden) return;
     const v = ctx.view(), pal = ctx.paint(), s = host.size(), sel = host.selected();
     g.save();
     for (const l of host.lights()) {

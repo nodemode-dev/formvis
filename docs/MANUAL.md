@@ -267,7 +267,7 @@ ask it questions.
 - Adjustment layers change what is below them without changing its pixels: Levels, Curves, Hue/Saturation, Exposure,
   Brightness/Contrast, Vibrance, Color Balance, Black & White, Photo Filter, Channel Mixer, Invert, Posterize,
   Threshold, Selective Color, Gradient Map, Color Lookup (its own looks, including bleach bypass, cross process and
-  faded film, or a .cube file), Develop (tone, color and detail, with a vignette), Clarity (midtone local contrast),
+  faded film, or a .cube, .3dl or .look file, sampled trilinear or tetrahedral, with optional dither), Develop (tone, color and detail, with a vignette), Clarity (midtone local contrast),
   Dehaze, Texture (fine detail), Light (Brightness, Contrast, Highlights, Shadows, Whites and Blacks), Grain, Split
   Toning, Halation and Glow. Clarity, Dehaze, Texture and Light are small, maskable slices of Develop; Clarity and
   Texture scale their radius with the picture, so they look the same at any zoom. PSD has no matching layers, so

@@ -996,13 +996,13 @@ export class AdjustPanel extends Dialog {
         const name = row.querySelector('.cv-lut-name') as HTMLElement;
         const load = el<HTMLButtonElement>('<button class="cv-btn" type="button">Load...</button>'), clear = el<HTMLButtonElement>('<button class="cv-btn" type="button">Clear</button>');
         load.addEventListener('click', () => {
-          const input = el<HTMLInputElement>('<input type="file" accept=".cube,.3dl">');
+          const input = el<HTMLInputElement>('<input type="file" accept=".cube,.3dl,.look">');
           input.addEventListener('change', () => {
             const f = input.files?.[0];
             if (!f) return;
             void f.text().then((raw) => {
               const text = lutFileToCube(f.name, raw) ?? '';
-              if (!parseCube(text)) { toast(`${f.name} is not a 3D LUT in the .cube or .3dl format.`); return; }
+              if (!parseCube(text)) { toast(`${f.name} is not a 3D LUT in the .cube, .3dl or .look format.`); return; }
               this.data.params = { ...pv(), cube: text, cubeName: f.name };
               this.changed();
               this.sections.get(kind)?.sync();
