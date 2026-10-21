@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.95.4 · 2026-10-21
+
+- Tests: the full browser-suite run continues, 306 of 442 files now done (1,014 tests passed in the runs), every file passing. The docking tests failed while the development server had been serving hot updates for hours, because the test's own import of the panel module got a second copy of it; they passed on a freshly started server. No product change.
+
 ## 1.95.3 · 2026-10-21
 
 - Tests: the full browser-suite run continues, 212 of 442 files now done, every file passing (the files that drive the window through the agent bridge now run in one shard only). One painting test (Shift-click straight line) failed once under load and passed alone. No product change.
