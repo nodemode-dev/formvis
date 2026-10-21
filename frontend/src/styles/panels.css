@@ -112,7 +112,7 @@
 .cv-menu { position: fixed; min-width: 232px; max-height: calc(100vh - 8px); overflow-y: auto; overscroll-behavior: contain; padding: var(--space-1); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-window); }
 .cv-menu-sub.is-open:not(:disabled) { background: var(--accent-color); color: var(--text-on-accent); }
 .cv-menu-sub.is-open .cv-menu-keys, .cv-menu-sub:hover .cv-menu-keys { color: var(--text-on-accent); }
-.cv-menu-sub .cv-menu-keys { display: inline-flex; }
+.cv-menu-sub .cv-menu-keys { display: inline-flex; margin-right: -4px; }
 .cv-menu[hidden] { display: none; }
 .cv-menu-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); width: 100%; height: var(--ctl-md); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-size: var(--fs-12); text-align: left; cursor: default; }
 .cv-menu-item:hover:not(:disabled), .cv-menu-item.is-focus:not(:disabled) { background: var(--accent-color); color: var(--text-on-accent); }
@@ -372,9 +372,8 @@
 .cv-unit { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
 /* The Paths tab: only the header and Paths show; Paths' own fold toggle gives way to the tab. */
 .cv-group-body > .cv-paths[hidden] { display: none; }
-.cv-group-body > .cv-paths { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
-.cv-group-body > .cv-paths > .cv-panel-head { height: 34px; background: transparent; }
-.cv-group-body > .cv-paths .cv-paths-toggle { display: none; }
+.cv-group-body > .cv-paths { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+.cv-group-body > .cv-paths > .cv-panel-head { display: none; }
 
 /* ── Phase 21, step 2c: the Properties column (UI_SPEC.md sections 5 and 6, the target's s20). ── */
 .cv-props-col { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; background: var(--surface-0); border-left: 1px solid var(--line-0); }
@@ -388,7 +387,8 @@
 .cv-props-section[hidden], .cv-props-transform[hidden], .cv-props-none[hidden] { display: none; }
 .cv-props-transform { display: flex; align-items: center; gap: 8px; }
 .cv-props-quick { flex-wrap: wrap; }
-.cv-props-quick .cv-btn { flex: 1 1 auto; min-width: 0; }
+.cv-props-quick:not([hidden]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+.cv-props-quick .cv-btn { flex: 1 1 auto; min-width: 0; height: auto; min-height: var(--ctl-md); padding: var(--space-1); font-size: var(--fs-12); white-space: normal; line-height: 1.25; text-align: center; }
 .cv-props-adj { display: grid; gap: var(--space-3); }
 .cv-props-adj[hidden] { display: none; }
 .cv-props-adj .cv-field { grid-template-columns: 84px minmax(0, 1fr); }

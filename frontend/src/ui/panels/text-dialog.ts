@@ -23,7 +23,7 @@ export class TextDialog extends Dialog {
   /** Carried through from the text (the options bar sets them), so editing here keeps them. */
   private tracking = 0;
   private kerning: TextKerning = 'metrics';
-  private readonly align = el<HTMLSelectElement>('<select class="cv-input"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select>');
+  private readonly align = el<HTMLSelectElement>('<select class="cv-input"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>');
   private readonly colour = el<HTMLInputElement>('<input class="cv-input" type="color">');
   private readonly note = el('<p class="cv-note"></p>');
   private bold = false;

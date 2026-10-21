@@ -561,7 +561,7 @@ function mergedIsShort(buf: ArrayBuffer): boolean {
   const at = s.layerStart + lenSize + (s.big ? Number(v.getBigUint64(s.layerStart)) : v.getUint32(s.layerStart));
   if (at + 2 > buf.byteLength) return at >= buf.byteLength;
   const channels = v.getUint16(12), height = v.getUint32(14), width = v.getUint32(18), bytes = Math.max(1, v.getUint16(22) >> 3), mode = v.getUint16(at);
-  if (mode === 0) return buf.byteLength - at - 2 < width * height * channels * bytes;
+  if (mode === 0) return buf.byteLength - at - 2 < (v.getUint16(22) === 1 ? Math.ceil(width / 8) : width * bytes) * height * channels;
   if (mode !== 1) return false;
   const rows = channels * height, wide = s.big ? 4 : 2;
   if (at + 2 + rows * wide > buf.byteLength) return true;

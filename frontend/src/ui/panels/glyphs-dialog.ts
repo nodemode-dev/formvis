@@ -56,7 +56,8 @@ export class GlyphsDialog extends Dialog {
   private mapped: Set<number> | null = null;
   private mapSeq = 0;
   private readonly grid = el('<div class="cv-glyph-grid" role="grid" style="display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin-top: 8px"></div>');
-  private readonly recentRow = el('<div class="cv-glyph-recent" style="display: flex; gap: 2px; min-height: 30px; margin-top: -8px" aria-label="Recently used"></div>');
+  private readonly recentRow = el('<div class="cv-glyph-recent" style="display: flex; align-items: center; gap: 2px; min-height: 30px; margin-top: -8px" aria-label="Recently used"></div>');
+  private readonly recentNone = el('<span style="color: var(--text-muted); font-size: var(--fs-12)">Glyphs you insert appear here.</span>');
   private readonly altRow = el('<div class="cv-glyph-alts" style="display: flex; flex-wrap: wrap; gap: 4px" aria-label="Alternates"></div>');
   private readonly altNote = el('<p class="cv-dialog-note"></p>');
   private altSeq = 0;
@@ -80,6 +81,7 @@ export class GlyphsDialog extends Dialog {
       this.cells.push(b);
       this.grid.appendChild(b);
     }
+    this.recentRow.appendChild(this.recentNone);
     for (let i = 0; i < RECENT_MAX; i++) {
       const b = el<HTMLButtonElement>('<button type="button" class="cv-btn ghost" style="padding: 2px 0; font-size: var(--fs-18); width: 30px; height: 30px" hidden></button>');
       b.addEventListener('click', () => { if (b.textContent) void this.insert(b.textContent); });
@@ -157,6 +159,7 @@ export class GlyphsDialog extends Dialog {
   }
 
   private paintRecent(): void {
+    this.recentNone.hidden = this.recent.length > 0;
     this.recentCells.forEach((b, i) => {
       const g = this.recent[i];
       b.hidden = g === undefined;

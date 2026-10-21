@@ -146,7 +146,7 @@
 .cv-prefs-headicon { display: inline-flex; flex: none; color: var(--text-secondary); }
 .cv-prefs { height: 100%; }
 .cv-prefs-pages { display: flex; flex-direction: column; gap: var(--space-3); height: 100%; min-height: 0; padding: var(--space-3) var(--space-4) var(--space-4); overflow-y: auto; scrollbar-gutter: stable; box-sizing: border-box; background: var(--bg-primary); }
-.cv-prefs-rail { position: absolute; top: 0; right: calc(100% + var(--space-7)); display: flex; flex-direction: column; gap: var(--space-2); width: 212px; max-height: 100%; padding: var(--space-2); box-sizing: border-box; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-xl); box-shadow: var(--shadow-window); }
+.cv-prefs-rail { position: absolute; top: 0; right: calc(100% + var(--space-7)); display: flex; flex-direction: column; gap: var(--space-2); width: 232px; max-height: 100%; padding: var(--space-2); box-sizing: border-box; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-xl); box-shadow: var(--shadow-window); }
 .cv-prefs-dlg.is-rail-collapsed .cv-prefs-rail { width: 76px; }
 .cv-prefs-nav { display: flex; flex-direction: column; gap: var(--space-1); flex: 1 1 auto; min-height: 0; padding: 6px; border: 1px solid var(--border-color); border-radius: var(--radius-lg); background: var(--bg-primary); overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .cv-prefs-dlg.is-rail-collapsed .cv-prefs-nav { align-items: center; }
@@ -188,7 +188,11 @@
 .cv-prefs-page[hidden] { display: none; }
 .cv-prefs-sub { margin: var(--space-3) 0 0; color: var(--text-primary); font-size: var(--fs-12); font-weight: 600; }
 .cv-prefs-dlg .cv-field, .cv-prefs-dlg .cv-dialog-row { grid-template-columns: minmax(0, 1fr) minmax(150px, 46%); column-gap: 12px; padding: 4px 0; color: var(--text-secondary); font: 400 12.5px var(--font-ui, Inter, system-ui, sans-serif); }
-.cv-prefs-dlg .cv-dialog-row > span:first-child { flex: 1 1 0; }.cv-prefs-dlg .cv-field.cv-toggle-row { grid-template-columns: minmax(0, 1fr) auto; }
+.cv-prefs-dlg .cv-dialog-row > span:first-child { flex: 1 1 0; }
+.cv-prefs-dlg .cv-dialog-row > .cv-dd-btn, .cv-prefs-dlg .cv-dialog-row > input.cv-input:last-child { flex: 0 0 46%; width: auto; }
+.cv-prefs-dlg .cv-dialog-row:has(> input + button) > span:first-child { flex: 0 0 120px; }
+.cv-prefs-dlg .cv-field:has(> input[type="color"] + .cv-btn) { grid-template-columns: calc(54% - 12px) 30px auto; justify-content: start; }
+.cv-prefs-dlg .cv-field.cv-toggle-row { grid-template-columns: minmax(0, 1fr) auto; }
 .cv-prefs-dlg .cv-field.cv-check { grid-template-columns: minmax(0, 1fr) auto; }
 .cv-prefs-dlg .cv-note { padding: 2px 0 0; font-size: 11.5px; line-height: 1.45; }
 .cv-prefs-dlg select.cv-input, .cv-prefs-dlg input.cv-input[type="number"], .cv-prefs-dlg input.cv-input:not([type]), .cv-prefs-dlg input.cv-input[type="text"], .cv-prefs-dlg input.cv-input[type="url"], .cv-prefs-dlg input.cv-input[type="password"], .cv-prefs-dlg .cv-dialog-row > select, .cv-prefs-dlg .cv-dialog-row > input:not([type="range"]):not([type="checkbox"]):not([type="color"]) { width: 100%; height: 30px; padding: 0 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-tertiary); color: var(--text-primary); font-size: 12px; box-sizing: border-box; }

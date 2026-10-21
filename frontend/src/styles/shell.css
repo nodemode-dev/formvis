@@ -223,6 +223,8 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-opt-title { font-size: var(--fs-12); font-weight: 600; color: var(--text-primary); }
 .cv-opt { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font-size: var(--fs-11); }
 .cv-opt input[type="range"] { width: 88px; accent-color: var(--accent-color); }
+.cv-opt:has(> input[type="range"]) > span:first-child { min-width: 52px; text-align: right; }
+.cv-opt:has(> input[type="range"]) > .cv-opt-unit { min-width: 14px; }
 .cv-opt input[type="checkbox"] { accent-color: var(--accent-color); margin: 0; }
 .cv-num { width: 56px; height: var(--ctl-sm); padding: 0 var(--space-1); border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-secondary); font-size: var(--fs-11); font-variant-numeric: tabular-nums; }
 .cv-num:focus { outline: none; border-color: var(--accent-color); }

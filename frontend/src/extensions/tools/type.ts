@@ -120,7 +120,7 @@ export const typeTool: Tool = {
       const pt = e.toolPrefs.typeUnits === 'pt', k = pt ? 72 / Math.max(1, e.current?.doc.resolution || 72) : 1;
       return { kind: 'number', label: 'Size', priority: 95, min: pt ? 0.1 : 1, max: Math.round(2000 * k), unit: pt ? 'pt' : 'px', get: () => Math.round(e.textSettings.size * k * 10) / 10, set: (v: number) => setType(e, { size: Math.min(2000, Math.max(1, v / k)) }) } as const;
     })(),
-    { kind: 'segment', label: 'Align', priority: 80, choices: [{ id: 'left', label: 'Left' }, { id: 'center', label: 'Centre' }, { id: 'right', label: 'Right' }, { id: 'justify', label: 'Justify' }], get: () => e.textSettings.align, set: (v) => setType(e, { align: v === 'justify' ? 'justify' : v === 'center' || v === 'right' ? v : 'left' }) },
+    { kind: 'segment', label: 'Align', priority: 80, choices: [{ id: 'left', label: 'Left' }, { id: 'center', label: 'Center' }, { id: 'right', label: 'Right' }, { id: 'justify', label: 'Justify' }], get: () => e.textSettings.align, set: (v) => setType(e, { align: v === 'justify' ? 'justify' : v === 'center' || v === 'right' ? v : 'left' }) },
     // Orientation: new text takes it, and so does the selected type layer when none is being typed.
     { kind: 'segment', label: 'Orientation', priority: 60, choices: [{ id: 'horizontal', label: 'Horizontal' }, { id: 'vertical', label: 'Vertical' }], get: () => e.textSettings.direction ?? 'horizontal',
       set: (v: string) => {

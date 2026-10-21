@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.94.1 · 2026-10-21
+
+- PSD: a Bitmap (1-bit) PSD no longer reports its merged image as cut short, and a CMYK PSD with no layers opens its merged image instead of an empty document.
+- Preferences: dropdowns and text fields share one control column, colour swatch and address rows line up, and the tab rail is wide enough for every tab name.
+- Paths: the New Path button sits in the footer with the others (no lone "+" in the empty list).
+- Options bars: the same slider control is the same width in every tool; the Type bar and Type dialog read "Center", as the rest of the interface.
+- Glyphs: the empty Recently Used row shows a short hint instead of a blank gap.
+- Properties: Quick Actions sit in a two-column grid, and no button label is cut.
+- Menus: submenu arrows line up with the shortcut column.
+
 ## 1.94.0 · 2026-10-21
 
 - Frequency Separation: Low plus High rebuilds the picture within one level and with no overall brightening (it was about one level too bright).

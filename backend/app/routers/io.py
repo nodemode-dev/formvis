@@ -487,6 +487,11 @@ def decode_cmyk_psd(file: UploadFile = File(...)) -> Response:
         layers.append({"name": layer.name, "left": layer.left, "top": layer.top, "width": layer.width, "height": layer.height,
                        "opacity": layer.opacity, "visible": layer.is_visible(),
                        "blend": next((k for k, v in _PSD_BLENDS.items() if v == getattr(layer.blend_mode, "name", "NORMAL")), "normal")})
+    if not layers:
+        flat = psd.topil(apply_icc=False)
+        if flat is not None and flat.mode == "CMYK":
+            chunks.append(np.concatenate([np.asarray(flat, np.uint8).reshape(psd.height, psd.width, 4), np.full((psd.height, psd.width, 1), 255, np.uint8)], axis=-1).tobytes())
+            layers.append({"name": "Background", "left": 0, "top": 0, "width": psd.width, "height": psd.height, "opacity": 255, "visible": True, "blend": "normal"})
     icc = psd.image_resources.get_data(Resource.ICC_PROFILE) or b""
     return Response(_pack({"width": psd.width, "height": psd.height, "layers": layers, "icc": len(icc)}, chunks + [icc]), media_type="application/octet-stream")
 

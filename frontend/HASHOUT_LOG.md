@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## PSD bitmap and flat CMYK, UI audit 3 · _v1.94.1 (io/psd.ts, backend/app/routers/io.py, styles/dialogs.css, panels.css, shell.css, ui/paths.ts, ui/panels/glyphs-dialog.ts, extensions/tools/type.ts, ui/panels/text-dialog.ts)
+
+- psd.ts mergedIsShort: a 1-bit Bitmap PSD has rows of ceil(width/8) bytes; the size check counted a byte a pixel, so every Bitmap PSD was "cut short". io.py decode_cmyk_psd: with no layer records, the merged image is returned as one Background layer (it returned none). Checked live: the flat CMYK fixture decodes to one 32x24 layer with inks 200,100,50,0. Both found with independent fixtures (sidecar test_harness/fixtures/make_fixtures.py).
+- Preferences rows are flex `.cv-dialog-row`, so the page grid columns never applied; the dropdown button and a last text input take `flex: 0 0 46%` to match the grid rows' `minmax(150px, 46%)`. The rail is 232 px (was 212) so "Transparency & Gamut" fits.
+- Paths: the New Path button moved from the head (whose title hides in tabbed mode, leaving a lone "+") to the footer; clicking it adds Path 1 (lead check). The empty head `<span></span>` was removed.
+- Options bars: sliders were 88 px everywhere, but labels differed, so whole controls were 203 to 228 px; slider controls get a 52 px label and 14 px unit slot.
+- Glyphs: the Recently Used row keeps its height (the dialog is content-height and centred, so hiding it would jump 58 px on first use) and shows "Glyphs you insert appear here." while empty.
+
 ## Frequency split rounding, deep Glow and XMP, Properties into an open dialog, Haze optional depth, UI audit 2 · _v1.94.0 (engine/retouch.ts, bloom.ts, develop.ts, io/crs-xmp.ts, engine/index.ts, ui/adjust-props.ts, ui/panels/adjust-panel.ts, engine/filter-library.ts, filters-lib/dither.ts, ui/panels/filter-panel.ts, ui/status.ts, ui/number-fields.ts and dialog and panel styles)
 
 - frequencySplit: Linear Light rebuilds low + 2*high - 255, so high must be (diff+255)/2, a half for even differences. The old `h[i + c] = clamp(Math.round((s[i + c] - l[i + c]) / 2 + 128), 0, 255);` (removed) biased +1 or +2. Now floor((diff+255)/2), plus 1 for even differences where x+y is odd: exact for odd, a zero-mean checkerboard of 1 for even (measured max 1, mean 0.00).
