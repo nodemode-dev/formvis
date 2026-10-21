@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.96.0 · 2026-10-21
+
+- API keys: Preferences > Plugins > API keys has a field to paste your fal key; Save key keeps it in your system's password store (the Keychain on macOS), where formvis's engine reads it for every fal call, including the ones agents make through formvis's tools. "Get a key" opens fal's key page instead of failing with "plugin:shell|open not allowed by ACL", and so do the other outside links in the desktop app.
+- Desktop start: a splash card with rounded corners and a loading bar stays up for 2.6 seconds, or until the window has drawn, whichever is later; then the bar completes and the app appears whole. The main window no longer flashes white (on macOS it stays unseen behind the splash until it is ready; elsewhere it opens dark).
+
 ## 1.95.9 · 2026-10-21
 
 - macOS app: the traffic lights are centred in the title row. 1.95.8 placed them more often but with the same arithmetic as before, which never moved them vertically; the shell now sets their height as well as their left edge, and no longer lets the window layer reapply its own placement on redraw.
