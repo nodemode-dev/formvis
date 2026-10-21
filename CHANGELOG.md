@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.95.8 · 2026-10-21
+
+- macOS app: the traffic lights sit in the title row on the Home screen too, not only once a document is open. The shell places them again after every title change, page load, resize, focus change and theme or screen change, since macOS puts them back at its own place whenever it lays the title bar out.
+- macOS app starts much faster: the engine ships as a folder inside the app (Resources/engine) and starts by path, where the one-file engine unpacked about a gigabyte to a new temporary folder at every launch and macOS checked every library in it again. Windows and Linux keep the one-file engine for now.
+- Desktop app: the installed fonts are read off the main thread, so the window no longer stalls just after it appears on a machine with thousands of fonts; the engine's clean-up of old sessions runs in the background instead of before it answers.
+
 ## 1.95.7 · 2026-10-21
 
 - Desktop app: fixes "The formvis engine failed to start" in 1.95.6. The frozen engine left out the fal catalogue (`backend/app/data`), and the MCP router reads it at import, so the engine exited before it listened. The freeze scripts now bundle that folder, the engine finds it under the bundle's own folder, and a missing or damaged catalogue is an empty list instead of a crash.

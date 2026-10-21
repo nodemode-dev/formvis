@@ -2,6 +2,12 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## One-folder engine on macOS, session prune in the background · _v1.95.8 (setup/freeze_backend, setup/desktop_dev, build_app, app/main.py)
+
+- The owner measured about 13 seconds from launch to the Home screen. The one-file engine unpacked its whole bundle (997 MB, 3,164 files at 1.86.0) to a new `_MEI` folder at every launch, and macOS checked each native library there again since the path was new each time (DEV_PLAN 37.53). On macOS freeze_backend now builds `--onedir` and copies `dist-engine/formvis-engine` to `src-tauri/engine`, which tauri.macos.conf.json ships as Resources/engine; the shell starts it by path. Nothing is unpacked, and the library checks are kept between launches since the paths stay put. With APPLE_SIGNING_IDENTITY set, PyInstaller signs every collected binary with it and the app's entitlements, since the bundler signs only the folders it knows (MacOS, Frameworks), not Resources. Windows and Linux keep the one-file sidecar for now (the portable zips, the AppImage and the .deb copy it by name).
+- `sys._MEIPASS` is the folder's `_internal` in a one-folder build, so the data paths (fal_run.py, colour.py, lcms.py) resolve as before; `watch_parent` and `sweep_stale_unpacks` act only on `_MEI` folders and so do nothing there.
+- main.py lifespan: `sessions.prune()` runs in the default executor instead of before the server answers; an old session folder holding large pictures was removed before the first request could be served. Removed: `    sessions.prune()`.
+
 ## Frozen engine data files · _v1.95.7 (app/services/fal_run.py, formvis_engine.py, setup/freeze_backend, setup/freeze_backend.bat)
 
 - In the one-file build data files sit under `sys._MEIPASS`, not beside the code, and only what `--add-data` names is there. 1.95.6 read `app/data/fal_models.json` beside the code and mcp.py builds `_FAL_ROLES` from it at import, so the frozen engine exited at start. CATALOGUE now resolves under `_MEIPASS` when frozen, both freeze scripts add `backend/app/data` as `data`, and `_catalogue()` returns `{"models": []}` on OSError or ValueError.
