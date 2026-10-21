@@ -48,7 +48,7 @@ export const BUILTIN_COLOUR_PRESETS: ReadonlyArray<ColourPreset> = [
   { id: 'builtin:default', name: 'formvis Default', settings: DEFAULT_COLOUR, builtin: true },
   { id: 'builtin:prepress', name: 'Prepress, coated press', settings: { ...DEFAULT_COLOUR, rgbPolicy: 'preserve', askMismatch: true, askMissing: true, intent: 'relative', dither: true }, builtin: true },
   { id: 'builtin:web', name: 'Web and screen', settings: { ...DEFAULT_COLOUR, cmykPolicy: 'convert', grayPolicy: 'convert', intent: 'perceptual' }, builtin: true },
-  { id: 'builtin:off', name: 'Colour management off', settings: { ...DEFAULT_COLOUR, rgbPolicy: 'off', cmykPolicy: 'off', grayPolicy: 'off', bpc: false, dither: false }, builtin: true },
+  { id: 'builtin:off', name: 'Color management off', settings: { ...DEFAULT_COLOUR, rgbPolicy: 'off', cmykPolicy: 'off', grayPolicy: 'off', bpc: false, dither: false }, builtin: true },
 ];
 
 const one = <T extends string>(v: unknown, allowed: ReadonlyArray<T>, d: T): T => (allowed.includes(v as T) ? (v as T) : d);

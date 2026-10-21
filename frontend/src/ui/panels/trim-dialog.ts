@@ -5,7 +5,7 @@ import { checkRow } from './controls';
 
 /** Image > Trim: what to trim away. */
 export class TrimDialog extends Dialog {
-  private readonly basis = el<HTMLSelectElement>('<select class="cv-input"><option value="transparent">Transparent pixels</option><option value="topLeft">Top left pixel colour</option><option value="bottomRight">Bottom right pixel colour</option></select>');
+  private readonly basis = el<HTMLSelectElement>('<select class="cv-input"><option value="transparent">Transparent pixels</option><option value="topLeft">Top left pixel color</option><option value="bottomRight">Bottom right pixel color</option></select>');
 
   constructor(private readonly engine: Engine) {
     super('Trim', 360);

@@ -7,8 +7,8 @@ const css = (c: RGB): string => `rgb(${c.r}, ${c.g}, ${c.b})`;
 /** Layer > Shape Fill and Stroke: a shape layer's fill colour or none, and a stroke centred on its outline, with a
  *  colour and width, or none. Colours come from the foreground colour. */
 export class ShapeStyleDialog extends Dialog {
-  private readonly fillMode = el<HTMLSelectElement>('<select class="cv-input"><option value="color">Colour</option><option value="none">None</option></select>');
-  private readonly strokeMode = el<HTMLSelectElement>('<select class="cv-input"><option value="none">None</option><option value="color">Colour</option></select>');
+  private readonly fillMode = el<HTMLSelectElement>('<select class="cv-input"><option value="color">Color</option><option value="none">None</option></select>');
+  private readonly strokeMode = el<HTMLSelectElement>('<select class="cv-input"><option value="none">None</option><option value="color">Color</option></select>');
   private readonly width = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="1000" step="1" value="4">');
   private readonly dash = el<HTMLSelectElement>('<select class="cv-input"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select>');
   private readonly align = el<HTMLSelectElement>('<select class="cv-input"><option value="inside">Inside</option><option value="center">Center</option><option value="outside">Outside</option></select>');
@@ -135,7 +135,7 @@ export class ShapeStyleDialog extends Dialog {
     this.fillPat.disabled = this.fillMode.value !== 'color';
     this.strokePat.disabled = this.width.disabled;
     this.patScale.disabled = (this.fillPat.disabled || this.fillPat.value === 'none') && (this.strokePat.disabled || this.strokePat.value === 'none');
-    setText(this.note, 'Use foreground takes the current foreground colour.');
+    setText(this.note, 'Use foreground takes the current foreground color.');
   }
 
   private dashExtras(): { dashes?: number[]; dashOffset?: number; opacity?: number } {

@@ -25,10 +25,10 @@ export class NewBrushPresetDialog extends Dialog {
     this.preview = q(this.body, 'canvas') as HTMLCanvasElement;
     const row = (label: string, key: keyof NewBrushPresetDialog['take']): void => { const r = checkRow(label, (v) => { this.take[key] = v; }); r.set(this.take[key]); this.body.append(r.el); };
     row('Capture Brush Size and Hardness', 'size');
-    row('Capture Brush Settings (tip shape, dynamics, scattering, texture, dual brush, colour dynamics, transfer)', 'shape');
+    row('Capture Brush Settings (tip shape, dynamics, scattering, texture, dual brush, color dynamics, transfer)', 'shape');
     row('Capture Pen Dynamics (pressure on size, flow and opacity)', 'dynamics');
     row('Capture Flow', 'flow');
-    row('Capture Foreground Colour', 'colour');
+    row('Capture Foreground Color', 'colour');
     row('Capture Tool Options (the Brush Mode)', 'options');
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Create', 'primary', () => void this.create());

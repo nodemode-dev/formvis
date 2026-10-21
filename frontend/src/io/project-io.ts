@@ -206,6 +206,8 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.blendChannels?.some((on) => !on)) r.blendChannels = [...l.blendChannels];
     if (l.blendClipped) r.blendClipped = true;
     if (l.transparencyShapes === false) r.transparencyShapes = false;
+    if (l.blendInterior === true) r.blendInterior = true;
+    if (l.layerMaskHides === false) r.layerMaskHides = false;
     if (l.psdAdjustment) r.psdAdjustment = JSON.parse(JSON.stringify(l.psdAdjustment));
     if (l.isGroup && l.isolate) r.isolate = true;
     if (l.label) r.label = l.label;
@@ -481,6 +483,8 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       ...(Array.isArray(r.blendChannels) && r.blendChannels.length === 3 ? { blendChannels: [r.blendChannels[0] !== false, r.blendChannels[1] !== false, r.blendChannels[2] !== false] as [boolean, boolean, boolean] } : {}),
       ...(r.blendClipped === true ? { blendClipped: true } : {}),
       ...(r.transparencyShapes === false ? { transparencyShapes: false } : {}),
+      ...(r.blendInterior === true ? { blendInterior: true } : {}),
+      ...(r.layerMaskHides === false ? { layerMaskHides: false } : {}),
       ...(r.psdAdjustment && typeof r.psdAdjustment === 'object' ? { psdAdjustment: r.psdAdjustment as Record<string, unknown> } : {}),
       ...(r.isGroup === true && r.isolate === true ? { isolate: true } : {}),
       ...((LAYER_LABELS as readonly unknown[]).includes(r.label) ? { label: r.label as LayerLabel } : {}),

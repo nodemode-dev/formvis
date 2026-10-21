@@ -3,7 +3,7 @@ import type { SelectionWarp } from '../../engine/selection-warp';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 
-const REFS = ['Top left', 'Top', 'Top right', 'Left', 'Centre', 'Right', 'Bottom left', 'Bottom', 'Bottom right'];
+const REFS = ['Top left', 'Top', 'Top right', 'Left', 'Center', 'Right', 'Bottom left', 'Bottom', 'Bottom right'];
 
 /** Select > Transform Selection Numerically: a reference point, move, scale, angle, skew, perspective and a matrix for the
  *  outline alone, applied as one step. Every field is built once; OK reads them. */
@@ -11,7 +11,7 @@ export class SelectionTransformDialog extends Dialog {
   private readonly ref = el<HTMLSelectElement>(`<select class="cv-input">${REFS.map((l, i) => `<option value="${i}"${i === 4 ? ' selected' : ''}>${l}</option>`).join('')}</select>`);
   private readonly fields = new Map<keyof SelectionWarp, HTMLInputElement>();
   private readonly matrix = el<HTMLInputElement>('<input class="cv-input" type="text" value="1 0 0 1 0 0" aria-label="Matrix a b c d e f">');
-  private readonly smooth = el<HTMLSelectElement>('<select class="cv-input"><option value="1">Bilinear</option><option value="0">Nearest Neighbour</option></select>');
+  private readonly smooth = el<HTMLSelectElement>('<select class="cv-input"><option value="1">Bilinear</option><option value="0">Nearest Neighbor</option></select>');
 
   constructor(private readonly engine: Engine, private readonly layer = false) {
     super(layer ? 'Transform Layer' : 'Transform Selection', 380);

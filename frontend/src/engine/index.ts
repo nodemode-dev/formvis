@@ -2219,11 +2219,11 @@ export class Engine {
   }
 
   /** The Layer Style dialog's OK: the layer's effects and, when it changed, the document's Global Light, one step. */
-  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null, blending: { blendIf: BlendIf | null; knockout: 'none' | 'shallow' | 'deep'; channels?: [boolean, boolean, boolean]; clipGroup?: boolean; shapes?: boolean; general?: { blend: BlendMode; opacity: number; fill: number } } | null = null): void {
+  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null, blending: { blendIf: BlendIf | null; knockout: 'none' | 'shallow' | 'deep'; channels?: [boolean, boolean, boolean]; clipGroup?: boolean; shapes?: boolean; interior?: boolean; maskHides?: boolean; general?: { blend: BlendMode; opacity: number; fill: number } } | null = null): void {
     this.edit('Layer Style', (p) => {
       if (light) this.setGlobalLight(light);
       this.setLayerEffects(id, effects);
-      if (blending) p.updateLayer(id, { blendIf: blendIfActive(blending.blendIf) ? blending.blendIf : null, knockout: blending.knockout, blendChannels: blending.channels?.some((on) => !on) ? [...blending.channels] : null, ...(blending.clipGroup !== undefined ? { blendClipped: blending.clipGroup ? true : undefined } : {}), ...(blending.shapes !== undefined ? { transparencyShapes: blending.shapes ? undefined : false } : {}), ...(blending.general ? { blend: blending.general.blend, opacity: clamp(blending.general.opacity, 0, 1), fill: clamp(blending.general.fill, 0, 1) } : {}) });
+      if (blending) p.updateLayer(id, { blendIf: blendIfActive(blending.blendIf) ? blending.blendIf : null, knockout: blending.knockout, blendChannels: blending.channels?.some((on) => !on) ? [...blending.channels] : null, ...(blending.clipGroup !== undefined ? { blendClipped: blending.clipGroup ? true : undefined } : {}), ...(blending.shapes !== undefined ? { transparencyShapes: blending.shapes ? undefined : false } : {}), ...(blending.interior !== undefined ? { blendInterior: blending.interior ? true : undefined } : {}), ...(blending.maskHides !== undefined ? { layerMaskHides: blending.maskHides ? undefined : false } : {}), ...(blending.general ? { blend: blending.general.blend, opacity: clamp(blending.general.opacity, 0, 1), fill: clamp(blending.general.fill, 0, 1) } : {}) });
       return true;
     });
   }
@@ -11882,8 +11882,12 @@ export class Engine {
   /** Unpremultiplied RGB (0 to 1) of the original pixels under a document point, read from the same source the Levels
    *  histogram uses: the target layer's own pixels, its mask's when the mask is targeted, or with `composite` the
    *  flattened document. The Levels eyedroppers sample the edit's original image the same way. */
-  sampleOriginal(pt: Pt, composite: boolean, radius = 0): [number, number, number] | null {
+  sampleOriginal(pt: Pt, composite: boolean, radius = 0, without?: ID): [number, number, number] | null {
     const a = this.alphaTargeted(), p = this.current;
+    if (composite && without && p?.layer(without)) {
+      const picture = renderDoc(this.work, { ...p.doc, layers: p.doc.layers.map((l) => (l.id === without ? { ...l, visible: false } : l)) });
+      return PM.sampleOriginal(this.moveHost, pt, true, radius, picture);
+    }
     if (a && p && !composite) {
       if (pt.x < 0 || pt.y < 0 || pt.x >= p.doc.width || pt.y >= p.doc.height) return null;
       let sum = 0, n = 0;

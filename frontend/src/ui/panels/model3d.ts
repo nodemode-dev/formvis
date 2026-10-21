@@ -32,7 +32,7 @@ export class Model3DDialog extends Dialog {
       input.addEventListener('input', () => { (this.view[key] as number) = Number(input.value); this.redraw(); });
       row.append(input); this.body.append(row); this.inputs.set(key, input);
     }
-    const color = el<HTMLInputElement>('<input type="color" aria-label="Light colour">'), crow = el('<label class="cv-dialog-row"><span>Light colour</span></label>');
+    const color = el<HTMLInputElement>('<input type="color" aria-label="Light color">'), crow = el('<label class="cv-dialog-row"><span>Light color</span></label>');
     color.addEventListener('input', () => { this.view.color = color.value; this.redraw(); });
     crow.append(color); this.body.append(crow, this.note); this.inputs.set('color', color);
     this.button('Cancel', 'ghost', () => this.close());

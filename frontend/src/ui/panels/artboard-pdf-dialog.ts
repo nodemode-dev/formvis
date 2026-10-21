@@ -52,6 +52,6 @@ export class ArtboardPdfDialog extends Dialog {
     this.iccRow.el.classList.toggle('is-off', !profiled);
     for (const i of this.iccRow.el.querySelectorAll('input')) i.disabled = !profiled;
     const n = p ? this.engine.artboards(p).length : 0;
-    setText(this.note, n ? `${n} page${n === 1 ? '' : 's'}, in the Layers order, at ${p?.doc.resolution ?? 72} dpi.${profiled ? '' : ' This document has no colour profile to include.'}` : 'This document has no artboards.');
+    setText(this.note, n ? `${n} page${n === 1 ? '' : 's'}, in the Layers order, at ${p?.doc.resolution ?? 72} dpi.${profiled ? '' : ' This document has no color profile to include.'}` : 'This document has no artboards.');
   }
 }

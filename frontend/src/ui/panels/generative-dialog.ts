@@ -257,7 +257,7 @@ export class GenerativeDialog extends Dialog {
     }
     if (this.upscaleHere) {
       setHidden(this.keyRow, true); setHidden(this.forget, true);
-      setText(this.state, this.upscaleFile ? `${this.upscaleFile} runs on this computer from the engine's upscalers folder: no key, no cost. A model file that cannot be loaded is greyed with the reason. It enlarges what the document shows ${this.scale} times, as the scope says.` : `Real-ESRGAN runs on this computer: no key, no cost. It enlarges what the document shows ${this.scale} times, as the scope says.`);
+      setText(this.state, this.upscaleFile ? `${this.upscaleFile} runs on this computer from the engine's upscalers folder: no key, no cost. A model file that cannot be loaded is grayed with the reason. It enlarges what the document shows ${this.scale} times, as the scope says.` : `Real-ESRGAN runs on this computer: no key, no cost. It enlarges what the document shows ${this.scale} times, as the scope says.`);
       return;
     }
     if (local) {   // a local model: no key, no references; the picture under the selection at the influence set

@@ -19,7 +19,7 @@ const systemManaged = (): boolean => /mac|win/i.test(navigator.platform || navig
 
 const ASSUMED = 'sRGB IEC61966-2.1';
 export const BROWSER_NOTE = 'This browser does not say which profile the monitor has, so formvis assumes an sRGB display. The desktop app reads the monitor profile from the system and draws through it.';
-const SOURCES: Record<string, string> = { x11: 'X11', colord: 'colord', colorsync: 'ColorSync', windows: 'Windows colour management', file: 'FORMVIS_DISPLAY_PROFILE' };
+const SOURCES: Record<string, string> = { x11: 'X11', colord: 'colord', colorsync: 'ColorSync', windows: 'Windows color management', file: 'FORMVIS_DISPLAY_PROFILE' };
 
 export const inDesktopApp = (): boolean => '__TAURI_INTERNALS__' in window;
 

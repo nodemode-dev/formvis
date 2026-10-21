@@ -296,7 +296,7 @@ export class PresetManagerDialog extends Dialog {
     if (kind === 'swatches') {
       const bytes = new Uint8Array(await f.arrayBuffer());
       const colours = /\.ase$/i.test(f.name) ? parseAse(bytes) : parseAco(bytes);
-      if (!colours.length) throw new Error('No colours found.');
+      if (!colours.length) throw new Error('No colors found.');
       const approx = swatchNotes(colours);
       if (approx.length) toast(`${f.name}: ${approx.join(' ')}`, 'info');
       this.swatches.setEntries(colours);

@@ -240,6 +240,11 @@ def _group_label(part, key: str) -> str:
     return (part.name() or "Beauty") if key in ("RGBA", "RGB") else key
 
 
+def _layer_label(part, key: str) -> str:
+    bare = _view_of(part, key)[1]
+    return part.name() if part.name() and "." not in bare and len(part.channels) == 1 else _group_label(part, key)
+
+
 def _crypto_carrier(key: str, sets) -> "str | None":
     import re
     m = re.fullmatch(r"(.+?)(\d{2})(?:\.[A-Za-z]+)?", key)
@@ -355,7 +360,7 @@ def _inspect_worker(arg, q: "mp.Queue[object]") -> None:
             if px.shape[2] == 3:
                 px = np.dstack([px, np.ones(px.shape[:2], np.float32)])
             view = _view_of(parts[i], str(pick.get("key")))[0]
-            meta.append({"name": (f"{view} " if view else "") + _group_label(parts[i], str(pick.get("key"))), "width": px.shape[1], "height": px.shape[0], "x": boxes[i][0] - x0, "y": boxes[i][1] - y0})
+            meta.append({"name": (f"{view} " if view else "") + _layer_label(parts[i], str(pick.get("key"))), "width": px.shape[1], "height": px.shape[0], "x": boxes[i][0] - x0, "y": boxes[i][1] - y0})
             out.append(np.ascontiguousarray(px[:, :, :4]))
         q.put({"count": len(meta), "width": x1 - x0 + 1, "height": y1 - y0 + 1, "parts": meta, "pixels": out})
     except Exception:

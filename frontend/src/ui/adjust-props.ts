@@ -66,7 +66,7 @@ export function adjustSection(e: Engine, run: (cmd: string) => void): { head: HT
       node.appendChild(row.el);
       return [{ s, el: row.el, set }];
     });
-    if (!rows.length) node.appendChild(el('<p class="cv-note">No settings: the layer inverts the colours beneath it.</p>'));
+    if (!rows.length) node.appendChild(el('<p class="cv-note">No settings: the layer inverts the colors beneath it.</p>'));
     host.appendChild(node);
     return { node, groupBy: spec.groupBy, sync: (v) => {
       const g = spec.groupBy ? String(v[spec.groupBy]) : null;

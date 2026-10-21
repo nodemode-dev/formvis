@@ -74,7 +74,7 @@ export class ColorTableDialog extends Dialog {
     }
     this.picker = document.createElement('input'); this.picker.type = 'color';
     this.picker.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none';
-    this.picker.setAttribute('aria-label', 'Entry colour');
+    this.picker.setAttribute('aria-label', 'Entry color');
     this.picker.addEventListener('input', () => { if (this.editing < 0) return; this.pal[this.editing] = fromHex(this.picker.value); this.tableRow.set('custom'); this.paint(this.editing); this.note.textContent = this.info(); });
     this.file = document.createElement('input'); this.file.type = 'file'; this.file.accept = '.act'; this.file.hidden = true;
     this.file.addEventListener('change', () => { const f = this.file.files?.[0]; this.file.value = ''; if (f) void this.load(f); });
@@ -112,7 +112,7 @@ export class ColorTableDialog extends Dialog {
   }
   private async load(f: File): Promise<void> {
     const pal = parseAct(await f.arrayBuffer());
-    if (!pal) { this.note.textContent = 'Not a colour table (.act) file.'; return; }
+    if (!pal) { this.note.textContent = 'Not a color table (.act) file.'; return; }
     this.pal = pal; this.tableRow.set('custom'); this.draw();
   }
   private save(): void {

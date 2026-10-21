@@ -246,10 +246,10 @@ const PATTERNS: ReadonlyArray<readonly [string, string]> = [
 export const DITHER_FILTERS: LibFilter[] = [
   {
     id: 'dither', label: 'Dither', group: 'Pixelate', grows: false,
-    note: 'Ink is the foreground colour and paper the background colour in Black and White. Diffusion applies to the error diffusion patterns; Cell Size and Screen Angle to the halftone screens.',
+    note: 'Ink is the foreground color and paper the background color in Black and White. Diffusion applies to the error diffusion patterns; Cell Size and Screen Angle to the halftone screens.',
     params: [
       { key: 'pattern', label: 'Pattern', kind: 'select', def: 'bayer4', options: PATTERNS },
-      { key: 'mode', label: 'Colors', kind: 'select', def: 'bw', options: [['bw', 'Black and White'], ['colour', 'Colour']] },
+      { key: 'mode', label: 'Colors', kind: 'select', def: 'bw', options: [['bw', 'Black and White'], ['colour', 'Color']] },
       { key: 'levels', label: 'Tones (levels per channel)', kind: 'range', min: 2, max: 16, step: 1, def: 2 },
       { key: 'pixel', label: 'Pixel Size', kind: 'range', min: 1, max: 16, step: 1, def: 1, limit: 64 },
       { key: 'amount', label: 'Strength', kind: 'range', min: 0, max: 100, step: 1, def: 100 },
@@ -279,7 +279,7 @@ export const DITHER_FILTERS: LibFilter[] = [
   },
   {
     id: 'grainPlate', label: 'Grain Plate', group: 'Noise', grows: false,
-    note: 'Choose a scanned grain picture; its grey levels are used.',
+    note: 'Choose a scanned grain picture; its gray levels are used.',
     params: [
       { key: 'plate', label: 'Grain Picture', kind: 'image', def: null },
       { key: 'amount', label: 'Amount (%)', kind: 'range', min: 0, max: 200, step: 1, def: 50 },

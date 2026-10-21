@@ -490,7 +490,7 @@ export function startApp(): void {
     { id: 'os-full-screen', label: 'Full Screen', keys: ['F11'], checked: osFull, run: () => setOsFull(!osFull()) },
     { id: 'rail-columns', label: 'Tools in Two Columns', checked: railDouble, run: () => { store('formvis.railDouble', railDouble() ? '0' : '1'); applyRail(); } },
     { id: 'interface-rtl', label: 'Right-to-Left Layout', checked: rtl, run: () => { store('formvis.rtl', rtl() ? '0' : '1'); applyRtl(); } },
-    { id: 'next-favourite-theme', label: 'Next Favourite Theme', enabled: () => loadPrefs().favouriteThemes.length > 0, run: () => {
+    { id: 'next-favourite-theme', label: 'Next Favorite Theme', enabled: () => loadPrefs().favouriteThemes.length > 0, run: () => {
       const fav = loadPrefs().favouriteThemes, at = fav.indexOf(readChoice().theme), next = fav[(at + 1) % fav.length];
       if (next) { setTheme(next); toast(`Theme: ${THEMES[next]?.label ?? next}.`, 'info'); }
     } },
@@ -501,9 +501,9 @@ export function startApp(): void {
     { id: 'menus-in-window', label: 'Menus in Window', enabled: () => '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform), checked: menusInWindow, run: () => { store(MENUS_IN_WINDOW_KEY, menusInWindow() ? '0' : '1'); toast(menusInWindow() ? 'The menus stay in the window from the next start.' : 'The menus go to the menu bar from the next start.', 'info'); } },
     pasteboardCmd('pasteboard-default', 'Pasteboard: Theme Default', 'default'),
     pasteboardCmd('pasteboard-black', 'Pasteboard: Black', 'black'),
-    pasteboardCmd('pasteboard-dark', 'Pasteboard: Dark Grey', 'dark'),
-    pasteboardCmd('pasteboard-mid', 'Pasteboard: Medium Grey', 'mid'),
-    pasteboardCmd('pasteboard-light', 'Pasteboard: Light Grey', 'light'),
+    pasteboardCmd('pasteboard-dark', 'Pasteboard: Dark Gray', 'dark'),
+    pasteboardCmd('pasteboard-mid', 'Pasteboard: Medium Gray', 'mid'),
+    pasteboardCmd('pasteboard-light', 'Pasteboard: Light Gray', 'light'),
   );
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && screen === 'full') { setScreen('standard'); e.preventDefault(); } }, true);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.defaultPrevented && !anyDialogOpen() && generationsRunning() && stopGenerations()) { e.preventDefault(); toast('Stopped the generation.'); } });
@@ -1630,7 +1630,7 @@ export function startApp(): void {
         } else if (space !== 'srgb') { const img = x.getImageData(0, 0, z.w, z.h); convertPixels(img.data, 'srgb', space); x.putImageData(img, 0, 0); }
         const tagged = !!own || !!listed || space !== 'srgb', keep = s.embed !== false && s.format !== 'pdf' && (tagged || s.format !== 'webp') ? icc : null;
         const viaEngine = engineWrites(s) || (s.format === 'webp' && tagged && !!keep);
-        if (PROFILELESS.has(s.format) && (own || listed || space !== 'srgb')) say(`${s.format.toUpperCase()} carries no colour profile; the pixels are written in ${listed ? label : own ? 'the document\'s profile' : SPACES[space].label}.`);
+        if (PROFILELESS.has(s.format) && (own || listed || space !== 'srgb')) say(`${s.format.toUpperCase()} carries no color profile; the pixels are written in ${listed ? label : own ? 'the document\'s profile' : SPACES[space].label}.`);
         if (!io.quiet) {
           // What the flat file lost or changed, in one notice: depth, ink, transparency, lossy encoding, resolution.
           let clear = false;
@@ -2987,7 +2987,7 @@ export function startApp(): void {
         if (engine.current !== p) return;
         if (!n) { toast(quick ? 'No sky was found by the quick method.' : 'No sky was found.'); return; }
         engine.applyAutoSelection(0, 0, W, H, data, 'Select Sky', { mode: selectModeOf(a), sky: true });
-        toast(`${quick ? 'Sky selected with the quick method (colour and smoothness, no model; the sky model does better with sunsets and heavy cloud). ' : 'Sky selected. '}${(100 * n / (W * H)).toFixed(1)}% of the picture, from x ${x0} y ${y0} to x ${x1} y ${y1}.`);
+        toast(`${quick ? 'Sky selected with the quick method (color and smoothness, no model; the sky model does better with sunsets and heavy cloud). ' : 'Sky selected. '}${(100 * n / (W * H)).toFixed(1)}% of the picture, from x ${x0} y ${y0} to x ${x1} y ${y1}.`);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -4069,7 +4069,7 @@ export function startApp(): void {
       params: {
         action: { type: 'string', description: 'The action to change.' },
         set: { type: 'string', description: 'The set (folder) the action belongs to; an empty string takes it out of its set.' },
-        colour: { type: 'string', enum: [...ACTION_COLOURS], description: 'The colour of its button in Button Mode.' },
+        colour: { type: 'string', enum: [...ACTION_COLOURS], description: 'The color of its button in Button Mode.' },
         key: { type: 'string', enum: [...ACTION_KEYS], description: 'A function-key shortcut such as F5 or Shift+F5; an empty string clears it. Another action holding it loses it.' },
       },
       run: (a) => {
@@ -4086,7 +4086,7 @@ export function startApp(): void {
     {
       id: 'load-actions', label: 'Load Actions...',
       params: {
-        atn_base64: { type: 'string', description: 'The bytes of an .atn actions file, base64 encoded. Steps with no formvis equivalent are kept greyed and skipped when the action plays.' },
+        atn_base64: { type: 'string', description: 'The bytes of an .atn actions file, base64 encoded. Steps with no formvis equivalent are kept grayed and skipped when the action plays.' },
         json: { type: 'string', description: 'Actions in formvis JSON: an array of actions or one action.' },
       },
       run: (a) => {
@@ -4242,7 +4242,7 @@ export function startApp(): void {
         layer: { type: 'string', description: 'Layer id or name the variable is bound to; the active layer when left out.' },
         kind: { type: 'string', description: 'visibility, text (type layers) or pixels (pixel layers).' },
         method: { type: 'string', description: 'For pixels: fit, fill, asis or conform; fit when left out.' },
-        align: { type: 'integer', min: 0, max: 8, description: 'For pixels: where the picture sits in the layer\'s box, 0 top left to 8 bottom right; 4 (the centre) when left out.' },
+        align: { type: 'integer', min: 0, max: 8, description: 'For pixels: where the picture sits in the layer\'s box, 0 top left to 8 bottom right; 4 (the center) when left out.' },
         clip: { type: 'boolean', description: 'For pixels: clip the picture to the layer\'s box; true when left out.' },
       },
       run: (a) => {
@@ -4671,7 +4671,7 @@ export function startApp(): void {
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
     { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },
     { id: 'select-subject', label: 'Subject', enabled: () => !!engine.current, params: AUTO_SELECT_PARAMS, run: (a) => void selectSubject(false, a) },
-    { id: 'select-sky', label: 'Sky', enabled: () => !!engine.current, params: { ...AUTO_SELECT_PARAMS, sensitivity: { type: 'number', min: 0, max: 100, description: 'How readily faint sky counts: 50 keeps the model as it is, higher grows the sky, lower tightens it. The saved setting when left out.' }, softness: { type: 'number', min: 0, max: 250, description: 'Edge softness in pixels (a feather); the saved setting when left out.' }, method: { type: 'string', enum: ['quick', 'model'], description: 'quick finds the sky by colour and smoothness with no model; model uses the downloaded sky model. When left out the model is used if downloaded, else the quick method.' } }, run: (a) => void selectSky(a) },
+    { id: 'select-sky', label: 'Sky', enabled: () => !!engine.current, params: { ...AUTO_SELECT_PARAMS, sensitivity: { type: 'number', min: 0, max: 100, description: 'How readily faint sky counts: 50 keeps the model as it is, higher grows the sky, lower tightens it. The saved setting when left out.' }, softness: { type: 'number', min: 0, max: 250, description: 'Edge softness in pixels (a feather); the saved setting when left out.' }, method: { type: 'string', enum: ['quick', 'model'], description: 'quick finds the sky by color and smoothness with no model; model uses the downloaded sky model. When left out the model is used if downloaded, else the quick method.' } }, run: (a) => void selectSky(a) },
     { id: 'auto-select-sample-all', label: 'Sample All Layers', checked: () => engine.autoSel.sampleAll, run: () => engine.setAutoSel({ sampleAll: !engine.autoSel.sampleAll }) },
     { id: 'sky-sensitivity', label: 'Sky Sensitivity...', run: () => void (async () => { const v = await promptName('Sky Sensitivity (0 to 100, 50 keeps the model as it is)', String(engine.autoSel.skySensitivity), 'Set'); if (v !== null && v.trim() !== '' && Number.isFinite(Number(v))) engine.setAutoSel({ skySensitivity: Math.max(0, Math.min(100, Number(v))) }); })() },
     { id: 'sky-softness', label: 'Sky Edge Softness...', run: () => void (async () => { const v = await promptName('Sky Edge Softness in pixels (0 to 250)', String(engine.autoSel.skySoftness), 'Set'); if (v !== null && v.trim() !== '' && Number.isFinite(Number(v))) engine.setAutoSel({ skySoftness: Math.max(0, Math.min(250, Number(v))) }); })() },
@@ -4864,7 +4864,7 @@ export function startApp(): void {
     { id: 'measure-count', label: 'Count Tool', enabled: has, run: () => engine.setTool('count') },
     {
       id: 'count-new-group', label: 'New Count Group', enabled: has,
-      params: { name: { type: 'string', description: 'The group name; Group and its number when left out.' }, color: { type: 'string', description: 'The marker colour as #rrggbb; one is chosen when left out.' } },
+      params: { name: { type: 'string', description: 'The group name; Group and its number when left out.' }, color: { type: 'string', description: 'The marker color as #rrggbb; one is chosen when left out.' } },
       run: (a) => { const id = engine.newCountGroup(typeof a?.name === 'string' ? a.name : undefined, typeof a?.color === 'string' ? a.color : undefined); return id ? { group: id } : { group: null }; },
     },
     {
@@ -4872,7 +4872,7 @@ export function startApp(): void {
       params: {
         group: { type: 'string', description: 'The group to change, by name or id; the group new marks go into when left out.' },
         name: { type: 'string', description: 'A new name.' },
-        color: { type: 'string', description: 'A new colour as #rrggbb.' },
+        color: { type: 'string', description: 'A new color as #rrggbb.' },
         hidden: { type: 'boolean', description: 'Hide or show the group and its markers.' },
         active: { type: 'boolean', description: 'Make it the group new marks go into.' },
         delete: { type: 'boolean', description: 'Delete the group and its markers.' },
@@ -4896,7 +4896,7 @@ export function startApp(): void {
         jpeg: { type: 'boolean', description: 'JPEG encoding instead of lossless; false when left out.' },
         quality: { type: 'integer', min: 1, max: 100, description: 'JPEG quality; 90 when left out.' },
         icc: { type: 'boolean', description: 'Check the document ICC profile; true when left out. The PDF does not carry it yet.' },
-        contents_only: { type: 'boolean', description: 'Leave out each artboard\'s background colour; false when left out.' },
+        contents_only: { type: 'boolean', description: 'Leave out each artboard\'s background color; false when left out.' },
       },
       run: (a) => {
         if (!a || !Object.keys(a).length) { dialogs.artboardPdf.show(); return; }
@@ -4949,7 +4949,7 @@ export function startApp(): void {
     { id: 'stamp-visible', label: 'Stamp Visible', keys: ['Alt+Shift+Mod+E'], enabled: () => !!engine.current?.doc.layers.length, run: () => { engine.stampVisible(); } },
     {
       id: 'frequency-separation', label: 'Frequency Separation...', enabled: () => !!engine.current?.doc.layers.length,
-      params: { radius: { type: 'number', min: 0.5, max: 100, description: 'Blur radius in pixels that splits colour from detail; the dialog opens when left out.' } },
+      params: { radius: { type: 'number', min: 0.5, max: 100, description: 'Blur radius in pixels that splits color from detail; the dialog opens when left out.' } },
       run: (a) => { if (a?.radius === undefined) dialogs.frequency.show(); else engine.frequencySeparation(Number(a.radius)); },
     },
     { id: 'stamp-down', label: 'Stamp Down', keys: ['Alt+Mod+E'], enabled: () => !!layer(), run: () => { engine.stampDown(); } },
@@ -5009,7 +5009,7 @@ export function startApp(): void {
     },
     {
       id: 'new-spot-channel', label: 'New Spot Channel', enabled: has,
-      params: { name: { type: 'string', description: 'The channel name; Spot N when left out.' }, color: { type: 'string', description: 'Ink colour as #rrggbb; red when left out.' }, solidity: { type: 'number', min: 0, max: 100, description: 'How solid the ink shows on screen, in percent; 100 when left out.' }, fill: { type: 'string', enum: ['black', 'white'], description: 'Black has no ink anywhere, white has ink everywhere; black when left out.' } },
+      params: { name: { type: 'string', description: 'The channel name; Spot N when left out.' }, color: { type: 'string', description: 'Ink color as #rrggbb; red when left out.' }, solidity: { type: 'number', min: 0, max: 100, description: 'How solid the ink shows on screen, in percent; 100 when left out.' }, fill: { type: 'string', enum: ['black', 'white'], description: 'Black has no ink anywhere, white has ink everywhere; black when left out.' } },
       run: (a) => {
         const hex = typeof a?.color === 'string' && /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : null;
         const id = engine.newAlpha({ fill: a?.fill === 'white' ? 'white' : 'black', name: typeof a?.name === 'string' ? a.name : '', spot: { color: hex ? { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) } : undefined, solidity: a?.solidity === undefined ? undefined : Number(a.solidity) } });
@@ -5020,7 +5020,7 @@ export function startApp(): void {
     { id: 'split-channels', label: 'Split Channels', enabled: has, run: () => ({ documents: engine.splitChannels() }) },
     {
       id: 'merge-channels', label: 'Merge Channels...', enabled: () => (engine.alphaDocuments().length > 0),
-      params: ['red', 'green', 'blue'].reduce((o, k) => ({ ...o, [k]: { type: 'string', description: `The grey that becomes ${k}: an open document's id or name of the current size, optionally followed by | and one of its alpha channel names. All three open the dialog when left out.` } }), {}),
+      params: ['red', 'green', 'blue'].reduce((o, k) => ({ ...o, [k]: { type: 'string', description: `The gray that becomes ${k}: an open document's id or name of the current size, optionally followed by | and one of its alpha channel names. All three open the dialog when left out.` } }), {}),
       run: (a) => {
         const docs = engine.alphaDocuments(), pick = ['red', 'green', 'blue'].map((k) => { const [d, ...c] = String(a?.[k] ?? '').split('|'), q = docs.find((x) => x.id === d || x.doc.id === d || x.name === d); return q ? { doc: q.id, channel: c.join('|') || undefined } : null; });
         if (!a || pick.some((x) => !x)) { dialogs.mergeChannels.show(); return undefined; }
@@ -5038,10 +5038,10 @@ export function startApp(): void {
       params: {
         channel: { type: 'string', description: 'The alpha channel (id or name); the one chosen last in the Channels panel, or the last one, when left out.' },
         name: { type: 'string', description: 'The new name.' },
-        indicates: { type: 'string', enum: ['masked', 'selected'], description: 'Whether the overlay colour marks the masked or the selected areas.' },
-        color: { type: 'string', description: 'Overlay colour as #rrggbb.' },
+        indicates: { type: 'string', enum: ['masked', 'selected'], description: 'Whether the overlay color marks the masked or the selected areas.' },
+        color: { type: 'string', description: 'Overlay color as #rrggbb.' },
         opacity: { type: 'number', min: 0, max: 100, description: 'Overlay opacity in percent; the solidity of a spot channel.' },
-        spot: { type: 'boolean', description: 'True makes it a spot channel (the colour is its ink), false an alpha channel.' },
+        spot: { type: 'boolean', description: 'True makes it a spot channel (the color is its ink), false an alpha channel.' },
       },
       run: (a) => {
         const c = engine.alphaFor(typeof a?.channel === 'string' ? a.channel : undefined);
@@ -5085,15 +5085,15 @@ export function startApp(): void {
     { id: 'color-range', label: 'Color Range...', enabled: () => !!engine.current, run: () => dialogs.colorRange.show() },
     { id: 'select-color-range', label: 'Select Color Range', enabled: () => !!engine.current,
       params: {
-        mode: { type: 'string', enum: COLOR_RANGE_MODES.map(([id]) => id), description: 'What to select by: sampled colours, a hue family, tone, skin tones or depth (the Depth Map layer). Sampled Colors when left out.' },
+        mode: { type: 'string', enum: COLOR_RANGE_MODES.map(([id]) => id), description: 'What to select by: sampled colors, a hue family, tone, skin tones or depth (the Depth Map layer). Sampled Colors when left out.' },
         color: { type: 'string', description: 'For sampled colors: #rrggbb.' },
-        fuzziness: { type: 'number', min: 0, max: 200, description: 'How far from the colour, hue or depth limits still counts; 40 when left out.' },
+        fuzziness: { type: 'number', min: 0, max: 200, description: 'How far from the color, hue or depth limits still counts; 40 when left out.' },
         invert: { type: 'boolean', description: 'Select everything else.' },
         combine: { type: 'string', enum: ['new', 'add', 'subtract', 'intersect'], description: 'How the result meets the selection; new when left out (kept within the selection).' },
-        localized: { type: 'boolean', description: 'Localized Color Clusters for sampled colors: the colour counts only near x, y.' },
-        spread: { type: 'number', min: 0, max: 100, description: 'Localized Color Clusters Range: percent of the picture diagonal over which the colour fades out; 50 when left out.' },
-        x: { type: 'number', description: 'Localized: the document x where the colour was taken.' },
-        y: { type: 'number', description: 'Localized: the document y where the colour was taken.' },
+        localized: { type: 'boolean', description: 'Localized Color Clusters for sampled colors: the color counts only near x, y.' },
+        spread: { type: 'number', min: 0, max: 100, description: 'Localized Color Clusters Range: percent of the picture diagonal over which the color fades out; 50 when left out.' },
+        x: { type: 'number', description: 'Localized: the document x where the color was taken.' },
+        y: { type: 'number', description: 'Localized: the document y where the color was taken.' },
         far_limit: { type: 'number', min: 0, max: 255, description: 'Depth mode: the farthest depth value (dark is far) to include; 128 when left out.' },
         near_limit: { type: 'number', min: 0, max: 255, description: 'Depth mode: the nearest depth value (bright is near) to include; 255 when left out.' },
       },
@@ -5115,9 +5115,9 @@ export function startApp(): void {
     { id: 'fit-artboard', label: 'Fit Artboard on Screen', enabled: () => !!engine.current?.doc.layers.some((l) => l.artboard), run: () => { engine.fitArtboard(); } },   // 27.11
     { id: 'guide-layout', label: 'New Guide Layout...', enabled: has, run: () => { void import('./ui/panels/guide-layout').then((m) => m.openGuideLayout(engine)); } },   // 27.11
     { id: 'guides-from-shape', label: 'New Guides From Shape', enabled: () => !!engine.current?.activeLayer?.vector || !!engine.current?.selection,
-      params: { source: { type: 'string', enum: ['auto', 'layer', 'selection'], description: 'Where the box comes from: the shape layer, the selection, or the layer first and then the selection; auto when left out.' }, edges: { type: 'boolean', description: 'Guides on the four edges; true when left out.' }, centre: { type: 'boolean', description: 'Guides through the centre; false when left out.' } },
+      params: { source: { type: 'string', enum: ['auto', 'layer', 'selection'], description: 'Where the box comes from: the shape layer, the selection, or the layer first and then the selection; auto when left out.' }, edges: { type: 'boolean', description: 'Guides on the four edges; true when left out.' }, centre: { type: 'boolean', description: 'Guides through the center; false when left out.' } },
       run: (a) => { if (!engine.guidesFromShape({ source: a?.source === 'layer' || a?.source === 'selection' ? a.source : 'auto', edges: a?.edges !== false, centre: a?.centre === true })) toast('Select a shape layer, or make a selection, to place guides from.', 'info'); } },   // 27.11
-    { id: 'guides-from-shape-centre', label: 'New Guides From Shape Centre', enabled: () => !!engine.current?.activeLayer?.vector || !!engine.current?.selection, run: () => { if (!engine.guidesFromShape({ edges: false, centre: true })) toast('Select a shape layer, or make a selection, to place guides from.', 'info'); } },
+    { id: 'guides-from-shape-centre', label: 'New Guides From Shape Center', enabled: () => !!engine.current?.activeLayer?.vector || !!engine.current?.selection, run: () => { if (!engine.guidesFromShape({ edges: false, centre: true })) toast('Select a shape layer, or make a selection, to place guides from.', 'info'); } },
     { id: 'actual', label: 'Actual Pixels', keys: ['Mod+1'], enabled: has, run: () => engine.zoomTo(1) },
     { id: 'flip-view-h', label: 'Flip Horizontal', checked: () => !!engine.current?.viewport.flipped, enabled: has, run: () => engine.setViewFlip(!engine.current?.viewport.flipped) },
     { id: 'canvas-scrollbars', label: 'Canvas Scrollbars', checked: () => engine.canvasScrollbars, enabled: has, run: () => { engine.setCanvasScrollbars(!engine.canvasScrollbars); savePrefs({ ...loadPrefs(), canvasScrollbarsShown: engine.canvasScrollbars }); } },
@@ -5295,7 +5295,7 @@ export function startApp(): void {
         y: { type: 'number', description: 'First baseline in document pixels; a third of the height when left out.' },
         size: { type: 'number', min: 1, max: 2000, description: 'Type size in pixels; the Type tool size when left out.' },
         font: { type: 'string', description: 'Font family; the Type tool font when left out.' },
-        color: { type: 'string', description: 'Colour as #rrggbb; the foreground colour when left out.' },
+        color: { type: 'string', description: 'Color as #rrggbb; the foreground color when left out.' },
         align: { type: 'string', enum: ['left', 'center', 'right', 'justify'], description: 'Alignment; the Type tool alignment when left out.' },
         orientation: { type: 'string', enum: ['horizontal', 'vertical'], description: 'Direction of the lines; horizontal when left out.' },
         box_width: { type: 'number', min: 1, description: 'Width of a paragraph box in pixels; point text when left out.' },
@@ -5382,7 +5382,7 @@ export function startApp(): void {
     { id: 'type-range-style', label: 'Character Range Style', enabled: () => engine.liveText(engine.current?.activeLayer) || typing.editing,
       params: {
         start: { type: 'integer', min: 0, description: 'First character of the range (counted from 0); the whole text when start and end are both left out.' }, end: { type: 'integer', min: 0, description: 'End of the range, not included.' },
-        size: { type: 'number', min: 1, max: 2000, description: 'Size in pixels over the range.' }, color: { type: 'string', description: 'Colour over the range as #rrggbb.' },
+        size: { type: 'number', min: 1, max: 2000, description: 'Size in pixels over the range.' }, color: { type: 'string', description: 'Color over the range as #rrggbb.' },
         family: { type: 'string', description: 'Font family over the range.' }, weight: { type: 'integer', min: 1, max: 1000, description: 'Weight over the range, 100 to 900.' },
         bold: { type: 'boolean', description: 'Bold over the range.' }, italic: { type: 'boolean', description: 'Italic over the range.' },
         baseline_shift: { type: 'number', min: -2000, max: 2000, description: 'Baseline shift in pixels over the range, up positive.' }, tracking: { type: 'integer', min: -1000, max: 10000, description: 'Tracking in thousandths of an em over the range.' },
@@ -5695,8 +5695,8 @@ export function startApp(): void {
         y: { type: 'number', description: 'Top edge in document pixels; a quarter of the height when left out.' },
         width: { type: 'number', min: 1, description: 'Width in pixels (a line or arrow\'s run); half the width when left out.' },
         height: { type: 'number', min: 0, description: 'Height in pixels; half the height when left out.' },
-        fill: { type: 'string', description: 'Fill colour as #rrggbb, or "none"; the foreground colour when left out.' },
-        stroke: { type: 'string', description: 'Stroke colour as #rrggbb; no stroke when left out.' },
+        fill: { type: 'string', description: 'Fill color as #rrggbb, or "none"; the foreground color when left out.' },
+        stroke: { type: 'string', description: 'Stroke color as #rrggbb; no stroke when left out.' },
         stroke_width: { type: 'number', min: 0.5, max: 200, description: 'Stroke width in pixels; 3 when left out.' },
         stroke_dash: { type: 'string', enum: ['solid', 'dashed', 'dotted'], description: 'Stroke type; solid when left out.' },
         stroke_align: { type: 'string', enum: ['inside', 'center', 'outside'], description: 'Stroke alignment; center when left out.' },
@@ -5705,9 +5705,9 @@ export function startApp(): void {
         corner_radius: { type: 'number', min: 0, max: 500, description: 'Corner radius in pixels for a rectangle, triangle, polygon or star; 0 when left out.' },
         sides: { type: 'integer', min: 3, max: 100, description: 'Sides of a polygon or points of a star; the Shape tool value when left out.' },
         star_inset: { type: 'number', min: 1, max: 99, description: 'Star indent in percent; the Shape tool value when left out.' },
-        gradient: { type: 'string', enum: ['linear', 'radial', 'angle'], description: 'Fill the shape with a gradient from the fill colour to gradient_end; a solid fill when left out.' },
+        gradient: { type: 'string', enum: ['linear', 'radial', 'angle'], description: 'Fill the shape with a gradient from the fill color to gradient_end; a solid fill when left out.' },
         gradient_angle: { type: 'number', min: -180, max: 180, description: 'Gradient angle in degrees; 0 when left out.' },
-        gradient_end: { type: 'string', description: 'Gradient end colour as #rrggbb; the background colour when left out.' },
+        gradient_end: { type: 'string', description: 'Gradient end color as #rrggbb; the background color when left out.' },
       },
       run: (a) => {
         const p = engine.current;
@@ -5770,7 +5770,7 @@ export function startApp(): void {
           else toast('The depth route gave 8 bits, so no 16-bit document was made.', 'error');
         } catch (err) { toast(message(err), 'error'); }
       });
-      if (deep) { engine.openDeep(`${p.name} Depth`, deep, 16, p.doc.resolution); toast('Opened the depth as a 16-bit grey document: near is bright, far is dark.'); }
+      if (deep) { engine.openDeep(`${p.name} Depth`, deep, 16, p.doc.resolution); toast('Opened the depth as a 16-bit gray document: near is bright, far is dark.'); }
     })() },
     { id: 'select-by-depth', label: 'Select by Depth...', enabled: has,
       params: {
@@ -5803,7 +5803,7 @@ export function startApp(): void {
     { id: 'depth-map-show', label: 'Show Depth Map', enabled: () => !!engine.depthLayer() || !!engine.depthView, checked: () => !!engine.depthView && engine.depthView.project === engine.current, run: () => engine.showDepthMap() },
     ...(['flatten', 'nearer', 'farther'] as const).map((kind) => ({
       id: `depth-map-${kind}`, label: { flatten: 'Flatten Depth Map', nearer: 'Depth Map Nearer', farther: 'Depth Map Farther' }[kind], enabled: () => !!engine.depthLayer(),
-      params: { amount: { type: 'number' as const, min: 1, max: 100, description: `Percent of the depth range to ${kind === 'flatten' ? 'pull toward mid grey' : kind === 'nearer' ? 'brighten by' : 'darken by'}; ${kind === 'flatten' ? 50 : 10} when left out. Works inside the selection when there is one.` } },
+      params: { amount: { type: 'number' as const, min: 1, max: 100, description: `Percent of the depth range to ${kind === 'flatten' ? 'pull toward mid gray' : kind === 'nearer' ? 'brighten by' : 'darken by'}; ${kind === 'flatten' ? 50 : 10} when left out. Works inside the selection when there is one.` } },
       run: (a?: Record<string, unknown>) => ({ applied: engine.correctDepthMap(kind, (typeof a?.amount === 'number' ? Math.min(100, Math.max(1, a.amount)) : kind === 'flatten' ? 50 : 10) / 100) }),
     })),
     { id: 'depth-map-smooth', label: 'Smooth Depth Map', enabled: () => !!engine.depthLayer(), params: { radius: { type: 'number', min: 1, max: 32, description: 'Blur radius in pixels; 4 when left out.' }, edges: { type: 'boolean', description: 'Keep depth sharp at the picture\'s own edges (edge snap, radius up to 9); false when left out.' } },
@@ -5895,7 +5895,7 @@ export function startApp(): void {
     { id: 'proof-colors', label: 'Proof Colors', enabled: () => has() && (!!colourView.setup || !!colourView.preset), checked: () => colourView.proof, run: () => { colourView.proof = !colourView.proof; if (!colourView.proof) colourView.gamut = false; void colourView.refresh(); } },
     { id: 'preview-32', label: '32-bit Preview Options...', enabled: () => engine.current?.doc.depth === 32, run: () => preview32.show() },
     {
-      id: 'pick-screen-colour', label: 'Pick Colour from Screen', enabled: () => 'EyeDropper' in window,
+      id: 'pick-screen-colour', label: 'Pick Color from Screen', enabled: () => 'EyeDropper' in window,
       run: async () => {
         const Pick = (window as unknown as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
         if (!Pick) { toast('Picking from the screen needs a browser with the EyeDropper API.', 'error'); return; }

@@ -61,7 +61,7 @@ export class ToolPresetsDialog extends Dialog {
     this.scrim.classList.add('cv-scrim-tpreset');
     this.only = checkRow('Current Tool Only', (v) => { this.currentOnly = v; this.paint(); });
     this.only.set(true);
-    this.colour = checkRow('Include Colour (the foreground and background colours)', (v) => { this.withColour = v; });
+    this.colour = checkRow('Include Color (the foreground and background colors)', (v) => { this.withColour = v; });
     this.colour.set(false);
     this.body.append(this.only.el, this.colour.el, this.list, this.empty, el('<p class="cv-dialog-note">Export writes every preset to a .json file; Import merges one by name. .tpl tool preset files are not read.</p>'));
     this.button('New Preset...', 'ghost', () => void this.create());

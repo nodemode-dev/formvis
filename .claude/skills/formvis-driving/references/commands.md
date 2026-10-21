@@ -36,10 +36,10 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `clone-source-reset` | Clone Source: Reset Transform |  | Resets the Clone Source transform to 100 percent, no angle and no flips. |
 | `clone-source-set` | Clone Source: Set Source |  | Sets the chosen Clone Source slot: the source point in document pixels, the width and height in percent, the angle and the flips; each slot keeps its own. |
 | `clone-source-slot` | Clone Source: Choose Slot |  | Chooses one of the five Clone Source slots; the slot brings back its own point, scale, angle and flips. |
-| `colour.settings` | Color Settings... | Shift+Mod+K | Opens Color Settings: working spaces, colour management policies and conversion options. |
+| `colour.settings` | Color Settings... | Shift+Mod+K | Opens Color Settings: working spaces, color management policies and conversion options. |
 | `compare-documents` | Compare with... |  | Opens Compare with: picks another open document and makes a new document with both pictures and a Differences layer in Difference blend mode, selecting where they differ. |
 | `compare-split` | Compare with Snapshot (Split) |  | Shows the current state on the left and a kept snapshot (the opening snapshot unless one is named) on the right of a divider that can be dragged; run again to close it. History is not changed. |
-| `composite-pixel` | Read Composite Pixel |  | Reads the composited colour and opacity (red, green, blue, alpha 0 to 255 and the hex code) of the one document pixel at x and y, as the picture shows it with every layer, adjustment and effect. |
+| `composite-pixel` | Read Composite Pixel |  | Reads the composited color and opacity (red, green, blue, alpha 0 to 255 and the hex code) of the one document pixel at x and y, as the picture shows it with every layer, adjustment and effect. |
 | `content-fill` | Quick Content-Aware Fill | Shift+Backspace | Fills the selection from its surroundings. (changes the picture) |
 | `content-fill-workspace` | Content-Aware Fill... |  | Opens the Content-Aware Fill workspace for the selection. (changes the picture) |
 | `copy` | Copy | Mod+C | Copies the selection to the clipboard. |
@@ -51,14 +51,14 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `define-custom-shape` | Define Custom Shape... |  | Saves the current path as a custom shape for the Shape tool. (changes the picture) |
 | `define-pattern` | Define Pattern... |  | Saves the selection as a pattern. |
 | `delete` | Delete | Backspace Delete | Clears the selection, or deletes the selected layers. (changes the picture) |
-| `edit-menus` | Menus... |  | Opens the Menus dialog to hide menu items from the menu bar and to colour them; both are kept across sessions. |
+| `edit-menus` | Menus... |  | Opens the Menus dialog to hide menu items from the menu bar and to color them; both are kept across sessions. |
 | `edit-note` | Edit Note... |  | Opens the selected note for editing. |
 | `fade` | Fade... | Shift+Mod+F | Opens Fade to soften the last filter or adjustment. (changes the picture) |
-| `fill-bg` | Fill with Background | Mod+Backspace Mod+Delete | Fills the selection or layer with the background colour. (changes the picture) |
-| `fill-bg-keep` | Fill with Background, Keep Transparency | Shift+Mod+Backspace Shift+Mod+Delete | Fills the selection or layer with the background colour but only where the layer already has pixels. (changes the picture) |
+| `fill-bg` | Fill with Background | Mod+Backspace Mod+Delete | Fills the selection or layer with the background color. (changes the picture) |
+| `fill-bg-keep` | Fill with Background, Keep Transparency | Shift+Mod+Backspace Shift+Mod+Delete | Fills the selection or layer with the background color but only where the layer already has pixels. (changes the picture) |
 | `fill-dialog` | Fill... | Shift+F5 | Opens the Fill dialog with its contents and blend options. (changes the picture) |
-| `fill-fg` | Fill with Foreground | Alt+Backspace Alt+Delete | Fills the selection or layer with the foreground colour. (changes the picture) |
-| `fill-fg-keep` | Fill with Foreground, Keep Transparency | Alt+Shift+Backspace Alt+Shift+Delete | Fills the selection or layer with the foreground colour but only where the layer already has pixels. (changes the picture) |
+| `fill-fg` | Fill with Foreground | Alt+Backspace Alt+Delete | Fills the selection or layer with the foreground color. (changes the picture) |
+| `fill-fg-keep` | Fill with Foreground, Keep Transparency | Alt+Shift+Backspace Alt+Shift+Delete | Fills the selection or layer with the foreground color but only where the layer already has pixels. (changes the picture) |
 | `fill-history` | Fill with History | Alt+Mod+Backspace Alt+Mod+Delete | Fills the selection or layer with its pixels from the history source, at full opacity. (changes the picture) |
 | `free-helper-models` | Free Helper Models |  | Frees the ONNX helper models formvis holds in memory (depth, segmentation, background removal and the like) and names what it freed; the next use loads its model again. (changes the picture) |
 | `generative-fill` | Generative Fill... |  | Opens Generative Fill for the selection. (changes the picture) |
@@ -70,7 +70,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `new-snapshot` | New Snapshot |  | Stores the current state as a snapshot in History. |
 | `new-snapshot-layer` | New Snapshot of Current Layer |  | Stores only the selected layer as a snapshot in History. |
 | `new-snapshot-merged` | New Snapshot of Merged Layers |  | Stores the picture as it looks now, merged into one layer, as a snapshot in History. |
-| `paste` | Paste | Mod+V | Pastes the clipboard as a new layer, centred in view when the copied place is off screen. (changes the picture) |
+| `paste` | Paste | Mod+V | Pastes the clipboard as a new layer, centered in view when the copied place is off screen. (changes the picture) |
 | `paste-in-place` | Paste in Place | Shift+Mod+V | Pastes at the position the pixels were copied from. (changes the picture) |
 | `paste-into` | Paste Into | Alt+Shift+Mod+V | Pastes into the selection with a mask. (changes the picture) |
 | `paste-outside` | Paste Outside |  | Pastes outside the selection with a mask. (changes the picture) |
@@ -78,12 +78,12 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `patterns-import` | Import Patterns... |  | Adds the patterns from .pat files. |
 | `peek-original` | Show Opening State |  | Shows the document as a kept snapshot holds it (the opening snapshot unless one is named) in place of the current state, without changing history; run again to put the current state back. Holding the Backslash key does the same while it is down. |
 | `perspective-warp` | Perspective Warp |  | Starts Perspective Warp. (changes the picture) |
-| `pick-screen-colour` | Pick Colour from Screen |  | Picks the colour of any pixel on the screen, outside the window too, as the foreground colour. |
+| `pick-screen-colour` | Pick Color from Screen |  | Picks the color of any pixel on the screen, outside the window too, as the foreground color. |
 | `prefs-cursors` | Cursors... |  | Opens Preferences on Cursors: how painting tools show where they paint. |
 | `prefs-enhanced-controls` | Enhanced Controls... |  | Opens Preferences on Enhanced Controls. |
 | `prefs-file-handling` | File Handling... |  | Opens Preferences on File Handling: library folder, embedded profiles, reopening documents, recovery, lower-case extensions and the recent file list. |
-| `prefs-general` | General... |  | Opens Preferences on General: the Home screen, What's New, animated zoom and the colour picker. |
-| `prefs-guides` | Guides, Grid & Slices... |  | Opens Preferences on Guides, Grid & Slices: colours and line styles of guides and the grid, grid spacing, and slice colour and numbers. |
+| `prefs-general` | General... |  | Opens Preferences on General: the Home screen, What's New, animated zoom and the color picker. |
+| `prefs-guides` | Guides, Grid & Slices... |  | Opens Preferences on Guides, Grid & Slices: colors and line styles of guides and the grid, grid spacing, and slice color and numbers. |
 | `prefs-history-cache` | History & Cache... |  | Opens Preferences on History & Cache: history states, history memory and snapshots. |
 | `prefs-interface` | Interface... |  | Opens Preferences on Interface: theme, accent, accent intensity and text size. |
 | `prefs-performance` | Performance... |  | Opens Preferences on Performance: memory limit, caches, region redraws and the graphics processor. |
@@ -91,7 +91,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `prefs-raw-defaults` | Raw Defaults... |  | Opens Preferences on Raw Defaults: what the Camera Raw dialog starts with. |
 | `prefs-scratch-disks` | Scratch Disks... |  | Opens Preferences on Scratch Disks: the working files kept on this device, the storage allowed, and a button that cleans them. |
 | `prefs-tools` | Tools... |  | Opens Preferences on Tools: scroll-wheel zoom, pen pressure, tool tips, the Shift key for tool switch and zoom-click centring. |
-| `prefs-transparency` | Transparency & Gamut... |  | Opens Preferences on Transparency & Gamut: the checkerboard and the Gamut Warning colour and opacity. |
+| `prefs-transparency` | Transparency & Gamut... |  | Opens Preferences on Transparency & Gamut: the checkerboard and the Gamut Warning color and opacity. |
 | `prefs-type` | Type... |  | Opens Preferences on Type. |
 | `prefs-units` | Units & Rulers... |  | Opens Preferences on Units & Rulers. |
 | `prefs-workspace` | Workspace... |  | Opens Preferences on Workspace: lock the panels and the narrow-window side column. |
@@ -111,7 +111,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `reset-tool` | Reset Tool |  | Puts the options of the active tool back to their defaults and forgets the values kept for them. |
 | `save-history-log` | Save History Log... |  | Saves the history log (the time, document and name of each step made while Preferences > History Log was on) as a text file. |
 | `stroke-dialog` | Stroke... |  | Opens the Stroke dialog for the selection. (changes the picture) |
-| `swatch-add` | Add Foreground Color to Swatches |  | Adds the foreground colour to the Swatches panel. |
+| `swatch-add` | Add Foreground Color to Swatches |  | Adds the foreground color to the Swatches panel. |
 | `swatches-load` | Load Swatches... |  | Replaces the swatches with those in an .aco or .ase file. |
 | `swatches-reset` | Reset Swatches |  | Restores the default swatches. |
 | `swatches-save` | Save Swatches... |  | Saves the current swatches as an .aco file. |
@@ -137,7 +137,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
-| `action-options` | Action Options... |  | Sets an action's set (folder), its Button Mode colour and its function-key shortcut such as F5 or Shift+F5. |
+| `action-options` | Action Options... |  | Sets an action's set (folder), its Button Mode color and its function-key shortcut such as F5 or Shift+F5. |
 | `assemble-tiles` | Assemble Tiles... |  | Opens the dialog that assembles tile images into one large picture. (changes the picture) |
 | `batch` | Batch... |  | Opens Batch to run an action over many files. (changes the picture) (asks first) |
 | `clear-recent` | Clear Recent |  | Empties the Open Recent list. (asks first) |
@@ -176,12 +176,12 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `export-ora` | Export OpenRaster... |  | Exports an OpenRaster file that keeps layers. (asks first) |
 | `export-paths-ai` | Paths to AI File... |  | Writes the document paths to an .ai file. (asks first) |
 | `export-pdf` | Export PDF |  | Exports the picture as a PDF. (asks first) |
-| `export-pfm` | Float PFM... |  | Exports a colour float PFM file in linear light. (asks first) |
+| `export-pfm` | Float PFM... |  | Exports a color float PFM file in linear light. (asks first) |
 | `export-png` | Export PNG | Shift+Mod+E | Exports the flattened picture as a PNG. (asks first) |
 | `export-preferences` | Export Preferences... |  | Opens Export Preferences: the Quick Export format, quality, prompt and recipe in PNG files, and the folder. |
 | `export-psb` | Export PSB (Large Document)... |  | Exports a large document (PSB). (asks first) |
 | `export-psd` | Export PSD... |  | Exports the document as a layered PSD. (asks first) |
-| `export-selection-mask` | Selection as Mask PNG |  | Writes the selection as a grey PNG the size of the document, white where selected, black elsewhere, with feathered edges kept. (asks first) |
+| `export-selection-mask` | Selection as Mask PNG |  | Writes the selection as a gray PNG the size of the document, white where selected, black elsewhere, with feathered edges kept. (asks first) |
 | `export-tiff` | Export TIFF |  | Exports the picture as TIFF. (asks first) |
 | `export-tiff-layers` | TIFF with Layers... |  | Exports the picture as a TIFF that carries its layers in the PSD layer block; the TIFF Options prompt offers to discard the layers instead, or pass layers true or false to skip it. (asks first) |
 | `export-to-file` | Export to File |  | Encodes the flattened picture as png, jpg, webp, tiff, tga or dpx, or the layers as tiff-layers, psd, psb, ora or fvd, and writes it to the exports folder. (asks first) |
@@ -202,7 +202,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `insert-conditional` | Insert Conditional... |  | Adds a conditional step to a recorded action: when the document is landscape, portrait or square, 8, 16 or 32 bit, has a selection, unsaved changes, several layers, or an active type, smart object or masked layer, it plays one named action, otherwise another. Without parameters it opens the Actions dialog. (changes the picture) |
 | `lens-correction-batch` | Lens Correction... |  | Opens the Lens Correction batch: one set of distortion, fringe, vignette, perspective and edge settings applied to chosen pictures or a folder, saved as the source type, PNG or JPEG in one zip. (asks first) |
 | `list-actions` | List Actions |  | Returns the recorded actions with their step counts and which one is recording, or one action's steps with their kind, label and on or off state. |
-| `load-actions` | Load Actions... |  | Loads actions from an .atn file (base64) or formvis JSON; steps with no formvis equivalent stay in the action greyed and are skipped when it plays. |
+| `load-actions` | Load Actions... |  | Loads actions from an .atn file (base64) or formvis JSON; steps with no formvis equivalent stay in the action grayed and are skipped when it plays. |
 | `load-files-stack` | Load Files into Stack... |  | Loads image files (files, or documents true for the open ones) as the layers of one new document, optionally aligned and as a smart object stack; without parameters it opens the dialog. (changes the picture) |
 | `merge-hdr` | Merge to HDR... |  | Merges bracketed exposures (files, or documents true) into a 32-bit picture, or toned to 16 or 8 bit with depth (method exposure, highlights or equalize; exposure and gamma for the first), with optional alignment, exposure times and ghost removal (ghost strength, ghost base photo); without parameters it opens the dialog. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
@@ -244,9 +244,9 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
-| `bump-map` | Generate Bump Map... |  | Adds a Bump Map layer: the active layer's brightness as a greyscale height map. (changes the picture) |
+| `bump-map` | Generate Bump Map... |  | Adds a Bump Map layer: the active layer's brightness as a grayscale height map. (changes the picture) |
 | `filter-addNoise` | Add Noise... |  | Opens the Noise filter on the active layer. (changes the picture) |
-| `filter-average` | Average |  | Fills the selection or layer with its average colour. (changes the picture) |
+| `filter-average` | Average |  | Fills the selection or layer with its average color. (changes the picture) |
 | `filter-blur` | Blur |  | Opens the Blur filter on the active layer. (changes the picture) |
 | `filter-blurMore` | Blur More |  | Opens the Blur More filter on the active layer. (changes the picture) |
 | `filter-boxBlur` | Box Blur... |  | Opens the Box Blur filter on the active layer. (changes the picture) |
@@ -335,7 +335,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `wasm-plugin-example` | Install Example Plug-in |  | Installs the example Tint Mix plug-in, built from examples/wasm-filter in Rust. |
 | `wasm-plugin-install` | Install Plug-in... |  | Asks for a .wasm filter plug-in (and its .json schema if the module carries none) and installs it into browser storage, where it is loaded at every start. |
 | `wasm-plugin-remove` | Remove Plug-in |  | Removes one installed WebAssembly plug-in by id; smart filters that used it are skipped until it is installed again. (asks first) |
-| `wasm-plugin-run` | Run Plug-in |  | Runs an installed WebAssembly plug-in on the active layer with the given parameter values, honouring the selection, as one undo step; on a smart object it joins the smart filters. (changes the picture) |
+| `wasm-plugin-run` | Run Plug-in |  | Runs an installed WebAssembly plug-in on the active layer with the given parameter values, honoring the selection, as one undo step; on a smart object it joins the smart filters. (changes the picture) |
 | `wasm-plugins` | Manage Plug-ins (WebAssembly)... |  | Opens the WebAssembly plug-ins dialog: the installed filter plug-ins with their version and parameters, Install, Remove, the example, and the time and memory limits every run keeps. |
 
 ### filter.apply parameters
@@ -405,18 +405,18 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `apply-image` | Apply Image... |  | Blends a channel of a layer or the merged image into the active layer. (changes the picture) |
 | `apply-redactions` | Apply Redactions |  | Burns the redaction boxes into the pixels. (changes the picture) |
 | `assign-profile` | Assign Profile... |  | Opens Assign Profile. (changes the picture) |
-| `auto-color` | Auto Color | Shift+Mod+B | Neutralises colour casts automatically. (changes the picture) |
-| `auto-contrast` | Auto Contrast | Alt+Shift+Mod+L | Sets contrast automatically without shifting colour. (changes the picture) |
+| `auto-color` | Auto Color | Shift+Mod+B | Neutralizes color casts automatically. (changes the picture) |
+| `auto-contrast` | Auto Contrast | Alt+Shift+Mod+L | Sets contrast automatically without shifting color. (changes the picture) |
 | `auto-tone` | Auto Tone | Shift+Mod+L | Sets levels on each channel automatically. (changes the picture) |
-| `calculations` | Calculations... |  | Blends two single channels (each a layer or the merged picture, optionally inverted) by a blending mode, opacity and optional mask into a new alpha channel, a new grey document or the selection; with no parameters it only shows a notice until the dialog arrives. (changes the picture) |
+| `calculations` | Calculations... |  | Blends two single channels (each a layer or the merged picture, optionally inverted) by a blending mode, opacity and optional mask into a new alpha channel, a new gray document or the selection; with no parameters it only shows a notice until the dialog arrives. (changes the picture) |
 | `canvas-size` | Canvas Size... | Alt+Mod+C | Opens Canvas Size. (changes the picture) |
 | `color-match` | Color Match... |  | Opens Color Match. (changes the picture) |
 | `color-table` | Color Table... |  | Opens the Color Table of an Indexed Color document: edit, load or save its palette. (changes the picture) |
-| `compute-depth-map` | Compute Depth Map |  | Reads the depth of what the document shows with Depth Anything V2 Small on this computer and adds it as a grey layer named Depth Map, near bright and far dark. (changes the picture) |
-| `compute-depth-map-16` | Compute Depth Map as 16-Bit Document |  | Reads the depth of what the document shows with Depth Anything V2 Small on this computer and opens it as a new 16-bit grey document, near bright and far dark, with 65536 steps instead of 256. (changes the picture) |
+| `compute-depth-map` | Compute Depth Map |  | Reads the depth of what the document shows with Depth Anything V2 Small on this computer and adds it as a gray layer named Depth Map, near bright and far dark. (changes the picture) |
+| `compute-depth-map-16` | Compute Depth Map as 16-Bit Document |  | Reads the depth of what the document shows with Depth Anything V2 Small on this computer and opens it as a new 16-bit gray document, near bright and far dark, with 65536 steps instead of 256. (changes the picture) |
 | `convert-profile` | Convert to Profile... |  | Opens Convert to Profile. (changes the picture) |
-| `count-new-group` | New Count Group |  | Starts a new count group with a name and colour; marks placed afterwards go into it. The first group made also takes the marks already placed. (changes the picture) |
-| `count-set-group` | Set Count Group |  | Renames, recolours, hides, shows, activates or deletes a count group, found by name or id; the active group when none is named. (changes the picture) |
+| `count-new-group` | New Count Group |  | Starts a new count group with a name and color; marks placed afterwards go into it. The first group made also takes the marks already placed. (changes the picture) |
+| `count-set-group` | Set Count Group |  | Renames, recolors, hides, shows, activates or deletes a count group, found by name or id; the active group when none is named. (changes the picture) |
 | `data-set-apply` | Apply Data Set |  | Applies a data set to the document: sets bound layers visible or hidden, replaces bound type text keeping its style, and swaps bound pixel layers, as one undo step. |
 | `data-sets-import` | Data Sets... |  | Reads data sets from CSV or tab-separated text whose first row names the variables; each later row is one data set. With no text it opens a file chooser for .csv and .txt. |
 | `depth-16` | 16 Bits/Channel |  | Sets 16 bits per channel. (changes the picture) |
@@ -424,13 +424,13 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `depth-8` | 8 Bits/Channel |  | Sets 8 bits per channel. (changes the picture) |
 | `depth-map-detail` | Depth Map Detail |  | Adds the picture's own fine brightness detail to the Depth Map layer by a percentage, inside the selection when there is one. (changes the picture) |
 | `depth-map-farther` | Depth Map Farther |  | Darkens the Depth Map layer by a percentage of its range, inside the selection when there is one. (changes the picture) |
-| `depth-map-flatten` | Flatten Depth Map |  | Pulls the Depth Map layer toward mid grey by a percentage, inside the selection when there is one. (changes the picture) |
-| `depth-map-from-layer` | Depth Map from Layer |  | Reads the depth of the active layer alone with the local depth model and adds it as a grey layer named Depth Map. (changes the picture) |
+| `depth-map-flatten` | Flatten Depth Map |  | Pulls the Depth Map layer toward mid gray by a percentage, inside the selection when there is one. (changes the picture) |
+| `depth-map-from-layer` | Depth Map from Layer |  | Reads the depth of the active layer alone with the local depth model and adds it as a gray layer named Depth Map. (changes the picture) |
 | `depth-map-nearer` | Depth Map Nearer |  | Brightens the Depth Map layer by a percentage of its range, inside the selection when there is one. (changes the picture) |
 | `depth-map-recompute` | Recompute Depth Map |  | Reads the depth again from what the document shows without the depth layer and replaces the Depth Map layer pixels. (changes the picture) |
 | `depth-map-smooth` | Smooth Depth Map |  | Blurs the Depth Map layer by a radius, optionally keeping the picture's own edges sharp. (changes the picture) |
 | `depth-map-snap` | Snap Depth Map to Edges |  | Smooths the Depth Map layer without blending across the edges of the picture it was read from. (changes the picture) |
-| `desaturate` | Desaturate | Shift+Mod+U | Removes colour and keeps the mode. (changes the picture) |
+| `desaturate` | Desaturate | Shift+Mod+U | Removes color and keeps the mode. (changes the picture) |
 | `duplicate-image` | Duplicate... |  | Opens the dialog that duplicates the document into a new one. |
 | `equalize` | Equalize |  | Spreads brightness values evenly. (changes the picture) |
 | `equalize-layer-from-selection` | Equalize Entire Layer Based on Selection |  | Equalizes the whole layer using the selected area to set the tones. (changes the picture) |
@@ -440,9 +440,9 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `generative-expand` | Generative Expand... |  | Opens Generative Expand. (changes the picture) |
 | `image-crop` | Crop |  | Crops the document to the Crop tool frame when one is open, else to the selection. (changes the picture) |
 | `image-size` | Image Size... | Alt+Mod+I | Opens Image Size. (changes the picture) |
-| `invert` | Invert | Mod+I | Inverts the colours of the active layer. (changes the picture) |
-| `measure-color-sampler` | Color Sampler Tool |  | Picks the Color Sampler tool, which pins up to ten sample points whose colours show in the Info panel, averaged over the chosen sample size. |
-| `measure-count` | Count Tool |  | Picks the Count tool, which numbers marks placed on the picture, grouped by name and colour. |
+| `invert` | Invert | Mod+I | Inverts the colors of the active layer. (changes the picture) |
+| `measure-color-sampler` | Color Sampler Tool |  | Picks the Color Sampler tool, which pins up to ten sample points whose colors show in the Info panel, averaged over the chosen sample size. |
+| `measure-count` | Count Tool |  | Picks the Count tool, which numbers marks placed on the picture, grouped by name and color. |
 | `measure-data-points` | Select Data Points... |  | Chooses which measurements the Measurement Log and its CSV export show (label, scale, area, perimeter, length, angle, count, width, height, gray value and its minimum and maximum, integrated density, centroid, circularity). |
 | `measure-log` | Measurement Log... |  | Opens the measurement log: a table of recorded measurements that can be added to, deleted, cleared or exported as CSV. (changes the picture) |
 | `measure-record` | Record Measurements |  | Records one measurement from the selection (area, perimeter, size), the Ruler line (length, angle) and the counts, scaled by the measurement scale. (changes the picture) |
@@ -450,16 +450,16 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `measure-ruler` | Ruler Tool |  | Picks the Ruler tool, which measures a distance and an angle, and with Alt-drag from an end a second arm and the angle between. |
 | `measure-scale` | Set Measurement Scale... |  | Sets the measurement scale: how many pixels make a logical length in chosen units. Without parameters it opens a dialog prefilled from the Ruler line. (changes the picture) |
 | `measure-scale-marker` | Place Scale Marker... |  | Places a scale bar with a text label as a new pixel layer at the bottom left, sized from the measurement scale. (changes the picture) |
-| `merge-channels` | Merge Channels... |  | Opens a new RGB document from three greys, one each for red, green and blue, taken from open documents or their channels. (changes the picture) |
+| `merge-channels` | Merge Channels... |  | Opens a new RGB document from three grays, one each for red, green and blue, taken from open documents or their channels. (changes the picture) |
 | `mode-bitmap` | Bitmap... |  | Opens the Bitmap conversion. (changes the picture) |
-| `mode-cmyk` | CMYK Color... |  | Opens the CMYK conversion; with params profile (default for the shipped CMYK profile, else a profile id or name) it converts at once with no dialog, using the colour preferences intent. (changes the picture) |
+| `mode-cmyk` | CMYK Color... |  | Opens the CMYK conversion; with params profile (default for the shipped CMYK profile, else a profile id or name) it converts at once with no dialog, using the color preferences intent. (changes the picture) |
 | `mode-convert` | Convert Mode... |  | Opens Convert Mode: change to RGB Color, Grayscale or Lab Color with a chosen profile, rendering intent, black point compensation and dither. (changes the picture) |
 | `mode-duotone` | Duotone... |  | Opens Duotone options: one to four inks overprinted on a grayscale document. (changes the picture) |
 | `mode-grayscale` | Grayscale |  | Converts the document to grayscale. (changes the picture) |
-| `mode-grayscale-from` | Grayscale From Channels... |  | Opens the Grayscale conversion that picks how grey is made: luminosity, Rec. 709, the average, or one channel. (changes the picture) |
+| `mode-grayscale-from` | Grayscale From Channels... |  | Opens the Grayscale conversion that picks how gray is made: luminosity, Rec. 709, the average, or one channel. (changes the picture) |
 | `mode-indexed` | Indexed Color... |  | Opens the Indexed Color conversion. (changes the picture) |
-| `mode-lab` | Lab Color |  | Converts the document to Lab colour. (changes the picture) |
-| `mode-multichannel` | Multichannel |  | Converts the document to Multichannel: grey spot channels with ink colours, shown overprinted on white. (changes the picture) |
+| `mode-lab` | Lab Color |  | Converts the document to Lab color. (changes the picture) |
+| `mode-multichannel` | Multichannel |  | Converts the document to Multichannel: gray spot channels with ink colors, shown overprinted on white. (changes the picture) |
 | `mode-rgb` | RGB Color |  | Converts the document to RGB. (changes the picture) |
 | `par-anamorphic` | Anamorphic 2:1 (2) |  | Sets the pixel aspect ratio to Anamorphic 2:1 (2). (changes the picture) |
 | `par-custom` | Custom Pixel Aspect Ratio... |  | Sets a custom pixel aspect ratio, the width of one pixel over its height. Without parameters it asks for the number. (changes the picture) |
@@ -471,7 +471,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `par-hdv` | HDV 1080 (1.33) |  | Sets the pixel aspect ratio to HDV 1080 (1.33). (changes the picture) |
 | `par-square` | Square (1) |  | Sets the pixel aspect ratio to square (1). (changes the picture) |
 | `perspective-crop` | Perspective Crop |  | Starts the Crop tool in its four-corner mode: move the corners onto a slanted rectangle and Enter flattens it to an upright picture, at the size and resolution chosen when the ratio is Size. (changes the picture) |
-| `profile-info` | Profile Info... |  | Opens Profile Info, which shows the picture profile or a chosen profile file: name, colour space, device class, connection space, version and ink limit. |
+| `profile-info` | Profile Info... |  | Opens Profile Info, which shows the picture profile or a chosen profile file: name, color space, device class, connection space, version and ink limit. |
 | `remove-bg` | Remove Background |  | Removes the background of the active layer with the neural model. (changes the picture) |
 | `remove-bg-lite` | Remove Background (Lightweight) |  | Removes the background with the lightweight model. (changes the picture) |
 | `replace-color` | Replace Color... |  | Opens Replace Color. (changes the picture) |
@@ -480,13 +480,13 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `rotate-90-ccw` | 90° Counter Clockwise |  | Rotates the whole image 90 degrees counter clockwise. (changes the picture) |
 | `rotate-90-cw` | 90° Clockwise |  | Rotates the whole image 90 degrees clockwise. (changes the picture) |
 | `rotate-arbitrary` | Arbitrary... |  | Opens the dialog that rotates the whole image by any angle. (changes the picture) |
-| `sampler-add` | Add Color Sampler |  | Places a Color Sampler point (ten at most) at document x and y, or the middle of the picture when left out; its colour shows in the Info panel as RGB and ink together. (changes the picture) |
+| `sampler-add` | Add Color Sampler |  | Places a Color Sampler point (ten at most) at document x and y, or the middle of the picture when left out; its color shows in the Info panel as RGB and ink together. (changes the picture) |
 | `sampler-clear` | Clear Color Samplers |  | Removes every Color Sampler point from the document. (changes the picture) |
 | `sampler-delete` | Delete Color Sampler |  | Removes one Color Sampler point by its number; the last one when no index is given. (changes the picture) |
 | `sampler-move` | Move Color Sampler |  | Moves a Color Sampler point, found by the number the Info panel shows; params index, x, y. (changes the picture) |
-| `split-channels` | Split Channels |  | Opens one grey document for each colour channel of the picture and for each alpha or spot channel. (changes the picture) |
-| `trap` | Trap... |  | Overlaps CMYK colours where they meet so press misregistration shows no gap; lighter inks spread under darker ones, black does not. (changes the picture) |
-| `trim` | Trim... |  | Opens Trim to cut away transparent or same-colour edges. (changes the picture) |
+| `split-channels` | Split Channels |  | Opens one gray document for each color channel of the picture and for each alpha or spot channel. (changes the picture) |
+| `trap` | Trap... |  | Overlaps CMYK colors where they meet so press misregistration shows no gap; lighter inks spread under darker ones, black does not. (changes the picture) |
+| `trim` | Trim... |  | Opens Trim to cut away transparent or same-color edges. (changes the picture) |
 | `upscale-2x` | Upscale 2x... |  | Opens the dialog that enlarges the picture two times. |
 | `upscale-4x` | Upscale 4x... |  | Opens the dialog that enlarges the picture four times. |
 | `variables-define` | Define Variable... |  | Binds a named variable to a layer: its visibility, a type layer's text, or a pixel layer's image (placed fit, fill, as is or conformed to the layer bounds, aligned to one of nine anchors, clipped to the bounds or not). |
@@ -508,17 +508,17 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `ai-label-info` | EU AI Label Info |  | Says whether the document is marked as AI content and which digital source type it writes. |
 | `ai-label-remove` | Remove EU AI Label |  | Removes the document's AI label: the metadata mark and every EU AI label badge layer. (changes the picture) |
 | `align-bottom` | Align Bottom Edges |  | Aligns the selected layers to the bottom edge. (changes the picture) |
-| `align-hcenter` | Align Horizontal Centers |  | Aligns the selected layers on a vertical centre line. (changes the picture) |
+| `align-hcenter` | Align Horizontal Centers |  | Aligns the selected layers on a vertical center line. (changes the picture) |
 | `align-left` | Align Left Edges |  | Aligns the selected layers to the left edge. (changes the picture) |
 | `align-right` | Align Right Edges |  | Aligns the selected layers to the right edge. (changes the picture) |
 | `align-top` | Align Top Edges |  | Aligns the selected layers to the top edge. (changes the picture) |
-| `align-vcenter` | Align Vertical Centers |  | Aligns the selected layers on a horizontal centre line. (changes the picture) |
+| `align-vcenter` | Align Vertical Centers |  | Aligns the selected layers on a horizontal center line. (changes the picture) |
 | `apply-mask` | Apply Layer Mask |  | Bakes the layer mask into the pixels. (changes the picture) |
 | `artboard-from-group` | Artboard from Group... |  | Opens the dialog that turns a folder into an artboard. (changes the picture) |
 | `artboard-from-layers` | Artboard from Layers |  | Makes an artboard from the selected layers. (changes the picture) |
-| `artboard-from-layers-dialog` | Artboard from Layers... |  | Opens a dialog to name and colour an artboard made from the selected layers. (changes the picture) |
+| `artboard-from-layers-dialog` | Artboard from Layers... |  | Opens a dialog to name and color an artboard made from the selected layers. (changes the picture) |
 | `artboard-options` | Artboard Options... |  | Opens the options of the selected artboard. (changes the picture) |
-| `background-from-layer` | Background from Layer |  | Turns the active pixel layer into the Background: it moves to the bottom, fills the canvas and has the background colour behind its transparent parts. (changes the picture) |
+| `background-from-layer` | Background from Layer |  | Turns the active pixel layer into the Background: it moves to the bottom, fills the canvas and has the background color behind its transparent parts. (changes the picture) |
 | `backward` | Send Backward | Mod+[ | Moves the layer down one place. (changes the picture) |
 | `blend-next` | Next Blend Mode | Shift+= | Moves to the next blend mode. (changes the picture) |
 | `blend-prev` | Previous Blend Mode | Shift+- | Moves to the previous blend mode. (changes the picture) |
@@ -538,12 +538,12 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `delete-mask` | Delete Layer Mask |  | Removes the layer mask. (changes the picture) |
 | `deselect-layers` | Deselect Layers |  | Deselects all layers. |
 | `distribute-bottom` | Distribute Bottom Edges |  | Spaces layers evenly by their bottom edges. (changes the picture) |
-| `distribute-hcenter` | Distribute Horizontal Centers |  | Spaces layers evenly by their horizontal centres. (changes the picture) |
+| `distribute-hcenter` | Distribute Horizontal Centers |  | Spaces layers evenly by their horizontal centers. (changes the picture) |
 | `distribute-hspace` | Distribute Horizontal Spacing |  | Makes the gaps between layers equal across. (changes the picture) |
 | `distribute-left` | Distribute Left Edges |  | Spaces layers evenly by their left edges. (changes the picture) |
 | `distribute-right` | Distribute Right Edges |  | Spaces layers evenly by their right edges. (changes the picture) |
 | `distribute-top` | Distribute Top Edges |  | Spaces layers evenly by their top edges. (changes the picture) |
-| `distribute-vcenter` | Distribute Vertical Centers |  | Spaces layers evenly by their vertical centres. (changes the picture) |
+| `distribute-vcenter` | Distribute Vertical Centers |  | Spaces layers evenly by their vertical centers. (changes the picture) |
 | `distribute-vspace` | Distribute Vertical Spacing |  | Makes the gaps between layers equal down. (changes the picture) |
 | `duplicate` | Layer via Copy | Mod+J | Copies the selected layers above themselves. (changes the picture) |
 | `duplicate-dialog` | Duplicate Layer... |  | Opens Duplicate Layer to name the copy or send it to another document. (changes the picture) |
@@ -552,7 +552,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `edit-relight` | Edit Lighting... |  | Reopens the lights of the selected Relight layer. (changes the picture) |
 | `embed-linked` | Embed Linked |  | Embeds the linked file in the document. (changes the picture) |
 | `extrude-3d` | New 3D Extrusion from Selected Layer... |  | Extrudes the selected shape, type or pixel layer into 3D with depth, bevel, light and material, rendered to a layer that keeps its settings. (changes the picture) |
-| `film-apply-look` | Apply Film Look |  | Adds a Film Look adjustment layer with a named film look (negative, slide, black and white or cine: tone curve, colour and speed-based grain); params look, strength and grain. (changes the picture) |
+| `film-apply-look` | Apply Film Look |  | Adds a Film Look adjustment layer with a named film look (negative, slide, black and white or cine: tone curve, color and speed-based grain); params look, strength and grain. (changes the picture) |
 | `film-copy-points` | Copy Film Curve Points |  | Copies the tone curve points of the active Film Look layer. |
 | `film-frame` | Frame... |  | Opens Frame to add a film or white border layer. (changes the picture) |
 | `film-leak` | Light Leak... |  | Opens Light Leak to add a leak layer. (changes the picture) |
@@ -562,7 +562,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `flip-layer-v` | Flip Layer Vertical |  | Flips the layer top to bottom. (changes the picture) |
 | `forward` | Bring Forward | Mod+] | Moves the layer up one place. (changes the picture) |
 | `frame-from-layers` | Frame from Layers |  | Makes an image frame from the selected layers. (changes the picture) |
-| `frequency-separation` | Frequency Separation... |  | Splits what is visible into a blurred Low Frequency layer for colour and tone and a High Frequency layer for fine detail, stacked so the picture looks unchanged. Takes a blur radius in pixels; the dialog opens when it is left out. (changes the picture) |
+| `frequency-separation` | Frequency Separation... |  | Splits what is visible into a blurred Low Frequency layer for color and tone and a High Frequency layer for fine detail, stacked so the picture looks unchanged. Takes a blur radius in pixels; the dialog opens when it is left out. (changes the picture) |
 | `global-light` | Global Light... |  | Opens the Global Light dialog. (changes the picture) |
 | `group` | Group Layers | Mod+G | Puts the selected layers into a new folder. (changes the picture) |
 | `group-from-layers` | Group from Layers... |  | Opens the New Group from Layers dialog. (changes the picture) |
@@ -586,7 +586,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `layer-label-blue` | Blue |  | Labels the selected layers blue in the Layers panel. (changes the picture) |
 | `layer-label-gray` | Gray |  | Labels the selected layers gray in the Layers panel. (changes the picture) |
 | `layer-label-green` | Green |  | Labels the selected layers green in the Layers panel. (changes the picture) |
-| `layer-label-none` | No Color |  | Removes the colour label from the selected layers. (changes the picture) |
+| `layer-label-none` | No Color |  | Removes the color label from the selected layers. (changes the picture) |
 | `layer-label-orange` | Orange |  | Labels the selected layers orange in the Layers panel. (changes the picture) |
 | `layer-label-red` | Red |  | Labels the selected layers red in the Layers panel. (changes the picture) |
 | `layer-label-violet` | Violet |  | Labels the selected layers violet in the Layers panel. (changes the picture) |
@@ -619,7 +619,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `mask-view-alone` | View Mask Alone |  | Shows the active layer mask alone in black and white; again returns to the image. (changes the picture) |
 | `mask-view-red` | View Mask as Red Overlay |  | Shows the active layer mask as a red overlay on the image; again returns. (changes the picture) |
 | `matting-black` | Remove Black Matte |  | Removes black fringe from a cut-out. (changes the picture) |
-| `matting-decontaminate` | Color Decontaminate... |  | Opens Color Decontaminate to clean edge colour. (changes the picture) |
+| `matting-decontaminate` | Color Decontaminate... |  | Opens Color Decontaminate to clean edge color. (changes the picture) |
 | `matting-defringe` | Defringe... |  | Opens Defringe to pull in edge pixels. (changes the picture) |
 | `matting-white` | Remove White Matte |  | Removes white fringe from a cut-out. (changes the picture) |
 | `merge` | Merge Down | Mod+E | Merges the layer into the one below. (changes the picture) |
@@ -661,23 +661,23 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `new-adj-vibrance` | New Vibrance Layer... |  | Adds a Vibrance Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-artboard` | New Artboard |  | Adds an artboard. (changes the picture) |
 | `new-artboard-dialog` | Artboard... |  | Opens the New Artboard dialog. (changes the picture) |
-| `new-dodge-burn-layer` | Dodge & Burn Layer |  | Adds a Soft Light layer filled with 50% grey for dodging and burning. (changes the picture) |
+| `new-dodge-burn-layer` | Dodge & Burn Layer |  | Adds a Soft Light layer filled with 50% gray for dodging and burning. (changes the picture) |
 | `new-fill-adjustment` | New Fill or Adjustment Layer |  | Opens the list of fill layers and adjustment layers beside the Layers panel button and adds the one picked. (changes the picture) |
 | `new-fill-gradient` | Gradient... |  | Adds a gradient fill layer. (changes the picture) |
 | `new-fill-pattern` | Pattern... |  | Adds a pattern fill layer. (changes the picture) |
-| `new-fill-solid` | Solid Color... |  | Adds a solid colour fill layer. (changes the picture) |
+| `new-fill-solid` | Solid Color... |  | Adds a solid color fill layer. (changes the picture) |
 | `new-filter-layer` | New Filter Layer |  | Adds a filter layer that runs any filter on everything below it, limited by its mask, Limit, opacity and blend mode. (changes the picture) |
 | `new-folder` | New Folder |  | Adds a layer folder. (changes the picture) |
 | `new-folder-dialog` | Group... |  | Opens the New Group dialog. (changes the picture) |
 | `new-layer` | New Layer |  | Adds an empty layer above the active one. (changes the picture) |
-| `new-layer-dialog` | Layer... | Shift+Mod+N | Opens the New Layer dialog with name, colour and mode. (changes the picture) |
+| `new-layer-dialog` | Layer... | Shift+Mod+N | Opens the New Layer dialog with name, color and mode. (changes the picture) |
 | `new-relight-layer` | Relight Layer... |  | Adds a Relight layer that lights what lies beneath it with virtual lights, on this computer. (changes the picture) |
-| `new-shape-layer` | Shape Layer |  | Adds a shape layer from a kind (rectangle, ellipse, triangle, polygon, star, line, arrow, heart), a box, fill and stroke colours, stroke width, type, alignment, caps and corners, corner radius, sides or star points, and an optional gradient fill with its angle and end colour. (changes the picture) |
-| `new-type-layer` | Type Layer |  | Adds a type layer from text, position, size, colour, orientation and an optional paragraph box; with no text it starts typing on the canvas. (changes the picture) |
+| `new-shape-layer` | Shape Layer |  | Adds a shape layer from a kind (rectangle, ellipse, triangle, polygon, star, line, arrow, heart), a box, fill and stroke colors, stroke width, type, alignment, caps and corners, corner radius, sides or star points, and an optional gradient fill with its angle and end color. (changes the picture) |
+| `new-type-layer` | Type Layer |  | Adds a type layer from text, position, size, color, orientation and an optional paragraph box; with no text it starts typing on the canvas. (changes the picture) |
 | `panorama-apply-view` | Apply View to Panorama |  | Projects the current panorama edit view back onto its source panorama as a new layer named Panorama edit, one undo step. (changes the picture) |
 | `panorama-view` | Spherical Panorama... |  | Opens the active document, taken as an equirectangular picture, as a sphere you turn by dragging, with yaw, pitch and field of view; Edit View makes the current view a new document. (changes the picture) |
 | `paste-layer-style` | Paste Layer Style |  | Pastes the copied layer style. (changes the picture) |
-| `paste-layers` | Paste Layers |  | Pastes the layers Copy Layers kept onto the top of the current document, in place when the sizes agree, else centred. (changes the picture) |
+| `paste-layers` | Paste Layers |  | Pastes the layers Copy Layers kept onto the top of the current document, in place when the sizes agree, else centered. (changes the picture) |
 | `pick-layer-0` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
 | `pick-layer-1` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
 | `pick-layer-2` |  |  | Selects the layer in this slot from the layers under the pointer (right-click the canvas with the Move tool). |
@@ -712,7 +712,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `select-linked` | Select Linked Layers |  | Selects the layers linked to the active one. |
 | `send-back` | Send to Back | Shift+Mod+[ | Moves the layer to the bottom. (changes the picture) |
 | `set-filter-layer` | Set Filter Layer |  | Changes the settings of the active filter layer by key. (changes the picture) |
-| `shape-color` | Shape Color from Foreground |  | Sets the shape fill from the foreground colour. (changes the picture) |
+| `shape-color` | Shape Color from Foreground |  | Sets the shape fill from the foreground color. (changes the picture) |
 | `shape-corners` | Corner Radii... |  | Opens the corner radii of a rectangle shape. (changes the picture) |
 | `shape-style` | Shape Fill and Stroke... |  | Opens the shape fill and stroke dialog. (changes the picture) |
 | `shape-style-copy` | Copy Shape Fill and Stroke |  | Copies the active shape layer's fill and stroke. (changes the picture) |
@@ -805,7 +805,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 - `roomLight`: number 0 to 200; Light on room: percent of the lights that reach the room around the subject
 - `roomShadows`: number 0 to 100; Room shadows: strength of the subject's shadows on the room
 - `roomDepth`: number 25 to 300; Room depth: percent of the solved distance between the subject and the room behind
-- `ambient`: string; Colour of the kept original light, like #ffe8d0
+- `ambient`: string; Color of the kept original light, like #ffe8d0
 - `split`: string (auto | marigold | classic | off); How the photo's own light is taken out before the new lights: auto or classic (per-material shading, the subject's own detail kept), marigold (learned albedo, repaints surfaces, only when asked), or off (add light on top)
 
 ## Paint
@@ -825,7 +825,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | --- | --- | --- | --- |
 | `clipping-path` | Clipping Path... |  | Opens the dialog that marks a saved path as the clipping path, with a flatness. (changes the picture) |
 | `delete-path` | Delete Path |  | Deletes the current path. (changes the picture) |
-| `fill-path` | Fill Path |  | Fills the path with the foreground colour. (changes the picture) |
+| `fill-path` | Fill Path |  | Fills the path with the foreground color. (changes the picture) |
 | `fill-path-dialog` | Fill Path... |  | Opens Fill Path. (changes the picture) |
 | `new-path` | New Path |  | Starts a new empty path. (changes the picture) |
 | `new-shape-path` | New Shape Layer from Path |  | Makes a shape layer from the current path. (changes the picture) |
@@ -843,7 +843,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `auto-select-sample-all` | Sample All Layers |  | Toggles whether Subject, Sky and Object in Selection look at the whole picture or the active layer alone. |
 | `border` | Border... |  | Opens Border to select a band along the edge. (changes the picture) |
 | `channel-down` | Move Channel Down |  | Moves a channel one place down the list. (changes the picture) |
-| `channel-options` | Channel Options... |  | Sets a channel name, overlay colour and opacity. (changes the picture) |
+| `channel-options` | Channel Options... |  | Sets a channel name, overlay color and opacity. (changes the picture) |
 | `channel-up` | Move Channel Up |  | Moves a channel one place up the list. (changes the picture) |
 | `color-range` | Color Range... |  | Opens Color Range. (changes the picture) |
 | `contract` | Contract by 1 px... |  | Contracts the selection by the given pixels, or opens Contract when none are given. (changes the picture) |
@@ -854,7 +854,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `expand` | Expand by 1 px... |  | Expands the selection by the given pixels, or opens Expand when none are given. (changes the picture) |
 | `feather` | Feather... | Shift+F6 | Softens the selection edge by the given radius, or opens Feather when none is given. (changes the picture) |
 | `focus-area` | Focus Area... |  | Selects what is in focus; with range, noise, soften, mode or sampleAll it runs at once, without them it opens the Focus Area dialog. (changes the picture) |
-| `grow` | Grow |  | Grows the selection over similar neighbouring colours. (changes the picture) |
+| `grow` | Grow |  | Grows the selection over similar neighboring colors. (changes the picture) |
 | `inverse` | Inverse | Shift+Mod+I | Inverts the selection. (changes the picture) |
 | `layer-pixels` | Layer's Pixels |  | Selects the layer's non-transparent pixels. (changes the picture) |
 | `load-luminosity` | Load Luminosity | Alt+Mod+2 | Selects the picture by its brightness. (changes the picture) |
@@ -862,7 +862,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `load-selection-vector-mask` | Vector Mask to Selection |  | Turns the layer's vector mask into a selection. (changes the picture) |
 | `mask-black` | Mask's Black Areas |  | Selects the mask's black areas. (changes the picture) |
 | `new-channel` | New Channel |  | Adds an empty channel, black or white. (changes the picture) |
-| `new-spot-channel` | New Spot Channel |  | Adds a spot channel with an ink colour and a solidity; opens Channel Options when given no parameters. (changes the picture) |
+| `new-spot-channel` | New Spot Channel |  | Adds a spot channel with an ink color and a solidity; opens Channel Options when given no parameters. (changes the picture) |
 | `quick-mask` | Edit in Quick Mask Mode | Q | Turns Quick Mask on or off; painting in it makes the selection. (changes the picture) |
 | `reselect` | Reselect |  | Brings back the last selection. (changes the picture) |
 | `save-selection` | Save Selection... |  | Opens the dialog that saves the selection to a channel. (changes the picture) |
@@ -871,7 +871,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `select-and-mask` | Select and Mask... | Alt+Mod+R | Opens Select and Mask on the main canvas: view modes, refine tools on the picture and the properties beside it, applied as one step; a dialog where the workspace cannot open. (changes the picture) |
 | `select-and-mask-dialog` | Select and Mask Dialog... |  | Opens Select and Mask as a dialog with its own preview instead of on the main canvas. (changes the picture) |
 | `select-by-depth` | Select by Depth... |  | Selects the pixels between a far and a near depth of the document's shared depth map, with a feather, combined with the selection as asked. (changes the picture) |
-| `select-color-range` | Select Color Range |  | Selects by sampled colour, hue family, tone, skin tones or the Depth Map layer, combined with the selection as asked. (changes the picture) |
+| `select-color-range` | Select Color Range |  | Selects by sampled color, hue family, tone, skin tones or the Depth Map layer, combined with the selection as asked. (changes the picture) |
 | `select-drop` | Drop Floating Pixels |  | Drops the floating selection onto its layer as one step. (changes the picture) |
 | `select-float` | Float Selected Pixels |  | Lifts the selected pixels of the active layer into a floating selection that takes the Move tool's handles, until dropped. (changes the picture) |
 | `select-object` | Object in Selection |  | Selects the object inside the current selection. (changes the picture) |
@@ -1051,7 +1051,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `tool.options.contentAwareMove.structure` | Content-Aware Move: Structure |  | Sets Structure for the Content-Aware Move tool. |
 | `tool.options.contentAwareMove.transformOnDrop` | Content-Aware Move: Transform On Drop |  | Sets Transform On Drop for the Content-Aware Move tool. |
 | `tool.options.count.group` | Count: Group |  | Sets Group for the Count tool. |
-| `tool.options.count.groupColour` | Count: Group Colour |  | Sets Group Colour for the Count tool. |
+| `tool.options.count.groupColor` | Count: Group Color |  | Sets Group Color for the Count tool. |
 | `tool.options.count.hideGroup` | Count: Hide Group |  | Sets Hide Group for the Count tool. |
 | `tool.options.count.labelSize` | Count: Label Size |  | Sets Label Size for the Count tool. |
 | `tool.options.count.markerSize` | Count: Marker Size |  | Sets Marker Size for the Count tool. |
@@ -1470,13 +1470,13 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `reset-paragraph` | Reset Paragraph |  | Puts the active type layer, and new type, back to the factory paragraph attributes: left alignment, no indents, no space before or after, no hyphenation. (changes the picture) |
 | `resolve-missing-fonts` | Resolve Missing Fonts... |  | Lists the fonts type layers use that are not installed and replaces each with an installed family. (changes the picture) |
 | `save-default-type-styles` | Save Default Type Styles |  | Keeps the current Type settings and this document's paragraph and character styles on this computer as the defaults Load Default Type Styles brings back. |
-| `type-aa-crisp` | Crisp |  | Sets the type anti-aliasing to Crisp: steeper edges, centred a little lower. (changes the picture) |
+| `type-aa-crisp` | Crisp |  | Sets the type anti-aliasing to Crisp: steeper edges, centered a little lower. (changes the picture) |
 | `type-aa-none` | None |  | Sets the type anti-aliasing to None: every edge pixel fully on or off. (changes the picture) |
 | `type-aa-sharp` | Sharp |  | Sets the type anti-aliasing to Sharp: steeper edges. (changes the picture) |
 | `type-aa-smooth` | Smooth |  | Sets the type anti-aliasing to Smooth: the canvas's own edges (the default). (changes the picture) |
 | `type-aa-strong` | Strong |  | Sets the type anti-aliasing to Strong: steeper edges that read heavier. (changes the picture) |
 | `type-aa-windows` | Windows |  | Sets the type anti-aliasing to Windows: a coverage gamma on grayscale edges. (changes the picture) |
-| `type-aa-windows-lcd` | Windows LCD |  | Sets the type anti-aliasing to Windows LCD: each edge averaged with its horizontal neighbours. (changes the picture) |
+| `type-aa-windows-lcd` | Windows LCD |  | Sets the type anti-aliasing to Windows LCD: each edge averaged with its horizontal neighbors. (changes the picture) |
 | `type-all-caps` | All Caps |  | Sets the active type layer, and new type, in capital letters, or back to as typed. (changes the picture) |
 | `type-angle` | Type Angle |  | Turns the active type layer by an angle in degrees, clockwise, drawing the glyphs at that angle so the edges stay sharp; 0 sets it straight. (changes the picture) |
 | `type-direction-auto` | Follow Language Options |  | Sets the active type layer, and new type, to take its base direction from Language Options. (changes the picture) |
@@ -1500,10 +1500,10 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `type-path-flip` | Flip Type on Path |  | Moves type set on a path to the other side of the path. (changes the picture) |
 | `type-path-release` | Release Type from Path |  | Releases type from its path: the same words become straight point text. (changes the picture) |
 | `type-range-character-style` | Apply Character Style to Range |  | Applies a saved character style (by name or id) to a character range of the selected type layers, or to the letters selected while typing, as per-range overrides. (changes the picture) |
-| `type-range-style` | Character Range Style |  | Sets size, colour, font family, weight, bold, italic, baseline shift, tracking, language, underline, strikethrough, caps, horizontal scale (scale_x) or vertical scale (scale_y) on a character range of the selected type layers (the whole text when no range is given), or on the letters selected while typing; clear true takes the range back to the layer's own look. (changes the picture) |
+| `type-range-style` | Character Range Style |  | Sets size, color, font family, weight, bold, italic, baseline shift, tracking, language, underline, strikethrough, caps, horizontal scale (scale_x) or vertical scale (scale_y) on a character range of the selected type layers (the whole text when no range is given), or on the letters selected while typing; clear true takes the range back to the layer's own look. (changes the picture) |
 | `type-small-caps` | Small Caps |  | Sets the active type layer, and new type, in small capitals, or back to as typed. (changes the picture) |
 | `type-strikethrough` | Strikethrough |  | Strikes through the active type layer and new type, or removes it. (changes the picture) |
-| `type-to-shape` | Convert to Shape |  | Turns the active type layer into a shape layer in the text colour, in the place of the type layer; the type layer is removed, and Undo brings it back. (changes the picture) |
+| `type-to-shape` | Convert to Shape |  | Turns the active type layer into a shape layer in the text color, in the place of the type layer; the type layer is removed, and Undo brings it back. (changes the picture) |
 | `type-underline` | Underline |  | Underlines the active type layer and new type, or removes it. (changes the picture) |
 | `type-vertical` | Vertical |  | Sets the active type layer to vertical columns of type, running right to left. (changes the picture) |
 | `type-work-path` | Create Work Path |  | Traces the active type layer's outlines from its rendered pixels into the Work Path. (changes the picture) |
@@ -1524,16 +1524,16 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `delete-slice` | Delete Slice |  | Removes the selected user slice and keeps the others. (changes the picture) |
 | `depth-map-show` | Show Depth Map |  | Shows the Depth Map layer alone on the canvas, or the picture again. |
 | `divide-slice` | Divide Slice... |  | Cuts the selected slice into equal slices across and down. (changes the picture) |
-| `edit-selected-guides` | Edit Selected Guides... |  | Opens a dialog for the picked guides: orientation and position in any unit for one guide, and a colour for any number. |
+| `edit-selected-guides` | Edit Selected Guides... |  | Opens a dialog for the picked guides: orientation and position in any unit for one guide, and a color for any number. |
 | `fit` | Fit on Screen | Mod+0 | Zooms so the picture fits the window. |
 | `fit-artboard` | Fit Artboard on Screen |  | Zooms so the artboard holding the active layer fills the window. |
 | `fit-layers` | Fit Layer(s) on Screen |  | Zooms so the selected layers' content fills the window. |
 | `flip-view-h` | Flip Horizontal |  | Mirrors the view of the document left to right, for this document only; the pixels are not changed and the pointer still lands on the right pixel. |
 | `gamut-warning` | Gamut Warning | Shift+Mod+Y | Turns the gamut warning on or off. |
-| `grid-settings` | Grid Settings... |  | Opens Preferences on Guides & Grid at the side, with the canvas still usable through it so the grid changes live: the grid colour with presets, line style, opacity, spacing and subdivisions, with Restore Defaults. |
+| `grid-settings` | Grid Settings... |  | Opens Preferences on Guides & Grid at the side, with the canvas still usable through it so the grid changes live: the grid color with presets, line style, opacity, spacing and subdivisions, with Restore Defaults. |
 | `guide-layout` | New Guide Layout... |  | Opens New Guide Layout: columns and rows with gutters inside margins, placed as guides in one step. (changes the picture) |
-| `guides-from-shape` | New Guides From Shape |  | Places guides on the edges, the centre or both of the active shape layer or of the selection; the source, edges and centre can be chosen. |
-| `guides-from-shape-centre` | New Guides From Shape Centre |  | Places one vertical and one horizontal guide through the centre of the active shape layer, or of the selection. |
+| `guides-from-shape` | New Guides From Shape |  | Places guides on the edges, the center or both of the active shape layer or of the selection; the source, edges and center can be chosen. |
+| `guides-from-shape-centre` | New Guides From Shape Center |  | Places one vertical and one horizontal guide through the center of the active shape layer, or of the selection. |
 | `interface-rtl` | Right-to-Left Layout |  | Mirrors the window for right-to-left reading: the toolbar, the panels and the menu bar swap sides. The choice is kept. |
 | `interface-zoom-in` | Interface Zoom In | Alt+Mod+= | Makes the whole window larger by one step (80, 90, 100, 110, 125, 150, 175, 200 percent); the choice is kept. |
 | `interface-zoom-out` | Interface Zoom Out | Alt+Mod+- | Makes the whole window smaller by one step; the choice is kept. |
@@ -1543,33 +1543,33 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `lock-slices` | Lock Slices |  | Locks or unlocks the slices so the Slice and Slice Select tools cannot add, move, resize or delete them. |
 | `menus-in-window` | Menus in Window |  | Keeps the menus in the window instead of the macOS menu bar (desktop app on macOS). The choice is kept and applies at the next start. |
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
-| `next-favourite-theme` | Next Favourite Theme |  | Switches to the next theme marked as a favourite in Preferences > Interface (right-click a theme swatch to mark it). |
+| `next-favourite-theme` | Next Favorite Theme |  | Switches to the next theme marked as a favorite in Preferences > Interface (right-click a theme swatch to mark it). |
 | `no-tool` | No Tool |  | Switches to no tool at all, so a click or drag on the canvas does nothing. |
 | `os-full-screen` | Full Screen | F11 | Puts the whole window into the operating system full screen, or leaves it. |
 | `par-correction` | Pixel Aspect Ratio Correction |  | Shows or hides the pixel aspect correction, which stretches the canvas and the Navigator preview by the pixel shape; tools and the pointer keep working in document pixels. |
 | `pasteboard-black` | Pasteboard: Black |  | Makes the pasteboard around the picture black. |
-| `pasteboard-dark` | Pasteboard: Dark Grey |  | Makes the pasteboard around the picture dark grey. |
-| `pasteboard-default` | Pasteboard: Theme Default |  | Gives the pasteboard around the picture the colour of the current theme. |
-| `pasteboard-light` | Pasteboard: Light Grey |  | Makes the pasteboard around the picture light grey. |
-| `pasteboard-mid` | Pasteboard: Medium Grey |  | Makes the pasteboard around the picture medium grey. |
+| `pasteboard-dark` | Pasteboard: Dark Gray |  | Makes the pasteboard around the picture dark gray. |
+| `pasteboard-default` | Pasteboard: Theme Default |  | Gives the pasteboard around the picture the color of the current theme. |
+| `pasteboard-light` | Pasteboard: Light Gray |  | Makes the pasteboard around the picture light gray. |
+| `pasteboard-mid` | Pasteboard: Medium Gray |  | Makes the pasteboard around the picture medium gray. |
 | `pattern-preview` | Pattern Preview |  | Shows or hides eight copies of the document around it, to check that a tile repeats. |
 | `performance-hud` | Performance HUD |  | Shows or hides a small panel over the canvas with the canvas frame time (median and worst of the last frames), the graphics processor pass time from a timer query where the browser offers one, and the render path in use (WebGPU, WebGL2, native or CPU). |
-| `pixel-art-preview` | Pixel Art Preview |  | Shows or hides a crisp, nearest-neighbour view of the document at every zoom. |
+| `pixel-art-preview` | Pixel Art Preview |  | Shows or hides a crisp, nearest-neighbor view of the document at every zoom. |
 | `pixel-grid` | Pixel Grid |  | Shows or hides the pixel grid at high zoom. |
 | `preview-32` | 32-bit Preview Options... |  | Opens 32-bit Preview Options, exposure and gamma for how a 32-bit picture is shown. |
 | `print-size` | Print Size |  | Zooms so the picture shows at its printed size on screen, from the document resolution (96 screen pixels to the inch). |
 | `proof-colors` | Proof Colors |  | Turns Proof Colors on or off. |
-| `proof-preset-black` | Working Black Plate |  | Shows the working CMYK black plate as a grey image and turns Proof Colors on. |
+| `proof-preset-black` | Working Black Plate |  | Shows the working CMYK black plate as a gray image and turns Proof Colors on. |
 | `proof-preset-cmy` | Working CMY Plates |  | Shows the working CMYK cyan, magenta and yellow plates together, without black, and turns Proof Colors on. |
 | `proof-preset-cmyk` | Working CMYK |  | Previews the picture as the working CMYK profile prints it and turns Proof Colors on. |
-| `proof-preset-cyan` | Working Cyan Plate |  | Shows the working CMYK cyan plate as a grey image and turns Proof Colors on. |
-| `proof-preset-deuteranopia` | Color Blindness - Deuteranopia-type |  | Simulates deuteranopia, green-blind colour vision, and turns Proof Colors on. |
+| `proof-preset-cyan` | Working Cyan Plate |  | Shows the working CMYK cyan plate as a gray image and turns Proof Colors on. |
+| `proof-preset-deuteranopia` | Color Blindness - Deuteranopia-type |  | Simulates deuteranopia, green-blind color vision, and turns Proof Colors on. |
 | `proof-preset-internet` | Internet Standard RGB (sRGB) |  | Previews the picture as a standard sRGB screen shows it and turns Proof Colors on. |
 | `proof-preset-macrgb` | Legacy Macintosh RGB (Gamma 1.8) |  | Previews the picture on an older Macintosh screen, gamma 1.8, and turns Proof Colors on. |
-| `proof-preset-magenta` | Working Magenta Plate |  | Shows the working CMYK magenta plate as a grey image and turns Proof Colors on. |
-| `proof-preset-monitor` | Monitor RGB |  | Shows the picture with its colour numbers sent to the screen as they are, without the profile conversion, and turns Proof Colors on. |
-| `proof-preset-protanopia` | Color Blindness - Protanopia-type |  | Simulates protanopia, red-blind colour vision, and turns Proof Colors on. |
-| `proof-preset-yellow` | Working Yellow Plate |  | Shows the working CMYK yellow plate as a grey image and turns Proof Colors on. |
+| `proof-preset-magenta` | Working Magenta Plate |  | Shows the working CMYK magenta plate as a gray image and turns Proof Colors on. |
+| `proof-preset-monitor` | Monitor RGB |  | Shows the picture with its color numbers sent to the screen as they are, without the profile conversion, and turns Proof Colors on. |
+| `proof-preset-protanopia` | Color Blindness - Protanopia-type |  | Simulates protanopia, red-blind color vision, and turns Proof Colors on. |
+| `proof-preset-yellow` | Working Yellow Plate |  | Shows the working CMYK yellow plate as a gray image and turns Proof Colors on. |
 | `proof-setup` | Proof Setup... |  | Opens Proof Setup. |
 | `rail-columns` | Tools in Two Columns |  | Lays the toolbar out in one or two columns. |
 | `screen-full` | Full Screen Mode |  | Full screen with no menu bar. |
@@ -1595,14 +1595,14 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `slices-from-guides` | Slices From Guides |  | Replaces the user slices with one slice per cell between the guides. (changes the picture) |
 | `snap` | Snap | Shift+Mod+; | Turns snapping on or off for moving and transforming; the Snap To choices are kept. |
 | `snap-all` | Snap To All |  | Turns every Snap To target on, or all off when they are all on. |
-| `snap-bounds` | Snap To Document Bounds |  | Turns snapping to the document edges and centre on or off. |
+| `snap-bounds` | Snap To Document Bounds |  | Turns snapping to the document edges and center on or off. |
 | `snap-grid` | Snap To Grid |  | Turns snapping to the visible grid on or off. |
 | `snap-guides` | Snap To Guides |  | Turns snapping to visible guides on or off. |
-| `snap-layers` | Snap To Layers |  | Turns snapping to the edges and centres of other visible layers on or off. |
-| `snap-selection` | Snap To Selection |  | Turns snapping to the edges and centre of the current selection on or off. |
+| `snap-layers` | Snap To Layers |  | Turns snapping to the edges and centers of other visible layers on or off. |
+| `snap-selection` | Snap To Selection |  | Turns snapping to the edges and center of the current selection on or off. |
 | `snap-slices` | Snap To Slices |  | Turns snapping to the edges of shown slices on or off. |
 | `task-bar-pin` | Pin Task Bar |  | Pins the Contextual Task Bar where it stands, or lets it follow the selection again. |
-| `task-bar-reset` | Reset Task Bar Position |  | Puts the Contextual Task Bar back at the bottom centre of the canvas. |
+| `task-bar-reset` | Reset Task Bar Position |  | Puts the Contextual Task Bar back at the bottom center of the canvas. |
 | `tile-grid` | Tile Grid |  | Shows or hides a dashed grid of the 256 pixel tiles the GPU and giant layers work in. |
 | `toggle-auto-slices` | Toggle Auto Slices |  | Shows or hides the dashed auto slices that fill the space between user slices. |
 | `toggle-dock-panels` | Toggle Dock Panels | Shift+Tab | Shows or hides the panel column and the properties column, and keeps the toolbar and the options bar. |
@@ -1658,7 +1658,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `developer-tools` | Developer Tools |  | Opens the web inspector of the desktop window; in a browser tab it says to use the browser's own developer tools. |
 | `float-all-windows` | Float All in Windows |  | Gives every open document a floating window of its own. |
 | `float-window` | Float in Window |  | Detaches a view of the current document into a floating window inside the app, with its own zoom, pan and rotation; drag its title to move it and its edges to resize it. |
-| `get-brush` | Get Brush Settings |  | Returns the brush: size, hardness, opacity, flow, mode, preset, tip shape, jitters, scatter, texture, dual brush, colour dynamics and transfer. |
+| `get-brush` | Get Brush Settings |  | Returns the brush: size, hardness, opacity, flow, mode, preset, tip shape, jitters, scatter, texture, dual brush, color dynamics and transfer. |
 | `glyphs` | Glyphs |  | Opens Glyphs, a grid of Unicode characters to add to a type layer. |
 | `help` | formvis Help | F1 | Opens the formvis manual. |
 | `interface-darken` | Darken Interface | Shift+Mod+F1 | Switches to the next darker interface theme, ordered by the theme background; does nothing at the darkest. |
@@ -1666,7 +1666,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `jobs-list` | Jobs |  | Opens or closes the list of running background jobs (opening a giant PSB, saving, exporting in parts, banded filters), each with its name, progress bar, percent and its own Stop. |
 | `manage-plugins` | Manage Plugins... |  | Opens the plugins dialog, which lists each plugin with whether it runs, its commands, their keys and its latest error. |
 | `match-all` | Match All |  | Matches zoom, location and rotation across open documents. (changes the picture) |
-| `match-location` | Match Location |  | Centres every open document on the same point as the current one. (changes the picture) |
+| `match-location` | Match Location |  | Centers every open document on the same point as the current one. (changes the picture) |
 | `match-rotation` | Match Rotation |  | Gives every open document the current view rotation. (changes the picture) |
 | `match-zoom` | Match Zoom |  | Gives every open document the current zoom. (changes the picture) |
 | `merge-columns` | Merge Panel Columns |  | Merges the panel columns into one. |
@@ -1678,7 +1678,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `next-document` | Next Document | Mod+Tab | Switches to the next open document in the tab strip, wrapping from the last to the first. |
 | `notices` | Notices... |  | Opens the list of the notices shown so far, newest first, with the time and a count for repeats; Clear empties it. |
 | `open-plugins-folder` | Open Plugins Folder |  | Shows the plugins folder in the system file manager. |
-| `panel-actions` | Actions | Alt+F9 | Shows or hides the Actions panel (Alt+F9): the actions as a list or as coloured buttons, with Record, Stop, Play and the steps of the chosen action. |
+| `panel-actions` | Actions | Alt+F9 | Shows or hides the Actions panel (Alt+F9): the actions as a list or as colored buttons, with Record, Stop, Play and the steps of the chosen action. |
 | `panel-activate` | Activate Panel |  | Shows a panel if it is hidden, opens it if folded, brings a floating one to the front and, given a tab id, puts that tab in front of its group; params panel. |
 | `panel-adjustments` | Adjustments |  | Shows or hides the Adjustments panel. |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
@@ -1729,7 +1729,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `save-brush-preset` | Save Brush Preset |  | Saves the current brush as a preset in a folder (My Brushes unless group is given) and selects it. |
 | `script-console` | Script Console... |  | Opens the Script Console, a log with a one-line input that runs JavaScript with formvis.run to run any catalogue command, formvis.commands to list them and formvis.api, the plugin API. |
 | `search` | Search... | Mod+K | Opens the command palette; tool modes such as Polygonal Lasso are listed on their own and a switch shows On or Off. |
-| `set-brush` | Set Brush Settings |  | Sets any of the brush values by name (size, hardness, opacity, flow, mode, preset, angle, roundness, spacing, jitters, scatter, count, flips, noise, wet edges, texture, dual brush, colour dynamics, transfer) and returns the brush as it is after. |
+| `set-brush` | Set Brush Settings |  | Sets any of the brush values by name (size, hardness, opacity, flow, mode, preset, angle, roundness, spacing, jitters, scatter, count, flips, noise, wet edges, texture, dual brush, color dynamics, transfer) and returns the brush as it is after. |
 | `settings` | Preferences... | Mod+, | Opens Preferences. |
 | `sheet-panels` | Panels Sheet |  | Opens the Panels sheet on narrow screens. |
 | `sheet-props` | Properties Sheet |  | Opens the Properties sheet on narrow screens. |
@@ -1755,8 +1755,8 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `theme-ocean` | Theme: Deep Ocean |  | Switches the window to the Deep Ocean theme; nothing in the window is rebuilt. |
 | `theme-pro-dark` | Theme: Pro Dark |  | Switches the window to the Pro Dark theme; nothing in the window is rebuilt. |
 | `theme-pro-light` | Theme: Pro Light |  | Switches the window to the Pro Light theme; nothing in the window is rebuilt. |
-| `theme-pro-light-grey` | Theme: Pro Light Grey |  | Switches the window to the Pro Light Grey theme; nothing in the window is rebuilt. |
-| `theme-pro-medium-grey` | Theme: Pro Medium Grey |  | Switches the window to the Pro Medium Grey theme; nothing in the window is rebuilt. |
+| `theme-pro-light-grey` | Theme: Pro Light Gray |  | Switches the window to the Pro Light Gray theme; nothing in the window is rebuilt. |
+| `theme-pro-medium-grey` | Theme: Pro Medium Gray |  | Switches the window to the Pro Medium Gray theme; nothing in the window is rebuilt. |
 | `theme-rose` | Theme: Rose Noir |  | Switches the window to the Rose Noir theme; nothing in the window is rebuilt. |
 | `theme-sand` | Theme: Sand (light) |  | Switches the window to the Sand (light) theme; nothing in the window is rebuilt. |
 | `theme-slate` | Theme: Slate |  | Switches the window to the Slate theme; nothing in the window is rebuilt. |

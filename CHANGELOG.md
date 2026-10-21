@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.94.2 · 2026-10-21
+
+- Spelling: the interface's English uses US spelling throughout (color, center, gray, behavior, favorite, -ize, license) in menus, command words, dialogs, tooltips and the manual. Command ids, saved-file keys and other languages are unchanged; a few rarely seen hints keep the old spelling for now.
+- PSD: an Indexed PSD whose merged image is stored uncompressed opens as Indexed with its palette (it opened as flat RGB).
+- EXR: layers from a multi-part file are named after their part (depth, normals) rather than the channel group.
+- Window > Jobs opens on screen at once, above the status bar.
+- Curves and Levels eyedroppers on an adjustment layer always sample the picture beneath it (a second sample read through the layer's own curve).
+- Layer Style: Blend Interior Effects as Group and Layer Mask Hides Effects are kept with no effect on, in projects and in PSD.
+
 ## 1.94.1 · 2026-10-21
 
 - PSD: a Bitmap (1-bit) PSD no longer reports its merged image as cut short, and a CMYK PSD with no layers opens its merged image instead of an empty document.

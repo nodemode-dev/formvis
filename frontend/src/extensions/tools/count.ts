@@ -50,7 +50,7 @@ export const countTool: Tool = {
       { kind: 'title', text: 'Count' },
       { kind: 'select', label: 'Group', choices: [{ id: '', label: 'Group 1' }], live: () => (groups().length ? groups().map((g) => ({ id: g.id, label: g.name })) : [{ id: '', label: 'Group 1' }]), get: () => active()?.id ?? '', set: (id) => { e.activeCountGroup = id || null; e.emit('options', null); } },
       { kind: 'button', label: 'New Group', run: () => { e.newCountGroup(); } },
-      { kind: 'color', label: 'Group Colour', when: () => !!active(), get: () => rgb(active()?.color ?? '#ff5a36'), set: (c) => { const a = active(); if (a) e.setCountGroup(a.id, { color: hex(c) }); } },
+      { kind: 'color', label: 'Group Color', when: () => !!active(), get: () => rgb(active()?.color ?? '#ff5a36'), set: (c) => { const a = active(); if (a) e.setCountGroup(a.id, { color: hex(c) }); } },
       { kind: 'toggle', label: 'Hide Group', when: () => !!active(), get: () => !!active()?.hidden, set: (v) => { const a = active(); if (a) e.setCountGroup(a.id, { hidden: v }); } },
       { kind: 'readout', label: 'Count', get: () => { const a = active(), all = e.current?.doc.counts?.length ?? 0; return a ? `${inGroup(a.id)} of ${all}` : String(all); } },
       { kind: 'range', label: 'Marker Size', min: 1, max: 12, step: 1, unit: 'px', get: () => e.measureOpts.countMarker, set: (v) => { e.measureOpts.countMarker = v; e.emit('overlay', null); } },

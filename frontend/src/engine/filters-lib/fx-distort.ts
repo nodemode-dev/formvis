@@ -48,7 +48,7 @@ export const DISTORT_FX: readonly FxDef[] = [
   {
     key: 'diffuseGlow', label: 'Diffuse Glow', category: 'Distort',
     params: [slider('graininess', 0, 10, 6), slider('glowAmount', 0, 20, 10), slider('clearAmount', 0, 20, 15)],
-    note: 'The glow is the background colour.',
+    note: 'The glow is the background color.',
     reach: (_v, k) => 4.5 * k + 2,
     paint: (p, v) => {
       const { w, h, k } = p, grainy = num(v, 'graininess') / 10, amount = num(v, 'glowAmount') / 10, t = 0.2 + (num(v, 'clearAmount') / 20) * 0.6;

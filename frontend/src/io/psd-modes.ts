@@ -97,6 +97,27 @@ export function writeMultichannelPsd(doc: Doc, psb = false): { bytes: ArrayBuffe
   return { bytes, notes };
 }
 
+/** A layerless 8-bit Indexed Color file whose merged image is stored raw, read from its colour table (the three 256-entry
+ *  red, green and blue runs of the colour mode data) and its index plane; null for any other file. */
+export function readPsdIndexedRaw(buf: ArrayBuffer, resolution: number | null): { doc: Doc; notes: string[]; kept: string[]; activeId: ID | null } | null {
+  if (psdColorMode(buf) !== 2) return null;
+  const v = new DataView(buf), big = v.getUint16(4) === 2, cmLen = v.getUint32(26);
+  if (v.getUint16(22) !== 8 || cmLen < 768) return null;
+  const cmEnd = 30 + cmLen, resEnd = cmEnd + 4 + v.getUint32(cmEnd), lenSize = big ? 8 : 4;
+  if (resEnd + lenSize > buf.byteLength || (big ? Number(v.getBigUint64(resEnd)) : v.getUint32(resEnd)) !== 0) return null;
+  const at = resEnd + lenSize;
+  if (at + 2 > buf.byteLength || v.getUint16(at) !== 0) return null;
+  const m = mergedPlanes(buf);
+  if (!m) return null;
+  const palette: RGB[] = Array.from({ length: 256 }, (_, i) => ({ r: v.getUint8(30 + i), g: v.getUint8(30 + 256 + i), b: v.getUint8(30 + 512 + i) }));
+  const r = new Raster(m.width, m.height), img = new ImageData(m.width, m.height);
+  for (let i = 0; i < m.planes[0].length; i++) { const c = palette[m.planes[0][i]]; img.data[i * 4] = c.r; img.data[i * 4 + 1] = c.g; img.data[i * 4 + 2] = c.b; img.data[i * 4 + 3] = 255; }
+  r.write(img);
+  const base: Doc = { id: uid(), width: m.width, height: m.height, resolution: resolution ?? 72, layers: [] };
+  const icc = readIccProfile(buf), layer = newLayer('Background', base, { raster: r });
+  return { doc: { ...base, ...(icc ? { profile: icc } : {}), layers: [layer], mode: 'indexed', palette }, notes: ['This PSD has no layers; it opened as a single one.'], kept: [`Indexed Color with ${palette.length} colours.`], activeId: layer.id };
+}
+
 /** A Duotone or Multichannel file as a document, or null for any other mode or a merged image that cannot be read. */
 export function readPsdChannelMode(buf: ArrayBuffer, resolution: number | null): { doc: Doc; notes: string[]; activeId: ID | null } | null {
   const mode = psdColorMode(buf);

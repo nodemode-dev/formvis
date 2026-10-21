@@ -100,7 +100,7 @@ export class NewCanvasDialog extends Dialog {
   private readonly unit = el<HTMLSelectElement>('<select class="cv-nd-input cv-nd-mono" aria-label="Unit"><option value="px">px</option><option value="in">in</option><option value="cm">cm</option><option value="mm">mm</option><option value="col">columns</option></select>');
   private readonly res = el<HTMLInputElement>('<input class="cv-nd-input cv-nd-mono" type="text" inputmode="decimal" value="72" aria-label="Resolution">');
   private readonly fill = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Background Contents"><option value="white">White</option><option value="background">Background Color</option><option value="black">Black</option><option value="custom">Custom</option><option value="transparent">Transparent</option></select>');
-  private readonly fillColour = el<HTMLInputElement>('<input class="cv-nd-colour" type="color" value="#808080" aria-label="Custom background colour" hidden>');
+  private readonly fillColour = el<HTMLInputElement>('<input class="cv-nd-colour" type="color" value="#808080" aria-label="Custom background color" hidden>');
   private readonly savePreset = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Keeps the current size and resolution under the name above">Save as Preset</button>');
   private readonly deletePreset = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Removes the chosen saved preset" hidden>Delete Preset</button>');
   private readonly artboards = el<HTMLInputElement>('<input type="checkbox" aria-label="Artboards">');
@@ -591,7 +591,7 @@ export class SettingsDialog extends Dialog {
   private readonly systemPickerRow = checkRow('Use the system color picker', (v) => this.change({ systemPicker: v }));
   /** Preferences > Interface > Canvas Color: the pasteboard around the picture, shared with View > Pasteboard; the app connects it. */
   canvasColour: { get(): string; set(key: string): void } | null = null;
-  private readonly canvasColourRow = selectRow('Canvas Color', [['default', 'Theme Default'], ['black', 'Black'], ['dark', 'Dark Grey'], ['mid', 'Medium Grey'], ['light', 'Light Grey']], (v) => this.canvasColour?.set(v));
+  private readonly canvasColourRow = selectRow('Canvas Color', [['default', 'Theme Default'], ['black', 'Black'], ['dark', 'Dark Gray'], ['mid', 'Medium Gray'], ['light', 'Light Gray']], (v) => this.canvasColour?.set(v));
   private readonly interpolationRow = selectRow('Image Interpolation', INTERPOLATIONS, (v) => this.change({ interpolation: v as ResampleMethod }));
   private readonly beepRow = checkRow('Beep When Done', (v) => this.change({ beepWhenDone: v }));
   private readonly zoomResizesRow = checkRow('Zoom Resizes Windows', (v) => this.change({ zoomResizes: v }));
@@ -607,7 +607,7 @@ export class SettingsDialog extends Dialog {
   private readonly gamutColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Gamut Warning color">');
   private readonly guideStyleRow = selectRow('Guide line style', LINE_STYLES, (v) => this.change({ guideStyle: v as LineStyle }));
   private readonly gridStyleRow = selectRow('Grid line style', LINE_STYLES, (v) => this.change({ gridStyle: v as LineStyle }));
-  private readonly gridPresetRow: Row<string> = selectRow('Grid colour preset', [['', 'Choose...'], ['#808080', 'Grey'], ['#000000', 'Black'], ['#ffffff', 'White'], ['#ff6b6b', 'Light Red'], ['#6bb5ff', 'Light Blue'], ['#7bdc8a', 'Light Green'], ['#ffd45e', 'Yellow']], (v) => {
+  private readonly gridPresetRow: Row<string> = selectRow('Grid color preset', [['', 'Choose...'], ['#808080', 'Gray'], ['#000000', 'Black'], ['#ffffff', 'White'], ['#ff6b6b', 'Light Red'], ['#6bb5ff', 'Light Blue'], ['#7bdc8a', 'Light Green'], ['#ffd45e', 'Yellow']], (v) => {
     if (!v) return;
     this.gridColor.value = v;
     this.change({ gridColor: v });
@@ -622,7 +622,7 @@ export class SettingsDialog extends Dialog {
   /** Lock Workspace lives with the dock; the app connects it. */
   workspaceLock: { get(): boolean; set(on: boolean): void } | null = null;
   private colorRow(label: string, input: HTMLInputElement, key: 'guideColor' | 'gridColor' | 'sliceColor'): HTMLElement {
-    const row = el(`<label class="cv-field"><span>${label}</span></label>`), theme = el<HTMLButtonElement>('<button class="cv-btn" type="button">Theme colour</button>');
+    const row = el(`<label class="cv-field"><span>${label}</span></label>`), theme = el<HTMLButtonElement>('<button class="cv-btn" type="button">Theme color</button>');
     input.addEventListener('input', () => this.change({ [key]: input.value } as Partial<Prefs>));
     theme.addEventListener('click', () => this.change({ [key]: '' } as Partial<Prefs>));
     row.append(input, theme);
@@ -706,7 +706,7 @@ export class SettingsDialog extends Dialog {
       grp('Reset', reset));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface',
-      grp('Theme', row, nt('Right-click a theme to favourite it. Theme and accent are shared with NodeMode on this device.'), this.themeAutoRow.el, cols(this.themeLightRow.el, this.themeDarkRow.el), nt('Match System Appearance switches between the light and dark theme chosen here when the appearance of the computer changes; a theme picked by hand stays until the next change of a preference or of the appearance.'), accentRow, this.intensityRow.el, nt('Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.'), this.skins.el),
+      grp('Theme', row, nt('Right-click a theme to favorite it. Theme and accent are shared with NodeMode on this device.'), this.themeAutoRow.el, cols(this.themeLightRow.el, this.themeDarkRow.el), nt('Match System Appearance switches between the light and dark theme chosen here when the appearance of the computer changes; a theme picked by hand stays until the next change of a preference or of the appearance.'), accentRow, this.intensityRow.el, nt('Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.'), this.skins.el),
       grp('Language, Text and Scale', this.languageRow.el, nt('The language of the whole interface. Names you give layers and documents stay as you wrote them.'), cols(this.fontSizeRow.el, this.scaleRow.el), nt('Text size scales the interface\'s text.')),
       grp('Motion and Notices', this.animationsRow.el, this.noticeSecondsRow.el),
       grp('Canvas Appearance', this.canvasColourRow.el, nt('Canvas Color is the pasteboard around the picture (the same as View > Pasteboard).'), ...this.pageRows.interfaceRows));
@@ -761,15 +761,15 @@ export class SettingsDialog extends Dialog {
     gamutField.append(this.gamutColor);
     add('Transparency & Gamut',
       grp('Transparency', cols(this.checkerSizeRow.el, this.checkerColorsRow.el), ...this.pageRows.transparency, el(`<p class="cv-note">${t('The checkerboard shown behind transparent pixels. None shows it plain; Match Theme uses the light checkerboard in light themes and the dark one in dark themes.')}</p>`)),
-      grp('Gamut Warning', gamutField, this.gamutOpacityRow.el, el('<p class="cv-note">The colour and opacity that View > Gamut Warning paints over colours the proof profile cannot print.</p>')));
+      grp('Gamut Warning', gamutField, this.gamutOpacityRow.el, el('<p class="cv-note">The color and opacity that View > Gamut Warning paints over colors the proof profile cannot print.</p>')));
     this.scratchClean.addEventListener('click', () => { this.scratch?.clean(); setTimeout(() => void this.refreshScratch(), 400); });
     add('Scratch Disks', grp('Working Files', this.pageRows.scratch.el, this.scratchInfo, this.scratchClean, el('<p class="cv-note">formvis keeps recovery copies of open documents and closed tabs in this device\'s storage, the way a desktop editor uses a scratch disk. Clean Working Files removes the copies of documents that are no longer open; open documents are not touched. Layer effect and display caches are set in Performance.</p>')));
     add('Units & Rulers',
       grp('Rulers', this.rulerRow.el, nt('The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.')),
       grp('Resolution and Columns', ...this.pageRows.units));
     add('Guides & Grid',
-      grp('Guides', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, nt('The colour and line style of guides.')),
-      grp('Grid', this.colorRow('Grid', this.gridColor, 'gridColor'), cols(this.gridStyleRow.el, this.gridPresetRow.el, this.gridUnitRow.el, this.gridEveryRow.el), this.subdivRow.el, this.gridOpacityRow.el, this.gridResetRow, nt('The colour and line style of the grid.')),
+      grp('Guides', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, nt('The color and line style of guides.')),
+      grp('Grid', this.colorRow('Grid', this.gridColor, 'gridColor'), cols(this.gridStyleRow.el, this.gridPresetRow.el, this.gridUnitRow.el, this.gridEveryRow.el), this.subdivRow.el, this.gridOpacityRow.el, this.gridResetRow, nt('The color and line style of the grid.')),
       grp('Slices', this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, nt('The colour of slice lines and whether their numbers show.')));
     // Plugins (1.50.8): the other apps formvis sends to; NodeMode first.
     this.nodemodeCheck.addEventListener('click', () => void this.checkNodeMode());
@@ -1247,7 +1247,7 @@ export class SettingsDialog extends Dialog {
       setClass(b, 'is-fav', fav);
       const order = fav ? '-1' : '0';
       if (b.style.order !== order) b.style.order = order;
-      const title = fav ? `${THEMES[id]?.label ?? id} (favourite, right-click to remove)` : `${THEMES[id]?.label ?? id} (right-click to add to favourites)`;
+      const title = fav ? `${THEMES[id]?.label ?? id} (favorite, right-click to remove)` : `${THEMES[id]?.label ?? id} (right-click to add to favorites)`;
       if (b.title !== title) b.title = title;
       const border = active ? c.accentColor : THEMES[id]?.vars['--border-color'] ?? '';
       if (b.dataset.border !== border) { b.dataset.border = border; b.style.borderColor = border; }
@@ -1462,7 +1462,7 @@ export class AboutDialog extends Dialog {
     this.body.appendChild(this.pluginLine);
     this.body.appendChild(el('<p class="cv-note">Source and releases: <a href="https://github.com/nodemode-ai/formvis" target="_blank" rel="noopener">github.com/nodemode-ai/formvis</a></p>'));
     this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 nodemode-ai.</p>'));
-    this.body.appendChild(el('<p class="cv-note">Credits: formvis is built on open-source components; each one with its licence is listed in NOTICE.md beside the app. Help > System Info has the graphics and monitor details.</p>'));
+    this.body.appendChild(el('<p class="cv-note">Credits: formvis is built on open-source components; each one with its license is listed in NOTICE.md beside the app. Help > System Info has the graphics and monitor details.</p>'));
     this.button('Close', 'primary', () => this.close());
   }
 
@@ -1591,7 +1591,7 @@ export class ModeDialog extends Dialog {
         if (this.engine.convertMode('grayscale', { grayWeights: w }) || !this.engine.current) this.close();
         return;
       }
-      if (this.kind === 'indexed' && this.palette.value === 'custom' && !this.custom) { setText(this.note, 'Choose a .act colour table file for the Custom palette.'); return; }
+      if (this.kind === 'indexed' && this.palette.value === 'custom' && !this.custom) { setText(this.note, 'Choose a .act color table file for the Custom palette.'); return; }
       const num = (e: HTMLInputElement, lo: number, hi: number, def: number): number => Math.max(lo, Math.min(hi, Number.isFinite(parseFloat(e.value)) ? parseFloat(e.value) : def));
       const hex = this.matte.value, ok = this.kind === 'bitmap'
         ? this.engine.convertMode('bitmap', { method: this.method.value as BitmapMethod, halftone: { lpi: num(this.lpi, 1, 999, 53), angle: num(this.angle, -180, 180, 45), shape: this.shape.value as HalftoneShape } })
@@ -1604,7 +1604,7 @@ export class ModeDialog extends Dialog {
     this.actFile.addEventListener('change', () => {
       const f = this.actFile.files?.[0];
       if (!f) return;
-      void f.arrayBuffer().then((b) => { this.custom = parseAct(b); setText(this.note, this.custom ? `${this.custom.length} colors loaded.` : 'Not a colour table (.act) file.'); });
+      void f.arrayBuffer().then((b) => { this.custom = parseAct(b); setText(this.note, this.custom ? `${this.custom.length} colors loaded.` : 'Not a color table (.act) file.'); });
     });
     const screen = (): void => { const halftone = this.kind === 'bitmap' && this.method.value === 'halftone'; for (const r of this.screenRows) setHidden(r, !halftone); };
     this.method.addEventListener('change', screen);
@@ -1612,7 +1612,7 @@ export class ModeDialog extends Dialog {
   }
 
   private readonly screenRows: HTMLElement[] = [rowOf('Frequency (lines per inch)', this.lpi), rowOf('Angle (degrees)', this.angle), rowOf('Shape', this.shape)];
-  private readonly actRow = rowOf('Colour table', this.actFile);
+  private readonly actRow = rowOf('Color table', this.actFile);
 
   show(kind: 'bitmap' | 'indexed' | 'cmyk' | 'grayscale'): void {
     this.kind = kind;
@@ -1633,7 +1633,7 @@ export class ModeDialog extends Dialog {
     setText(this.note, '');
     this.body.replaceChildren(el(`<p class="cv-dialog-note">${kind === 'bitmap' ? 'The image is flattened, then made black and white. A halftone screen sets its dots by the document resolution.' : 'The image is flattened, then made of a palette of at most 256 colours: every colour when there are that few, else the ones that best represent it.'}</p>`),
       ...(kind === 'bitmap' ? [rowOf('Method', this.method), ...this.screenRows]
-        : [rowOf('Palette', this.palette), this.actRow, rowOf('Colors', this.colors), rowOf('Forced colours', this.forced), rowOf('Transparency', this.transparency), rowOf('Matte', this.matte), rowOf('Dither', this.dither), rowOf('Amount (percent)', this.amount)]), this.note);
+        : [rowOf('Palette', this.palette), this.actRow, rowOf('Colors', this.colors), rowOf('Forced colors', this.forced), rowOf('Transparency', this.transparency), rowOf('Matte', this.matte), rowOf('Dither', this.dither), rowOf('Amount (percent)', this.amount)]), this.note);
     for (const r of this.screenRows) setHidden(r, this.method.value !== 'halftone');
     setHidden(this.actRow, this.palette.value !== 'custom');
     this.open();

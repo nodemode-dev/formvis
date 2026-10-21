@@ -242,7 +242,7 @@ export class SwatchesPanel {
         this.grid.appendChild(b);
       });
     }
-    const add = el<HTMLButtonElement>(`<button class="cv-sw-tile cv-sw-add" type="button" title="Add the foreground colour" aria-label="Add the foreground colour">${icon('plus', 12)}</button>`);
+    const add = el<HTMLButtonElement>(`<button class="cv-sw-tile cv-sw-add" type="button" title="Add the foreground color" aria-label="Add the foreground color">${icon('plus', 12)}</button>`);
     add.addEventListener('click', () => this.addForeground());
     this.grid.appendChild(add);
   }

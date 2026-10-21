@@ -35,8 +35,8 @@ export class JobsList {
     if (this.isOpen) return;
     const r = this.anchor.getBoundingClientRect();
     this.root.hidden = false;
-    this.root.style.left = `${Math.max(8, Math.min(window.innerWidth - 8 - this.root.offsetWidth, r.left))}px`;
-    this.root.style.bottom = `${Math.max(8, window.innerHeight - r.top + 6)}px`;
+    this.root.style.left = `${Math.max(8, Math.min(window.innerWidth - 8 - this.root.offsetWidth, r.right - this.root.offsetWidth - 8))}px`;
+    this.root.style.bottom = `${Math.max(8, Math.min(window.innerHeight - 48, window.innerHeight - r.top + 6))}px`;
     this.sync();
     document.addEventListener('pointerdown', this.outside, true);
     document.addEventListener('keydown', this.escape, true);

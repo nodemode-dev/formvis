@@ -17,7 +17,7 @@ export const ARTISTIC_FX: readonly FxDef[] = [
   {
     key: 'coloredPencil', label: 'Colored Pencil', category: 'Artistic',
     params: [slider('pencilWidth', 1, 24, 4), slider('strokePressure', 0, 15, 8), slider('paperBrightness', 0, 50, 25)],
-    note: 'The paper is a shade of the background colour.',
+    note: 'The paper is a shade of the background color.',
     reach: (v, k) => { const s = pencil(num(v, 'pencilWidth')); return (strokeReach(s.length, s.width) + 2.4) * k + 2; },
     paint: (p, v) => {
       const { w, h, k } = p, press = num(v, 'strokePressure') / 15, shade = 0.3 + 0.7 * (num(v, 'paperBrightness') / 50), s = pencil(num(v, 'pencilWidth'));
@@ -88,7 +88,7 @@ export const ARTISTIC_FX: readonly FxDef[] = [
   {
     key: 'neonGlow', label: 'Neon Glow', category: 'Artistic',
     params: [slider('glowSize', -24, 24, 5), slider('glowBrightness', 0, 50, 15), swatch('glowColor', '#009eff')],
-    note: 'Tones run from the foreground colour to the background colour under the glow; a negative size turns the glow inside out.',
+    note: 'Tones run from the foreground color to the background color under the glow; a negative size turns the glow inside out.',
     reach: (v, k) => (2.4 + 3 * (0.5 + 0.5 * Math.abs(num(v, 'glowSize')))) * k + 3,
     paint: (p, v) => {
       const { w, h, k } = p, size = num(v, 'glowSize'), bright = num(v, 'glowBrightness') / 50, glow = rgbOf(opt(v, 'glowColor'));

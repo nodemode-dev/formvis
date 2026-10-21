@@ -32,7 +32,7 @@ export class ScriptEventsDialog extends Dialog {
     const buttons = el('<div style="display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0"></div>');
     buttons.append(add, addScript, toggle, remove, removeAll, this.file);
     this.body.append(this.enable.el, row('Event', this.eventSel), row('Action', this.actionSel), buttons, this.list, this.note,
-      el('<p class="cv-dialog-note">A script is a .js file; it runs in a sandbox with run(id, params), commands() and log(...), and no document or network. A pair that is switched off is listed in grey brackets.</p>'), this.results);
+      el('<p class="cv-dialog-note">A script is a .js file; it runs in a sandbox with run(id, params), commands() and log(...), and no document or network. A pair that is switched off is listed in gray brackets.</p>'), this.results);
     this.events.onResult = () => this.showResults();
     this.button('Done', 'primary', () => this.close());
   }

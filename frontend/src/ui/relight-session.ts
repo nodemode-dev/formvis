@@ -195,7 +195,7 @@ export class RelightSession {
       this.proxy = { ...this.proxy, albedo: sp.albedo, split: { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level), subject: sp.subject, texture: sp.texture }, normals: sp.normals, scene: !!sp.depth, geo: splitGeometry(sp, pw, ph, this.proxy.geo) };
       this.splitUsed = sp.engine;
       this.noteMoge(sp);
-      setText(note, sp.engine === 'marigold' ? t('Old light removed with Marigold: Original lighting now sets how much of it stays.') : t(this.engines.regions === 'parts' ? 'Old light removed per material (skin, hair, clothes, scene) with the subject\'s own detail kept: Original lighting sets how much of it stays.' : 'Old light removed by colour regions with the subject\'s own detail kept: Original lighting sets how much of it stays.'));
+      setText(note, sp.engine === 'marigold' ? t('Old light removed with Marigold: Original lighting now sets how much of it stays.') : t(this.engines.regions === 'parts' ? 'Old light removed per material (skin, hair, clothes, scene) with the subject\'s own detail kept: Original lighting sets how much of it stays.' : 'Old light removed by color regions with the subject\'s own detail kept: Original lighting sets how much of it stays.'));
       this.schedule();
     } catch { setText(note, t('The photo\'s own light could not be separated, so new light is added on top.')); }
   }
@@ -564,7 +564,7 @@ export class RelightSession {
     };
     slider('kelvin', 'Temperature', 1000, 12000, (l, v) => { l.kelvin = v; l.color = kelvinToRgb(v); });
     const temps = el('<div class="cv-relight-gels" role="group"></div>');
-    temps.setAttribute('aria-label', t('Colour temperature presets'));
+    temps.setAttribute('aria-label', t('Color temperature presets'));
     const KELVINS: ReadonlyArray<readonly [number, string]> = [[1900, 'Candle'], [2850, 'Tungsten'], [3200, 'Halogen'], [4200, 'Fluorescent'], [5600, 'Daylight'], [6500, 'Overcast'], [7500, 'Shade'], [10000, 'Blue sky']];
     for (const [k, name] of KELVINS) {
       const b = el<HTMLButtonElement>('<button class="cv-relight-gel" type="button"></button>');
@@ -578,7 +578,7 @@ export class RelightSession {
     // Gels (1.86.1): one click sets the light's colour, as the reference's colour menu does, without relying on the
     // system colour picker (which the desktop window may not open); the hex field takes any colour.
     const gels = el('<div class="cv-relight-gels" role="group"></div>');
-    gels.setAttribute('aria-label', t('Light colour'));
+    gels.setAttribute('aria-label', t('Light color'));
     const GELS: ReadonlyArray<readonly [string, string]> = [['#ff8a3d', 'Candle'], ['#ffb46b', 'Tungsten'], ['#ffd9a8', 'Warm white'], ['#fff4e8', 'Daylight'], ['#d8e6ff', 'Overcast'], ['#9fc4ff', 'Blue hour'], ['#ff2b2b', 'Red'], ['#ff7a00', 'Orange'], ['#ffd400', 'Amber'], ['#3ddc5a', 'Green'], ['#2bd9c9', 'Teal'], ['#6df1ee', 'Cyan'], ['#2f6bff', 'Blue'], ['#8a4bff', 'Purple'], ['#ff2bd6', 'Magenta'], ['#ff6fa8', 'Pink']];
     for (const [hexv, name] of GELS) {
       const b = el<HTMLButtonElement>('<button class="cv-relight-gel" type="button"></button>');
@@ -587,7 +587,7 @@ export class RelightSession {
       gels.append(b);
     }
     const hexIn = el<HTMLInputElement>('<input class="cv-input cv-relight-hex" type="text" maxlength="7" spellcheck="false">');
-    hexIn.setAttribute('aria-label', t('Hex colour'));
+    hexIn.setAttribute('aria-label', t('Hex color'));
     hexIn.placeholder = '#ffffff';
     hexIn.addEventListener('change', () => { const v = hexIn.value.trim(); if (/^#?[0-9a-f]{6}$/i.test(v)) this.change((l) => { l.kelvin = null; l.color = fromHex(v.startsWith('#') ? v : `#${v}`); }); });
     gels.append(hexIn);

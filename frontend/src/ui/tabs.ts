@@ -148,7 +148,7 @@ export class Tabs {
     const md = p.doc.mode ?? 'rgb', mEl = q(n, '.cv-tab-mode');
     const bits = p.doc.depth ?? 8;   // the real depth in every mode that has one (1.57.8)
     setText(mEl, { rgb: `RGB/${bits}`, grayscale: `Gray/${bits}`, bitmap: 'Bitmap/1', indexed: 'Index', cmyk: `CMYK/${bits}`, lab: `Lab/${bits}`, duotone: `Duotone/${bits}`, multichannel: `Multi/${bits}` }[md]);
-    const tip = { rgb: 'RGB, 8 bits a channel', grayscale: 'Grayscale, 8 bits', bitmap: 'Bitmap, 1 bit', indexed: `Indexed Color, ${p.doc.palette?.length ?? 0} colours`, cmyk: `CMYK, 8 bits a channel, ${p.doc.profile?.name ?? 'no profile'}`, lab: 'Lab, D50, held as floats', duotone: `Duotone, ${p.doc.duotone?.inks.length ?? 1} ink${(p.doc.duotone?.inks.length ?? 1) === 1 ? '' : 's'} over grey`, multichannel: `Multichannel, ${p.doc.multichannel?.channels.length ?? 0} channels` }[md];
+    const tip = { rgb: 'RGB, 8 bits a channel', grayscale: 'Grayscale, 8 bits', bitmap: 'Bitmap, 1 bit', indexed: `Indexed Color, ${p.doc.palette?.length ?? 0} colors`, cmyk: `CMYK, 8 bits a channel, ${p.doc.profile?.name ?? 'no profile'}`, lab: 'Lab, D50, held as floats', duotone: `Duotone, ${p.doc.duotone?.inks.length ?? 1} ink${(p.doc.duotone?.inks.length ?? 1) === 1 ? '' : 's'} over gray`, multichannel: `Multichannel, ${p.doc.multichannel?.channels.length ?? 0} channels` }[md];
     if (mEl.getAttribute('title') !== tip) mEl.setAttribute('title', tip);
     const active = !!current && p.id === current.id;
     setClass(n, 'is-active', active);

@@ -52,7 +52,7 @@ export class ActionsDialog extends Dialog {
   private readonly cElse = el<HTMLSelectElement>('<select class="cv-input" aria-label="Play when it does not"></select>');
   private readonly follow = el<HTMLInputElement>('<input type="checkbox">');
   private readonly setBox = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="80" placeholder="No set" spellcheck="false" aria-label="Set">');
-  private readonly colourSel = el<HTMLSelectElement>(`<select class="cv-input" aria-label="Button colour">${ACTION_COLOURS.map((c) => `<option value="${c}">${cap(c)}</option>`).join('')}</select>`);
+  private readonly colourSel = el<HTMLSelectElement>(`<select class="cv-input" aria-label="Button color">${ACTION_COLOURS.map((c) => `<option value="${c}">${cap(c)}</option>`).join('')}</select>`);
   private readonly keySel = el<HTMLSelectElement>(`<select class="cv-input" aria-label="Function key">${ACTION_KEYS.map((k) => `<option value="${k}">${k || 'None'}</option>`).join('')}</select>`);
   private readonly buttonMode = el<HTMLInputElement>('<input type="checkbox">');
   private readonly buttons = el('<div class="cv-action-buttons" role="group" aria-label="Actions" hidden></div>');
@@ -94,7 +94,7 @@ export class ActionsDialog extends Dialog {
     addPlay.addEventListener('click', () => this.insertPlay());
     addMenu.addEventListener('click', () => this.insertMenu());
     this.field('Set', this.setBox);
-    this.field('Button colour', this.colourSel);
+    this.field('Button color', this.colourSel);
     this.field('Function key', this.keySel);
     this.setBox.addEventListener('change', () => this.applyOptions());
     this.colourSel.addEventListener('change', () => this.applyOptions());
@@ -391,7 +391,7 @@ export class ActionsDialog extends Dialog {
         this.store.add(actions);
         this.pick.value = String(this.store.list.length - 1);
         this.sync();
-        const skipped = unsupported.length ? `; ${unsupported.length} step${unsupported.length === 1 ? '' : 's'} had no formvis equivalent and stay greyed, kept for saving back: ${unsupported.slice(0, 5).join(', ')}` : '';
+        const skipped = unsupported.length ? `; ${unsupported.length} step${unsupported.length === 1 ? '' : 's'} had no formvis equivalent and stay grayed, kept for saving back: ${unsupported.slice(0, 5).join(', ')}` : '';
         setText(this.note, `Imported ${actions.length} action${actions.length === 1 ? '' : 's'}${skipped}`);
         return;
       }

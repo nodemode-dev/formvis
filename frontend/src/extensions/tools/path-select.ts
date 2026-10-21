@@ -55,8 +55,8 @@ function arrange(e: Engine, how: Edge | 'distH' | 'distV'): void {
 }
 
 const arrangeButtons = (e: Engine): OptionSpec[] => ([
-  ['Align left edges', 'alignLeftEdge', 'left'], ['Align horizontal centres', 'alignHcenterEdge', 'hcenter'], ['Align right edges', 'alignRightEdge', 'right'],
-  ['Align top edges', 'alignTopEdge', 'top'], ['Align vertical centres', 'alignVcenterEdge', 'vcenter'], ['Align bottom edges', 'alignBottomEdge', 'bottom'],
+  ['Align left edges', 'alignLeftEdge', 'left'], ['Align horizontal centers', 'alignHcenterEdge', 'hcenter'], ['Align right edges', 'alignRightEdge', 'right'],
+  ['Align top edges', 'alignTopEdge', 'top'], ['Align vertical centers', 'alignVcenterEdge', 'vcenter'], ['Align bottom edges', 'alignBottomEdge', 'bottom'],
   ['Distribute horizontally', 'distributeH', 'distH'], ['Distribute vertically', 'distributeV', 'distV'],
 ] as const).map(([label, icon, how]) => ({ kind: 'button', label, icon, run: () => arrange(e, how), compact: true }));
 

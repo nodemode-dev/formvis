@@ -9,7 +9,7 @@ export class NoteDialog extends Dialog {
   private readonly text = el<HTMLTextAreaElement>('<textarea class="cv-input cv-note-text" rows="7" aria-label="Note" placeholder="Write the note"></textarea>');
   private readonly author = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="80" aria-label="Author" placeholder="Author">');
   private color = '#f5c542';
-  private readonly colorField = colorRow('Colour', (hex) => { this.color = hex; });
+  private readonly colorField = colorRow('Color', (hex) => { this.color = hex; });
   private id: string | null = null;
   private fresh = false;
   private saved = false;

@@ -21,7 +21,7 @@ export class DuotoneDialog extends Dialog {
     for (let i = 0; i < 4; i++) {
       const box = document.createElement('div');
       box.style.cssText = 'display:grid;grid-template-columns:36px 1fr auto;gap:6px;align-items:center;margin:6px 0 2px';
-      const color = document.createElement('input'); color.type = 'color'; color.className = 'cv-input cv-color'; color.setAttribute('aria-label', `Ink ${i + 1} colour`);
+      const color = document.createElement('input'); color.type = 'color'; color.className = 'cv-input cv-color'; color.setAttribute('aria-label', `Ink ${i + 1} color`);
       const name = document.createElement('input'); name.type = 'text'; name.className = 'cv-input'; name.maxLength = 40; name.setAttribute('aria-label', `Ink ${i + 1} name`);
       const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'btn ghost'; reset.textContent = 'Straight';
       color.addEventListener('input', () => { this.d.inks[i].color = fromHex(color.value); this.draw(); });

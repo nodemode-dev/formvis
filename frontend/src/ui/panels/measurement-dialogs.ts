@@ -82,7 +82,7 @@ export class ScaleMarkerDialog extends Dialog {
     this.field('Font', this.font);
     this.field('Font Size', this.size);
     this.field('Text Position', this.pos);
-    this.field('Colour', this.color);
+    this.field('Color', this.color);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => {
       const len = Number(this.length.value);

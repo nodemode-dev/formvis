@@ -36,7 +36,7 @@ export function spinImage(src: ImageData, o: SpinSettings, clip: Box): ImageData
 export const GALLERY_FILTERS: LibFilter[] = [
   {
     id: 'spinBlur', label: 'Spin Blur', group: 'Blur Gallery', grows: false, reach: null,
-    note: 'Up to three spins; each has its centre in percent of the selection or canvas and its radii in percent of their shorter side. Spins 2 and 3 apply only when Spins says so.',
+    note: 'Up to three spins; each has its center in percent of the selection or canvas and its radii in percent of their shorter side. Spins 2 and 3 apply only when Spins says so.',
     params: [
       { key: 'blurAngle', label: 'Blur Angle (°)', kind: 'range', min: 0, max: 360, step: 1, def: 15 },
       { key: 'x', label: 'Center X (%)', kind: 'range', min: 0, max: 100, step: 1, def: 50 },

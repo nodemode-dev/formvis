@@ -14,14 +14,14 @@ export class StrokePathDialog extends Dialog {
      size and the foreground colour are what they start at, and are left as they were. */
   private width = 10;
   private readonly widthRow = sliderRow('Width (px)', 1, 500, 1, (v) => { this.width = v; });
-  private readonly color = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Stroke colour">');
+  private readonly color = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Stroke color">');
 
   constructor(private readonly engine: Engine) {
     super('Stroke Path', 340);
-    const colorRow = el('<label class="cv-field"><span>Colour</span></label>'), fg = el<HTMLButtonElement>('<button class="cv-btn" type="button">Foreground</button>');
+    const colorRow = el('<label class="cv-field"><span>Color</span></label>'), fg = el<HTMLButtonElement>('<button class="cv-btn" type="button">Foreground</button>');
     fg.addEventListener('click', () => { this.color.value = hexOf(this.engine.fg); });
     colorRow.append(this.color, fg);
-    this.body.append(this.toolRow.el, this.widthRow.el, colorRow, this.pressureRow.el, el('<p class="cv-note">The stroke uses the tool\'s hardness and opacity at this width and colour; Clone Stamp and the retouch tools paint what they sample. Your brush size and foreground colour are left as they were.</p>'));
+    this.body.append(this.toolRow.el, this.widthRow.el, colorRow, this.pressureRow.el, el('<p class="cv-note">The stroke uses the tool\'s hardness and opacity at this width and color; Clone Stamp and the retouch tools paint what they sample. Your brush size and foreground color are left as they were.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.remember([this.color, ...Array.from(this.widthRow.el.querySelectorAll('input'))]);   // the width and colour start at the brush's size and the foreground

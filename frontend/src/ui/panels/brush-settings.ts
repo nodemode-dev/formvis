@@ -137,7 +137,7 @@ export class BrushSettingsDialog extends Dialog {
     const cd = (): BrushShape['color'] => s().color ?? defaultShape().color, tr = (): BrushShape['transfer'] => s().transfer ?? defaultShape().transfer;
     heading('Color Dynamics', 'color');
     check('Color Dynamics', () => cd().on, (v) => put({ color: { ...cd(), on: v } }));
-    check('Apply Per Tip (off: one colour for the stroke)', () => cd().perTip !== false, (v) => put({ color: { ...cd(), perTip: v } }));
+    check('Apply Per Tip (off: one color for the stroke)', () => cd().perTip !== false, (v) => put({ color: { ...cd(), perTip: v } }));
     slide('Foreground/Background Jitter (%)', 0, 100, 1, () => cd().fgBg, (v) => put({ color: { ...cd(), fgBg: v } }));
     pick('Foreground/Background Control', [['off', 'Off'], ['pressure', 'Pen Pressure'], ['fade', 'Fade'], ['wheel', 'Stylus Wheel']], () => cd().fgBgControl ?? 'off', (v) => put({ color: { ...cd(), fgBgControl: v === 'pressure' || v === 'fade' || v === 'wheel' ? v : 'off' } }));
     slide('Hue Jitter (%)', 0, 100, 1, () => cd().hue, (v) => put({ color: { ...cd(), hue: v } }));

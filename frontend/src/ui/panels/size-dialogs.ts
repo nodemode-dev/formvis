@@ -35,7 +35,7 @@ export class CanvasSizeDialog extends Dialog {
   private readonly lockRow = checkRow('Constrain proportions', (v) => { this.locked = v; });
   private relative = false;
   private readonly relativeRow = checkRow('Relative', (v) => { this.relative = v; this.sizeBounds(); this.fields(); });
-  private readonly fill = selectRow('Extension', [['none', 'Transparent'], ['fg', 'Foreground color'], ['bg', 'Background color'], ['white', 'White'], ['black', 'Black'], ['custom', 'Other color'], ['edge', 'Stretched edge'], ['average', 'Average color'], ['grey', 'Mid grey'], ['noise', 'Noise']], (v) => { setHidden(this.custom.el, v !== 'custom'); });
+  private readonly fill = selectRow('Extension', [['none', 'Transparent'], ['fg', 'Foreground color'], ['bg', 'Background color'], ['white', 'White'], ['black', 'Black'], ['custom', 'Other color'], ['edge', 'Stretched edge'], ['average', 'Average color'], ['grey', 'Mid gray'], ['noise', 'Noise']], (v) => { setHidden(this.custom.el, v !== 'custom'); });
   private readonly custom = colorRow('Other color', () => undefined);
   private selectBorder = false;
   private readonly selectRow = checkRow('Select the new border', (v) => { this.selectBorder = v; });

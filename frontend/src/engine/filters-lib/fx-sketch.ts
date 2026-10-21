@@ -17,7 +17,7 @@ export const SKETCH_FX: readonly FxDef[] = [
   {
     key: 'chalkCharcoal', label: 'Chalk & Charcoal', category: 'Sketch',
     params: [slider('charcoalArea', 0, 20, 6), slider('chalkArea', 0, 20, 6), slider('strokePressure', 0, 5, 1)],
-    note: 'Charcoal in the foreground colour and chalk in the background colour, over grey.',
+    note: 'Charcoal in the foreground color and chalk in the background color, over gray.',
     reach: (_v, k) => (1.8 + strokeReach(10, 1.4)) * k + 2,
     paint: (p, v) => {
       const { w, h, k } = p, tc = 0.25 + (num(v, 'charcoalArea') / 20) * 0.4, tw = 0.75 - (num(v, 'chalkArea') / 20) * 0.4, press = 0.55 + num(v, 'strokePressure') * 0.09;
@@ -31,7 +31,7 @@ export const SKETCH_FX: readonly FxDef[] = [
   {
     key: 'charcoal', label: 'Charcoal', category: 'Sketch',
     params: [slider('charcoalThickness', 1, 7, 1), slider('detail', 0, 5, 5), slider('lightDarkBalance', 0, 100, 50)],
-    note: 'Charcoal in the foreground colour on paper of the background colour.',
+    note: 'Charcoal in the foreground color on paper of the background color.',
     reach: (v, k) => (3.4 + strokeReach(8 + 2 * num(v, 'charcoalThickness'), 0.6 + 0.5 * num(v, 'charcoalThickness'))) * k + 2,
     paint: (p, v) => {
       const { w, h, k } = p, thick = num(v, 'charcoalThickness'), shift = ((num(v, 'lightDarkBalance') - 50) / 100) * 0.6, edgeGain = 1 + num(v, 'detail') * 0.6;
@@ -52,7 +52,7 @@ export const SKETCH_FX: readonly FxDef[] = [
   {
     key: 'conteCrayon', label: 'Conté Crayon', category: 'Sketch',
     params: [slider('foregroundLevel', 1, 15, 11), slider('backgroundLevel', 1, 15, 7), ...surfaceParams(4, 'top')],
-    note: 'Dark crayon in the foreground colour, light crayon in the background colour.',
+    note: 'Dark crayon in the foreground color, light crayon in the background color.',
     reach: (_v, k) => (1.5 + strokeReach(6, 1)) * k + 4,
     paint: (p, v) => {
       const { w, h, k } = p, fore = num(v, 'foregroundLevel') / 11, back = num(v, 'backgroundLevel') / 7;
@@ -95,7 +95,7 @@ export const SKETCH_FX: readonly FxDef[] = [
   {
     key: 'notePaper', label: 'Note Paper', category: 'Sketch',
     params: [slider('imageBalance', 0, 50, 25), slider('graininess', 0, 20, 10), slider('relief', 0, 25, 11)],
-    note: 'Paper in the background colour, cut through to the foreground colour where the picture is dark.',
+    note: 'Paper in the background color, cut through to the foreground color where the picture is dark.',
     reach: (_v, k) => 8.4 * k + 3,
     paint: (p, v) => {
       const { w, h, k } = p, t = num(v, 'imageBalance') / 50, depth = (num(v, 'relief') / 25) * 3, grainy = (num(v, 'graininess') / 20) * 0.3;
@@ -122,7 +122,7 @@ export const SKETCH_FX: readonly FxDef[] = [
   {
     key: 'plaster', label: 'Plaster', category: 'Sketch',
     params: [slider('imageBalance', 0, 50, 20), slider('smoothness', 1, 15, 2), menu('light', LIGHTS, 'top')],
-    note: 'Dark areas rise in the foreground colour from the background colour.',
+    note: 'Dark areas rise in the foreground color from the background color.',
     reach: (v, k) => (3 * (0.5 + 0.4 * num(v, 'smoothness')) + 3.6) * k + 2,
     paint: (p, v) => {
       const { w, h, k } = p, t = num(v, 'imageBalance') / 50, L = soften(lumaOf(p), w, h, 1, (0.5 + 0.4 * num(v, 'smoothness')) * k), up = new Float32Array(L.length);

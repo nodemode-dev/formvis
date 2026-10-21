@@ -156,7 +156,7 @@ function actionEntries(): CatalogueEntry[] {
         roomLight: rangeParam('roomLight', 0, 200, 'Light on room: percent of the lights that reach the room around the subject'),
         roomShadows: rangeParam('roomShadows', 0, 100, 'Room shadows: strength of the subject\'s shadows on the room'),
         roomDepth: rangeParam('roomDepth', 25, 300, 'Room depth: percent of the solved distance between the subject and the room behind'),
-        ambient: { type: 'string', description: 'Colour of the kept original light, like #ffe8d0' },
+        ambient: { type: 'string', description: 'Color of the kept original light, like #ffe8d0' },
         split: { type: 'string', enum: ['auto', 'marigold', 'classic', 'off'], description: 'How the photo\'s own light is taken out before the new lights: auto or classic (per-material shading, the subject\'s own detail kept), marigold (learned albedo, repaints surfaces, only when asked), or off (add light on top)' },
       }),
   ];

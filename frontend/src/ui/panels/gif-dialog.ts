@@ -28,6 +28,6 @@ export class GifDialog extends Dialog {
     const p = this.engine.current, n = this.engine.timeline.frames.length, k = Number(this.size.value) || 1;
     if (!p) return;
     const w = Math.max(1, Math.round(p.doc.width * k)), h = Math.max(1, Math.round(p.doc.height * k));
-    setText(this.note, `${w} x ${h} px, ${n > 1 ? `${n} frames from the Timeline` : 'one frame, the image as it stands'}. GIFs hold up to 256 colours per frame.`);
+    setText(this.note, `${w} x ${h} px, ${n > 1 ? `${n} frames from the Timeline` : 'one frame, the image as it stands'}. GIFs hold up to 256 colors per frame.`);
   }
 }

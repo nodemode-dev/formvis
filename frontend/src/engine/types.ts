@@ -99,6 +99,9 @@ export interface Layer {
    *  Transparency Shapes Layer set false: effects and knockout are cast from the whole layer rectangle, not only its pixels. */
   blendClipped?: boolean;
   transparencyShapes?: boolean;
+  /** The Blending Options switches that outlive the layer style: Blend Interior Effects as Group on, Layer Mask Hides Effects off. */
+  blendInterior?: boolean;
+  layerMaskHides?: boolean;
   /** A PSD adjustment layer formvis cannot draw (Color Lookup), kept as the file's own settings (binary parts as
    *  base64) so a PSD written again carries it. The layer itself is an empty pixel layer. */
   psdAdjustment?: Record<string, unknown> | null;

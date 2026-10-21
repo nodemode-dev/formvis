@@ -88,9 +88,9 @@ export class InfoPanel {
     const rgb = (c: [number, number, number, number] | null): string => (c ? (c[3] === 0 ? 'transparent' : `R ${c[0]}  G ${c[1]}  B ${c[2]}`) : '-');
     const at = (pt: Pt): string => this.inkAt(pt) ?? rgb(this.colorAt(pt));
     if (p && this.pointer) {
-      rows.push(['Colour', at(this.pointer)]);
+      rows.push(['Color', at(this.pointer)]);
       rows.push(['X, Y', `${Math.floor(this.pointer.x)}, ${Math.floor(this.pointer.y)} px`]);
-    } else rows.push(['Colour', '-'], ['X, Y', '-']);
+    } else rows.push(['Color', '-'], ['X, Y', '-']);
     const sel = p?.selection;
     rows.push(['W, H', sel ? `${sel.w} x ${sel.h} px` : '-']);
     const r = m?.ruler;

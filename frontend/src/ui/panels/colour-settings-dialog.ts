@@ -175,7 +175,7 @@ export class ColorSettingsDialog extends Dialog {
       if (!ref) { this.show3('No CMYK profile', '', ''); return; }
       const i = await api.profileInfo(ref);
       if (n !== this.seq) return;
-      this.show3(i.tac === null ? 'Not stated by this profile' : `${i.tac}%`, i.blackLimit === null ? 'Not stated by this profile' : `${i.blackLimit}%`, i.generation === null ? 'Not stated by this profile' : `${i.generation} (${i.blackAtMid}% black at 50% grey)`);
+      this.show3(i.tac === null ? 'Not stated by this profile' : `${i.tac}%`, i.blackLimit === null ? 'Not stated by this profile' : `${i.blackLimit}%`, i.generation === null ? 'Not stated by this profile' : `${i.generation} (${i.blackAtMid}% black at 50% gray)`);
     } catch (err) { if (n === this.seq) { this.infoKey = ''; this.show3('', '', ''); } setText(this.note, msg(err)); }
   }
 

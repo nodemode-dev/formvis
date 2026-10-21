@@ -26,7 +26,7 @@ export const TEXTURE_FX: readonly FxDef[] = [
   {
     key: 'grain', label: 'Grain', category: 'Texture',
     params: [slider('intensity', 0, 100, 40), slider('contrast', 0, 100, 50), menu('grainType', GRAINS)],
-    note: 'Sprinkles scatters the background colour and Speckle the foreground colour; Stippled draws with both.',
+    note: 'Sprinkles scatters the background color and Speckle the foreground color; Stippled draws with both.',
     reach: (_v, k) => 6 * k + 3,
     paint: (p, v) => {
       const { k } = p, n = p.w * p.h, a = num(v, 'intensity') / 100, con = 0.5 + num(v, 'contrast') / 100, c = p.rgb;
@@ -109,7 +109,7 @@ export const TEXTURE_FX: readonly FxDef[] = [
   {
     key: 'stainedGlass', label: 'Stained Glass', category: 'Texture',
     params: [slider('cellSize', 2, 50, 10), slider('borderThickness', 1, 20, 4), slider('lightIntensity', 0, 10, 3)],
-    note: 'The lead between the panes is the foreground colour.',
+    note: 'The lead between the panes is the foreground color.',
     reach: (v, k) => 1.9 * (num(v, 'cellSize') * 1.2 + 2) * k + 3,
     paint: (p, v) => {
       const { w, h, k } = p, size = num(v, 'cellSize') * 1.2 + 2, half = Math.max(num(v, 'borderThickness') * 0.5, 0.6 / k), light = (num(v, 'lightIntensity') / 10) * 0.8;

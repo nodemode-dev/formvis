@@ -35,7 +35,7 @@ export class LocalModelsSection {
   private sourceShow: (() => void) | null = null;
 
   constructor() {
-    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.lama, this.depth, this.ddcolor, this.styles, this.yunet, this.sky, this.moge, this.upscaler, this.krea, this.klein, this.library, this.source);
+    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each license is shown for you to accept before anything downloads.</p>'), this.lama, this.depth, this.ddcolor, this.styles, this.yunet, this.sky, this.moge, this.upscaler, this.krea, this.klein, this.library, this.source);
   }
 
   async refresh(): Promise<void> {
@@ -151,12 +151,12 @@ export class LocalModelsSection {
     const lic = t.licence as Json, builds = Object.entries(t.builds as Json);
     const state = el('<p class="cv-local-state" role="status"></p>'), note = el('<p class="cv-note cv-local-note" role="status"></p>');
     setText(state, s.ready ? `Krea 2 Turbo: installed (${s.build}), ready.` : `Krea 2 Turbo: ${s.reason}.`);
-    const accept = el<HTMLInputElement>('<input type="checkbox" aria-label="Accept the Krea 2 licence">');
+    const accept = el<HTMLInputElement>('<input type="checkbox" aria-label="Accept the Krea 2 license">');
     accept.checked = !!s.licenceAccepted; accept.disabled = !!s.licenceAccepted;
     const acceptRow = el('<label class="cv-dialog-row"><span></span></label>');
     setText(acceptRow.querySelector('span') as HTMLElement, `I accept the ${lic.name} (${lic.version})`);
     acceptRow.append(toggleOf(accept));
-    const links = el('<p class="cv-note"></p>'); links.append(link(lic.url, 'The licence'), document.createTextNode(' · '), link(lic.usePolicy, 'The use policy'));
+    const links = el('<p class="cv-note"></p>'); links.append(link(lic.url, 'The license'), document.createTextNode(' · '), link(lic.usePolicy, 'The use policy'));
     const pick = el<HTMLSelectElement>('<select class="cv-input" aria-label="Krea 2 build"></select>');
     for (const [id, b] of builds) { const o = document.createElement('option'); o.value = id; o.textContent = `${(b as Json).label}: ${gb((b as Json).size)}, ${(b as Json).memory} GB of memory`; o.title = (b as Json).note ?? ''; pick.append(o); }
     if (t.recommended) pick.value = t.recommended;
@@ -169,7 +169,7 @@ export class LocalModelsSection {
       catch (err) { setText(note, err instanceof Error ? err.message : 'Could not start the install.'); }
     })());
     const f = t.filter as Json, filt = el('<p class="cv-note cv-local-filter"></p>');
-    setText(filt, s.filterRemoved ? `The content filter (${f.name}) was removed: every Krea 2 picture carries a warning.` : `The content filter (${f.name}, ${f.licence}, ${gb(f.size)}) is installed with Krea 2, as its licence requires, and checks every picture.`);
+    setText(filt, s.filterRemoved ? `The content filter (${f.name}) was removed: every Krea 2 picture carries a warning.` : `The content filter (${f.name}, ${f.licence}, ${gb(f.size)}) is installed with Krea 2, as its license requires, and checks every picture.`);
     const refilter = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Reinstall the filter</button>');
     setHidden(refilter, !s.filterRemoved);
     refilter.addEventListener('click', () => void (async () => { const j = await api('/models/krea-2/filter', { method: 'POST', body: '{}' }); await this.follow(j.job_id, note, () => void this.showKrea()); })());
@@ -183,7 +183,7 @@ export class LocalModelsSection {
     const cards: HTMLElement[] = [];
     for (const [variant, v] of Object.entries(t.variants as Json)) {
       const lic = (v as Json).licence as Json, note = el('<p class="cv-note cv-local-note" role="status"></p>');
-      const accept = el<HTMLInputElement>(`<input type="checkbox" aria-label="Accept the ${(v as Json).label} licence">`);
+      const accept = el<HTMLInputElement>(`<input type="checkbox" aria-label="Accept the ${(v as Json).label} license">`);
       const st = (v as Json).status as Json;   // licenceAccepted, build, ready, reason
       accept.checked = !!st.licenceAccepted; accept.disabled = !!st.licenceAccepted;
       const acceptRow = el('<label class="cv-dialog-row"><span></span></label>');
@@ -200,7 +200,7 @@ export class LocalModelsSection {
         catch (err) { setText(note, err instanceof Error ? err.message : 'Could not start the install.'); }
       })());
       const title = el('<p class="cv-local-state"></p>'); setText(title, st.ready ? `${(v as Json).label}: installed (${st.build}), ready.` : `${(v as Json).label}: ${st.reason ?? 'not installed'}.`);
-      const links = el('<p class="cv-note"></p>'); links.append(link(lic.url, 'The licence'));
+      const links = el('<p class="cv-note"></p>'); links.append(link(lic.url, 'The license'));
       const row = el('<div class="cv-improve"></div>'); row.append(pick, install, cancel);
       cards.push(title, li(lic.summary ?? []), links, acceptRow, row, note);
     }

@@ -514,14 +514,14 @@ export function snapDelta(host: MoveHost, p: Project, box: Rect, skip: (l: Layer
   return { x: sx ? sx.shift : 0, y: sy ? sy.shift : 0 };
 }
 
-export function sampleOriginal(host: MoveHost, pt: Pt, composite: boolean, radius = 0): [number, number, number] | null {
+export function sampleOriginal(host: MoveHost, pt: Pt, composite: boolean, radius = 0, picture?: Surface | null): [number, number, number] | null {
   let ctx: Ctx2D;
   let x: number;
   let y: number;
   let w: number;
   let h: number;
   if (composite) {
-    const s = host.flattened();
+    const s = picture ?? host.flattened();
     if (!s) return null;
     ctx = ctxOf(s);
     x = Math.floor(pt.x);

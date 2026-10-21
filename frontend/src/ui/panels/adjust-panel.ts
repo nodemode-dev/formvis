@@ -289,10 +289,10 @@ export class AdjustPanel extends Dialog {
       const b = stage.getBoundingClientRect(), v = p.viewport;
       const pt = { x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom };
       if (m === 'black' || m === 'gray' || m === 'white') {
-        const rgb = this.engine.sampleOriginal(pt, this.mode !== 'image', this.sampleRadius);
+        const rgb = this.engine.sampleOriginal(pt, this.mode !== 'image', this.sampleRadius, this.mode === 'layer' ? this.layerId ?? undefined : undefined);
         if (rgb) this.applySample(rgb, m);
       } else if (m === 'c-black' || m === 'c-gray' || m === 'c-white') {
-        const rgb = this.engine.sampleOriginal(pt, this.mode !== 'image', this.sampleRadius);
+        const rgb = this.engine.sampleOriginal(pt, this.mode !== 'image', this.sampleRadius, this.mode === 'layer' ? this.layerId ?? undefined : undefined);
         if (rgb) this.applyCurveSample(rgb, m.slice(2) as 'black' | 'gray' | 'white');
       } else if (m === 'target') this.beginTarget(pt, e.clientX);
       else if (m === 'c-target') this.beginCurveTarget(pt, e.clientY);
@@ -370,7 +370,7 @@ export class AdjustPanel extends Dialog {
     const cv = this.data.curves as { channel: string; channels: Pt[][] };
     const names = channelsOf(this.engine.current?.doc.mode);
     if (names !== CHANNELS) { toast('The targeted adjustment works on RGB pictures.'); return; }
-    const rgb = this.engine.sampleOriginal(pt, this.mode !== 'image', this.sampleRadius);
+    const rgb = this.engine.sampleOriginal(pt, this.mode !== 'image', this.sampleRadius, this.mode === 'layer' ? this.layerId ?? undefined : undefined);
     if (!rgb) return;
     const ch = Math.max(0, names.indexOf(cv.channel)), list = cv.channels[ch];
     const level = ch === 0 ? 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] : rgb[ch - 1], x = Math.round(clamp(level * 255, 1, 254));
@@ -913,7 +913,7 @@ export class AdjustPanel extends Dialog {
   private buildGrain(): Section {
     const node = el('<div class="cv-panel-section"></div>');
     const gr = (): Record<string, number> => this.data.grainSettings as Record<string, number>;
-    const colour = sliderRow('Colour grain', 0, 100, 1, (v) => { gr().colour = v; this.changed(); preset.value = which(); });
+    const colour = sliderRow('Color grain', 0, 100, 1, (v) => { gr().colour = v; this.changed(); preset.value = which(); });
     const speckle = sliderRow('Speckle', 0, 100, 1, (v) => { gr().speckle = v; this.changed(); preset.value = which(); });
     const look = sliderRow('Look strength', 0, 100, 1, (v) => { gr().look = v; this.changed(); });
     const amount = sliderRow('Amount', 0, 100, 1, (v) => { gr().amount = v; this.changed(); preset.value = which(); });
@@ -1017,7 +1017,7 @@ export class AdjustPanel extends Dialog {
       const r = colorRow(s.label, (hex) => put(s.key, { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) }));
       return { s, el: r.el, set: () => r.set(toHex(pv()[s.key])) };
     });
-    if (!rows.length) node.appendChild(el('<p class="cv-note">No settings: the layer inverts the colours beneath it.</p>'));
+    if (!rows.length) node.appendChild(el('<p class="cv-note">No settings: the layer inverts the colors beneath it.</p>'));
     if (named) node.appendChild(named.el);
     for (const r of rows) node.appendChild(r.el);
     return { node, sync: () => {

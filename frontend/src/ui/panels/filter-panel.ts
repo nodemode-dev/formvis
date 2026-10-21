@@ -340,7 +340,7 @@ export class FilterPanel extends Dialog {
       ['Shadows', -100, 100, 1, () => t.shadows, (v) => { t.shadows = v; }],
       ['Whites', -100, 100, 1, () => t.whites, (v) => { t.whites = v; }],
       ['Blacks', -100, 100, 1, () => t.blacks, (v) => { t.blacks = v; }],
-      'Colour',
+      'Color',
       ['Temperature', -100, 100, 1, () => t.temperature, (v) => { t.temperature = v; }],
       ['Tint', -100, 100, 1, () => t.tint, (v) => { t.tint = v; }],
       ['Vibrance', -100, 100, 1, () => t.vibrance, (v) => { t.vibrance = v; }],
@@ -369,9 +369,9 @@ export class FilterPanel extends Dialog {
       ['Luminance', 0, 100, 1, () => (D().noise ??defaultNoise()).luminance, (v) => { (D().noise ??=defaultNoise()).luminance = v; }],
       ['Luminance detail', 0, 100, 1, () => (D().noise ??defaultNoise()).detail, (v) => { (D().noise ??=defaultNoise()).detail = v; }],
       ['Luminance contrast', 0, 100, 1, () => (D().noise ??defaultNoise()).contrast, (v) => { (D().noise ??=defaultNoise()).contrast = v; }],
-      ['Noise colour', 0, 100, 1, () => (D().noise ??defaultNoise()).color, (v) => { (D().noise ??=defaultNoise()).color = v; }],
-      ['Colour detail', 0, 100, 1, () => (D().noise ??defaultNoise()).colorDetail ?? 50, (v) => { (D().noise ??=defaultNoise()).colorDetail = v; }],
-      ['Colour smoothness', 0, 100, 1, () => (D().noise ??defaultNoise()).colorSmoothness ?? 50, (v) => { (D().noise ??=defaultNoise()).colorSmoothness = v; }],
+      ['Noise color', 0, 100, 1, () => (D().noise ??defaultNoise()).color, (v) => { (D().noise ??=defaultNoise()).color = v; }],
+      ['Color detail', 0, 100, 1, () => (D().noise ??defaultNoise()).colorDetail ?? 50, (v) => { (D().noise ??=defaultNoise()).colorDetail = v; }],
+      ['Color smoothness', 0, 100, 1, () => (D().noise ??defaultNoise()).colorSmoothness ?? 50, (v) => { (D().noise ??=defaultNoise()).colorSmoothness = v; }],
     ];
     const devNodes: HTMLElement[] = [this.profileRow.el], devSync: Array<() => void> = [];
     let dehazeEl: HTMLElement | null = null, tintEl: HTMLElement | null = null, protectEl: HTMLElement | null = null;
@@ -402,8 +402,8 @@ export class FilterPanel extends Dialog {
     const skyRow = sliderRow('Dehaze protect sky', 0, 100, 1, (v) => { D().dehazeSky = v; this.schedule(); });
     devNodes.splice(devNodes.indexOf(darkDehaze.el) + 1, 0, skyRow.el);
     devSync.push(() => skyRow.set(D().dehazeSky ?? 0));
-    const vigColor = colorRow('Vignette colour', (hex) => { (D().vignette ??= defaultVignetteShape()).color = hex; this.schedule(); });
-    const vigClear = el<HTMLElement>('<div style="display:flex;gap:6px"><button class="cv-btn" type="button">Vignette colour: black or white</button></div>');
+    const vigColor = colorRow('Vignette color', (hex) => { (D().vignette ??= defaultVignetteShape()).color = hex; this.schedule(); });
+    const vigClear = el<HTMLElement>('<div style="display:flex;gap:6px"><button class="cv-btn" type="button">Vignette color: black or white</button></div>');
     vigClear.querySelector('button')!.addEventListener('click', () => { (D().vignette ??= defaultVignetteShape()).color = ''; vigColor.set('#000000'); this.schedule(); });
     devNodes.splice(protectEl ? devNodes.indexOf(protectEl) + 1 : devNodes.length, 0, vigColor.el, vigClear);
     devSync.push(() => vigColor.set(D().vignette?.color || '#000000'));
@@ -497,7 +497,7 @@ export class FilterPanel extends Dialog {
     wbCustom = () => wbSel.set('custom');
     const Eye = (window as unknown as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
     const wbPick = el<HTMLButtonElement>('<button class="cv-btn" type="button">White balance eyedropper</button>');
-    if (!Eye) { wbPick.disabled = true; wbPick.title = 'This window cannot read a colour from the screen.'; }
+    if (!Eye) { wbPick.disabled = true; wbPick.title = 'This window cannot read a color from the screen.'; }
     wbPick.addEventListener('click', () => {
       if (!Eye) return;
       void new Eye().open().then(({ sRGBHex }) => {
@@ -539,7 +539,7 @@ export class FilterPanel extends Dialog {
     slide('Split Darks/Lights', 10, 95, 1, () => para().split2, (v) => { para().split2 = v; });
     slide('Split Lights/Highlights', 15, 98, 1, () => para().split3, (v) => { para().split3 = v; });
     const pickColour = (button: HTMLButtonElement, then: (r: number, g: number, b: number) => void): void => {
-      if (!Eye) { button.disabled = true; button.title = 'This window cannot read a colour from the screen.'; return; }
+      if (!Eye) { button.disabled = true; button.title = 'This window cannot read a color from the screen.'; return; }
       button.addEventListener('click', () => { void new Eye().open().then(({ sRGBHex }) => { const n = parseInt(sRGBHex.slice(1), 16); then((n >> 16) & 255, (n >> 8) & 255, n & 255); }).catch(() => undefined); });
     };
     let band: 'master' | HslBand = 'master';
@@ -550,16 +550,16 @@ export class FilterPanel extends Dialog {
     const syncMix = (): void => { mixH.set(bandState().h); mixS.set(bandState().s); mixL.set(bandState().l); };
     const BAND_NAME: Record<HslBand, string> = { reds: 'Reds', oranges: 'Oranges', yellows: 'Yellows', greens: 'Greens', cyans: 'Aquas', blues: 'Blues', purples: 'Purples', magentas: 'Magentas' };
     const BAND_HUE: Record<HslBand, number> = { reds: 0, oranges: 30, yellows: 60, greens: 120, cyans: 180, blues: 240, purples: 270, magentas: 300 };
-    const swatchRow = el('<div class="cv-field" role="group" aria-label="Colours" style="display:flex;flex-wrap:wrap;gap:6px"></div>');
+    const swatchRow = el('<div class="cv-field" role="group" aria-label="Colors" style="display:flex;flex-wrap:wrap;gap:6px"></div>');
     const swatches = new Map<string, HTMLButtonElement>();
     for (const b of ['master', ...HSL_BANDS] as const) {
-      const sw = el<HTMLButtonElement>(`<button class="cv-btn" type="button" aria-pressed="false" title="${b === 'master' ? 'All colours' : BAND_NAME[b]}" aria-label="${b === 'master' ? 'All colours' : BAND_NAME[b]}" style="width:24px;height:24px;padding:0;border-radius:50%;background:${b === 'master' ? 'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)' : `hsl(${BAND_HUE[b]} 80% 50%)`}"></button>`);
+      const sw = el<HTMLButtonElement>(`<button class="cv-btn" type="button" aria-pressed="false" title="${b === 'master' ? 'All colors' : BAND_NAME[b]}" aria-label="${b === 'master' ? 'All colors' : BAND_NAME[b]}" style="width:24px;height:24px;padding:0;border-radius:50%;background:${b === 'master' ? 'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)' : `hsl(${BAND_HUE[b]} 80% 50%)`}"></button>`);
       sw.addEventListener('click', () => { band = b; setBandSwatch(); syncMix(); });
       swatches.set(b, sw);
       swatchRow.append(sw);
     }
     const setBandSwatch = (): void => { for (const [k, sw] of swatches) { sw.setAttribute('aria-pressed', String(k === band)); sw.style.outline = k === band ? '2px solid var(--accent)' : 'none'; sw.style.outlineOffset = '1px'; } };
-    const mixTarget = el<HTMLButtonElement>('<button class="cv-btn" type="button" aria-pressed="false" title="Press a colour in the picture, then drag up or down to change it.">Targeted adjustment</button>');
+    const mixTarget = el<HTMLButtonElement>('<button class="cv-btn" type="button" aria-pressed="false" title="Press a color in the picture, then drag up or down to change it.">Targeted adjustment</button>');
     mixTarget.addEventListener('click', () => this.setProbe(this.probeFor === 'mixer' ? null : 'mixer'));
     this.probeButtons.push([mixTarget, 'mixer']);
     const mixChan = selectRow('Drag changes', [['s', 'Saturation'], ['l', 'Luminance'], ['h', 'Hue']], () => undefined);
@@ -567,7 +567,7 @@ export class FilterPanel extends Dialog {
     const mixKey = (): 'h' | 's' | 'l' => (mixChan.el.querySelector('select')?.value as 'h' | 's' | 'l' | undefined) ?? 's';
     const mixPick = (r: number, g: number, b: number): void => { band = bandFor(r, g, b) ?? 'master'; setBandSwatch(); syncMix(); mixFrom = bandState()[mixKey()]; };
     const mixDrag = (up: number): void => { const k = mixKey(), lim = k === 'h' ? 180 : 100; bandState()[k] = Math.max(-lim, Math.min(lim, Math.round(mixFrom + up / 2))); syncMix(); this.schedule(); };
-    devNodes.push(el('<p class="cv-note">Colour Mixer</p>'), swatchRow, mixTarget, mixChan.el, mixH.el, mixS.el, mixL.el);
+    devNodes.push(el('<p class="cv-note">Color Mixer</p>'), swatchRow, mixTarget, mixChan.el, mixH.el, mixS.el, mixL.el);
     devSync.push(() => { setBandSwatch(); syncMix(); });
     let range: 'shadows' | 'midtones' | 'highlights' | 'global' = 'midtones';
     const grading = (): GradingState => (D().grading ??= defaultGrading());
@@ -576,7 +576,7 @@ export class FilterPanel extends Dialog {
     const gL = sliderRow('Luminance', -100, 100, 1, (v) => { grading()[range].l = v; this.schedule(); });
     // The colour wheel: hue is the angle and saturation the distance from the centre. Painted once; the marker moves in place.
     const WHEEL = 96, wheelBox = el(`<div style="position:relative;width:${WHEEL}px;height:${WHEEL}px;margin:6px auto"></div>`);
-    const wheel = el<HTMLCanvasElement>(`<canvas width="${WHEEL}" height="${WHEEL}" aria-label="Colour grading wheel" style="display:block;touch-action:none;cursor:crosshair;border-radius:50%"></canvas>`);
+    const wheel = el<HTMLCanvasElement>(`<canvas width="${WHEEL}" height="${WHEEL}" aria-label="Color grading wheel" style="display:block;touch-action:none;cursor:crosshair;border-radius:50%"></canvas>`);
     const dot = el('<span style="position:absolute;width:10px;height:10px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #000;pointer-events:none;transform:translate(-50%,-50%)"></span>');
     wheelBox.append(wheel, dot);
     const wctx = wheel.getContext('2d');
@@ -607,7 +607,7 @@ export class FilterPanel extends Dialog {
     wheel.addEventListener('dblclick', () => { const w = grading()[range]; w.h = 0; w.s = 0; w.l = 0; syncWheel(); this.schedule(); });
     const syncWheel = (): void => { gH.set(grading()[range].h); gS.set(grading()[range].s); gL.set(grading()[range].l ?? 0); placeDot(); };
     const rangeSel = selectRow('Range', [['shadows', 'Shadows'], ['midtones', 'Midtones'], ['highlights', 'Highlights'], ['global', 'Global']], (v) => { range = v as typeof range; syncWheel(); });
-    devNodes.push(el('<p class="cv-note">Colour Grading</p>'), rangeSel.el, wheelBox, gH.el, gS.el, gL.el);
+    devNodes.push(el('<p class="cv-note">Color Grading</p>'), rangeSel.el, wheelBox, gH.el, gS.el, gL.el);
     devSync.push(() => { rangeSel.set(range); syncWheel(); });
     slide('Blending', 0, 100, 1, () => grading().blending, (v) => { grading().blending = v; });
     slide('Balance', -100, 100, 1, () => grading().balance, (v) => { grading().balance = v; });
@@ -662,8 +662,8 @@ export class FilterPanel extends Dialog {
       slide(`${name} Primary Saturation`, -100, 100, 1, () => calib()[`${p}Sat`], (v) => { calib()[`${p}Sat`] = v; });
     }
     const point = (): PointColorState => (D().pointColor ??= defaultPointColor());
-    const pointPick = colorRow('Colour', (v) => { point().color = v; this.schedule(); });
-    const pointEye = el<HTMLButtonElement>('<button class="cv-btn" type="button" aria-pressed="false" title="Click a colour in the picture.">Pick from image</button>');
+    const pointPick = colorRow('Color', (v) => { point().color = v; this.schedule(); });
+    const pointEye = el<HTMLButtonElement>('<button class="cv-btn" type="button" aria-pressed="false" title="Click a color in the picture.">Pick from image</button>');
     pointEye.addEventListener('click', () => this.setProbe(this.probeFor === 'point' ? null : 'point'));
     this.probeButtons.push([pointEye, 'point']);
     this.onPick = (r, g, b) => {
@@ -680,9 +680,9 @@ export class FilterPanel extends Dialog {
     // Each panel heading folds its controls away and carries a Reset that returns just that panel to its defaults.
     const toneKeys = (keys: Array<keyof DevelopState['tone']>) => (): void => { for (const k of keys) D().tone[k] = defaultDevelopState().tone[k]; };
     const resets: Record<string, () => void> = {
-      Light: toneKeys(['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks']), Colour: toneKeys(['temperature', 'tint', 'vibrance', 'saturation']),
+      Light: toneKeys(['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks']), Color: toneKeys(['temperature', 'tint', 'vibrance', 'saturation']),
       Effects: () => { toneKeys(['dehaze', 'vignette', 'grain'])(); D().vignette = defaultVignetteShape(); delete D().glow; }, Detail: () => { D().detail = defaultDevelopState().detail; }, 'Noise Reduction': () => { D().noise = defaultNoise(); }, 'Point Curve': () => { D().curves = defaultDevelopState().curves; },
-      'Parametric Curve': () => { D().parametric = defaultParametric(); }, 'Colour Mixer': () => { D().color = defaultDevelopState().color; }, 'Colour Grading': () => { D().grading = defaultGrading(); },
+      'Parametric Curve': () => { D().parametric = defaultParametric(); }, 'Color Mixer': () => { D().color = defaultDevelopState().color; }, 'Color Grading': () => { D().grading = defaultGrading(); },
       'Point Color': () => { D().pointColor = defaultPointColor(); }, Optics: () => { D().optics = defaultOptics(); }, Geometry: () => { D().geometry = defaultGeometry(); }, Calibration: () => { D().calibration = defaultCalibration(); delete D().process; },
     };
     let folds: HTMLElement[] = [];

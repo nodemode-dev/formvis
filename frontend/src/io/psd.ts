@@ -11,7 +11,7 @@ import { artboardFromData, blendIfActive, smartFiltersFrom, type BlendIf, type D
 import { windingArea } from '../engine/custom-shapes';
 import { addIccResource, addPathResources, addResourceBytes, block as resourceBlock, clippingPathName, readPathResources, resourceBlocks } from './psd-paths';
 import { addExtraChannels, readExtraChannels, readIccProfile } from './psd-channels';
-import { readPsdChannelMode, writeMultichannelPsd } from './psd-modes';
+import { readPsdChannelMode, readPsdIndexedRaw, writeMultichannelPsd } from './psd-modes';
 import { readChannelRestrictions } from './psd-blend';
 import { conformLevels, edgeContourKeys, patternFillItems, readBevelDetails, readPatternFills, type BevelDetail, type PatternFillRaw } from './psd-raw';
 import { ADJUSTMENT_KEY, COMP_APPEARANCE_KEY, SMART_STACK_KEY, addLayerBlocks, adjustmentFromBlock, filterEffectMask, filterMaskPlane, measureScaleBytes, measureScaleFrom, readLayerBlocks, type OwnBlock } from './psd-own';
@@ -695,6 +695,8 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
   if (chanMode) return { doc: chanMode.doc, notes: chanMode.notes, activeId: chanMode.activeId, paths: null, report: reportOf(1, [], chanMode.notes) };
   let psd: Psd, cut: 'merged' | 'layers' | null = null;
   try { psd = readPsd(buffer, { skipThumbnail: true }); if (mergedIsShort(buffer)) cut = 'merged'; } catch (err) {
+    const indexed = readPsdIndexedRaw(buffer, psdResolution(buffer));
+    if (indexed) return { doc: indexed.doc, notes: indexed.notes, activeId: indexed.activeId, paths: null, report: reportOf(1, indexed.kept, indexed.notes) };
     // A file cut short loses its merged image first, then its last layers; what is whole still reads.
     try { psd = readPsd(buffer, { skipThumbnail: true, skipCompositeImageData: true }); cut = 'merged'; } catch {
       const padded = padToLayers(buffer);
@@ -971,10 +973,8 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
       }
       if (pl.effects) { const fx = fromPsdEffects(pl.effects, psd.patterns, name, notes, false, bevels.get(pl)); if (fx) layer.effects = fx; }
       // Blend Interior Effects as Group and Layer Mask Hides Effects belong to the layer style; they are kept when it has one.
-      if (layer.effects) {
-        if (pl.blendInteriorElements) layer.effects.blendInterior = true;
-        if (pl.layerMaskAsGlobalMask === false) layer.effects.layerMaskHides = false;
-      }
+      if (pl.blendInteriorElements) { layer.blendInterior = true; if (layer.effects) layer.effects.blendInterior = true; }
+      if (pl.layerMaskAsGlobalMask === false) { layer.layerMaskHides = false; if (layer.effects) layer.effects.layerMaskHides = false; }
       Object.assign(layer, fromPsdBlending(pl));
       // The file's Background layer is the bottom one, opaque over the whole canvas; it opens locked, as there.
       if (!parentId && !layers.length && name === 'Background' && src && raster && !pl.mask && !pl.text && !pl.placedLayer && !pl.clipping && !fillSpec && (pl.opacity ?? 1) === 1 && blend === 'normal' && coversOpaque(src, atX, atY, doc.width, doc.height)) {
@@ -1162,6 +1162,8 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     if (effectsPresent(l.effects)) { const e = toPsdEffects(l.effects, psdPatterns); if (e) out.effects = e; }
     out.blendClippendElements = l.blendClipped === true;
     if (l.transparencyShapes === false) out.transparencyShapesLayer = false;
+    if (l.blendInterior === true || l.effects?.blendInterior === true) out.blendInteriorElements = true;
+    if (l.layerMaskHides === false || l.effects?.layerMaskHides === false) out.layerMaskAsGlobalMask = false;
     if (l.blendChannels?.some((on) => !on)) out.channelBlendingRestrictions = l.blendChannels.flatMap((on, i) => (on ? [] : [i]));
     const bv = l.effects?.bevel;
     if (bv?.enabled) {

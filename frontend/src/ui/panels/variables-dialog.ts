@@ -40,7 +40,7 @@ export class DefineVariablesDialog extends Dialog {
     };
     const vis = mk('visibility', 'Visibility'), txt = mk('text', 'Text Replacement'), pix = mk('pixels', 'Pixel Replacement');
     this.methodRow = selectRow('Method', [['fit', 'Fit'], ['fill', 'Fill'], ['asis', 'As Is'], ['conform', 'Conform']], (v) => { this.method = v as NonNullable<DocVariable['method']>; });
-    this.alignRow = selectRow('Alignment', [['4', 'Centre'], ['0', 'Top left'], ['1', 'Top'], ['2', 'Top right'], ['3', 'Left'], ['5', 'Right'], ['6', 'Bottom left'], ['7', 'Bottom'], ['8', 'Bottom right']], (v) => { this.align = Number(v); });
+    this.alignRow = selectRow('Alignment', [['4', 'Center'], ['0', 'Top left'], ['1', 'Top'], ['2', 'Top right'], ['3', 'Left'], ['5', 'Right'], ['6', 'Bottom left'], ['7', 'Bottom'], ['8', 'Bottom right']], (v) => { this.align = Number(v); });
     this.clipRow = checkRow('Clip to Bounding Box', (v) => { this.clip = v; });
     this.clipRow.set(true);
     this.body.append(this.layerRow, ...vis, ...txt, ...pix, this.methodRow.el, this.alignRow.el, this.clipRow.el);

@@ -538,7 +538,7 @@ const size = (bytes: number): string => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(
 export class HuggingFaceToken {
   readonly el = el('<div class="cv-panel-section cv-hf-token"><span class="cv-refs-title">Hugging Face token</span></div>');
   private readonly token = el<HTMLInputElement>('<input class="cv-input" type="password" aria-label="Hugging Face token" placeholder="hf_..." autocomplete="new-password" spellcheck="false" maxlength="256">');
-  private readonly note = el('<p class="cv-note" role="status">Only needed for a helper model that asks you to accept a licence on Hugging Face before it downloads.</p>');
+  private readonly note = el('<p class="cv-note" role="status">Only needed for a helper model that asks you to accept a license on Hugging Face before it downloads.</p>');
 
   constructor() {
     const save = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Save</button>'), forget = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Forget token</button>'), buttons = el('<div class="cv-improve"></div>');

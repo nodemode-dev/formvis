@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## US spelling, raw Indexed PSD, EXR part names, Jobs anchor, beneath-sampling, blending switches · _v1.94.2 (about 100 files: command-meta.ts, app.ts, docs/MANUAL.md, i18n tables, io/psd-modes.ts, io/psd.ts, backend/app/services/contained.py, ui/status.ts, ui/jobs-list.ts, engine/pixel-move.ts, engine/index.ts, engine/types.ts, io/project-io.ts, ui/panels/adjust-panel.ts, ui/panels/layer-style-dialog.ts)
+
+- Spelling: user-facing English only. 14 keys renamed with all 27 more/ tables; where a US twin key already existed only the source changed (the British keys stay as orphans). Kept on purpose: command ids (guides-from-shape-centre, pick-screen-colour, next-favourite-theme, colour.settings), theme ids (pro-medium-grey, pro-light-grey), the dither value 'colour', tool param names colour and centre, the data fields licence, licenceAccepted and acceptLicence. Not done: the extra/ keyed hints ('Stop colour', 'The colour could not be read.', tool hint strings, 'Paint stylised strokes...').
+- readPsdIndexedRaw (psd-modes.ts) runs only in the catch where the PSD library declines a layerless 8-bit Indexed file with a raw merged image; it takes the palette from the colour mode data. RLE files never reach it.
+- contained.py _layer_label: the select branch names a multi-part EXR layer after its part when the part is named, its key has no prefix and it holds one channel set; the chooser listing is unchanged.
+- PSD resource 1077 (DisplayInfo): kept at a 4-byte version and 14-byte records, from the 1007 structure (colour space, 4 components, opacity, kind, padding byte); a common reader assumes 13. Unconfirmed against a third-party file with 2 or more alpha channels.
+- Jobs: the busy slot is display:none with no job (1.94.0), so anchoring to it put the panel above the window; it anchors to the status bar.
+- sampleOriginal(pt, composite, radius, without?) renders the document with that adjustment layer hidden, so eyedroppers sample beneath it.
+- blendInterior and layerMaskHides live on the layer (were only in effects, dropped when none is on); mirrored into effects when present; written to .fvd and PSD (blendInteriorElements, layerMaskAsGlobalMask).
+
 ## PSD bitmap and flat CMYK, UI audit 3 · _v1.94.1 (io/psd.ts, backend/app/routers/io.py, styles/dialogs.css, panels.css, shell.css, ui/paths.ts, ui/panels/glyphs-dialog.ts, extensions/tools/type.ts, ui/panels/text-dialog.ts)
 
 - psd.ts mergedIsShort: a 1-bit Bitmap PSD has rows of ceil(width/8) bytes; the size check counted a byte a pixel, so every Bitmap PSD was "cut short". io.py decode_cmyk_psd: with no layer records, the merged image is returned as one Background layer (it returned none). Checked live: the flat CMYK fixture decodes to one 32x24 layer with inks 200,100,50,0. Both found with independent fixtures (sidecar test_harness/fixtures/make_fixtures.py).

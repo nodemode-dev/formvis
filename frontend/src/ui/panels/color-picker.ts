@@ -104,8 +104,8 @@ export class ColorPickerDialog extends Dialog {
   private axis: Axis = 'h';
   private readonly axisRows = new Map<Axis, ReturnType<typeof numberRow>>();
   private readonly radios = new Map<Axis, HTMLInputElement>();
-  private readonly gamutWarn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Out of gamut for printing: click for the closest printable colour" hidden>Out of gamut</button>');
-  private readonly webWarn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Not a web-safe colour: click for the closest one" hidden>Not web safe</button>');
+  private readonly gamutWarn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Out of gamut for printing: click for the closest printable color" hidden>Out of gamut</button>');
+  private readonly webWarn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button" title="Not a web-safe color: click for the closest one" hidden>Not web safe</button>');
   private onlyWeb = false;
   private readonly webRow = checkRow('Only Web Colors', (v) => { this.onlyWeb = v; if (v) this.setRgb(this.rgb()); });
   private tables: { out: Lut4; inn: Lut3x4 } | null = null;

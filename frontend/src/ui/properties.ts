@@ -643,7 +643,7 @@ export class PropertiesColumn {
     const side = (): ParaAttrs => typedParas() ?? e.textSettings;
     for (const b of btns) b.addEventListener('click', () => put({ align: b.dataset.align as TextSpec['align'], edge: undefined }));
     const row = (label: string, control: HTMLElement): void => { const r = el(`<label class="cv-char-row"><span>${label}</span></label>`); r.appendChild(control); body.appendChild(r); };
-    const last = el<HTMLSelectElement>('<select class="cv-select" aria-label="Justify last line"><option value="left">Last line left</option><option value="center">Last line centre</option><option value="right">Last line right</option><option value="all">Justify all</option></select>');
+    const last = el<HTMLSelectElement>('<select class="cv-select" aria-label="Justify last line"><option value="left">Last line left</option><option value="center">Last line center</option><option value="right">Last line right</option><option value="all">Justify all</option></select>');
     last.addEventListener('change', () => put({ lastLine: last.value === 'left' ? undefined : last.value as TextSpec['lastLine'] }));
     const fields = ([['Left indent', 'indentLeft', 0], ['Right indent', 'indentRight', 0], ['First line', 'indentFirst', -2000], ['Space before', 'spaceBefore', 0], ['Space after', 'spaceAfter', 0]] as const).map(([label, key, min]) => {
       const f = numField('px', label, min, 5000, 1, (v) => put({ [key]: v || undefined }));
@@ -700,7 +700,7 @@ export class PropertiesColumn {
     feats.addEventListener('change', () => setType(e, { features: featuresFromText(feats.value) }));
     const axes = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="false" aria-label="Variable axes" placeholder="wght 600, wdth 90">');
     axes.addEventListener('change', () => { const v = variationsFromText(axes.value); setType(e, { variations: Object.keys(v).length ? v : null }); });
-    const color = el<HTMLInputElement>('<input class="cv-input cv-color" type="color" aria-label="Colour">');
+    const color = el<HTMLInputElement>('<input class="cv-input cv-color" type="color" aria-label="Color">');
     color.addEventListener('input', () => {
       const m = /^#([0-9a-f]{6})$/i.exec(color.value), l = e.activeLayer;
       if (!m) return;
@@ -711,7 +711,7 @@ export class PropertiesColumn {
     const angle = numField('deg', 'Angle', -360, 360, 1, (v) => setType(e, { angle: v || undefined }));
     const lang = el<HTMLSelectElement>(`<select class="cv-select" aria-label="Language">${TYPE_LANGUAGES.map(([id, name]) => `<option value="${id}">${name}</option>`).join('')}</select>`);
     lang.addEventListener('change', () => setType(e, { language: lang.value || undefined }));
-    row('Weight', weight); row('Colour', color); row('Caps', caps); row('Lines', lines); row('H scale', hscale.root); row('V scale', vscale.root); row('Baseline', shift.root); row('Angle', angle.root); row('Language', lang); row('Features', feats); row('Axes', axes);
+    row('Weight', weight); row('Color', color); row('Caps', caps); row('Lines', lines); row('H scale', hscale.root); row('V scale', vscale.root); row('Baseline', shift.root); row('Angle', angle.root); row('Language', lang); row('Features', feats); row('Axes', axes);
     new PanelGroup(this.root, 'character', [{ id: 'character', label: 'Character', body }], 'Character');
     let axesFace = '';
     let fonts = '';

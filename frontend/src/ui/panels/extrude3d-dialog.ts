@@ -78,7 +78,7 @@ export class Extrude3DDialog extends Dialog {
       input.addEventListener('input', () => { this.s[key] = Number(input.value); this.redraw(); });
       row.append(input); this.body.append(row); this.inputs.set(key, input);
     }
-    const color = el<HTMLInputElement>('<input type="color" aria-label="Colour">'), crow = el('<label class="cv-dialog-row"><span>Colour</span></label>');
+    const color = el<HTMLInputElement>('<input type="color" aria-label="Color">'), crow = el('<label class="cv-dialog-row"><span>Color</span></label>');
     color.addEventListener('input', () => { this.s.color = color.value; this.redraw(); });
     crow.append(color); this.body.append(crow, this.note); this.inputs.set('color', color);
     this.button('Cancel', 'ghost', () => this.close());

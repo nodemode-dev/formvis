@@ -134,7 +134,7 @@ export class ChannelOptionsDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false" aria-label="Channel name">');
   private readonly kind = select('<option value="alpha">Alpha Channel</option><option value="spot">Spot Channel</option>');
   private readonly indicates = select('<option value="masked">Masked Areas</option><option value="selected">Selected Areas</option>');
-  private readonly color = el<HTMLInputElement>('<input class="cv-input cv-color" type="color" aria-label="Overlay colour">');
+  private readonly color = el<HTMLInputElement>('<input class="cv-input cv-color" type="color" aria-label="Overlay color">');
   private readonly opacity = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="100" step="1" aria-label="Opacity in percent">');
   private readonly opacityLabel: HTMLElement;
   private readonly colorLabel: HTMLElement;

@@ -250,7 +250,7 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
   blackWhite: {
     label: 'Black & White',
     params: [range('reds', 'Reds', -200, 300, 40), range('yellows', 'Yellows', -200, 300, 60), range('greens', 'Greens', -200, 300, 40), range('cyans', 'Cyans', -200, 300, 60), range('blues', 'Blues', -200, 300, 20), range('magentas', 'Magentas', -200, 300, 80),
-      { key: 'tint', label: 'Tint', kind: 'check', def: false }, { key: 'tintColor', label: 'Tint colour', kind: 'color', def: { r: 225, g: 211, b: 179 } }],
+      { key: 'tint', label: 'Tint', kind: 'check', def: false }, { key: 'tintColor', label: 'Tint color', kind: 'color', def: { r: 225, g: 211, b: 179 } }],
     kernel: (v) => {
       const w = (k: string): number => n(v, k) / 100, tint = v.tint === true, tc = v.tintColor as RGB, t = [tc.r / 255, tc.g / 255, tc.b / 255], tl = lum(t[0], t[1], t[2]) || 1;
       return perPixel((r, g, b) => {
@@ -263,7 +263,7 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
   },
   photoFilter: {
     label: 'Photo Filter',
-    params: [{ key: 'color', label: 'Filter colour', kind: 'color', def: { r: 236, g: 138, b: 0 } }, range('density', 'Density', 1, 100, 25), { key: 'preserve', label: 'Preserve Luminosity', kind: 'check', def: true }],
+    params: [{ key: 'color', label: 'Filter color', kind: 'color', def: { r: 236, g: 138, b: 0 } }, range('density', 'Density', 1, 100, 25), { key: 'preserve', label: 'Preserve Luminosity', kind: 'check', def: true }],
     kernel: (v) => {
       const c = v.color as RGB, d = n(v, 'density') / 100, f = [c.r / 255, c.g / 255, c.b / 255], keep = v.preserve !== false;
       return perPixel((r, g, b) => {

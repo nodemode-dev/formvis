@@ -38,7 +38,7 @@ export function createDevelopProbe(host: ProbeHost): Tool {
   return {
     id: 'idle', label: 'Develop on image', key: '', order: 0, hidden: true,
     icon: () => 'move',
-    hint: () => (host.mode() === 'guides' ? 'Drag along a vertical or horizontal edge to draw a guide; two guides on a side straighten it.' : host.mode() === 'drag' ? 'Press on a colour, then drag up or down to change it.' : 'Click a colour in the picture.'),
+    hint: () => (host.mode() === 'guides' ? 'Drag along a vertical or horizontal edge to draw a guide; two guides on a side straighten it.' : host.mode() === 'drag' ? 'Press on a color, then drag up or down to change it.' : 'Click a color in the picture.'),
     cursor: () => 'crosshair',
     down(ctx, p: ToolPointer) {
       const g = geo(), mode = host.mode();

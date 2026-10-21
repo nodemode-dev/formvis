@@ -415,7 +415,7 @@ export class ProfileInfoDialog extends Dialog {
     choose.addEventListener('click', () => this.file.click());
     this.file.addEventListener('change', () => void this.fromFile());
     this.body.append(this.source);
-    for (const k of ['Name', 'Colour space', 'Device class', 'Connection space', 'Version', 'Size', 'Total ink', 'Copyright']) {
+    for (const k of ['Name', 'Color space', 'Device class', 'Connection space', 'Version', 'Size', 'Total ink', 'Copyright']) {
       const out = el('<span></span>');
       this.fields.set(k, out);
       this.body.append(row(k, out));
@@ -433,7 +433,7 @@ export class ProfileInfoDialog extends Dialog {
     try {
       const i = await api.profileInfo(ref), put = (k: string, v: string): void => setText(this.fields.get(k) as HTMLElement, v);
       setText(this.source, source);
-      put('Name', i.name); put('Colour space', i.space); put('Device class', i.deviceClass ?? 'Not stated'); put('Connection space', i.pcs ?? 'Not stated');
+      put('Name', i.name); put('Color space', i.space); put('Device class', i.deviceClass ?? 'Not stated'); put('Connection space', i.pcs ?? 'Not stated');
       put('Version', i.version ?? 'Not stated'); put('Size', i.size ? `${(i.size / 1024).toFixed(1)} KB` : 'Not stated'); put('Total ink', i.tac === null ? 'Not applicable' : `${i.tac}%`);
       put('Copyright', i.copyright ?? 'Not stated');
     } catch (err) { setText(this.note, msg(err)); }
@@ -443,7 +443,7 @@ export class ProfileInfoDialog extends Dialog {
     if (!f) return;
     const head = new Uint8Array(await f.slice(0, 40).arrayBuffer());
     const icc = String.fromCharCode(...head.subarray(36, 40)) === 'acsp' ? new Uint8Array(await f.arrayBuffer()) : await embeddedProfile(f).catch(() => null);
-    if (!icc) { setText(this.note, `${f.name} has no embedded colour profile.`); return; }
+    if (!icc) { setText(this.note, `${f.name} has no embedded color profile.`); return; }
     await this.fill({ icc: toBase64(icc) }, `File: ${f.name}`);
   }
 }

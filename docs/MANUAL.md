@@ -6,7 +6,7 @@ ask it questions.
 
 ## Getting started
 
-- New document: File > New sets the size, resolution, colour mode (RGB, Grayscale or Bitmap) and background.
+- New document: File > New sets the size, resolution, color mode (RGB, Grayscale or Bitmap) and background.
 - Open: File > Open Project opens formvis projects (.fvd, and .fmv from before 1.87.0), PSD and PSB files, OpenRaster files (.ora) and
   images (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO, PBM, PGM, PPM, PAM, camera raw and more). Dropping files on the window opens them too.
 - Opening one camera RAW (DNG, CR2, CR3, NEF, ARW and the rest) shows Camera Raw first: a half-size preview,
@@ -68,7 +68,7 @@ ask it questions.
   pointer that comes near them over the canvas; the menus, the panel flyouts and the dialogs open only when asked for.
 - Settings stick. Every tool's options and the last values of the dialogs (Canvas Size, Fill, Stroke, the filters,
   Remove Background, Export and the rest) are kept across restarts, in Preferences; Reset All Preferences puts
-  them back to the defaults. What describes the open document (a size, a position, a colour taken from the
+  them back to the defaults. What describes the open document (a size, a position, a color taken from the
   foreground) starts fresh each time.
 - Help > What's New lists what the recent releases added. Each row's Show Me closes the list and runs the feature;
   the list opens once after an update (turn that off in the list itself or with pref-whats-new-auto).
@@ -120,7 +120,7 @@ ask it questions.
   handle scale, or every handle and the space outside the box turn, until Enter or Escape; Skew, Distort and
   Perspective pull the corners and the middles of the sides (a side slides along itself in Skew, a
   corner and its partner move apart in Perspective), applied with Enter. Rotate 180° and the 90° turns turn the
-  selected layers about their centre, and Again (Shift+Ctrl+T in the desktop app) repeats the last transform, on a
+  selected layers about their center, and Again (Shift+Ctrl+T in the desktop app) repeats the last transform, on a
   copy with Alt+Shift+Ctrl+T.
 - Layer > Layer Mask adds a mask revealing or hiding all, or the selection, or made from the layer's transparency;
   Layer > Mask All Objects finds the objects in the layer and adds a masked folder for each, for adjustments. Layer >
@@ -128,7 +128,7 @@ ask it questions.
   Rasterize turns type, shapes, fill layers and smart objects into pixels, the selected ones or All Layers.
 - Layer > New Fill Layer makes a Solid Color, Gradient or Pattern layer: a fill that covers the whole canvas however
   the layer is moved or the canvas changes, and stays editable. Layer > Layer Content Options, or a double-click on
-  its thumbnail, changes the colour, the gradient (its style, angle, scale, Reverse, Dither and Align with Layer) or
+  its thumbnail, changes the color, the gradient (its style, angle, scale, Reverse, Dither and Align with Layer) or
   the pattern (its angle, scale and Link with Layer). It comes with a layer mask, made from the selection when there
   is one, and painting it paints the mask; Layer > Rasterize > Rasterize Fill Content turns it into pixels.
 - Layer > Layer Style shows the Layer Style dialog at Blending Options or at any effect, turning that effect on. Bevel
@@ -150,31 +150,31 @@ ask it questions.
 
 - Marquee (rectangle, ellipse, single row and column), Lasso (freehand, polygonal, magnetic), Magic Wand, Quick
   Selection and Object Selection (hover to see the object it would take).
-- Select > Subject finds the main subject; Select > Color Range selects by colour or by tone; Select > Sky selects the
+- Select > Subject finds the main subject; Select > Color Range selects by color or by tone; Select > Sky selects the
   sky (its model downloads once, 176 MB); Select > Focus Area selects what is in focus, with a preview to set how much.
 - Select and Mask refines an edge. Expand, Contract, Feather, Border, Smooth and Invert change a selection.
-- Select > Reselect brings back the last selection dropped; Grow and Similar add pixels near the selected colours (the
+- Select > Reselect brings back the last selection dropped; Grow and Similar add pixels near the selected colors (the
   Magic Wand's Tolerance), touching the selection or anywhere; Transform Selection moves, scales or rotates the outline
   alone (Enter applies, Escape cancels); Convert to Shape makes a shape layer from it. Find Layers (Alt+Shift+Ctrl+F)
   selects layers by name, and Isolate Layers lists only the selected ones until chosen again.
 - Select > Save Selection keeps the selection with the document as an alpha channel: a new one, or added to,
   subtracted from or intersected with one already there, in this document or another open one of the same size.
   Select > Load Selection brings one back, or the active layer's transparency or mask, inverted if you like, as the
-  selection or combined with it. The Channels panel lists the alpha channels below the colour channels: the eye shows
+  selection or combined with it. The Channels panel lists the alpha channels below the color channels: the eye shows
   one over the picture in red, Ctrl-click (Cmd-click on a Mac) loads it (Shift adds, Alt subtracts, both intersect),
   a double-click renames it and the bin deletes it. They are saved with the project and follow the canvas when it is
   turned, flipped, cropped or resized.
-- Edit > Stroke draws a band along the selection's edge (with none, around the layer's pixels), inside, centred on
-  or outside it, in a colour, blend mode and opacity. Edit > Paste Special > Paste Into pastes as a new layer shown
+- Edit > Stroke draws a band along the selection's edge (with none, around the layer's pixels), inside, centered on
+  or outside it, in a color, blend mode and opacity. Edit > Paste Special > Paste Into pastes as a new layer shown
   only inside the selection, through a mask that stays put when you move the picture; Paste Outside shows it only
   outside; Paste in Place puts it where it was copied from.
 
 ## Painting and retouching
 
-- The Mixer Brush (B) paints with wet paint: Wet sets how much colour it picks up from the canvas, Mix how much of
-  that it lays with the loaded colour, Load how far the loaded colour lasts along a stroke. Alt-click loads the
+- The Mixer Brush (B) paints with wet paint: Wet sets how much color it picks up from the canvas, Mix how much of
+  that it lays with the loaded color, Load how far the loaded color lasts along a stroke. Alt-click loads the
   brush from the canvas; with Wet and Mix at 0 it paints like the Brush.
-- The Art History Brush (Y) paints stylised strokes in the colours of the History Brush's source snapshot: take a
+- The Art History Brush (Y) paints stylized strokes in the colors of the History Brush's source snapshot: take a
   snapshot in the History panel, then brush over the picture to turn it into a painted version of itself. Style sets
   the strokes (tight or loose, short to long, dabs or curls); Tolerance leaves alone what is already close to the
   snapshot.
@@ -194,8 +194,8 @@ ask it questions.
   (hidden while you paint).
 - Edit > Content-Aware Fill shows a dialog with Sampling Area, Show Result and Output To, and four adaptation
   controls that all start off: Color Adaptation (None, Default, High, Very High), Rotation Adaptation (None to Full),
-  Scale and Mirror. With them off the fill is as fast as before. Colour adaptation makes the search about 8 times
-  slower and the rotation and scale options about 20 times slower with colour, so use them on small holes. Transformed
+  Scale and Mirror. With them off the fill is as fast as before. Color adaptation makes the search about 8 times
+  slower and the rotation and scale options about 20 times slower with color, so use them on small holes. Transformed
   patches are sampled to the nearest pixel. The adaptation options are in the dialog only, not on the quick
   command or the agents' tools.
 - Dodge and Burn (Range, Exposure, Protect Tones) and Sponge (Saturate or Desaturate, Flow, Vibrance).
@@ -210,7 +210,7 @@ ask it questions.
   along; Paste size sets how much of the plane it covers); Stamp clones in perspective (Alt-click a source, then
   paint). Connected plane hinges a new plane on the edge chosen in Hinge edge (right, bottom, left or top) and turns it
   with Child angle. OK applies it as one step.
-- The Gradient Editor (click the gradient in the Gradient tool's options) has opacity stops above the bar and colour
+- The Gradient Editor (click the gradient in the Gradient tool's options) has opacity stops above the bar and color
   stops below it, each with a draggable midpoint between neighbours. `.grd` files keep the midpoints and the
   opacity stops both ways. Limit: a Gradient Fill layer and the stops read from a PSD fill layer keep their dense list
   of stops, without editable midpoints.
@@ -236,19 +236,19 @@ ask it questions.
   and rotate like any other.
 - A pen's pressure (and tilt and twist where the pen reports them) drives size and flow. A touch screen's force does
   the same, and so does a Force Touch trackpad's press on a Mac; a plain mouse paints at full pressure.
-- Smoothing steers the stroke behind the pointer and catches up when you lift; Airbrush builds colour while you hold.
+- Smoothing steers the stroke behind the pointer and catches up when you lift; Airbrush builds color while you hold.
 - A stroke stays inside the selection if there is one. It is one undo step, drawn live and kept to the area it touches, so a very large picture paints without
   holding a second copy of itself.
 
 ## Type, shapes and paths
 
 - The Type tool adds editable text: point text or a paragraph in a box, horizontal or vertical, with font style,
-  anti-aliasing, colour and warp. Type Mask tools make a selection in the shape of text. While you type in an existing
+  anti-aliasing, color and warp. Type Mask tools make a selection in the shape of text. While you type in an existing
   type layer, Ctrl or Cmd with a drag on a corner of its box scales it about the opposite corner, and Ctrl or Cmd with
-  Shift turns it about its centre; the text box follows, and the typing, the scale and the turn are one undo step. In
-  16 and 32 bit, CMYK and Lab documents the type keeps its exact colour to the edge of each letter.
+  Shift turns it about its center; the text box follows, and the typing, the scale and the turn are one undo step. In
+  16 and 32 bit, CMYK and Lab documents the type keeps its exact color to the edge of each letter.
 - Shape tools draw rectangles, ellipses, triangles, polygons, stars, lines, arrows and custom shapes, as shape
-  layers, paths or pixels, with a fill and a stroke; the stroke is solid, dashed or dotted, and inside, centred on or
+  layers, paths or pixels, with a fill and a stroke; the stroke is solid, dashed or dotted, and inside, centered on or
   outside the shape's edge.
 - The Markup tool (with Note and Count, I) marks a picture in one drag: an arrow, a callout pointing at something, a
   highlight, or a redaction box, each its own layer. Apply Redactions (its options, or Layer > Shape) burns the boxes
@@ -267,7 +267,7 @@ ask it questions.
 - Adjustment layers change what is below them without changing its pixels: Levels, Curves, Hue/Saturation, Exposure,
   Brightness/Contrast, Vibrance, Color Balance, Black & White, Photo Filter, Channel Mixer, Invert, Posterize,
   Threshold, Selective Color, Gradient Map, Color Lookup (its own looks, including bleach bypass, cross process and
-  faded film, or a .cube file), Develop (tone, colour and detail, with a vignette), Clarity (midtone local contrast),
+  faded film, or a .cube file), Develop (tone, color and detail, with a vignette), Clarity (midtone local contrast),
   Dehaze, Texture (fine detail), Light (Brightness, Contrast, Highlights, Shadows, Whites and Blacks), Grain, Split
   Toning, Halation and Glow. Clarity, Dehaze, Texture and Light are small, maskable slices of Develop; Clarity and
   Texture scale their radius with the picture, so they look the same at any zoom. PSD has no matching layers, so
@@ -275,23 +275,23 @@ ask it questions.
 - Grain has presets by film speed, ISO 100 to ISO 3200.
 - Layer > New Film Layer adds a Light Leak (warm light from an edge or corner, in Screen blend) or a Frame (a film
   edge, a white border or a thin line), as layers you can move and mask.
-- Layer > Color Match matches a layer's colours to what is beneath it or around it, without changing its pixels: it
+- Layer > Color Match matches a layer's colors to what is beneath it or around it, without changing its pixels: it
   adds a Curves layer clipped to it, whose opacity is the amount.
 - Filters (Filter menu) include blurs, sharpening, noise, lens correction and the gallery's artistic filters; on a
   smart object they stay editable.
 - Image > Image Rotation turns the whole canvas by 90 or 180
   degrees without resampling a pixel, or by any angle with Arbitrary..., the canvas growing to hold it and the
-  Background's new corners filled with the background colour. Image > Crop cuts the canvas to the selection's bounds;
+  Background's new corners filled with the background color. Image > Crop cuts the canvas to the selection's bounds;
   Image > Duplicate... makes a copy of the document in a new tab, in one layer with Duplicate Merged Layers Only.
 - File > Automate > Fit Image... resamples the image, its proportions kept, to fit within a width and a height in
   pixels; Don't Enlarge leaves a smaller one as it is. Actions record it with its sizes, so a Batch fits every file it
   runs on.
 - Image > Auto Tone, Auto Contrast and Auto Color set Levels from the layer's own histogram (from the selected part,
-  within a selection): Auto Tone stretches each channel, Auto Contrast the three together so colours keep their
-  balance, Auto Color each channel with neutral midtones. Image > Adjustments > Desaturate turns the layer grey,
-  Equalize spreads its tones evenly from black to white, and Replace Color changes the colours you click in the
+  within a selection): Auto Tone stretches each channel, Auto Contrast the three together so colors keep their
+  balance, Auto Color each channel with neutral midtones. Image > Adjustments > Desaturate turns the layer gray,
+  Equalize spreads its tones evenly from black to white, and Replace Color changes the colors you click in the
   picture (Shift-click adds one, Alt-click takes one away; Fuzziness sets how close counts) by Hue, Saturation and
-  Lightness, or to the colour you pick as Result.
+  Lightness, or to the color you pick as Result.
 - Edit > Perspective Warp straightens or changes the perspective of what is in a picture. In Layout, drag to draw a
   plane over a surface (a wall, a road, a box side) and move its corners onto the surface's corners; draw more planes
   beside it, their corners snapping together. Then choose Warp in the options bar and move the corners: the picture
@@ -319,7 +319,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   or Leaves, each with Feather, Rotation and Invert. The nine patterns are Blinds, Light Strip, Window, Leaves,
   Caustics, Lattice, Arch, Dapple and Circle.
 - Scene sets how much of the photo's Original lighting is kept and how much Shine the lights add on glossy forms.
-- On the canvas, drag a light's round handle to move it and its small target to aim it (Alt-drag also aims); with a pattern, Shift-drag places the pattern's centre (the
+- On the canvas, drag a light's round handle to move it and its small target to aim it (Alt-drag also aims); with a pattern, Shift-drag places the pattern's center (the
   ringed reticle, then draggable itself) apart from the aim, as the strip across her face while the light aims at her
   chest. Done
   (or Enter) renders the layer at full size; Cancel (or Escape) leaves things as they were. A dial at the top left of
@@ -333,7 +333,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - Lights from depth and Lights to depth keep a light to a band of the picture's depth: raise Lights from depth to light
   only the nearer subject and leave the background as it was, or lower Lights to depth to light only the background.
 - Scene also has Take out old light (how much of the photo's own light and shade is taken out before the new lights:
-  0 keeps the photo as it is under them, as by default, and 100 takes all of it out to move a hard shadow), Ambient (the colour of the light
+  0 keeps the photo as it is under them, as by default, and 100 takes all of it out to move a hard shadow), Ambient (the color of the light
   that is kept) and Shadows (how dark cast shadows are).
 - A light reaches what it is aimed at and fades on surfaces behind it: Close to Far sets how far it reaches and how
   high it stands. Patterns are projected onto the shape of the scene from the light, so blind slats wrap around an
@@ -344,7 +344,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   the next light, Enter is Done and Escape is Cancel.
 - Agents and the command line: the `relight.apply` command takes a Look name or a list of lights and adds the layer
   without the panel, for example `./formvis cli run relight.apply look=rembrandt delight=40`.
-- Old light (Scene): relighting is re-shading, so Relight first takes the photo's own light out and keeps the colour
+- Old light (Scene): relighting is re-shading, so Relight first takes the photo's own light out and keeps the color
   of its surfaces; Original lighting then sets how much of the old light stays (0 removes it). Take out, keep the
   subject builds a scene once per layer: the subject (from subject selection) and the background as two surfaces,
   their shape from MoGe-2 small when installed (`pip install -r backend/requirements_relight.txt`), else from Depth
@@ -354,7 +354,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   A light beside the subject also draws a rim along the subject's outline, glints follow the photo's own texture (pores,
   hair), and a pattern curves over the subject while it stays straight on the background behind.
   Take out with Marigold repaints the surfaces from a learned model and can change a face; it is an option only,
-  downloaded from its own button, which names its licence (CreativeML Open RAIL++-M) and size (about 5.2 GB); the
+  downloaded from its own button, which names its license (CreativeML Open RAIL++-M) and size (about 5.2 GB); the
   engine also needs `pip install -r backend/requirements_relight.txt`.
 - The room (Scene section): the environment around the subject is relit and reshadowed too. Room light sets how much
   of the room's own light stays (it follows Original lighting until you move it), Light on room how strongly the lights
@@ -387,20 +387,20 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   Expand work on any computer, with no prompt: LaMa fills from what surrounds the selection. It is chosen for you when
   fal has no key. docs/LOCAL.md lists everything that runs on this computer and what each needs.
 - Filter > Neural Filters is a gallery with a live preview and one undo step. Harmonize moves a layer's light and
-  colour toward what lies beneath it; Skin Smoothing softens skin tones only; neither needs a model. Depth Blur reads
+  color toward what lies beneath it; Skin Smoothing softens skin tones only; neither needs a model. Depth Blur reads
   the layer's depth with Depth Anything V2 Small (Preferences > Plugins > Local models, about 99 MB, Apache-2.0) and
   blurs by distance from the focus depth you set, past a sharp range. Colorize predicts a black-and-white layer's
-  colour with DDColor-tiny (about 135 MB, Apache-2.0), keeping its own light, mixed in by Amount. Style Transfer
+  color with DDColor-tiny (about 135 MB, Apache-2.0), keeping its own light, mixed in by Amount. Style Transfer
   repaints the layer in one of five preset styles (Mosaic, Candy, Rain Princess, Udnie, Pointilism; the ONNX model
   zoo's fast neural style models, about 34 MB, BSD-3-Clause), mixed in by Amount. JPEG Artifacts Removal smooths
   the steps on JPEG's 8-pixel grid and the noise in flat areas while keeping real edges, with no model; Super Zoom is
   Image > Upscale (Real-ESRGAN) at 2x or 4x. The gallery works on 8-bit RGB layers for now.
 - References: up to four layers can be sent to a ComfyUI workflow as references.
 - On this computer, with no key and no cost: install Krea 2 Turbo or FLUX.2 [klein] 4B in Preferences > Plugins >
-  Local models (each licence is shown for you to accept first; Krea 2 installs with the content filter its licence
+  Local models (each license is shown for you to accept first; Krea 2 installs with the content filter its license
   requires). Both appear in Generate Image; Krea 2 also in Generative Fill and Expand, starting from what the selection
   covers at the Influence you set, the result masked to the selection. Your LoRAs and checkpoints go there too.
-  Krea 2's licence notice is shown with each of its pictures. The models are large (up to about 18 GB) and want a
+  Krea 2's license notice is shown with each of its pictures. The models are large (up to about 18 GB) and want a
   recent Mac with Apple silicon, or a PC with an NVIDIA graphics card.
 - Improve, beside the prompt, rewrites it through a language model following a prompt template; Restore puts yours
   back. Set the model, and edit the templates, in Preferences > Plugins. When the model is marked as reading pictures,
@@ -438,21 +438,21 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - File > Place 3D Model places a .glb or .gltf model: turn, tilt and size it, and set its light and the ambient light,
   in a live preview. Place renders it at the document's size on transparency, as a new layer.
 
-## Colour management
+## Color management
 
 - A document is sRGB unless it has its own profile. Edit > Assign Profile gives it one (Display P3, Adobe RGB, or an
   RGB profile on this computer) without changing its numbers; Edit > Convert to Profile converts the numbers so the
-  colours look the same in the new profile, with a rendering intent and black point compensation. The profile is
+  colors look the same in the new profile, with a rendering intent and black point compensation. The profile is
   saved with the project and embedded when you export.
 - View > Proof Setup chooses a device to simulate, such as a press or printer profile (CMYK profiles included); Load
   Profile adds a .icc or .icm file. View > Proof Colors shows the picture as that device would print it, and Gamut
-  Warning (Shift+Ctrl+Y) greys out the colours it cannot print. Neither changes the document.
+  Warning (Shift+Ctrl+Y) grays out the colors it cannot print. Neither changes the document.
 - Opening an image with an embedded profile other than sRGB converts it to sRGB and says so. Preferences > File
   Handling can keep the embedded profile instead, or ask each time.
 - Edit > Color Settings (Shift+Ctrl+K, Shift+Cmd+K on a Mac) chooses the working RGB, CMYK and Gray profiles and what
   to do when a file's profile differs from the working one: Preserve it, Convert to the working profile, or Off
   (discard it). It also sets the rendering intent, black point compensation and dither used by conversions, shows
-  LittleCMS as the colour engine, and reads out the chosen CMYK profile's total ink limit and black generation.
+  LittleCMS as the color engine, and reads out the chosen CMYK profile's total ink limit and black generation.
   Settings can be saved as presets.
 - Convert to Profile lists RGB, CMYK, Gray and Lab destinations. 16-bit documents, any change of mode, Lab, and
   conversions with dither on are converted by LittleCMS in the engine at full precision, every layer in one step;
@@ -471,7 +471,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   embedded; PNG, WebP and the others export the sRGB rendition you see.
 - Every layer keeps its ink beside the rendition on screen, and the project keeps it too. The Channels panel lists
   CMYK, Cyan, Magenta, Yellow and Black with a thumbnail of each ink; click an ink and the Brush, Pencil and Eraser
-  paint that ink alone (a K-only black is one click and a stroke), click CMYK to paint all four. The colour picker
+  paint that ink alone (a K-only black is one click and a stroke), click CMYK to paint all four. The color picker
   shows C, M, Y and K, and the Info panel reads the ink under the pointer. Gaussian, Motion and Surface Blur, Unsharp
   Mask, Add Noise, Levels, Curves, Invert, Posterize and Brightness/Contrast layers, Image Size, Canvas Size, Image
   Rotation, Free Transform, Trim and Reveal All run on the ink itself, and so do blend modes, opacity and fill, layer
@@ -479,7 +479,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   Balance, Black and White, Photo Filter, Threshold, Selective Color, Gradient Map, Color Lookup and Shadows/Highlights
   layers give the same results as in RGB: a small change keeps the ink's own structure (a K-only black stays K-only),
   a large one takes the profile's separation. Text, shapes, gradients, fills, the retouching tools and the other
-  filters work too: the pixels they leave alone keep their ink exactly, the ones they change take the new colour's
+  filters work too: the pixels they leave alone keep their ink exactly, the ones they change take the new color's
   ink (black text set at K 100 stays K-only), and layer styles draw in ink too; Exposure and HDR Toning give their RGB
   results. Image > Mode > 16 Bits/Channel keeps the document CMYK, and Export TIFF then writes 16-bit CMYK; proofing
   works as in RGB. Assign Profile shows the same inks through another press; Convert to Profile changes them to look
@@ -489,12 +489,12 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 
 - Image > Mode > Lab Color turns an 8-bit RGB document into CIE Lab (with the D50 white that PSD's Lab uses); RGB
   Color turns it back exactly. Painting, text, shapes, fills and filters work in it; the pixels they leave alone keep
-  their Lab values. The Channels panel shows Lab, Lightness, a and b (a and b mid-grey where neutral), and Info reads
-  L, a and b. Levels and Curves work on Lightness, a and b; the colour adjustments (Hue/Saturation, Black and White and
+  their Lab values. The Channels panel shows Lab, Lightness, a and b (a and b mid-gray where neutral), and Info reads
+  L, a and b. Levels and Curves work on Lightness, a and b; the color adjustments (Hue/Saturation, Black and White and
   the rest, Channel Mixer, Exposure and HDR Toning among them) give the same results as in RGB; blend modes look as they
   do in RGB; Export TIFF writes a Lab TIFF, at 16 bits when the document is (Image > Mode > 16 Bits/Channel keeps it
   Lab). Lab Color from a 16-bit document keeps its 16-bit values. Proofing works as in RGB. Click Lightness, a or b in
-  the Channels panel to see it alone. Convert to Profile goes through RGB (Assign Profile opens it, Lab colours being
+  the Channels panel to see it alone. Convert to Profile goes through RGB (Assign Profile opens it, Lab colors being
   absolute). Lab TIFF and PSD files open as Lab documents; layer styles work.
 
 ## 32-bit documents
@@ -512,13 +512,13 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   Gaussian Blur. File > Export > Radiance HDR and OpenEXR write them as they are; Export TIFF writes 32-bit float.
 - Image > Mode > 16 or 8 Bits/Channel asks for HDR Toning (Exposure and Gamma): lower the exposure to keep highlights.
 - Painting, the retouching tools and the other filters work at 32 bits too: what they leave alone keeps its light
-  exactly, above white included, and what they change takes the new colour. Painting white over a highlight already
+  exactly, above white included, and what they change takes the new color. Painting white over a highlight already
   brighter than white leaves it as it was. Groups, masks, clipping masks and layer styles work at 32 bits, and so does
   every blend mode: the 32-bit modes keep light above white, and the others blend in the visible range, light
   above white kept wherever one layer alone covers a pixel. Unsharp Mask and Add Noise keep light above white too.
   Convert to Profile converts linear light exactly between RGB profiles; proofing works as in other documents. Indexed
   Color, Bitmap, CMYK and Lab bring the document down first (HDR Toning asks how); Grayscale keeps 32 bits, taking
-  each pixel's luminance in linear light. Every adjustment layer works at 32 bits: it changes a pixel's colour as it
+  each pixel's luminance in linear light. Every adjustment layer works at 32 bits: it changes a pixel's color as it
   shows within the visible range, and light above white keeps its brightness.
 - A multi-part OpenEXR file opens as a 32-bit document with one layer per part, named after the part. Limits: deep
   parts are not handled, and a file with more than 64 parts opens its first part only. The OpenEXR library runs in a
@@ -530,21 +530,21 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   Its layers keep their 16 bits; Levels, Curves and Exposure adjustment layers work on them, as do moving, Flip
   Canvas, Canvas Size, Crop, Trim, Image Size, Gaussian Blur, Unsharp Mask and Add Noise (within a selection too),
   and the Brush, Pencil and Eraser; File > Export PNG and Export TIFF write 16 bits a channel; the project keeps them.
-- What cannot keep 16 bits yet (the other painting and retouching tools, colour dynamics, the other filters and
+- What cannot keep 16 bits yet (the other painting and retouching tools, color dynamics, the other filters and
   adjustments, Free Transform) is unavailable in a 16-bit
   document rather than dropping it to 8 bits quietly: Image > Mode > 8 Bits/Channel makes it available.
 
 ## Exporting
 
-- File > Export As chooses the format (PNG, JPEG, WebP, AVIF, TIFF, DPX, QOI, PNM, TGA, ICO, PDF), quality, colour profile and size: a Scale in
-  percent, Fit Within a width and height, or a Frame of exactly that size with the picture centred. Settings can be
+- File > Export As chooses the format (PNG, JPEG, WebP, AVIF, TIFF, DPX, QOI, PNM, TGA, ICO, PDF), quality, color profile and size: a Scale in
+  percent, Fit Within a width and height, or a Frame of exactly that size with the picture centered. Settings can be
   saved as presets. Export As also has a Canvas Size, a Metadata choice (Document File Info, None, or Copyright and
   Contact Info) and Sizes: tick several scales or sizes, each with a file name suffix, and one Export writes them all.
   Limits: Copyright and Contact Info puts the contact text in the creator field, not an IPTC contact block; AVIF, PDF,
   DPX, QOI, PNM, TGA and ICO carry no metadata; the notes the dialog assembles are in English in every language.
 - File > Export > Save for Web (Legacy) compares the picture as it will be saved. 2-Up and 4-Up show the original and
   up to three variants side by side, each with its format settings, file size and download time; click a view to
-  choose it. The PNG-8 format is a true 8-bit indexed PNG with a choice of colours, dither and transparency. Metadata runs from None to All, written as XMP. Cut the picture into slices first (Slice tool, C;
+  choose it. The PNG-8 format is a true 8-bit indexed PNG with a choice of colors, dither and transparency. Metadata runs from None to All, written as XMP. Cut the picture into slices first (Slice tool, C;
   Slice Select moves one, View > Show > Slice Options sets a name, URL, alt text and exact bounds) and each slice is
   saved as its own file. Limits: no pattern or noise dither and no web snap; the preview is a 100 percent crop, not a
   fit; the captions are in English. Image Assets on Save, in File > Export, regenerates the assets named by layers
@@ -558,9 +558,9 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   ICO, the sizes). QOI is read and written as RGB or RGBA, with the sRGB or all-linear flag (the flag only labels the
   file; the numbers are kept as stored). PNM reads PBM, PGM and PPM in text and raw forms and PAM with GRAYSCALE, RGB
   and their alpha forms; it writes PPM (P6), PGM (P5), PBM (P4, thresholded at half brightness) and PAM (P7, choosing
-  grayscale or colour and alpha from what the file holds). Transparency is laid on white in PBM, PGM and PPM. A PGM,
+  grayscale or color and alpha from what the file holds). Transparency is laid on white in PBM, PGM and PPM. A PGM,
   PPM or PAM above 8 bits becomes a 16-bit document, and a 16-bit document goes out to PNM at 16 bits. TGA reads
-  uncompressed and run-length colour-mapped, 8-bit grey, 15/16, 24 and 32-bit images from any corner, and writes 24 or
+  uncompressed and run-length color-mapped, 8-bit gray, 15/16, 24 and 32-bit images from any corner, and writes 24 or
   32 bits, run-length or not. An ICO holding several sizes asks which one to take (the biggest, each size as a
   document, or every size as a layer); exporting an ICO resamples the document into each size you tick (16, 24, 32, 48,
   64, 128, 256), fitted in a square with transparent margins, as PNG for 256 and BMP for the smaller sizes or as PNG
@@ -576,7 +576,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - File > Export > Artboards to PDF writes one multipage PDF, a page per artboard in the Layers order (top of the panel
   first), each page the artboard's contents at its own size in points from the document's resolution (72 dpi when none
   is set). Choose the file name, Encoding (Lossless, or JPEG with a quality) and Contents Only (leaves out each
-  artboard's background colour). Include ICC Profile is shown but not yet carried by the PDF writer; page labels with
+  artboard's background color). Include ICC Profile is shown but not yet carried by the PDF writer; page labels with
   the artboard names are not written.
 - File > File Info (Alt+Shift+Ctrl+I) holds the document's metadata: Document Title, Author, Author Title, Description,
   Rating (0 to 5 stars), Description Writer, Keywords (separated by commas or semicolons), Copyright Status (Unknown,

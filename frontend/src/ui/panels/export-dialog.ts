@@ -88,7 +88,7 @@ export class ExportDialog extends Dialog {
     this.formatRow = selectRow('Format', EXPORT_FORMATS, (v) => { this.s = clampSettings({ ...this.s, format: v as ExportFormat }); this.custom(); });
     this.qualityRow = sliderRow('Quality (%)', 1, 100, 1, (v) => { this.s = clampSettings({ ...this.s, quality: v }); this.custom(); });
     this.scaleRow = sliderRow('Scale (%)', 10, 400, 1, (v) => { this.s = clampSettings({ ...this.s, scale: v }); this.custom(); }, { min: 1, max: 1000 });
-    this.profileRow = selectRow('Colour profile', BUILT_IN_PROFILES, (v) => { this.s = clampSettings({ ...this.s, profile: v as ExportSettings['profile'] }); this.custom(); });
+    this.profileRow = selectRow('Color profile', BUILT_IN_PROFILES, (v) => { this.s = clampSettings({ ...this.s, profile: v as ExportSettings['profile'] }); this.custom(); });
     this.intentRow = selectRow('Intent', EXPORT_INTENTS, (v) => { this.s = clampSettings({ ...this.s, intent: v as ExportIntent }); this.custom(); });
     this.bpcRow = checkRow('Black point compensation', (v) => { this.s = clampSettings({ ...this.s, bpc: v }); this.custom(); });
     this.embedRow = checkRow('Embed the profile', (v) => { this.s = clampSettings({ ...this.s, embed: v }); this.custom(); });

@@ -258,8 +258,8 @@ const areaOf = (ctx: LibContext): Box => boxOf(ctx.area);
 export const DISTORT_FILTERS: LibFilter[] = [
   {
     id: 'displace', label: 'Displace', group: 'Distort', grows: false, reach: null,
-    note: 'The map is an open document, one layer of this document or a picture file: its red channel moves pixels across and its green channel up and down; mid grey moves nothing.',
-    params: [
+    note: 'The map is an open document, one layer of this document or a picture file: its red channel moves pixels across and its green channel up and down; mid gray moves nothing.',
+params: [
       { key: 'horizontal', label: 'Horizontal Scale (%)', kind: 'range', min: -999, max: 999, step: 1, def: 10 },
       { key: 'vertical', label: 'Vertical Scale (%)', kind: 'range', min: -999, max: 999, step: 1, def: 10 },
       { key: 'fit', label: 'Displacement Map', kind: 'select', def: 'stretch', options: [['stretch', 'Stretch to Fit'], ['tile', 'Tile']] },
@@ -288,7 +288,7 @@ export const DISTORT_FILTERS: LibFilter[] = [
   },
   {
     id: 'shear', label: 'Shear', group: 'Distort', grows: false, reach: null,
-    note: 'Drag the points of the curve (top of the frame above, bottom below; centre is no shift), click the box to add a point, double-click a point to remove it. Top, Middle and Bottom add a bend on top of the curve, in percent of half the width.',
+    note: 'Drag the points of the curve (top of the frame above, bottom below; center is no shift), click the box to add a point, double-click a point to remove it. Top, Middle and Bottom add a bend on top of the curve, in percent of half the width.',
     params: [
       { key: 'curve', label: 'Shear Curve', kind: 'curve', min: -100, max: 100, def: [0, 0, 0.5, 0, 1, 0] },
       { key: 'top', label: 'Top (%)', kind: 'range', min: -100, max: 100, step: 1, def: 0 },

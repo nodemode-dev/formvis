@@ -89,7 +89,7 @@ export class StatusBar {
     this.stop.appendChild(document.createTextNode(t('Cancel')));
     this.stop.addEventListener('click', () => { this.engine.cancelJob(); });
     this.busy.append(this.bar, this.steps, this.stop);
-    this.jobs = new JobsList(engine, this.busy);
+    this.jobs = new JobsList(engine, root);
     this.busy.title = t('Show the running jobs, each with its own Stop');
     this.busy.addEventListener('click', (e) => { if (!(e.target instanceof Element && e.target.closest('.cv-st-stop'))) this.jobs.toggle(); });
     engine.on('progress', () => this.syncProgress());
@@ -155,7 +155,7 @@ export class StatusBar {
         tip = t('Flattened size / size with every layer and mask');
       } else if (kind === 'profile') {
         text = `${d.profile?.name ?? t('Untagged')} · ${(d.mode ?? 'rgb').toUpperCase()}/${d.depth ?? 8}`;
-        tip = t('Working colour profile, mode and bit depth');
+        tip = t('Working color profile, mode and bit depth');
       } else {
         text = `${Math.round(d.resolution || 72)} ppi`;
         tip = t('Document resolution');

@@ -227,7 +227,7 @@ export const PIXELATE_FILTERS: LibFilter[] = [
   {
     id: 'pointillize', label: 'Pointillize', group: 'Pixelate', grows: false,
     reach: (v, scale) => Math.ceil(2 * Math.max(2, num(v, 'cellSize') * scale)) + 2,
-    note: 'Dots on the background colour.',
+    note: 'Dots on the background color.',
     params: [{ key: 'cellSize', label: 'Cell Size', kind: 'range', min: 3, max: 300, step: 1, def: 5 }],
     run: (src, v, ctx) => pointillizeImage(src, num(v, 'cellSize') * ctx.scale, ctx.seed, areaOf(ctx), ctx.bg),
   },

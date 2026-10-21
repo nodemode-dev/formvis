@@ -109,12 +109,12 @@ export class NeuralFiltersDialog extends Dialog {
 
   private showRows(): void {
     for (const r of this.rows) r.el.style.visibility = r.kinds.includes(this.kind) ? '' : 'hidden';
-    setText(this.note, this.kind === 'harmonize' ? 'Harmonize moves the layer\'s light and colour toward what lies beneath it (its mean and spread per channel), by the amount.'
+    setText(this.note, this.kind === 'harmonize' ? 'Harmonize moves the layer\'s light and color toward what lies beneath it (its mean and spread per channel), by the amount.'
       : this.kind === 'skinSmooth' ? 'Skin Smoothing softens skin tones only: other pixels are untouched.'
       : this.kind === 'jpeg' ? 'JPEG Artifacts Removal smooths the steps on JPEG\'s 8-pixel grid and flat-area noise, keeping real edges; no model yet.'
       : this.kind === 'superZoom' ? 'Super Zoom enlarges the layer with Real-ESRGAN on this computer (Image > Upscale), 2x or 4x, into a new layer.'
       : this.kind === 'style' ? (this.styled ? 'Style Transfer repaints the layer in the chosen style on this computer (five presets, BSD-3-Clause); Amount mixes it in.' : 'Style Transfer repaints the layer in a preset style on this computer.')
-      : this.kind === 'colorize' ? (this.color ? 'Colorize predicts the layer\'s colour with DDColor-tiny on this computer, keeping its own light; Amount mixes it in.' : 'Colorize reads the layer\'s colour with DDColor-tiny on this computer.')
+      : this.kind === 'colorize' ? (this.color ? 'Colorize predicts the layer\'s color with DDColor-tiny on this computer, keeping its own light; Amount mixes it in.' : 'Colorize reads the layer\'s color with DDColor-tiny on this computer.')
       : this.depth ? 'Depth Blur blurs by distance from the focus depth, read by Depth Anything V2 Small on this computer.' : 'Depth Blur reads the layer\'s depth with Depth Anything V2 Small on this computer.');
   }
 
@@ -138,7 +138,7 @@ export class NeuralFiltersDialog extends Dialog {
     this.colorPending = true;
     try {
       if (!(await colorizeReady())) { setText(this.note, 'Colorize needs DDColor-tiny (135 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
-      setText(this.note, 'Colouring this layer...');
+      setText(this.note, 'Coloring this layer...');
       const png = await localColorize(await toBlob(l.raster.canvas)), bmp = await createImageBitmap(png), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
       const g = c.getContext('2d') as CanvasRenderingContext2D; g.drawImage(bmp, 0, 0);
       this.color = { layerId: pixelsKey(l), pixels: g.getImageData(0, 0, c.width, c.height) };
