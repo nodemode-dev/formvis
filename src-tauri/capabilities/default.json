@@ -33,6 +33,7 @@
     "allow-native-remove",
     "allow-native-present",
     "allow-take-pending-opens",
+    "allow-take-pending-runs",
     "allow-confirm-exit",
     "allow-check-for-update",
     "allow-install-update",

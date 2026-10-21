@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.94.6 · 2026-10-21
+
+- Desktop: launch arguments run things after the files they name open: `--command <id>`, `--action <name>` and `--script <file>`, in order; a second launch passes them to the open window. A script file is no longer taken for a picture to open. One that cannot run is a notice and the rest still run.
+- Desktop tests: 51 on the Linux debug shell, all pass (3 new for launch arguments).
+
 ## 1.94.5 · 2026-10-21
 
 - Color Lookup: reads Iridas/SpeedGrade .look files beside .cube and .3dl (also inside a PSD's Color Lookup layer).

@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Launch arguments that run something · _v1.94.6 (src-tauri/src/main.rs, src-tauri/build.rs, src-tauri/capabilities/default.json, io/disk.ts, app.ts)
+
+- main.rs runs_from_args: `--command`, `--action` and `--script` each take the next argument; a script is read in the shell (a page served from the engine cannot read a path) and sent as text, at most 200 KB, or as an `error` run the page reports. paths_from_args skips the value after these flags, so a .js given to `--script` is not opened as a document. The runs share OpenQueue with the files: queued until the page calls take_pending_runs, then emitted as `formvis://launch-runs`; the single-instance callback forwards a second launch's runs the same way. take_pending_runs is in build.rs APP_COMMANDS and the capability list, since the window's origin is remote.
+- disk.ts listenShell chains every open and run on one promise, so runs wait for the files of their launch; app.ts runs each through Commands.call (play-action with name, script-browse with source) and turns a refusal or error into a notice without stopping the rest.
+- Building the debug shell needs `frontend/dist` and the `binaries/formvis-engine-<triple>` resource to exist; both are ignored by git. A placeholder engine script and a copy of a vite build are enough for `cargo build`.
+
 ## Color Lookup .look, el() adopts its node · _v1.94.5 (engine/lut-read.ts, ui/dom.ts, ui/panels/adjust-panel.ts, io/psd-adjust.ts)
 
 - lut-read.ts fromLook: an Iridas .look is XML whose first LUT element carries a quoted size and a quoted hex string, eight hex digits per little-endian float32, three per node, red fastest like .cube; it becomes .cube text so the rest of Color Lookup is unchanged. Found by the XML as well as by name. The order is checked in lut-read.test.ts with a channel-rotating table.

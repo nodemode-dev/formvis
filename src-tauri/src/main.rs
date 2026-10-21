@@ -24,7 +24,18 @@ struct Backend(Mutex<Option<CommandChild>>);
 struct Opens {
     ready: bool,
     paths: Vec<String>,
+    runs: Vec<LaunchRun>,
 }
+
+/// A launch argument that runs something once the page is up: `--command <id>` (a catalogue command), `--action <name>`
+/// (a recorded action, played on the current document) or `--script <file>` (the file's text, run in the script sandbox).
+#[derive(Clone, serde::Serialize)]
+struct LaunchRun {
+    kind: &'static str,
+    value: String,
+}
+
+const RUN_FLAGS: [(&str, &str); 3] = [("--command", "command"), ("--action", "action"), ("--script", "script")];
 struct OpenQueue(Mutex<Opens>);
 
 /// Set once the page has settled every unsaved document (or the app is restarting for an update): from then on a
@@ -164,8 +175,10 @@ fn open_paths(handle: &tauri::AppHandle, paths: Vec<String>) {
 /// The files named in a launch's arguments (the first is the program); a relative one is read from `cwd`.
 fn paths_from_args(args: &[String], cwd: Option<&str>) -> Vec<String> {
     args.iter()
+        .enumerate()
         .skip(1)
-        .filter(|arg| !arg.starts_with('-'))
+        .filter(|(i, arg)| !arg.starts_with('-') && !RUN_FLAGS.iter().any(|(flag, _)| args[i - 1] == *flag))
+        .map(|(_, arg)| arg)
         .filter_map(|arg| {
             let path = std::path::PathBuf::from(arg);
             let full = match cwd {
@@ -175,6 +188,58 @@ fn paths_from_args(args: &[String], cwd: Option<&str>) -> Vec<String> {
             full.is_file().then(|| full.to_string_lossy().into_owned())
         })
         .collect()
+}
+
+/// The `--command`, `--action` and `--script` arguments of a launch, in order. A script is read here (at most 200 KB, a
+/// relative path from `cwd`); one that cannot be read becomes an error the page reports.
+fn runs_from_args(args: &[String], cwd: Option<&str>) -> Vec<LaunchRun> {
+    let mut runs = Vec::new();
+    for (i, arg) in args.iter().enumerate().skip(1) {
+        let Some(&(_, kind)) = RUN_FLAGS.iter().find(|(flag, _)| arg == flag) else { continue };
+        let Some(value) = args.get(i + 1).filter(|v| !v.starts_with("--")) else { continue };
+        if kind != "script" {
+            runs.push(LaunchRun { kind, value: value.clone() });
+            continue;
+        }
+        let path = std::path::PathBuf::from(value);
+        let full = match cwd {
+            Some(dir) if path.is_relative() => std::path::Path::new(dir).join(path),
+            _ => path,
+        };
+        let read = std::fs::metadata(&full).ok().filter(|m| m.is_file() && m.len() <= 200_000).and_then(|_| std::fs::read_to_string(&full).ok());
+        runs.push(match read {
+            Some(text) => LaunchRun { kind: "script", value: text },
+            None => LaunchRun { kind: "error", value: format!("The script {} could not be read (a text file of at most 200 KB).", full.display()) },
+        });
+    }
+    runs
+}
+
+/// Sends launch runs to the page, or queues them until it asks with take_pending_runs.
+fn queue_runs(handle: &tauri::AppHandle, runs: Vec<LaunchRun>) {
+    if runs.is_empty() {
+        return;
+    }
+    let send = match handle.state::<OpenQueue>().0.lock() {
+        Ok(mut opens) => {
+            if opens.ready {
+                Some(runs)
+            } else {
+                opens.runs.extend(runs);
+                None
+            }
+        }
+        Err(_) => None,
+    };
+    if let Some(runs) = send {
+        let _ = handle.emit("formvis://launch-runs", runs);
+    }
+}
+
+/// The runs that arrived before the page was ready; the page asks after it has opened the waiting files.
+#[tauri::command]
+fn take_pending_runs(queue: tauri::State<OpenQueue>) -> Vec<LaunchRun> {
+    queue.0.lock().map(|mut opens| std::mem::take(&mut opens.runs)).unwrap_or_default()
 }
 
 /// The page registers its listeners and then asks for the files that arrived before it was ready.
@@ -505,6 +570,7 @@ fn data_folder() -> std::path::PathBuf {
 fn single_instance() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     let plugin = tauri_plugin_single_instance::Builder::<tauri::Wry>::new().callback(|app, args, cwd| {
         open_paths(app, paths_from_args(&args, Some(&cwd)));
+        queue_runs(app, runs_from_args(&args, Some(&cwd)));
         show_main_window(app);
     });
     #[cfg(target_os = "linux")]
@@ -547,6 +613,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             take_pending_opens,
+            take_pending_runs,
             confirm_exit,
             check_for_update,
             install_update,
@@ -576,6 +643,7 @@ fn main() {
             // A project or picture the system launched formvis with (Windows and Linux; macOS sends RunEvent::Opened).
             let launch_args: Vec<String> = std::env::args().collect();
             open_paths(&handle, paths_from_args(&launch_args, None));
+            queue_runs(&handle, runs_from_args(&launch_args, None));
             let mut sidecar = app
                 .shell()
                 .sidecar("formvis-engine")

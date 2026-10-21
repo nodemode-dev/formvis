@@ -38,13 +38,22 @@ export const isDiskPath = (s: string): boolean => /^(\/|[A-Za-z]:[\\/]|\\\\)/.te
 /** What the desktop shell hands the page: files the system asked formvis to open (a double-clicked project, a second
  *  launch), and the request to quit or close the window, which the page answers with `confirmExit` once no document
  *  has unsaved changes. The listeners are registered first and the files that arrived earlier are taken after, so none is lost. */
-export async function listenShell(on: { open: (paths: string[]) => void; exitRequested: () => void }): Promise<void> {
+export async function listenShell(on: { open: (paths: string[]) => Promise<void>; run: (runs: LaunchRun[]) => Promise<void>; exitRequested: () => void }): Promise<void> {
   const events = await import('@tauri-apps/api/event');
-  await events.listen<string[]>('formvis://open-paths', (e) => { if (Array.isArray(e.payload)) on.open(e.payload.filter((p) => typeof p === 'string')); });
+  let opening: Promise<void> = Promise.resolve();
+  const runs = (list: unknown): void => { const ok = Array.isArray(list) ? list.filter(isLaunchRun) : []; if (ok.length) opening = opening.then(() => on.run(ok)).catch(() => undefined); };
+  await events.listen<string[]>('formvis://open-paths', (e) => { if (Array.isArray(e.payload)) opening = opening.then(() => on.open(e.payload.filter((p) => typeof p === 'string'))).catch(() => undefined); });
+  await events.listen<unknown>('formvis://launch-runs', (e) => runs(e.payload));
   await events.listen('formvis://exit-requested', () => on.exitRequested());
   const waiting = await invoke<string[]>('take_pending_opens', {});
-  if (Array.isArray(waiting) && waiting.length) on.open(waiting);
+  if (Array.isArray(waiting) && waiting.length) opening = opening.then(() => on.open(waiting)).catch(() => undefined);
+  runs(await invoke<unknown>('take_pending_runs', {}).catch(() => []));
 }
+
+/** A launch argument the shell hands on: `--command <id>`, `--action <name>`, `--script <file>` (its text), or an error
+ *  the shell met reading one. They run in order after the files of the same launch have opened. */
+export type LaunchRun = { kind: 'command' | 'action' | 'script' | 'error'; value: string };
+const isLaunchRun = (x: unknown): x is LaunchRun => !!x && typeof (x as LaunchRun).value === 'string' && ['command', 'action', 'script', 'error'].includes((x as LaunchRun).kind);
 
 /** Linux: keeps the display server chosen in Preferences > Performance (auto, x11 or wayland) for the shell to apply at the next launch. */
 export const setDisplayServer = (server: string): Promise<void> => invoke<void>('set_display_server', { server });

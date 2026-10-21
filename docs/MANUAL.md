@@ -717,6 +717,15 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - It has no wider reach than a plugin: it cannot read your keys or files. It is refused while an outside agent's
   request is being worked on, though a connected agent that is idle is not detected.
 
+## Launch arguments (desktop app)
+
+- Pictures and projects named on the command line open as documents. After them, in the order given,
+  `--command <id>` runs a catalogue command, `--action <name>` plays a recorded action on the current document, and
+  `--script <file>` runs a JavaScript file (at most 200 KB) in the script sandbox, with `run(id, params)`,
+  `commands()` and `log(...)` in scope. For example `formvis photo.jpg --action "Web Export" --command save`.
+- A second launch hands its arguments to the window already open on the same data folder. A command, action or
+  script that cannot run is reported in a notice and the rest still run.
+
 ## Plugins
 
 - Plugins > Manage Plugins adds a plugin (a JavaScript file), turns plugins on and off, and removes them. Their

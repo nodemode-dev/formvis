@@ -14,6 +14,7 @@ const APP_COMMANDS: &[&str] = &[
     "native_remove",
     "native_present",
     "take_pending_opens",
+    "take_pending_runs",
     "confirm_exit",
     "check_for_update",
     "install_update",

@@ -6531,7 +6531,19 @@ export function startApp(): void {
   // the window's close and quit requests; the app exits only after every unsaved document is saved or discarded.
   if (hasPanels()) {
     void listenShell({
-      open: (paths) => { void openPaths(paths); },
+      open: (paths) => openPaths(paths),
+      // Launch arguments (--command, --action, --script) run one after another; a failure is a notice and the rest still run.
+      run: async (runs) => {
+        for (const r of runs) {
+          try {
+            if (r.kind === 'error') throw new Error(r.value);
+            const { ran } = r.kind === 'command' ? await commands.call(r.value)
+              : r.kind === 'action' ? await commands.call('play-action', { name: r.value })
+                : await commands.call('script-browse', { source: r.value });
+            if (!ran) throw new Error(r.kind === 'command' ? `There is no command "${r.value}" that can run now.` : r.kind === 'action' ? `The action "${r.value}" cannot play without an open document.` : 'The script cannot run now.');
+          } catch (err) { toast(`Launch ${r.kind}: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
+        }
+      },
       exitRequested: () => { void exitApp(); },
     }).catch(() => undefined);
   }
