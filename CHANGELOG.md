@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.95.2 · 2026-10-21
+
+- Tests: the first part of a full browser-suite run on this release, 97 of 442 files in two parallel shards, all pass. Seven files that drive the window through the agent bridge failed while two browsers shared one engine and passed when run alone (37 tests), so files that use the bridge belong in one shard at a time. No product change.
+
 ## 1.95.1 · 2026-10-21
 
 - Contours: .shc contour preset files are read and written in the published layout (the 8BFS signature, record versions 1 and 2, curve format and input bounds). The earlier reader used a layout of its own and would have refused every .shc made by other software.
