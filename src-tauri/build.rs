@@ -23,6 +23,7 @@ const APP_COMMANDS: &[&str] = &[
     "set_graphics_backend",
     "system_fonts_english",
     "ui_zoom",
+    "set_window_title",
 ];
 
 fn main() {

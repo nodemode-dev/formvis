@@ -5,7 +5,7 @@ import { icon } from './icons';
 export class Tabs {
   private frame = 0;                       // a pending animation frame
   private activeId: string | null = null;
-  /** The title last given to the window: the first render always gives it, so the macOS traffic lights are placed on the Home screen as they are once a document sets the title. */
+  /** The title last given to the window. It goes through the shell's set_window_title, which places the macOS traffic lights again after AppKit lays the title bar out anew (src-tauri/src/traffic_lights.rs). */
   private windowTitle: string | null = null;
   /** The document that was current when the engine went busy: its tab shows a progress line under it. */
   private busyId: string | null = null;
@@ -132,7 +132,7 @@ export class Tabs {
     if (this.windowTitle !== title) {
       this.windowTitle = title;
       document.title = title;
-      if ('__TAURI_INTERNALS__' in window) void import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setTitle(title)).catch(() => undefined);
+      if ('__TAURI_INTERNALS__' in window) void import('@tauri-apps/api/core').then((m) => m.invoke('set_window_title', { title })).catch(() => undefined);
     }
     // Keep the tab of the current document in view when it changes.
     if ((current?.id ?? null) !== this.activeId) {
