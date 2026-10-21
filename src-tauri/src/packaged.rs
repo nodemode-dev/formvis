@@ -23,6 +23,20 @@ fn running_image() -> Option<std::path::PathBuf> {
     None
 }
 
+const ENGINE: &str = if cfg!(windows) { "formvis-engine.exe" } else { "formvis-engine" };
+
+/// The engine of a one-folder build (DEV_PLAN 37.53; macOS since 1.95.8): `engine/formvis-engine` in the bundle's Resources,
+/// or beside this binary where `tauri dev` copies the resources. It starts at once, where the one-file sidecar unpacked about
+/// a gigabyte to a new temporary folder at every launch. None where the engine is still the one-file sidecar.
+pub fn engine_folder() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    [dir.join("../Resources/engine"), dir.join("engine")]
+        .into_iter()
+        .map(|folder| folder.join(ENGINE))
+        .find(|program| program.is_file())
+}
+
 /// The command line when it names one of the modes above: runs it and gives back the exit code; None starts the window.
 pub fn command_line() -> Option<i32> {
     let mut args = std::env::args_os().skip(1);
@@ -61,7 +75,7 @@ fn hand_over(mode: OsString, rest: Vec<OsString>) -> i32 {
         eprintln!("formvis: cannot tell where the program is.");
         return 1;
     };
-    let mut command = Command::new(exe.with_file_name(if cfg!(windows) { "formvis-engine.exe" } else { "formvis-engine" }));
+    let mut command = Command::new(engine_folder().unwrap_or_else(|| exe.with_file_name(ENGINE)));
     command.arg(mode).args(rest);
     if let Some(path) = launcher() {
         command.env("FORMVIS_LAUNCHER", path);

@@ -14,6 +14,7 @@ mod display;
 mod integration;
 mod native;
 mod packaged;
+mod traffic_lights;
 mod window_state;
 
 struct Backend(Mutex<Option<CommandChild>>);
@@ -321,15 +322,16 @@ async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 
 /// The font families installed on this computer, sorted and without duplicates, for the Type tool's font list. The
 /// desktop web views (WebKit on macOS and Linux, WebView2 on Windows) have no Local Font Access API, so the shell reads
-/// the system's font folders with fontdb (pure Rust, MIT) and the page asks for them with invoke('system_fonts').
-#[tauri::command]
+/// the system's font folders with fontdb (pure Rust, MIT) and the page asks for them with invoke('system_fonts'). It runs
+/// off the main thread (1.95.8): the page asks at start, and reading a few thousand fonts held the window still.
+#[tauri::command(async)]
 fn system_fonts() -> Vec<String> {
     font_names(false)
 }
 
 /// The same list under each font's English family name (Preferences > Type > Show Font Names in English); a font with no
 /// English name keeps its first one.
-#[tauri::command]
+#[tauri::command(async)]
 fn system_fonts_english() -> Vec<String> {
     font_names(true)
 }
@@ -654,6 +656,11 @@ fn main() {
         .manage(window_state::Memory::default())
         .on_window_event(|window, event| {
             window_state::track(window, event);
+            if window.label() == "main"
+                && matches!(event, WindowEvent::Resized(_) | WindowEvent::Focused(_) | WindowEvent::ThemeChanged(_) | WindowEvent::ScaleFactorChanged { .. })
+            {
+                traffic_lights::place(window);
+            }
             // The window's close button: the page asks about unsaved documents first and exits through confirm_exit.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" && ask_page_to_quit(window.app_handle()) {
@@ -676,6 +683,7 @@ fn main() {
             note_recent_document,
             display::display_profile,
             window_state::ui_zoom,
+            traffic_lights::set_window_title,
             native::native_start,
             native::native_stop,
             native::native_doc,
@@ -696,11 +704,14 @@ fn main() {
             let launch_args: Vec<String> = std::env::args().collect();
             open_paths(&handle, paths_from_args(&launch_args, None));
             queue_runs(&handle, runs_from_args(&launch_args, None));
-            let mut sidecar = app
-                .shell()
-                .sidecar("formvis-engine")
-                .expect("the formvis engine sidecar is missing; bundle its binary")
-                .env("FORMVIS_PORT", "0");
+            let engine = match packaged::engine_folder() {
+                Some(program) => app.shell().command(program),
+                None => app
+                    .shell()
+                    .sidecar("formvis-engine")
+                    .expect("the formvis engine sidecar is missing; bundle its binary"),
+            };
+            let mut sidecar = engine.env("FORMVIS_PORT", "0");
             if let Some(path) = packaged::launcher() {
                 sidecar = sidecar.env("FORMVIS_LAUNCHER", path);
             }
@@ -778,8 +789,14 @@ fn main() {
                         let builder = builder
                             .title_bar_style(tauri::TitleBarStyle::Overlay)
                             .hidden_title(true)
-                            .traffic_light_position(tauri::LogicalPosition::new(14.0, 12.0));
+                            .traffic_light_position(tauri::LogicalPosition::new(traffic_lights::INSET.0, traffic_lights::INSET.1));
+                        let builder = builder.on_page_load(|window, payload| {
+                            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                                traffic_lights::place(&window.as_ref().window());
+                            }
+                        });
                         if let Ok(window) = builder.build() {
+                            traffic_lights::place(&window.as_ref().window());
                             window_state::restore(&window, &place);
                             window_state::watch_renderer(&window);
                         }

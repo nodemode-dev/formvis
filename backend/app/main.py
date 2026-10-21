@@ -17,7 +17,7 @@ from app.services import claude_code as _claude_service, sessions, terminal as _
 async def lifespan(_: FastAPI):
     data = config.data_dir()
     runtime.start_logging(data)
-    sessions.prune()
+    asyncio.get_running_loop().run_in_executor(None, sessions.prune)
     _terminal_service.bind(asyncio.get_running_loop())
     yield
     _claude_service.stop(quiet=True)

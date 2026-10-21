@@ -2,6 +2,6 @@
 set -e
 source "$(dirname "$0")/lib.sh"
 triple="$(cv_target_triple)" || cv_die "rustc not found; run ./formvis install-desktop"
-[ -x "$FORMVIS_ROOT/src-tauri/binaries/formvis-engine-${triple}$(cv_exe)" ] || "$FORMVIS_ROOT/setup/freeze_backend"
+[ -x "$FORMVIS_ROOT/src-tauri/binaries/formvis-engine-${triple}$(cv_exe)" ] || [ -x "$FORMVIS_ROOT/src-tauri/engine/formvis-engine" ] || "$FORMVIS_ROOT/setup/freeze_backend"
 cd "$FORMVIS_ROOT"
 exec frontend/node_modules/.bin/tauri dev "$@"

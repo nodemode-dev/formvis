@@ -93,7 +93,7 @@ rust_diagnose() {
 if [ "$clean" = 1 ]; then
   step "cleaning earlier builds"
   ( cd src-tauri && cargo clean )
-  rm -rf backend/build/pyinstaller backend/dist-engine src-tauri/binaries/formvis-engine-*
+  rm -rf backend/build/pyinstaller backend/dist-engine src-tauri/binaries/formvis-engine-* src-tauri/engine
 fi
 cv_rust_fresh
 

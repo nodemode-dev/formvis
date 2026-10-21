@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- The engine sidecar is a PyInstaller onefile binary: it unpacks Python's native libraries at launch, and those
-       are not signed with the app's team, so the hardened runtime must allow loading them and their executable pages. -->
+  <!-- The engine is a PyInstaller build (one folder in Resources/engine on macOS since 1.95.8): Python's native libraries
+       are not always signed with the app's team, so the hardened runtime must allow loading them and their executable pages. -->
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>

@@ -12,8 +12,13 @@ ext="$(cv_exe)"
 extra=(--additional-hooks-dir "$FORMVIS_ROOT/setup/pyi_hooks")
 [ -z "${FORMVIS_PYI_ARCH:-}" ] || extra+=(--target-arch "$FORMVIS_PYI_ARCH")
 if [ "${FORMVIS_FREEZE_ML:-0}" = 1 ]; then extra+=(--collect-all rembg --hidden-import onnxruntime --hidden-import rembg); fi
+mode=--onefile
+if [ "$(cv_os)" = macos ]; then
+  mode=--onedir
+  [ -z "${APPLE_SIGNING_IDENTITY:-}" ] || extra+=(--codesign-identity "$APPLE_SIGNING_IDENTITY" --osx-entitlements-file "$FORMVIS_ROOT/src-tauri/entitlements.plist")
+fi
 rm -rf build/pyinstaller dist-engine
-pyinstaller --noconfirm --clean --onefile --name formvis-engine \
+pyinstaller --noconfirm --clean "$mode" --name formvis-engine \
   --distpath dist-engine --workpath build/pyinstaller --specpath build/pyinstaller \
   --add-data "$FORMVIS_ROOT/frontend/dist${sep}frontend_dist" \
   --add-data "$FORMVIS_ROOT/backend/app/profiles${sep}profiles" \
@@ -22,6 +27,14 @@ pyinstaller --noconfirm --clean --onefile --name formvis-engine \
   --collect-submodules app --collect-submodules uvicorn --collect-submodules keyring --hidden-import cv2 --hidden-import OpenEXR \
   --exclude-module pillow_heif "${extra[@]}" \
   "$FORMVIS_ROOT/backend/formvis_engine.py"
+if [ "$mode" = --onedir ]; then
+  out="$FORMVIS_ROOT/src-tauri/engine"
+  rm -rf "$out"
+  cp -R dist-engine/formvis-engine "$out"
+  "$out/formvis-engine" --selfcheck
+  cv_say "engine folder ready: $out"
+  exit 0
+fi
 mkdir -p "$FORMVIS_ROOT/src-tauri/binaries"
 out="$FORMVIS_ROOT/src-tauri/binaries/formvis-engine-${triple}${ext}"
 cp "dist-engine/formvis-engine${ext}" "$out"
