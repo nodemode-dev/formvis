@@ -74,7 +74,7 @@ The engine imports nothing from `ui`, `io` or `extensions`. Tools import only th
 3. Colours and z-index come from tokens; icons come from `frontend/src/ui/icons.ts`; no icon libraries.
 4. No emoji, no U+2014 em dash (use the interpunct), near-zero comments. Decisions and removed code go in `frontend/HASHOUT_LOG.md` or `backend/HASHOUT_LOG.md` in the same turn.
 5. Versions are `v*.*.*` with dots and are bumped together at 8 sites, see `release-keeper`. Commits are Conventional Commits as `nodemode-ai <mackin@nodemode.ai>`.
-6. Do not write tests of your own on the side. Behaviour to test goes in the planning sidecar's `TEST_PLAN.md`; the existing suites (`frontend/tests`, `backend/tests`, `e2e`, `native/formvis-render/tests`) run through `./formvis test`.
+6. The tests live in this repo: `frontend/tests` (vitest), `backend/tests` (pytest), `e2e` (browser tests against the dev page on 5190; sample files in `e2e/fixtures`, rebuilt by `e2e/fixtures/make_fixtures.py`; the Linux desktop shell in `e2e/desktop`) and `native/formvis-render/tests`, all run by `./formvis test`. Use a feature by hand in the running app first, then add or extend its test in the suite it belongs to; never leave a test behind that only you have run.
 7. Compatibility: never rename a manifest field or a value label.
 8. New engine modules are formvis's own, written from standard published methods; do not paste code from other editors.
 9. After changing the MCP catalogue in `backend/app/routers/mcp.py`, run `./formvis agents sync` (the backend tests fail until you do).
