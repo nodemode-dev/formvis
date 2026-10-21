@@ -127,7 +127,6 @@ export const cs: Record<string, string> = {
   'Colored Pencil': 'Barevná tužka',
   'Colorize': 'Kolorovat',
   'Color profile': 'Barevný profil',
-  'Colours': 'Barvy',
   'Conditional Mode Change': 'Podmíněná změna režimu',
   'Cone': 'Kužel',
   'Cone (°)': 'Kužel (°)',

@@ -127,7 +127,6 @@ export const pl: Record<string, string> = {
   'Colored Pencil': 'Kredka kolorowa',
   'Colorize': 'Koloryzuj',
   'Color profile': 'Profil kolorów',
-  'Colours': 'Kolory',
   'Conditional Mode Change': 'Warunkowa zmiana trybu',
   'Cone': 'Stożek',
   'Cone (°)': 'Stożek (°)',

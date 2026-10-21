@@ -770,7 +770,7 @@ export class SettingsDialog extends Dialog {
     add('Guides & Grid',
       grp('Guides', this.colorRow('Guides', this.guideColor, 'guideColor'), this.guideStyleRow.el, nt('The color and line style of guides.')),
       grp('Grid', this.colorRow('Grid', this.gridColor, 'gridColor'), cols(this.gridStyleRow.el, this.gridPresetRow.el, this.gridUnitRow.el, this.gridEveryRow.el), this.subdivRow.el, this.gridOpacityRow.el, this.gridResetRow, nt('The color and line style of the grid.')),
-      grp('Slices', this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, nt('The colour of slice lines and whether their numbers show.')));
+      grp('Slices', this.colorRow('Slices', this.sliceColor, 'sliceColor'), this.sliceNumbersRow.el, nt('The color of slice lines and whether their numbers show.')));
     // Plugins (1.50.8): the other apps formvis sends to; NodeMode first.
     this.nodemodeCheck.addEventListener('click', () => void this.checkNodeMode());
     this.nodemodeUrl.addEventListener('change', () => { const v = this.nodemodeUrl.value.trim(); if (/^https?:\/\/./.test(v)) { this.change({ nodemodeUrl: v }); void this.checkNodeMode(); } else setText(this.nodemodeNote, 'An address starts with http:// or https://, such as http://localhost:8000.'); });
@@ -1619,7 +1619,7 @@ export class ModeDialog extends Dialog {
     this.setTitle(kind === 'bitmap' ? 'Bitmap' : kind === 'indexed' ? 'Indexed Color' : kind === 'grayscale' ? 'Grayscale' : 'CMYK Color');
     if (kind === 'grayscale') {
       setText(this.note, '');
-      this.body.replaceChildren(el('<p class="cv-dialog-note">Each layer is made grey from the weights of its red, green and blue channels. A deeper or CMYK document uses Image > Mode > Grayscale.</p>'), rowOf('Grayscale from', this.gray), this.note);
+      this.body.replaceChildren(el('<p class="cv-dialog-note">Each layer is made gray from the weights of its red, green and blue channels. A deeper or CMYK document uses Image > Mode > Grayscale.</p>'), rowOf('Grayscale from', this.gray), this.note);
       this.open();
       return;
     }

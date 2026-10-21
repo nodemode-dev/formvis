@@ -20,7 +20,7 @@ export const zhTW: Record<string, string> = {
   'Chrome': '鉻黃', 'Clarity': '清晰度', 'Clarity adjustment layer': '清晰度調整圖層', 'Claude Code': 'Claude Code', 'Clean the brush after each stroke': '每次筆觸後清潔筆刷',
   'Cleanliness': '清潔度', 'Clipboard': '剪貼簿', 'Close Document': '關閉文件', 'Cloud': '雲', 'Clouds': '雲狀效果', 'Color Balance': '色彩平衡', 'Color Burn': '顏色加深', 'Color Dodge': '顏色變淡',
   'Color Dynamics': '顏色動態', 'Color Halftone': '彩色網屏', 'Color Handling': '色彩處理', 'Color Lookup': '顏色查詢', 'Color Management Policies': '色彩管理原則', 'Color Overlay': '顏色疊加',
-  'Color Picker': '檢色器', 'Colored Pencil': '彩色鉛筆', 'Colorize': '上色', 'Color profile': '色彩描述檔', 'Colours': '顏色', 'Conditional Mode Change': '條件式模式變更', 'Cone': '圓錐',
+  'Color Picker': '檢色器', 'Colored Pencil': '彩色鉛筆', 'Colorize': '上色', 'Color profile': '色彩描述檔', 'Conditional Mode Change': '條件式模式變更', 'Cone': '圓錐',
   'Cone (°)': '圓錐 (°)', 'Cone - Inverted': '圓錐 - 反轉', 'Confirm': '確認', 'Contents': '內容', 'Contents only (no artboard background)': '僅內容 (無工作區域背景)', 'Contextual': '上下文',
   'Contextual Alternates': '上下文替代字', 'Continue': '繼續', 'Contour': '輪廓', 'Contrast (%)': '對比 (%)', 'Conté Crayon': '炭精筆', 'Conversion': '轉換', 'Conversion Options': '轉換選項',
   'Convert Profile to sRGB': '將描述檔轉換為 sRGB', 'Convert to Working Space': '轉換為工作空間', 'Copper': '銅', 'Copy Error Log': '拷貝錯誤記錄', 'Copyright Info': '版權資訊',

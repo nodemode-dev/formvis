@@ -7,7 +7,7 @@ const settings = { tolerance: 32, contiguous: true, sampleAll: false, antialias:
 export const magicEraserTool: Tool = {
   id: 'magicEraser', label: 'Magic Eraser', key: 'E', order: 62.2,
   icon: () => 'tMagicEraser',
-  hint: () => 'Click an area to erase it and the colours like it · Tolerance widens the match · Contiguous keeps to the connected area',
+  hint: () => 'Click an area to erase it and the colors like it · Tolerance widens the match · Contiguous keeps to the connected area',
   cursor: () => 'crosshair',
   down(ctx, p) { if (p.button === 0) ctx.engine.magicErase(p.doc, { ...settings }); },
   options: (e): OptionSpec[] => [

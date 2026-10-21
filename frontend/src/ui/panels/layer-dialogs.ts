@@ -24,7 +24,7 @@ export class NewLayerDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('New Layer', 380);
     this.field('Name', this.name);
-    this.body.append(this.clipRow.el, this.labelRow.el, this.modeRow.el, this.opacityRow.el, this.neutralRow.el, el('<p class="cv-note">Fill with Mode-Neutral Color applies to modes that have a neutral colour; Normal, Dissolve and the colour modes stay transparent.</p>'));
+    this.body.append(this.clipRow.el, this.labelRow.el, this.modeRow.el, this.opacityRow.el, this.neutralRow.el, el('<p class="cv-note">Fill with Mode-Neutral Color applies to modes that have a neutral color; Normal, Dissolve and the color modes stay transparent.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
@@ -74,7 +74,7 @@ export class NewGroupDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('New Group', 360);
     this.field('Name', this.name);
-    this.body.append(el('<p class="cv-note">A group\'s colour label, blend mode and opacity are set in the Layers panel and Layer > Color Label after it is made.</p>'));
+    this.body.append(el('<p class="cv-note">A group\'s color label, blend mode and opacity are set in the Layers panel and Layer > Color Label after it is made.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());

@@ -9,7 +9,7 @@ export const gamutWarning = { r: GAMUT_GREY, g: GAMUT_GREY, b: GAMUT_GREY, opaci
 
 export function lutFrom(data: ArrayBuffer, grid: number, gamut: boolean): ColourLut {
   const n = grid * grid * grid, b = new Uint8Array(data);
-  if (b.length < n * 3 + (gamut ? n : 0)) throw new Error('The colour table is incomplete.');
+  if (b.length < n * 3 + (gamut ? n : 0)) throw new Error('The color table is incomplete.');
   return { grid, rgb: b.slice(0, n * 3), gamut: gamut ? b.slice(n * 3, n * 4) : undefined };
 }
 

@@ -127,7 +127,6 @@ export const fi: Record<string, string> = {
   'Colored Pencil': 'Värikynä',
   'Colorize': 'Värjää',
   'Color profile': 'Väriprofiili',
-  'Colours': 'Värit',
   'Conditional Mode Change': 'Ehdollinen tilanvaihto',
   'Cone': 'Kartio',
   'Cone (°)': 'Kartio (°)',

@@ -127,7 +127,6 @@ export const sv: Record<string, string> = {
   'Colored Pencil': 'Färgpenna',
   'Colorize': 'Färglägg',
   'Color profile': 'Färgprofil',
-  'Colours': 'Färger',
   'Conditional Mode Change': 'Villkorlig lägesändring',
   'Cone': 'Kon',
   'Cone (°)': 'Kon (°)',

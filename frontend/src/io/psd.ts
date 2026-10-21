@@ -365,7 +365,7 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
     fx.stroke = { enabled: on(k), color: col(k.color, fx.stroke.color), opacity: op(k.opacity, 1), size: px(k.size, 3), ...(k.position === 'inside' || k.position === 'center' ? { position: k.position } : {}) };
     const kg = k.fillType === 'gradient' && k.gradient && 'colorStops' in k.gradient ? k.gradient : null;
     if (kg && kg.colorStops.length >= 2) fx.stroke.gradient = { from: col(kg.colorStops[0].color, fx.stroke.color), to: col(kg.colorStops[kg.colorStops.length - 1].color, fx.stroke.color), angle: kg.angle ?? 90, style: kg.style === 'radial' ? 'radial' : 'linear', reverse: !!kg.reverse };
-    if (k.fillType === 'pattern' || (k.fillType === 'gradient' && !kg) || (kg && kg.style && kg.style !== 'linear' && kg.style !== 'radial')) notes.push(`"${name}" has a stroke fill formvis draws as a colour or a linear or radial gradient.`);
+    if (k.fillType === 'pattern' || (k.fillType === 'gradient' && !kg) || (kg && kg.style && kg.style !== 'linear' && kg.style !== 'radial')) notes.push(`"${name}" has a stroke fill formvis draws as a color or a linear or radial gradient.`);
   }
   const co = first(info.solidFill, 'Color Overlay');
   if (co) fx.colorOverlay = { enabled: on(co), color: col(co.color, fx.colorOverlay.color), opacity: op(co.opacity, 1), blend: bm(co.blendMode, 'normal') };
@@ -747,10 +747,10 @@ export async function readPsdFile(file: File, siblings: readonly File[] = []): P
   else if (bits !== 8) notes.push(`This ${bits}-bit file opened at 8 bits per channel.`);
   if (colorMode === 1) { doc.mode = 'grayscale'; kept.push('Grayscale mode.'); }
   else if (colorMode === 0) { doc.mode = 'bitmap'; kept.push('Bitmap mode.'); }
-  else if (colorMode === 2 && psd.palette?.length) { doc.mode = 'indexed'; doc.palette = psd.palette.map((c) => ({ r: c.r, g: c.g, b: c.b })); kept.push(`Indexed Color with ${psd.palette.length} colours.`); }
-  else if (colorMode === 2) notes.push('This Indexed Color file has no colour table that formvis could read; it opened as RGB.');
+  else if (colorMode === 2 && psd.palette?.length) { doc.mode = 'indexed'; doc.palette = psd.palette.map((c) => ({ r: c.r, g: c.g, b: c.b })); kept.push(`Indexed Color with ${psd.palette.length} colors.`); }
+  else if (colorMode === 2) notes.push('This Indexed Color file has no color table that formvis could read; it opened as RGB.');
   const icc = readIccProfile(buffer);
-  if (icc) { doc.profile = icc; kept.push(`Colour profile ${icc.name}.`); }
+  if (icc) { doc.profile = icc; kept.push(`Color profile ${icc.name}.`); }
   const scaleRes = blocks.get(1074), scaleRead = scaleRes ? measureScaleFrom(scaleRes) : null;
   if (scaleRead) { doc.measureScale = scaleRead; kept.push(`Measurement scale ${scaleRead.pixels} px = ${scaleRead.length} ${scaleRead.units}.`); }
   const exifRes = blocks.get(1058);
@@ -1149,7 +1149,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
         notes.push(`"${l.name}" is a ${ADJUSTMENT_LABELS[l.adjustment.kind]} adjustment, which the PSD format has no adjustment layer for; it is written as an empty layer, and formvis keeps its settings in a block of its own so it opens here as the live adjustment.`);
         return held;
       }
-      if (l.adjustment.kind === 'hsv' && hsvFromData(l.adjustment.data as never).colorize && hsvFromData(l.adjustment.data as never).range !== 'Master') notes.push(`"${l.name}" colorizes with a colour range selected; the PSD's Colorize is the Master's, so it is written there.`);
+      if (l.adjustment.kind === 'hsv' && hsvFromData(l.adjustment.data as never).colorize && hsvFromData(l.adjustment.data as never).range !== 'Master') notes.push(`"${l.name}" colorizes with a color range selected; the PSD's Colorize is the Master's, so it is written there.`);
       const out: PsdLayer = { name: l.name, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment, ...tag, ...toPsdBlending(l) };
       maskOnto(l, out);
       return out;
@@ -1232,7 +1232,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
         const fp = v.fill && !fg ? patternOf(v.pattern) : null, sp = v.stroke && !sg ? patternOf(v.stroke.pattern) : null, sk = v.stroke;
         out.vectorFill = fg ? gradientContent(fg) : fp ?? { type: 'color', color: rgb(v.fill ?? v.stroke?.color ?? { r: 0, g: 0, b: 0 }) };
         out.vectorStroke = { strokeEnabled: !!sk, fillEnabled: !!v.fill, lineWidth: { units: 'Pixels', value: (v.stroke?.width ?? 1) * k }, lineCapType: sk?.cap ?? 'round', lineJoinType: sk?.join ?? 'round', lineAlignment: sk?.align ?? 'center', ...(sk?.miter ? { miterLimit: sk.miter } : {}), ...(sk?.opacity !== undefined && sk.opacity < 1 ? { opacity: Math.max(0, sk.opacity) } : {}), content: sg ? gradientContent(sg) : sp ?? { type: 'color', color: rgb(v.stroke?.color ?? v.fill ?? { r: 0, g: 0, b: 0 }) } };
-        if ((v.fill && v.pattern && !fp) || (v.stroke?.pattern && !sp)) notes.push(`"${l.name}"'s pattern fill or stroke names a pattern the project no longer has, so the PSD shape keeps its colour.`);
+        if ((v.fill && v.pattern && !fp) || (v.stroke?.pattern && !sp)) notes.push(`"${l.name}"'s pattern fill or stroke names a pattern the project no longer has, so the PSD shape keeps its color.`);
         if (sk && (sk.dash && sk.dash !== 'solid' || sk.dashes?.length)) notes.push(`"${l.name}"'s dashed stroke is written solid; the PSD shape's dash record is not written yet.`);
       }
     }
@@ -1323,7 +1323,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (noteList.length) psd.annotations = noteList.map((n) => ({ type: 'text' as const, open: false, iconLocation: { left: Math.round(n.x), top: Math.round(n.y), right: Math.round(n.x) + 18, bottom: Math.round(n.y) + 18 }, popupLocation: { left: Math.round(n.x) + 20, top: Math.round(n.y), right: Math.round(n.x) + 220, bottom: Math.round(n.y) + 120 }, color: { r: 255, g: 220, b: 0 }, author: '', name: '', date: '', data: n.text }));   // text notes (Anno)
   if (doc.globalLight) psd.imageResources = { ...(psd.imageResources ?? {}), globalAngle: Math.round(doc.globalLight.angle), globalAltitude: Math.round(doc.globalLight.altitude) };   // 1037 and 1049
   let icc: Uint8Array | null = null;
-  try { icc = doc.profile ? fromBase64(doc.profile.icc) : null; } catch { notes.push('The document\'s colour profile could not be read, so the PSD carries none.'); }
+  try { icc = doc.profile ? fromBase64(doc.profile.icc) : null; } catch { notes.push('The document\'s color profile could not be read, so the PSD carries none.'); }
   const alphas = quickMask ? [...(doc.alphas ?? []).filter((a) => !/^quick mask$/i.test(a.name)), { id: 'quick-mask', name: 'Quick Mask', mask: quickMask, color: { r: 255, g: 0, b: 0 }, opacity: 50, indicates: 'masked' as const }] : doc.alphas ?? [];
   if (alphas.length > 50) notes.push('A PSD holds at most 56 channels; the alpha channels after the first 50 are left out.');
   const exif = metaWritable(doc.meta) ? exifBlockOf(doc.meta) : null;

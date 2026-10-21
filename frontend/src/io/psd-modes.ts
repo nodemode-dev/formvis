@@ -92,7 +92,7 @@ export function writeMultichannelPsd(doc: Doc, psb = false): { bytes: ArrayBuffe
   const info = [...u32(1), ...list.flatMap((c) => [...u16(0), ...w16(c.color.r), ...w16(c.color.g), ...w16(c.color.b), 0, 0, ...u16(Math.max(0, Math.min(100, Math.round(c.solidity * 100)))), 2, 0])];
   const ppi = doc.resolution >= 1 && doc.resolution <= 65535 ? Math.round(doc.resolution) : 72, fixed = [...u16(ppi), 0, 0, ...u16(1), ...u16(1), ...u16(ppi), 0, 0, ...u16(1), ...u16(1)];
   let bytes = addResourceBytes(out.buffer, [...block(1005, '', new Uint8Array(fixed)), ...block(1006, '', new Uint8Array(pascalNames)), ...block(1045, '', new Uint8Array(unicode)), ...block(1077, '', new Uint8Array(info))]);
-  try { if (doc.profile) bytes = addIccResource(bytes, fromBase64(doc.profile.icc)); } catch { notes.push('The document\'s colour profile could not be read, so the PSD carries none.'); }
+  try { if (doc.profile) bytes = addIccResource(bytes, fromBase64(doc.profile.icc)); } catch { notes.push('The document\'s color profile could not be read, so the PSD carries none.'); }
   if (doc.layers.length > 1 || doc.layers.some((l) => l.isGroup)) notes.push('A Multichannel PSD holds channels only; the layers are not written.');
   return { bytes, notes };
 }
@@ -115,7 +115,7 @@ export function readPsdIndexedRaw(buf: ArrayBuffer, resolution: number | null): 
   r.write(img);
   const base: Doc = { id: uid(), width: m.width, height: m.height, resolution: resolution ?? 72, layers: [] };
   const icc = readIccProfile(buf), layer = newLayer('Background', base, { raster: r });
-  return { doc: { ...base, ...(icc ? { profile: icc } : {}), layers: [layer], mode: 'indexed', palette }, notes: ['This PSD has no layers; it opened as a single one.'], kept: [`Indexed Color with ${palette.length} colours.`], activeId: layer.id };
+  return { doc: { ...base, ...(icc ? { profile: icc } : {}), layers: [layer], mode: 'indexed', palette }, notes: ['This PSD has no layers; it opened as a single one.'], kept: [`Indexed Color with ${palette.length} colors.`], activeId: layer.id };
 }
 
 /** A Duotone or Multichannel file as a document, or null for any other mode or a merged image that cannot be read. */

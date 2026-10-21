@@ -10,7 +10,7 @@ let hover: Pt | null = null;
 export const mixerTool: Tool = {
   id: 'mixer', label: 'Mixer Brush', key: 'B', order: 50.7,
   icon: () => 'tBrush',
-  hint: () => 'Drag to paint with wet paint that picks up and mixes the colours under it · [ ] size · Alt-click loads the reservoir from the canvas',
+  hint: () => 'Drag to paint with wet paint that picks up and mixes the colors under it · [ ] size · Alt-click loads the reservoir from the canvas',
   cursor: () => 'none',
   down(ctx, p) {
     if (p.button !== 0) return;

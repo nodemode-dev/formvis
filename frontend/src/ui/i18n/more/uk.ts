@@ -127,7 +127,6 @@ export const uk: Record<string, string> = {
   'Colored Pencil': 'Кольорові олівці',
   'Colorize': 'Тонування',
   'Color profile': 'Колірний профіль',
-  'Colours': 'Кольори',
   'Conditional Mode Change': 'Умовна зміна режиму',
   'Cone': 'Конус',
   'Cone (°)': 'Конус (°)',

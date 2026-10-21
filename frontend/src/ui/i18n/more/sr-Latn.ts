@@ -127,7 +127,6 @@ export const srLatn: Record<string, string> = {
   'Colored Pencil': 'Bojica',
   'Colorize': 'Oboji',
   'Color profile': 'Profil boja',
-  'Colours': 'Boje',
   'Conditional Mode Change': 'Uslovna promena režima',
   'Cone': 'Kupa',
   'Cone (°)': 'Kupa (°)',

@@ -20,7 +20,7 @@ export const ko: Record<string, string> = {
   'Chrome': '크롬', 'Clarity': '명료도', 'Clarity adjustment layer': '명료도 조정 레이어', 'Claude Code': 'Claude Code', 'Clean the brush after each stroke': '획마다 브러시 닦기',
   'Cleanliness': '청결도', 'Clipboard': '클립보드', 'Close Document': '문서 닫기', 'Cloud': '구름', 'Clouds': '구름 효과', 'Color Balance': '색상 균형', 'Color Burn': '색상 번', 'Color Dodge': '색상 닷지',
   'Color Dynamics': '색상 다이내믹', 'Color Halftone': '색상 하프톤', 'Color Handling': '색상 처리', 'Color Lookup': '색상 룩업', 'Color Management Policies': '색상 관리 정책', 'Color Overlay': '색상 오버레이',
-  'Color Picker': '색상 피커', 'Colored Pencil': '색연필', 'Colorize': '색상화', 'Color profile': '색상 프로필', 'Colours': '색상', 'Conditional Mode Change': '조건부 모드 변경', 'Cone': '원뿔',
+  'Color Picker': '색상 피커', 'Colored Pencil': '색연필', 'Colorize': '색상화', 'Color profile': '색상 프로필', 'Conditional Mode Change': '조건부 모드 변경', 'Cone': '원뿔',
   'Cone (°)': '원뿔 (°)', 'Cone - Inverted': '원뿔 - 반전', 'Confirm': '확인', 'Contents': '내용', 'Contents only (no artboard background)': '내용만 (아트보드 배경 없음)', 'Contextual': '문맥',
   'Contextual Alternates': '문맥 대체 문자', 'Continue': '계속', 'Contour': '윤곽선', 'Contrast (%)': '대비 (%)', 'Conté Crayon': '콩테', 'Conversion': '변환', 'Conversion Options': '변환 옵션',
   'Convert Profile to sRGB': '프로필을 sRGB로 변환', 'Convert to Working Space': '작업 공간으로 변환', 'Copper': '구리', 'Copy Error Log': '오류 로그 복사', 'Copyright Info': '저작권 정보',

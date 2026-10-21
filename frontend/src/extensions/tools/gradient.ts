@@ -135,7 +135,7 @@ function fillOverlay(ctx: ToolContext, g: CanvasRenderingContext2D): void {
 export const gradientTool: Tool = {
   id: 'gradient', label: 'Gradient', key: 'G', order: 70,
   icon: () => 'tGradient',
-  hint: () => 'Drag to draw a gradient · Drag either end to adjust it · Click the line to add a colour stop, drag stops and midpoints, Alt-click a stop to remove it, Ctrl-click to give it the foreground colour · On a Gradient Fill layer the same handles edit the layer · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies',
+  hint: () => 'Drag to draw a gradient · Drag either end to adjust it · Click the line to add a color stop, drag stops and midpoints, Alt-click a stop to remove it, Ctrl-click to give it the foreground color · On a Gradient Fill layer the same handles edit the layer · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies',
   cursor: () => 'crosshair',
   down(ctx, p) {
     if (p.button !== 0) return;

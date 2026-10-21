@@ -19,7 +19,7 @@ export const LIB_IDS = [
   'despeckle', 'dustAndScratches', 'median', 'reduceNoise',
   'custom', 'hsbHsl', 'highPass', 'maximum', 'minimum', 'offset',
   'deInterlace', 'ntscColors', 'scanlines', 'colorToAlpha', 'dither', 'grainPlate', 'haze', 'tonalContrast',
-  'displace', 'pinch', 'polarCoordinates', 'ripple', 'shear', 'spherize', 'twirl', 'wave', 'zigZag',
+  'displace', 'pinch', 'polarCoordinates', 'ripple', 'shear', 'spherize', 'twirl', 'wave', 'zigZag', 'chromaticShift',
   'colorHalftone', 'crystallize', 'facet', 'fragment', 'mezzotint', 'mosaic', 'pointillize',
   'diffuse', 'emboss', 'extrude', 'findEdges', 'oilPaint', 'solarize', 'tiles', 'traceContour', 'wind',
   'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'lightingEffects', 'flame', 'pictureFrame', 'tree',

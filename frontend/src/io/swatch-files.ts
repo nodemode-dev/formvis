@@ -47,7 +47,7 @@ const COLOUR_BOOKS: Record<number, string> = { 3: 'Pantone', 4: 'Focoltone', 5: 
 export function swatchNotes(list: readonly SwatchItem[]): string[] {
   const books = new Map<string, number>();
   for (const s of list) if (s.book) books.set(s.book, (books.get(s.book) ?? 0) + 1);
-  return [...books].map(([book, n]) => `${n} ${book} colour book swatch${n === 1 ? '' : 'es'} shown with an approximate colour; an .aco saved again carries the book's own entry.`);
+  return [...books].map(([book, n]) => `${n} ${book} color book swatch${n === 1 ? '' : 'es'} shown with an approximate color; an .aco saved again carries the book's own entry.`);
 }
 
 /** One swatch as the files hold it: '#rrggbb', an optional name, and (.ase only) an optional group. */

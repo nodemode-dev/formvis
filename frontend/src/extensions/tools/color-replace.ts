@@ -10,7 +10,7 @@ let hover: Pt | null = null;
 export const colorReplaceTool: Tool = {
   id: 'colorReplace', label: 'Color Replacement', key: 'B', order: 50.8,
   icon: () => 'tBrush',
-  hint: () => 'Drag over a colour to replace it with the foreground color · Tolerance sets how far from it colours match · [ ] size',
+  hint: () => 'Drag over a color to replace it with the foreground color · Tolerance sets how far from it colors match · [ ] size',
   cursor: () => 'none',
   down(ctx, p) {
     if (p.button !== 0) return;

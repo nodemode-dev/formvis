@@ -119,7 +119,7 @@ export const es: Record<string, string> = {
   'Merge Panel Columns': 'Combinar columnas de paneles', 'Properties Column': 'Columna de propiedades',
   // Panel names
   'Layers': 'Capas', 'Channels': 'Canales', 'Paths': 'Trazados', 'History': 'Historial', 'Properties': 'Propiedades',
-  'Swatches': 'Muestras', 'Colour': 'Color', 'Color': 'Color', 'Navigator': 'Navegador', 'Info': 'Información',
+  'Swatches': 'Muestras', 'Color': 'Color', 'Navigator': 'Navegador', 'Info': 'Información',
   'Histogram': 'Histograma', 'Styles': 'Estilos', 'Modifier Keys': 'Teclas modificadoras', 'Timeline': 'Línea de tiempo',
   'Brushes': 'Pinceles', 'Character': 'Carácter', 'Paragraph': 'Párrafo',
   // Dialog buttons and tooltips
@@ -147,7 +147,7 @@ export const es: Record<string, string> = {
   'Actual pixels': 'Píxeles reales', 'Add': 'Añadir', 'Airbrush': 'Aerógrafo', 'Aligned': 'Alineado', 'Angle': 'Ángulo', 'Anti-alias': 'Suavizar', 'Anti-aliasing': 'Suavizado',
   'Apply Redactions': 'Aplicar censuras', 'Auto Add/Delete': 'Añadir/eliminar automáticamente', 'Auto Erase': 'Borrado automático', 'Auto Hide': 'Ocultar automáticamente',
   'Auto-Select': 'Selección automática', 'Auto-Select Target': 'Destino de selección automática', 'Background': 'Fondo', 'Behind': 'Detrás', 'Block': 'Bloque', 'Bold': 'Negrita',
-  'Bold Italic': 'Negrita cursiva', 'Center': 'Centro', 'Centre': 'Centro', 'Classic': 'Clásico', 'Clear All': 'Borrar todo', 'Clipped': 'Recortado', 'Colors': 'Colores',
+  'Bold Italic': 'Negrita cursiva', 'Center': 'Centro', 'Classic': 'Clásico', 'Clear All': 'Borrar todo', 'Clipped': 'Recortado', 'Colors': 'Colores',
   'Column': 'Columna', 'Content-Aware': 'Según el contenido', 'Contiguous': 'Contiguo', 'Continuous': 'Continuo', 'Contrast': 'Contraste', 'Corner radius': 'Radio de esquina',
   'Create Texture': 'Crear textura', 'Current & Below': 'Actual y por debajo', 'Current Layer': 'Capa actual', 'Curve fit': 'Ajuste de curva', 'Custom': 'Personalizado',
   'Custom shape': 'Forma personalizada', 'Darken Amount': 'Cantidad de oscurecimiento', 'Dashed': 'Discontinuo', 'Delete Crop Preset': 'Eliminar ajuste de recorte',

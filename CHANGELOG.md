@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.94.3 · 2026-10-21
+
+- Shapes: Warp, Distort and Perspective on a plain rectangle or ellipse shape layer keep it a vector shape (it was turned into pixels); fill and stroke stay editable, and the edge matches the raster warp within one pixel.
+- Filters: Chromatic Shift (Filter > Distort, and as a filter layer) with Plates, Lateral and Linear styles, Amount and Angle.
+- Filter Gallery: every effect (Glass, Ocean Ripple and the rest) has a command, so it runs from the command palette, actions, the agent tools and the command line.
+- Filter dialogs: a Preview checkbox in the footer beside Cancel (remembered for the session), labels that change the value when dragged (Shift for bigger steps, Alt for finer), and double-click on a label or slider to reset it.
+- Spelling: the remaining tool hints, messages and table keys use US spelling.
+
 ## 1.94.2 · 2026-10-21
 
 - Spelling: the interface's English uses US spelling throughout (color, center, gray, behavior, favorite, -ize, license) in menus, command words, dialogs, tooltips and the manual. Command ids, saved-file keys and other languages are unchanged; a few rarely seen hints keep the old spelling for now.

@@ -5,7 +5,7 @@ import { growOptions, modeCursor, modeFor, modeSegment, nudgeSelectionKey } from
 export const wandTool: Tool = {
   id: 'wand', label: 'Magic Wand', key: 'W', order: 40,
   icon: () => 'tWand',
-  hint: () => 'Click to select similar colours · Shift adds · Alt subtracts · Tolerance sets how alike · With a layer mask targeted it samples the mask · Arrows nudge the outline',
+  hint: () => 'Click to select similar colors · Shift adds · Alt subtracts · Tolerance sets how alike · With a layer mask targeted it samples the mask · Arrows nudge the outline',
   cursor: (ctx, p) => modeCursor(ctx.engine, p),
   down(ctx, p) { if (p.button === 0) ctx.engine.magicWand(p.doc, modeFor(ctx.engine, p)); },
   keydown: (ctx, e) => nudgeSelectionKey(ctx, e),

@@ -327,7 +327,7 @@ function turnRatio(e: Engine): boolean {
 export const cropTool: Tool = {
   id: 'crop', label: 'Crop', key: 'C', order: 45,
   icon: () => 'tCrop',
-  hint: () => 'Drag a frame · Drag inside to move it · Handles resize · Alt keeps the centre · Edges snap to the canvas and layer edges · Enter crops · Escape cancels',
+  hint: () => 'Drag a frame · Drag inside to move it · Handles resize · Alt keeps the center · Edges snap to the canvas and layer edges · Enter crops · Escape cancels',
   cursor(ctx, p) {
     if (!p || !frame) return 'crosshair';
     const h = hitHandle(ctx, p);

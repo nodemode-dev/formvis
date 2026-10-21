@@ -4581,7 +4581,7 @@ export class Engine {
           }
           r.ctx.putImageData(decontaminate(r.ctx.getImageData(0, 0, r.width, r.height), local, decontam), 0, 0);
           r.touch();
-        } else this.notice('Decontaminate Colors needs a layer that is not rotated, flipped or scaled; the colours were left as they are.');
+        } else this.notice('Decontaminate Colors needs a layer that is not rotated, flipped or scaled; the colors were left as they are.');
       }
       p.selection = null;
       return true;
@@ -7326,10 +7326,10 @@ export class Engine {
     if (p !== this.current || !l) return;
     const carried = l.vectorMask?.linked && !(l.smart && this.smartBase(l)?.deform) ? this.warpVector(l.vectorMask, w) : l.vectorMask;
     if (l.smart) { this.commitDeform(l, { kind: 'mesh', gw: w.gw, gh: w.gh, points: w.points, us: w.us, vs: w.vs }, 'Warp', carried); return; }
-    const placed = l.vector ? this.placedPath(l) : null;
-    if (l.vector && placed) {
+    const live = l.vector || l.mask?.raster ? null : this.liveShapeVector(l), placed = l.vector || live ? this.placedPath(l) : null;
+    if ((l.vector || live) && placed) {
       const bent = this.warpVector({ path: placed, enabled: true, linked: true, inverted: false }, w).path;
-      this.edit('Warp', (q) => { this.reshape(q, l.id, bent); if (l.vectorMask) q.updateLayer(l.id, { vectorMask: carried }); });
+      this.edit('Warp', (q) => { if (live) q.updateLayer(l.id, { vector: live, shape: null }); this.reshape(q, l.id, bent); if (l.vectorMask) q.updateLayer(l.id, { vectorMask: carried }); });
       return;
     }
     const full = this.meshWarped(w.source, w.points, w.gw, w.gh, 0, w.us, w.vs);
@@ -10076,9 +10076,10 @@ export class Engine {
       smartPreview: (l, d, quad, scale) => (d.smart ? { pixels: warpRaster(d.smart.R, d.smart.t, quad, scale), mask: this.smartDistortMask(l, d.smart.start, quad, scale) } : { pixels: null, mask: null }),
       vectorThrough: (l, from, to) => this.distortVector(l, from, to),
       shapeThrough: (pr, l, from, to) => {
-        const placed = this.placedPath(l), back = inverse3(homography(from));
+        const placed = this.placedPath(l), back = inverse3(homography(from)), live = l.vector ? null : this.liveShapeVector(l);
         if (!placed || !back) return false;
         const on = homography(to);
+        if (live) pr.updateLayer(l.id, { vector: live, shape: null });
         this.reshape(pr, l.id, mapPath(subdividePath(placed, 16, true), (q) => { const u = project(back, q.x, q.y); return project(on, u.x, u.y); }));
         if (l.vectorMask) pr.updateLayer(l.id, { vectorMask: this.distortVector(l, from, to) });
         return true;
@@ -10456,7 +10457,7 @@ export class Engine {
       // the chosen mode, within Tolerance; the layer's other colours are left as they are.
       const base = this.layerSample(p, l0), W = base.width, H = base.height, img = ctxOf(base).getImageData(0, 0, W, H);
       const px = Math.floor(pt.x), py = Math.floor(pt.y), at = (py * W + px) * 4, inside = px >= 0 && py >= 0 && px < W && py < H;
-      if (this.retouch.replaceSampling === 'once' && (!inside || img.data[at + 3] === 0)) { this.notice('Start the stroke on the colour to replace.'); return false; }
+      if (this.retouch.replaceSampling === 'once' && (!inside || img.data[at + 3] === 0)) { this.notice('Start the stroke on the color to replace.'); return false; }
       const seed: [number, number, number] = this.retouch.replaceSampling === 'swatch' ? [this.bg.r, this.bg.g, this.bg.b] : [img.data[at], img.data[at + 1], img.data[at + 2]];
       replaceColours(img, seed, [this.fg.r, this.fg.g, this.fg.b], this.retouch.replaceTolerance, this.retouch.replaceMode);
       const out = createSurface(W, H);
@@ -12081,7 +12082,7 @@ export class Engine {
   async flattenToTiles(name: string, only?: ReadonlySet<ID>): Promise<TiledRaster | null> {
     const p = this.current, store = this.undoStore;
     if (!p) return null;
-    if ((p.doc.depth ?? 8) > 8 || p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || this.composesFloats(p)) { this.notice(`${name} on a document this large works in 8-bit RGB, Grayscale or Indexed colour only.`); return null; }
+    if ((p.doc.depth ?? 8) > 8 || p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || this.composesFloats(p)) { this.notice(`${name} on a document this large works in 8-bit RGB, Grayscale or Indexed color only.`); return null; }
     if (!store) { this.notice(`${name} on a document this large needs formvis's engine running: its tiles are kept on the engine's disk.`, 'error'); return null; }
     const W = p.doc.width, H = p.doc.height, out = new TiledRaster(W, H), jb = this.startJob(name, Math.ceil(H / Math.max(16, Math.min(512, Math.floor(4_194_304 / W)))));
     out.onMissing = (t, key) => this.bringTile(t, key);

@@ -39,7 +39,7 @@ export class TextDialog extends Dialog {
     this.field('Line height', this.lineHeight);
     this.field('Align', this.align);
     this.body.append(this.boldRow.el, this.italicRow.el);
-    this.field('Colour', this.colour);
+    this.field('Color', this.colour);
     this.body.appendChild(this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());

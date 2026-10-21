@@ -217,7 +217,7 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     // white, sRGB-encoded) by the 8-bit formula and comes back to linear light; light above white is kept wherever
     // only one of the two layers covers a pixel. Every blend mode works at 32 bits this way.
     const displayRange = linear && !sep && mode !== 'dissolve' && mode !== 'darker-color' && mode !== 'lighter-color';
-    if (!displayRange && !sep && mode !== 'dissolve' && (!nonSeparable(mode, [0, 0, 0], [0, 0, 0]) || (n === 4 && !luts))) return { error: `${name} uses ${mode}, which needs the document's colour tables in this mode.` };
+    if (!displayRange && !sep && mode !== 'dissolve' && (!nonSeparable(mode, [0, 0, 0], [0, 0, 0]) || (n === 4 && !luts))) return { error: `${name} uses ${mode}, which needs the document's color tables in this mode.` };
     const bv: [number, number, number] = [0, 0, 0], sv: [number, number, number] = [0, 0, 0], lab = doc.mode === 'lab';
     for (let i = 0, j = 0; i < dst.length; i += S, j++) {
       let as = src[i + A] * op * (cov ? cov[j] : 1) * (clipA ? clipA[j] : 1);
@@ -367,7 +367,7 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
       const t = perChannel ? transferOf(l.adjustment) : null;
       if (!t) {
         const kern = kernelFor(l.adjustment);
-        if (!kern || (n === 4 && !luts)) return { error: `${name} is an adjustment that needs the document's colour tables, which load with the document.` };
+        if (!kern || (n === 4 && !luts)) return { error: `${name} is an adjustment that needs the document's color tables, which load with the document.` };
         viaKernel(out, W, H, n, kern, op, cov, n === 4 ? luts : null, inLab);
         continue;
       }

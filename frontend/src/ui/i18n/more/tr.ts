@@ -127,7 +127,6 @@ export const tr: Record<string, string> = {
   'Colored Pencil': 'Renkli Kalem',
   'Colorize': 'Renklendir',
   'Color profile': 'Renk profili',
-  'Colours': 'Renkler',
   'Conditional Mode Change': 'Koşullu Mod Değişikliği',
   'Cone': 'Koni',
   'Cone (°)': 'Koni (°)',

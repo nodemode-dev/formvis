@@ -416,7 +416,7 @@ export class TemplateFiles {
 export class SkinsSection {
   readonly el = el('<div class="cv-panel-section cv-skins"><span class="cv-refs-title">Skins</span></div>');
   private readonly list = el('<div class="cv-skins-list"></div>');
-  private readonly note = el('<p class="cv-note" role="status">A skin is a JSON file in the skins folder: a name, light or dark, colours for the window\'s tokens and optional css (or a .css file of the same name). Css may not load anything (no url, @import or @font-face) or hold script; a file that does is refused with the reason, and Reset skin brings the default look back.</p>');
+  private readonly note = el('<p class="cv-note" role="status">A skin is a JSON file in the skins folder: a name, light or dark, colors for the window\'s tokens and optional css (or a .css file of the same name). Css may not load anything (no url, @import or @font-face) or hold script; a file that does is refused with the reason, and Reset skin brings the default look back.</p>');
   private folder = '';
 
   constructor(private readonly grid: HTMLElement) {

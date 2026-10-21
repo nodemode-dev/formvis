@@ -127,7 +127,6 @@ export const el: Record<string, string> = {
   'Colored Pencil': 'Χρωματιστό μολύβι',
   'Colorize': 'Χρωματισμός',
   'Color profile': 'Προφίλ χρώματος',
-  'Colours': 'Χρώματα',
   'Conditional Mode Change': 'Υπό όρους αλλαγή λειτουργίας',
   'Cone': 'Κώνος',
   'Cone (°)': 'Κώνος (°)',

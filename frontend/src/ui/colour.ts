@@ -220,7 +220,7 @@ export class ColourView {
       if (n !== this.seq) return;
       this.key = '';
       this.engine.setViewTransform(null);
-      toast(`The view could not be colour-managed: ${err instanceof Error ? err.message : String(err)}`);
+      toast(`The view could not be color-managed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }

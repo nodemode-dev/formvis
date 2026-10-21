@@ -102,7 +102,7 @@ export async function readGiantPsd(file: Blob, opts: GiantOpen = {}): Promise<{ 
   } catch (err) { free(); throw err; }
   while (stack.length) layers.push(stack.pop() as Layer);
   if (closed.length) doc.collapsed = closed;
-  if (icc) { doc.profile = icc; kept.push(`Colour profile ${icc.name}.`); }
+  if (icc) { doc.profile = icc; kept.push(`Color profile ${icc.name}.`); }
   kept.push(`${Math.round((h.width * h.height) / 1e6).toLocaleString('en-US')} megapixels opened in tiles: ${h.width.toLocaleString('en-US')} by ${h.height.toLocaleString('en-US')} pixels, each layer read a band of rows at a time.`);
   if (h.depth === 16) notes.push('This 16-bit file opened at 8 bits per channel.');
   if (count.zip) notes.push(`${count.zip} layer${count.zip === 1 ? ' is' : 's are'} stored with ZIP compression, which is not read in bands; ${count.zip === 1 ? 'it was' : 'they were'} left blank and keep their names and places.`);

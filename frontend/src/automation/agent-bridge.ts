@@ -121,7 +121,7 @@ async function catalogueTool(name: string, a: Record<string, unknown>, hasDocume
   if (name === 'list_commands') {
     const found = cat.listCommands({ ...(typeof a.group === 'string' && a.group ? { group: a.group } : {}), ...(typeof a.text === 'string' && a.text ? { text: a.text } : {}) });
     const all = a.enabled === true ? found.filter((c) => c.enabled !== false) : a.enabled === false ? found.filter((c) => c.enabled === false) : found;
-    const why = hasDocument ? 'Not available in this state: it may need a selection, a pixel layer or another colour mode (describe_command says what it is for).' : 'Needs an open document: call new_document or open_file first.';
+    const why = hasDocument ? 'Not available in this state: it may need a selection, a pixel layer or another color mode (describe_command says what it is for).' : 'Needs an open document: call new_document or open_file first.';
     const paths = menus?.() ?? new Map<string, string>();
     const shown = all.slice(0, LIST_CAP).map((c) => ({ id: c.id, label: c.label, ...(paths.has(c.id) ? { menu: paths.get(c.id) } : {}), ...(c.group ? { group: c.group } : {}), ...(c.when ? { when: c.when } : {}), ...(c.params !== undefined ? { params: c.params } : {}), ...(c.risky ? { risky: true } : {}), ...(c.mutates !== undefined ? { mutates: c.mutates } : {}), ...(c.keys?.length ? { keys: c.keys } : {}), ...(c.enabled !== undefined ? { enabled: c.enabled } : {}), ...(c.enabled === false ? { disabledReason: why, ...(hasDocument ? {} : { needsDocument: true }) } : {}) }));
     const data = { total: all.length, commands: shown };
@@ -239,7 +239,7 @@ export class AgentBridge {
           [nw, nh] = ra >= rb ? [long, side(long * rb / ra)] : [side(long * ra / rb), long];
         }
         const paint = hex(bg), mode = str('mode') || 'rgb', depth = num('depth', 8);
-        if (bg !== 'white' && bg !== 'transparent' && bg !== 'black' && !paint) return fail('background is white, transparent, black or a colour #rrggbb.');
+        if (bg !== 'white' && bg !== 'transparent' && bg !== 'black' && !paint) return fail('background is white, transparent, black or a color #rrggbb.');
         const made = e.newDocument(nw, nh, str('name') || 'Untitled', bg === 'transparent' ? 'transparent' : bg === 'white' ? 'white' : bg === 'black' ? { r: 0, g: 0, b: 0 } : paint ?? 'white');
         if (!made) return fail(`A ${nw} by ${nh} document is outside what formvis allows (300,000 pixels a side, kept in tiles past 30,000 a side or ${Math.round(LIMITS.pixels / 1_000_000)} megapixels on this computer).`);
         const cat = catalogueOf();
@@ -826,12 +826,12 @@ export class AgentBridge {
           if (!l.raster || l.isGroup) return fail(`${l.name} has no pixels: rasterize_layer a text or shape layer first.`);
           e.selectLayer(l.id);
           await inOneStep(e, 'Realism Pass', () => {
-            if (a.colour !== false && e.colorMatch(l.id, 'beneath', Math.min(1, Math.max(0, num('amount', 0.8))))) steps.push('colours matched to what is beneath');
+            if (a.colour !== false && e.colorMatch(l.id, 'beneath', Math.min(1, Math.max(0, num('amount', 0.8))))) steps.push('colors matched to what is beneath');
             if (a.edges !== false) { e.selectLayer(l.id); e.matting('defringe', 2); e.matting('decontaminate', 1, 100, 6); steps.push('edge defringed and decontaminated'); }
             const g = grain === 'none' ? null : presetPatch('grain', grain), lid = g ? e.addAdjustmentLayer('grain') : null;
             if (g && lid) { e.edit('Adjustment', (q) => { const x = q.layer(lid); if (x?.adjustment) q.updateLayer(lid, { adjustment: { ...x.adjustment, data: { ...x.adjustment.data, [g.key]: { ...(x.adjustment.data[g.key] as object ?? {}), ...(g.value as object) } } } }); }); steps.push(`a grain layer (${g.label}) on top`); }
           });
-          return steps.length ? text(`Realism pass on ${l.name}: ${steps.join('; ')}. One undo step.`) : fail('Nothing was changed: colour, edges and grain were all off or could not run.');
+          return steps.length ? text(`Realism pass on ${l.name}: ${steps.join('; ')}. One undo step.`) : fail('Nothing was changed: color, edges and grain were all off or could not run.');
         }
         case 'compare': {
           const n = Math.min(50, Math.max(1, Math.round(num('steps', 1)))), layout = str('layout') || 'split', h = e.historySteps;
@@ -856,7 +856,7 @@ export class AgentBridge {
           ctxOf(shown).drawImage(out as CanvasImageSource, 0, 0, shown.width, shown.height);
           return { content: [{ type: 'image', data: await b64(await toBlob(shown, 'image/png')), mimeType: 'image/png' }, { type: 'text', text: `Before (${n} step${n === 1 ? '' : 's'} back, "${h.names[h.current - n]}" undone) on the ${side ? 'left' : 'left of the white line'}, after (now) on the right; the history is back where it was. Shown at ${shown.width} by ${shown.height}.` }] };
         }
-        case 'color_match': { const l = layerOf(); return e.colorMatch(l.id, str('to') === 'around' ? 'around' : 'beneath', num('amount', 1)) ? text(`Matched ${l.name}'s colours (a Curves layer clipped to it).`) : fail(`${l.name}'s colours could not be matched.`); }
+        case 'color_match': { const l = layerOf(); return e.colorMatch(l.id, str('to') === 'around' ? 'around' : 'beneath', num('amount', 1)) ? text(`Matched ${l.name}'s colors (a Curves layer clipped to it).`) : fail(`${l.name}'s colors could not be matched.`); }
         case 'add_film_layer': {
           const o = str('kind') === 'frame' ? { kind: 'frame' as const, style: (str('style') || 'film') as 'film' } : { kind: 'leak' as const, color: (str('color') || 'amber') as 'amber', from: (str('from') || 'left') as 'left', size: 60 }   /* a percentage, the Film Layer dialog's default */;
           e.addFilmLayer(o as Parameters<Engine['addFilmLayer']>[0]);
@@ -1008,18 +1008,18 @@ export class AgentBridge {
           for (let i = 0; i < d.length; i += 4) { const al = d[i + 3]; r += d[i] * al; g += d[i + 1] * al; bl += d[i + 2] * al; w += al; }
           if (!w) return fail('That area is fully transparent.');
           const c = { r: Math.round(r / w), g: Math.round(g / w), b: Math.round(bl / w) }, code = `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`, opaque = Math.round(w / (255 * d.length / 4) * 1000) / 1000;
-          return text(`The average colour of ${x1 - x0} by ${y1 - y0} at ${x0}, ${y0} is ${code} (${c.r}, ${c.g}, ${c.b}), ${Math.round(opaque * 100)} percent opaque.`, { hex: code, ...c, opaque, x: x0, y: y0, width: x1 - x0, height: y1 - y0 });
+          return text(`The average color of ${x1 - x0} by ${y1 - y0} at ${x0}, ${y0} is ${code} (${c.r}, ${c.g}, ${c.b}), ${Math.round(opaque * 100)} percent opaque.`, { hex: code, ...c, opaque, x: x0, y: y0, width: x1 - x0, height: y1 - y0 });
         }
         case 'frequency_separation': {
           const radius = num('radius', 8);
           if (!(radius >= 0.5 && radius <= 100)) return fail('radius is 0.5 to 100 pixels.');
           if (!e.frequencySeparation(radius)) return fail('There is nothing to separate.');
           const named = (n: string) => [...p.doc.layers].reverse().find((l) => l.name === n), lo = named('Low Frequency'), hi = named('High Frequency');
-          return text(`Split at ${radius} pixels: Low Frequency (id ${lo?.id}) holds colour and tone, High Frequency (id ${hi?.id}, Linear Light) holds the detail. Retouch each alone; together they look as the picture did.`, { low: lo?.id, high: hi?.id, radius });
+          return text(`Split at ${radius} pixels: Low Frequency (id ${lo?.id}) holds color and tone, High Frequency (id ${hi?.id}, Linear Light) holds the detail. Retouch each alone; together they look as the picture did.`, { low: lo?.id, high: hi?.id, radius });
         }
         case 'sample_depth': {
           const l = e.depthLayer(p);
-          if (!l) return fail('This document has no Depth Map layer: compute one first (run_command depth-map-from-layer or compute-depth-map), or name a grey layer Depth Map.');
+          if (!l) return fail('This document has no Depth Map layer: compute one first (run_command depth-map-from-layer or compute-depth-map), or name a gray layer Depth Map.');
           const x = Math.floor(num('x', -1)), y = Math.floor(num('y', -1)), n = Math.max(1, Math.min(101, Math.round(num('size', 1))));
           if (x < 0 || y < 0 || x >= p.doc.width || y >= p.doc.height) return fail(`x and y must lie inside the picture (0 to ${p.doc.width - 1}, 0 to ${p.doc.height - 1}).`);
           const s = e.renderLayerAlone(l.id), half = Math.floor(n / 2), x0 = Math.max(0, x - half), y0 = Math.max(0, y - half), x1 = Math.min(s.width, x - half + n), y1 = Math.min(s.height, y - half + n);
@@ -1098,7 +1098,7 @@ export class AgentBridge {
           e.setWand({ tolerance: Math.min(255, Math.max(0, Math.round(num('tolerance', 32)))), contiguous: a.contiguous !== false, sampleAll: str('source') === 'merged' });
           try { await e.magicWand({ x, y }, modeOf(a.mode)); } finally { e.setWand(was); }
           const s = e.current?.selection;
-          return s && s !== before ? text(`Selected the colour at ${x}, ${y}: ${s.w} by ${s.h} at ${s.x}, ${s.y}.`, { x: s.x, y: s.y, width: s.w, height: s.h }) : fail(`Nothing was selected at ${x}, ${y}: raise tolerance, or check that source ${str('source') || 'layer'} has pixels there.`);
+          return s && s !== before ? text(`Selected the color at ${x}, ${y}: ${s.w} by ${s.h} at ${s.x}, ${s.y}.`, { x: s.x, y: s.y, width: s.w, height: s.h }) : fail(`Nothing was selected at ${x}, ${y}: raise tolerance, or check that source ${str('source') || 'layer'} has pixels there.`);
         }
         case 'select_shape': {
           const shape = str('shape'), feather = Math.min(1000, Math.max(0, num('feather', 0)));
@@ -1170,7 +1170,7 @@ export class AgentBridge {
           }
           if (!ws) return fail('That area is fully transparent or not selected.');
           const c = { r: Math.round(r / ws), g: Math.round(g / ws), b: Math.round(bl / ws) }, code = `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`, opaque = Math.round(as / n * 1000) / 1000;
-          return text(`The mean colour of ${sel ? 'the selection' : 'the picture'}${str('id') ? ` (layer ${str('id')})` : ''} is ${code} (${c.r}, ${c.g}, ${c.b}), ${Math.round(opaque * 100)} percent opaque.`, { hex: code, ...c, opaque, pixels: Math.round(n) });
+          return text(`The mean color of ${sel ? 'the selection' : 'the picture'}${str('id') ? ` (layer ${str('id')})` : ''} is ${code} (${c.r}, ${c.g}, ${c.b}), ${Math.round(opaque * 100)} percent opaque.`, { hex: code, ...c, opaque, pixels: Math.round(n) });
         }
         case 'align_layers': case 'group_layers': {
           if (Array.isArray(a.ids)) {

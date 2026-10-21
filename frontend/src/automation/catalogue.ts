@@ -32,19 +32,19 @@ const TOOL_WHEN: Record<string, string> = {
   relight: 'to light the picture with virtual lights: picking it starts Relight on an 8-bit RGB document',
   move: 'to move, align or transform layers by dragging', marquee: 'to select a rectangle, ellipse or single row or column', lasso: 'to select a freehand, polygon or magnetic outline',
   artboard: 'to draw, move or resize an artboard on the canvas, or add one beside another',
-  objectSelect: 'to select an object by drawing a box around it', quickSelect: 'to select by painting over an area', wand: 'to select a region of similar colour with one click',
+  objectSelect: 'to select an object by drawing a box around it', quickSelect: 'to select by painting over an area', wand: 'to select a region of similar color with one click',
   selectionBrush: 'to paint a selection with a soft brush', crop: 'to crop, straighten or extend the canvas by dragging', slice: 'to mark rectangles of the picture as web slices by dragging',frame: 'to make a frame placeholder for a picture',
-  brush: 'to paint soft strokes with the foreground colour', pencil: 'to draw hard-edged lines', mixer: 'to paint with colours that blend like wet paint',
+  brush: 'to paint soft strokes with the foreground color', pencil: 'to draw hard-edged lines', mixer: 'to paint with colors that blend like wet paint',
   spotHealing: 'to remove small blemishes with one click', remove: 'to paint over an object and have it removed', healingBrush: 'to repair texture from a sampled source',
   patch: 'to repair a selected area with pixels from another area', contentAwareMove: 'to move or extend an object and heal the gap', redEye: 'to fix red eyes in a flash photo',
-  cloneStamp: 'to copy pixels from a sampled source by painting', patternStamp: 'to paint with a pattern', colorReplace: 'to swap one colour for the foreground colour by painting over it', historyBrush: 'to paint back an earlier state of the picture',
-  artHistory: 'to paint a stylised version of an earlier state', eraser: 'to erase pixels to transparency or background colour', backgroundEraser: 'to erase a background colour while keeping edges',
-  magicEraser: 'to erase a region of similar colour with one click', smear: 'to smudge, blur or sharpen by painting', dodge: 'to lighten areas by painting',
-  burn: 'to darken areas by painting', sponge: 'to raise or lower colour saturation by painting', gradient: 'to fill with a gradient by dragging',
-  bucket: 'to fill a region of similar colour with the foreground colour', shape: 'to draw rectangles, ellipses, polygons and custom shapes', pathSelect: 'to select and move whole paths',
+  cloneStamp: 'to copy pixels from a sampled source by painting', patternStamp: 'to paint with a pattern', colorReplace: 'to swap one color for the foreground color by painting over it', historyBrush: 'to paint back an earlier state of the picture',
+  artHistory: 'to paint a stylized version of an earlier state', eraser: 'to erase pixels to transparency or background color', backgroundEraser: 'to erase a background color while keeping edges',
+  magicEraser: 'to erase a region of similar color with one click', smear: 'to smudge, blur or sharpen by painting', dodge: 'to lighten areas by painting',
+  burn: 'to darken areas by painting', sponge: 'to raise or lower color saturation by painting', gradient: 'to fill with a gradient by dragging',
+  bucket: 'to fill a region of similar color with the foreground color', shape: 'to draw rectangles, ellipses, polygons and custom shapes', pathSelect: 'to select and move whole paths',
   directSelect: 'to edit single anchor points of a path', pen: 'to draw precise paths with anchor points', freeformPen: 'to draw a path by dragging freely',
   curvaturePen: 'to draw smooth curves with few clicks', convertPoint: 'to turn a path point between smooth and corner', type: 'to add or edit text',
-  eyedropper: 'to pick a colour from the picture', colorSampler: 'to read colour values at fixed points', ruler: 'to measure distance and angle', note: 'to leave a written note on the picture',
+  eyedropper: 'to pick a color from the picture', colorSampler: 'to read color values at fixed points', ruler: 'to measure distance and angle', note: 'to leave a written note on the picture',
   markup: 'to mark areas for redaction or review', count: 'to count items by clicking them', boxes: 'to draw layout boxes that say where things go in a generated picture', hand: 'to pan the picture', rotateView: 'to turn the view without changing the picture', zoom: 'to zoom in or out on an area',
 };
 
@@ -55,7 +55,7 @@ const num = (path: string, min: number, max: number, description: string): FlatP
 const CORE: Record<string, Record<string, FlatParam>> = {
   gaussianBlur: { radius: num('radius', 0.1, 250, 'Blur radius in pixels') },
   motionBlur: { angle: num('angle', -90, 90, 'Direction in degrees'), distance: num('distance', 1, 2000, 'Length in pixels') },
-  addNoise: { amount: num('amount', 0.1, 400, 'Noise strength in percent'), gaussian: { path: 'gaussian', type: 'boolean', description: 'Gaussian instead of uniform noise' }, monochromatic: { path: 'monochromatic', type: 'boolean', description: 'Noise without colour' } },
+  addNoise: { amount: num('amount', 0.1, 400, 'Noise strength in percent'), gaussian: { path: 'gaussian', type: 'boolean', description: 'Gaussian instead of uniform noise' }, monochromatic: { path: 'monochromatic', type: 'boolean', description: 'Noise without color' } },
   lensCorrection: { distortion: num('distortion', -100, 100, 'Positive corrects barrel distortion, negative pincushion'), redCyan: num('lensFix.caRc', -100, 100, 'Red/cyan fringe correction'), blueYellow: num('lensFix.caBy', -100, 100, 'Blue/yellow fringe correction'),
     vignette: num('lensFix.vignette', -100, 100, 'Positive lightens the corners, negative darkens them'), midpoint: num('lensFix.midpoint', 0, 100, 'Where the vignette starts'), vertical: num('lensFix.vertical', -100, 100, 'Vertical perspective'), horizontal: num('lensFix.horizontal', -100, 100, 'Horizontal perspective'),
     angle: num('lensFix.angle', -45, 45, 'Rotate in degrees'), scale: num('lensFix.scale', 50, 150, 'Scale in percent'), autoScale: { path: 'lensFix.autoScale', type: 'boolean', description: 'Enlarge just enough to hide the empty corners the angle leaves' },
@@ -65,14 +65,14 @@ const CORE: Record<string, Record<string, FlatParam>> = {
     blades: num('lensIris.blades', 0, 8, 'Iris blades: 0 is round, 3 to 8 a polygon'), curvature: num('lensIris.curve', 0, 100, 'Blade curvature in percent'), rotation: num('lensIris.rotation', -180, 180, 'Iris rotation in degrees'),
     depthSource: { path: 'lensIris.source', type: 'string', enum: ['none', 'depthMap', 'channel', 'transparency'], description: 'Where the depth comes from: the Depth Map layer, alpha channel number channel, or the layer transparency' }, channel: num('lensIris.channel', 1, 16, 'Alpha channel number when depthSource is channel'),
     focalDistance: num('lensIris.focal', 0, 255, 'Depth kept sharp (bright is near)'), invertDepth: { path: 'lensIris.invert', type: 'boolean', description: 'Swap near and far' },
-    noise: num('lensIris.noise', 0, 100, 'Noise added where blurred'), noiseGaussian: { path: 'lensIris.gaussian', type: 'boolean', description: 'Gaussian instead of uniform noise' }, noiseMonochromatic: { path: 'lensIris.mono', type: 'boolean', description: 'Noise without colour' } },
+    noise: num('lensIris.noise', 0, 100, 'Noise added where blurred'), noiseGaussian: { path: 'lensIris.gaussian', type: 'boolean', description: 'Gaussian instead of uniform noise' }, noiseMonochromatic: { path: 'lensIris.mono', type: 'boolean', description: 'Noise without color' } },
   smartSharpen: { amount: num('smart.amount', 1, 500, 'Strength in percent'), radius: num('smart.radius', 0.1, 64, 'Radius in pixels'), noise: num('smart.noise', 0, 100, 'Noise reduction in percent'),
     remove: { path: 'smart.remove', type: 'string', enum: ['gaussian', 'lens', 'motion'], description: 'Kind of blur to remove' }, angle: num('smart.angle', -90, 90, 'Motion blur angle'), shadows: num('smart.shadows', 0, 100, 'Shadows fade in percent'), highlights: num('smart.highlights', 0, 100, 'Highlights fade in percent') },
   shakeReduction: { angle: num('shake.angle', -90, 90, 'Trace angle'), length: num('shake.length', 1, 300, 'Trace length in pixels'), smoothing: num('shake.smoothing', 0, 100, 'Smoothing in percent'), amount: num('shake.amount', 1, 300, 'Strength in percent') },
-  radialBlur: { amount: num('gallery.radialAmount', 1, 100, 'Blur amount'), method: { path: 'gallery.radialMethod', type: 'string', enum: ['spin', 'zoom'], description: 'Spin or zoom' }, quality: { path: 'gallery.radialQuality', type: 'string', enum: ['draft', 'good', 'best'], description: 'Render quality' }, centerX: num('gallery.radialX', 0, 100, 'Centre x in percent'), centerY: num('gallery.radialY', 0, 100, 'Centre y in percent') },
+  radialBlur: { amount: num('gallery.radialAmount', 1, 100, 'Blur amount'), method: { path: 'gallery.radialMethod', type: 'string', enum: ['spin', 'zoom'], description: 'Spin or zoom' }, quality: { path: 'gallery.radialQuality', type: 'string', enum: ['draft', 'good', 'best'], description: 'Render quality' }, centerX: num('gallery.radialX', 0, 100, 'Center x in percent'), centerY: num('gallery.radialY', 0, 100, 'Center y in percent') },
   surfaceBlur: { radius: num('gallery.surfaceRadius', 1, 100, 'Radius in pixels'), threshold: num('gallery.surfaceThreshold', 2, 255, 'Threshold in levels') },
-  irisBlur: { irises: num('gallery.irisPins', 1, 3, 'How many irises (1 to 3); the others use the gallery.iris2 and iris3 settings'), blur: num('gallery.irisBlur', 0, 500, 'Blur in pixels'), centerX: num('gallery.irisX', 0, 100, 'Centre x in percent'), centerY: num('gallery.irisY', 0, 100, 'Centre y in percent'), radiusX: num('gallery.irisRx', 1, 100, 'Radius x in percent'), radiusY: num('gallery.irisRy', 1, 100, 'Radius y in percent'), angle: num('gallery.irisAngle', -90, 90, 'Angle in degrees'), sharpArea: num('gallery.irisFeather', 0, 99, 'Sharp area in percent'), roundness: num('gallery.irisRound', 0, 100, 'Roundness in percent, 100 for an ellipse'), iris2Blur: num('gallery.iris2blur', 0, 500, 'Blur of the second iris in pixels; unset it follows blur'), iris3Blur: num('gallery.iris3blur', 0, 500, 'Blur of the third iris in pixels; unset it follows blur'), iris2Roundness: num('gallery.iris2round', 0, 100, 'Roundness of the second iris; unset it follows roundness'), iris3Roundness: num('gallery.iris3round', 0, 100, 'Roundness of the third iris; unset it follows roundness') },
-  tiltShift: { blur: num('gallery.tiltBlur', 0, 500, 'Blur in pixels'), centerX: num('gallery.tiltX', 0, 100, 'Centre x in percent'), centerY: num('gallery.tiltY', 0, 100, 'Centre y in percent'), angle: num('gallery.tiltAngle', -90, 90, 'Angle in degrees'), focus: num('gallery.tiltFocus', 0, 50, 'Sharp band in percent of height'), transition: num('gallery.tiltTransition', 1, 50, 'Transition in percent of height') },
+  irisBlur: { irises: num('gallery.irisPins', 1, 3, 'How many irises (1 to 3); the others use the gallery.iris2 and iris3 settings'), blur: num('gallery.irisBlur', 0, 500, 'Blur in pixels'), centerX: num('gallery.irisX', 0, 100, 'Center x in percent'), centerY: num('gallery.irisY', 0, 100, 'Center y in percent'), radiusX: num('gallery.irisRx', 1, 100, 'Radius x in percent'), radiusY: num('gallery.irisRy', 1, 100, 'Radius y in percent'), angle: num('gallery.irisAngle', -90, 90, 'Angle in degrees'), sharpArea: num('gallery.irisFeather', 0, 99, 'Sharp area in percent'), roundness: num('gallery.irisRound', 0, 100, 'Roundness in percent, 100 for an ellipse'), iris2Blur: num('gallery.iris2blur', 0, 500, 'Blur of the second iris in pixels; unset it follows blur'), iris3Blur: num('gallery.iris3blur', 0, 500, 'Blur of the third iris in pixels; unset it follows blur'), iris2Roundness: num('gallery.iris2round', 0, 100, 'Roundness of the second iris; unset it follows roundness'), iris3Roundness: num('gallery.iris3round', 0, 100, 'Roundness of the third iris; unset it follows roundness') },
+  tiltShift: { blur: num('gallery.tiltBlur', 0, 500, 'Blur in pixels'), centerX: num('gallery.tiltX', 0, 100, 'Center x in percent'), centerY: num('gallery.tiltY', 0, 100, 'Center y in percent'), angle: num('gallery.tiltAngle', -90, 90, 'Angle in degrees'), focus: num('gallery.tiltFocus', 0, 50, 'Sharp band in percent of height'), transition: num('gallery.tiltTransition', 1, 50, 'Transition in percent of height') },
   pathBlur: { speed: num('gallery.pathSpeed', 0, 500, 'Speed in pixels'), taper: num('gallery.pathTaper', 0, 100, 'Taper in percent'), drawnPath: { path: 'gallery.pathDrawn', type: 'boolean', description: 'Blur along the active drawn path (all its sub-paths) instead of the one curve' } },
   fieldBlur: { pins: num('gallery.pins', 1, 4, 'Number of pins in use'), blur1: num('gallery.pin1blur', 0, 500, 'Pin 1 blur'), blur2: num('gallery.pin2blur', 0, 500, 'Pin 2 blur'), blur3: num('gallery.pin3blur', 0, 500, 'Pin 3 blur'), blur4: num('gallery.pin4blur', 0, 500, 'Pin 4 blur') },
   develop: {}, average: {},
@@ -107,7 +107,7 @@ function adjustVariants(): Record<string, Record<string, CommandParam>> {
     hsv: { hue: rangeParam('hue', -180, 180, 'Hue shift'), saturation: rangeParam('saturation', -100, 100, 'Saturation'), lightness: rangeParam('lightness', -100, 100, 'Lightness'), colorize: { type: 'boolean', description: 'Colorize' } },
     levels: { black: rangeParam('black', 0, 253, 'Input black point'), gamma: rangeParam('gamma', 0.1, 9.99, 'Midtone gamma'), white: rangeParam('white', 2, 255, 'Input white point'), outputBlack: rangeParam('outputBlack', 0, 255, 'Output black'), outputWhite: rangeParam('outputWhite', 0, 255, 'Output white') },
     exposure: { exposure: rangeParam('exposure', -20, 20, 'Exposure in stops'), offset: rangeParam('offset', -0.5, 0.5, 'Offset'), gamma: rangeParam('gamma', 0.01, 9.99, 'Gamma') },
-    grain: { amount: rangeParam('amount', 0, 100, 'Grain amount'), size: rangeParam('size', 0.5, 4, 'Grain size'), roughness: rangeParam('roughness', 0, 100, 'Roughness'), colour: rangeParam('colour', 0, 100, 'Share of the grain that differs per colour channel'), speckle: rangeParam('speckle', 0, 100, 'Sparse bright and dark specks'), seed: { type: 'integer', min: 0, description: 'Seed' } },
+    grain: { amount: rangeParam('amount', 0, 100, 'Grain amount'), size: rangeParam('size', 0.5, 4, 'Grain size'), roughness: rangeParam('roughness', 0, 100, 'Roughness'), colour: rangeParam('colour', 0, 100, 'Share of the grain that differs per color channel'), speckle: rangeParam('speckle', 0, 100, 'Sparse bright and dark specks'), seed: { type: 'integer', min: 0, description: 'Seed' } },
     curves: {}, gradientMap: {},
   };
   for (const k of PARAM_KINDS) {
@@ -133,21 +133,21 @@ function actionEntries(): CatalogueEntry[] {
     ({ id, label, kind: 'action', group, description, when, params, mutates: true, risky: false, ...extra });
   const box = { x: rangeParam('x', -30000, 60000, 'Left edge in document pixels', true), y: rangeParam('y', -30000, 60000, 'Top edge in document pixels', true), width: rangeParam('width', 1, 60000, 'Width in pixels', true), height: rangeParam('height', 1, 60000, 'Height in pixels', true), mode: MODE };
   return [
-    a('paint.stroke', 'Paint Stroke', 'Paint', 'Draws one stroke through the points with the active painting tool, its size, colour and dynamics, on the active layer; one history step.',
+    a('paint.stroke', 'Paint Stroke', 'Paint', 'Draws one stroke through the points with the active painting tool, its size, color and dynamics, on the active layer; one history step.',
       'Use when you want to paint, erase, dodge or burn along an exact path; choose the tool first with tool.select.brush or pass tool.', { points: POINTS, tool: { type: 'string', enum: PAINT_TOOLS, description: 'Painting tool to use; the active tool when omitted' } }),
     a('select.rect', 'Rectangular Selection', 'Select', 'Selects a rectangle in document pixels.', 'Use when you know the pixel box to select.', box),
     a('select.ellipse', 'Elliptical Selection', 'Select', 'Selects the ellipse inside a box in document pixels.', 'Use when you know the pixel box of the oval to select.', box),
     a('select.lasso', 'Lasso Selection', 'Select', 'Selects the polygon through the points.', 'Use when the area to select is an outline you can list as points.', { points: { ...POINTS, description: 'Corners of the polygon, at least 3: [{x, y}] or [x, y] pairs' }, mode: MODE, antialias: { type: 'boolean', description: 'Smooth the edge; true by default' } }),
     a('layer.set', 'Set Layer', 'Layer', 'Changes a layer name, visibility, opacity or blend mode; the active layer when id is omitted.', 'Use when you want to rename, hide, fade or re-blend a layer.',
       { id: { type: 'string', description: 'Layer id from the document; the active layer when omitted' }, name: { type: 'string', description: 'New name' }, visible: { type: 'boolean', description: 'Show or hide' }, opacity: rangeParam('opacity', 0, 1, 'Opacity from 0 to 1'), blend: { type: 'string', enum: BLEND_MODES.map((m) => m.id), description: 'Blend mode' }, active: { type: 'boolean', description: 'Make it the active layer' } }),
-    a('adjust.apply', 'Apply Adjustment', 'Image', 'Applies an adjustment with exact values, to the pixels of the active layer or as an adjustment layer.', 'Use when you want a tonal or colour change with chosen values and no dialog.',
+    a('adjust.apply', 'Apply Adjustment', 'Image', 'Applies an adjustment with exact values, to the pixels of the active layer or as an adjustment layer.', 'Use when you want a tonal or color change with chosen values and no dialog.',
       { kind: { type: 'string', required: true, enum: ADJUSTMENT_KINDS, description: 'Which adjustment' }, as: { type: 'string', enum: ['pixels', 'layer'], description: 'pixels bakes it in; layer adds an editable adjustment layer; pixels by default' }, data: { type: 'object', description: 'The adjustment data as its project file keeps it, merged over the defaults; for curves and gradientMap' } },
       { variants: adjustVariants() }),
     a('filter.apply', 'Apply Filter', 'Filter', 'Applies a filter with exact settings to the active layer, inside the selection if there is one.', 'Use when you want a blur, sharpen, noise or effect with chosen values and no dialog.',
       { kind: { type: 'string', required: true, enum: Object.keys(filterVariants()), description: 'Which filter' }, settings: { type: 'object', description: 'All settings as one object; the settings of the kind may also be given as plain parameters' } },
       { variants: filterVariants() }),
     a('relight.apply', 'Apply Relight', 'Layer', 'Adds a Relight layer above the active layer, lit by a Look or by the lights given, rendered at full size on this computer; one history step.',
-      'Use when you want to change the direction, colour or mood of the light in a photo with chosen lights and no panel.', {
+      'Use when you want to change the direction, color or mood of the light in a photo with chosen lights and no panel.', {
         look: { type: 'string', enum: RELIGHT_LOOKS.map((l) => l.id), description: 'A ready-made Look; its lights are used unless lights is given' },
         lights: { type: 'array', description: 'Up to 8 lights: [{type: point|spot|sun|area|strip|ring, kelvin (1000 to 12000) or color {r,g,b}, intensity, softness, diffusion, distance (0 close to 100 far), pos {x,y} and aim {x,y} as fractions of the canvas, near and far (0 to 100, the depth band lit), pattern {kind: none|blinds|strip|window|leaves|caustics|lattice|arch|dapple|circle, scale, width, slats, opening, length, feather, rotation, invert, center {x,y} where the pattern sits, the aim when omitted}}]' },
         original: rangeParam('original', 0, 100, 'Percent of the original lighting kept'), shine: rangeParam('shine', 0, 100, 'Highlights on glossy forms'),
@@ -174,7 +174,7 @@ async function relightApply(p: Record<string, unknown>): Promise<RunResult> {
     return o;
   }) : start.lights;
   const ambient = typeof p.ambient === 'string' ? rgbOf(p.ambient) : null;
-  if (p.ambient !== undefined && !ambient) return fail('ambient must be a colour like #ffe8d0.');
+  if (p.ambient !== undefined && !ambient) return fail('ambient must be a color like #ffe8d0.');
   const content = relightFrom({ ...start, lights, ...(['original', 'shine', 'delight', 'shadows', 'roomOriginal', 'roomLight', 'roomShadows', 'roomDepth'] as const).reduce((m, k) => (typeof p[k] === 'number' ? { ...m, [k]: p[k] } : m), {}), ...(ambient ? { ambient } : {}), ...(look ? { look: look.id } : {}), ...(typeof p.split === 'string' ? { split: p.split } : {}) });
   if (!content || !content.lights.length) return fail('Give at least one light, or a look.');
   const made = await deps!.applyRelight(content);
@@ -459,7 +459,7 @@ function setOption(id: string, params: Record<string, unknown>): RunResult {
   if (c.error) return fail(c.error);
   const val = c.values!.value;
   if (s.kind === 'select' && s.live && !s.live().some((x) => x.id === val)) return fail(`"${String(val)}" is not available now. Choose one of ${s.live().map((x) => x.id).join(', ')}.`);
-  if (s.kind === 'color') { const rgb = rgbOf(String(val)); if (!rgb) return fail('value must be a colour like #ff8800.'); s.set(rgb); }
+  if (s.kind === 'color') { const rgb = rgbOf(String(val)); if (!rgb) return fail('value must be a color like #ff8800.'); s.set(rgb); }
   else if (s.kind === 'range' || s.kind === 'number' || s.kind === 'toggle' || s.kind === 'segment' || s.kind === 'select') (s.set as (v: unknown) => void)(val);
   return { ok: true, result: { message: `Set ${t.label} ${'label' in s ? s.label : name} to ${String(val)}.`, value: val } };
 }
@@ -485,7 +485,7 @@ export async function runCommand(id: string, params: Record<string, unknown> = {
     }
     const cmd = deps.commands.get(id);
     if (!cmd) return unknown(id);
-    if (!deps.commands.enabled(cmd)) return fail(`"${entry.label}" cannot run right now. ${entry.description} It needs an open document, the right kind of layer active (layer.set with active=true), and a selection if it works on one (select.rect), and some commands are off in the current colour mode or bit depth.`);
+    if (!deps.commands.enabled(cmd)) return fail(`"${entry.label}" cannot run right now. ${entry.description} It needs an open document, the right kind of layer active (layer.set with active=true), and a selection if it works on one (select.rect), and some commands are off in the current color mode or bit depth.`);
     const v = validate(p, entry.params ?? {});
     if (v.error) return fail(v.error);
     const before = steps();

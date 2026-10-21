@@ -20,7 +20,7 @@ export const th: Record<string, string> = {
   'Chrome': 'โครม', 'Clarity': 'ความชัดเจน', 'Clarity adjustment layer': 'เลเยอร์ปรับความชัดเจน', 'Claude Code': 'Claude Code', 'Clean the brush after each stroke': 'ล้างแปรงหลังแต่ละเส้น',
   'Cleanliness': 'ความสะอาด', 'Clipboard': 'คลิปบอร์ด', 'Close Document': 'ปิดเอกสาร', 'Cloud': 'เมฆ', 'Clouds': 'เมฆ', 'Color Balance': 'สมดุลสี', 'Color Burn': 'ไหม้สี', 'Color Dodge': 'หลบสี',
   'Color Dynamics': 'ไดนามิกสี', 'Color Halftone': 'ฮาล์ฟโทนสี', 'Color Handling': 'การจัดการสี', 'Color Lookup': 'การค้นหาสี', 'Color Management Policies': 'นโยบายการจัดการสี', 'Color Overlay': 'การซ้อนทับสี',
-  'Color Picker': 'ตัวเลือกสี', 'Colored Pencil': 'ดินสอสี', 'Colorize': 'ใส่สี', 'Color profile': 'โปรไฟล์สี', 'Colours': 'สี', 'Conditional Mode Change': 'การเปลี่ยนโหมดตามเงื่อนไข', 'Cone': 'กรวย',
+  'Color Picker': 'ตัวเลือกสี', 'Colored Pencil': 'ดินสอสี', 'Colorize': 'ใส่สี', 'Color profile': 'โปรไฟล์สี', 'Conditional Mode Change': 'การเปลี่ยนโหมดตามเงื่อนไข', 'Cone': 'กรวย',
   'Cone (°)': 'กรวย (°)', 'Cone - Inverted': 'กรวย - กลับด้าน', 'Confirm': 'ยืนยัน', 'Contents': 'เนื้อหา', 'Contents only (no artboard background)': 'เฉพาะเนื้อหา (ไม่มีพื้นหลังอาร์ตบอร์ด)', 'Contextual': 'ตามบริบท',
   'Contextual Alternates': 'ตัวอักษรทางเลือกตามบริบท', 'Continue': 'ต่อไป', 'Contour': 'เส้นชั้น', 'Contrast (%)': 'คอนทราสต์ (%)', 'Conté Crayon': 'ดินสอคอนเต', 'Conversion': 'การแปลง', 'Conversion Options': 'ตัวเลือกการแปลง',
   'Convert Profile to sRGB': 'แปลงโปรไฟล์เป็น sRGB', 'Convert to Working Space': 'แปลงเป็นเวิร์กสเปซ', 'Copper': 'ทองแดง', 'Copy Error Log': 'คัดลอกบันทึกข้อผิดพลาด', 'Copyright Info': 'ข้อมูลลิขสิทธิ์',

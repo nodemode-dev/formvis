@@ -22,7 +22,7 @@ const SIZES = [1, 3, 5, 11, 31, 51, 101];
 export const colorSamplerTool: Tool = {
   id: 'colorSampler', label: 'Color Sampler', key: 'I', order: 80.5,
   icon: () => 'tColorSampler',
-  hint: () => 'Click to place a sampler (up to ten) · Drag one to move it · Alt-click one or drag it off the canvas to remove it · Its colour shows in Window > Info',
+  hint: () => 'Click to place a sampler (up to ten) · Drag one to move it · Alt-click one or drag it off the canvas to remove it · Its color shows in Window > Info',
   cursor: (_ctx, p) => (p?.alt ? removeSamplerCursor() : 'crosshair'),
   down(ctx, p) {
     const m = ctx.engine.measure;

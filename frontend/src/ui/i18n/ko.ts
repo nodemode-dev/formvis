@@ -16,7 +16,7 @@ export const ko: Record<string, string> = {
   'Vector Mask': '벡터 마스크', 'Video Layers': '비디오 레이어', 'Video': '비디오',
   // Panel names
   'Layers': '레이어', 'Channels': '채널', 'Paths': '패스', 'History': '작업 내역', 'Properties': '속성',
-  'Swatches': '견본', 'Colour': '색상', 'Color': '색상', 'Navigator': '내비게이터', 'Info': '정보',
+  'Swatches': '견본', 'Color': '색상', 'Navigator': '내비게이터', 'Info': '정보',
   'Histogram': '히스토그램', 'Styles': '스타일', 'Measurement Log': '측정 기록', 'Modifier Keys': '수정 키',
   'Timeline': '타임라인', 'Brushes': '브러시', 'Brush Settings': '브러시 설정', 'Check Spelling': '맞춤법 검사', 'Resolve Missing Fonts': '누락된 글꼴 해결', 'Ignore': '무시', 'Ignore All': '모두 무시', 'Change': '변경', 'Change All': '모두 변경', 'Replace All': '모두 바꾸기', 'Reveal in File Manager': '파일 관리자에서 보기', 'Character': '문자', 'Paragraph': '단락',
   // Dialog buttons and tooltips
@@ -143,7 +143,7 @@ export const ko: Record<string, string> = {
   'Actual pixels': '실제 픽셀', 'Add': '추가', 'Airbrush': '에어브러시', 'Aligned': '정렬', 'Angle': '각도', 'Anti-alias': '앤티 앨리어스', 'Anti-aliasing': '앤티 앨리어싱',
   'Apply Redactions': '가리기 적용', 'Auto Add/Delete': '자동 추가/삭제', 'Auto Erase': '자동 지우기', 'Auto Hide': '자동 숨기기',
   'Auto-Select': '자동 선택', 'Auto-Select Target': '자동 선택 대상', 'Background': '배경', 'Behind': '뒤에', 'Block': '블록', 'Bold': '굵게',
-  'Bold Italic': '굵은 기울임꼴', 'Center': '가운데', 'Centre': '가운데', 'Classic': '클래식', 'Clear All': '모두 지우기', 'Clipped': '클리핑됨', 'Colors': '색상',
+  'Bold Italic': '굵은 기울임꼴', 'Center': '가운데', 'Classic': '클래식', 'Clear All': '모두 지우기', 'Clipped': '클리핑됨', 'Colors': '색상',
   'Column': '열', 'Content-Aware': '내용 인식', 'Contiguous': '인접', 'Continuous': '연속', 'Contrast': '대비', 'Corner radius': '모퉁이 반경',
   'Create Texture': '텍스처 만들기', 'Current & Below': '현재 및 아래', 'Current Layer': '현재 레이어', 'Curve fit': '곡선 맞춤', 'Custom': '사용자 정의',
   'Custom shape': '사용자 정의 모양', 'Darken Amount': '어둡게 할 양', 'Dashed': '파선', 'Delete Crop Preset': '자르기 사전 설정 삭제',

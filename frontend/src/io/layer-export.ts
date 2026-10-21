@@ -17,7 +17,7 @@ export const layerFileExt = (format: LayerFileFormat): string => (format === 'ti
 export function layerFileLoss(format: LayerFileFormat, icc: boolean): string {
   if (format === 'jpg') return 'JPEG keeps no transparency (clear areas are laid on white) and is lossy.';
   if (format === 'webp') return 'WebP is lossy at the quality set.';
-  if (format === 'bmp' || format === 'tga' || format === 'dpx') return `${format.toUpperCase()} carries no colour profile${icc ? ', so none is embedded' : ''}.`;
+  if (format === 'bmp' || format === 'tga' || format === 'dpx') return `${format.toUpperCase()} carries no color profile${icc ? ', so none is embedded' : ''}.`;
   return '';
 }
 /** Formats with a quality setting. */

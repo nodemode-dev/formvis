@@ -127,7 +127,6 @@ export const ptBR: Record<string, string> = {
   'Colored Pencil': 'Lápis de cor',
   'Colorize': 'Colorir',
   'Color profile': 'Perfil de cor',
-  'Colours': 'Cores',
   'Conditional Mode Change': 'Alteração de modo condicional',
   'Cone': 'Cone',
   'Cone (°)': 'Cone (°)',

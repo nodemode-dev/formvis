@@ -37,7 +37,9 @@ export function sliderRow(label: string, min: number, max: number, step: number,
   box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
   if (limits.def !== undefined) {
     const def = limits.def;
-    q(root, 'span').addEventListener('dblclick', () => { range.value = String(toPos(def)); fill(); box.value = fmt(def); onInput(def); });
+    const reset = (): void => { range.value = String(toPos(def)); fill(); box.value = fmt(def); onInput(def); };
+    q(root, 'span').addEventListener('dblclick', reset);
+    range.addEventListener('dblclick', reset);
     q(root, 'span').title = 'Double-click to reset';
   }
   // Scrubbable label: a horizontal drag on the label moves the value across the slider's span in about 250 px; Shift is ten times faster, Alt ten times finer.

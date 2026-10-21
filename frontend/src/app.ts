@@ -253,6 +253,7 @@ import { ALL_PANELS, Dock, registerPanel, unregisterPanel } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, createDevelopDock, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
 import { LIBRARY, isLibKind, libDefaults, libHasDialog, libInGroup, type LibGroup } from './engine/filter-library';
+import { GALLERY_FX } from './engine/filters-lib/filter-gallery';
 import { WasmFilterDialog, WasmPluginsDialog, applyWasm } from './ui/panels/wasm-plugins-dialog';
 import { wasmPlugins, runWasmFilter } from './engine/wasm-plugin-host';
 import { isWasmKind, wasmIdOf, wasmValues } from './engine/wasm-plugin';
@@ -4077,7 +4078,7 @@ export function startApp(): void {
         const x = actions.list.find((y) => y.name === a.action);
         if (!x) throw new Error(`There is no action named "${a.action}".`);
         if (typeof a.set === 'string') { const s = a.set.trim().slice(0, 80); if (s) x.set = s; else delete x.set; }
-        if (typeof a.colour === 'string') { if (!(ACTION_COLOURS as readonly string[]).includes(a.colour)) throw new Error('colour is not one of the listed colours.'); if (a.colour === 'none') delete x.colour; else x.colour = a.colour as typeof ACTION_COLOURS[number]; }
+        if (typeof a.colour === 'string') { if (!(ACTION_COLOURS as readonly string[]).includes(a.colour)) throw new Error('color is not one of the listed colors.'); if (a.colour === 'none') delete x.colour; else x.colour = a.colour as typeof ACTION_COLOURS[number]; }
         if (typeof a.key === 'string') { if (!ACTION_KEYS.includes(a.key)) throw new Error('key is not one of the listed function keys.'); actions.setKey(x, a.key); }
         actions.save();
         return { name: x.name, set: x.set ?? '', colour: x.colour ?? 'none', key: x.key ?? '' };
@@ -5064,7 +5065,7 @@ export function startApp(): void {
     { id: 'link-layers', label: () => (engine.selectionLinked ? 'Unlink Layers' : 'Link Layers'), enabled: () => engine.selectionLinked || (engine.current?.selectedIds.size ?? 0) > 1, run: () => engine.linkLayers() },
     { id: 'copy-layers', label: 'Copy Layers', enabled: () => (engine.current?.selectedIds.size ?? 0) > 0, run: () => { const n = engine.copyLayers(); if (n) toast(`Copied ${n} ${n === 1 ? 'layer' : 'layers'}.`); } },
     { id: 'paste-layers', label: 'Paste Layers', enabled: () => !!engine.current && engine.canPasteLayers, run: () => { engine.pasteLayers(); } },
-    { id: 'copy-layers-to-document', label: 'Copy Layers to Document', params: { document: { type: 'string', description: 'The name or number (from 1) of the open document that takes the layers, or "new" for a new document the size of this one.' }, x: { type: 'number', description: 'Moves the copies this many pixels right; centred in the target when x and y are both left out.' }, y: { type: 'number', description: 'Moves the copies this many pixels down.' } },
+    { id: 'copy-layers-to-document', label: 'Copy Layers to Document', params: { document: { type: 'string', description: 'The name or number (from 1) of the open document that takes the layers, or "new" for a new document the size of this one.' }, x: { type: 'number', description: 'Moves the copies this many pixels right; centered in the target when x and y are both left out.' }, y: { type: 'number', description: 'Moves the copies this many pixels down.' } },
       enabled: () => (engine.current?.selectedIds.size ?? 0) > 0 && engine.projects.length > 0,
       run: (a) => {
         const p = engine.current, ids = p ? [...p.selectedIds] : [], ref = a?.document === undefined || a.document === null ? '' : String(a.document).trim();
@@ -5946,6 +5947,14 @@ export function startApp(): void {
       dialogs.filter.onApplied?.(f.id, settings);
       void dialogs.filter.applySettings(f.id, settings);
     } })),
+    ...GALLERY_FX.map((fx) => ({ id: `filter-fx-${fx.key}`, label: `${fx.label}...`, enabled: hasTargetPixels,
+      params: { values: { type: 'object' as const, description: `The ${fx.label} controls by key (${fx.params.map((p) => p.key).join(', ')}); with values the effect is applied at once, without them the Filter Gallery opens with this effect.` } },
+      run: (a?: Record<string, unknown>) => {
+        const settings = { lib: { filterGallery: { effects: [{ filter: fx.key, values: a?.values && typeof a.values === 'object' ? a.values : {}, visible: true }] } }, seed: randomSeed() };
+        if (!a?.values || typeof a.values !== 'object') { dialogs.filter.showWith('filterGallery', settings); return; }
+        dialogs.filter.onApplied?.('filterGallery', settings);
+        return dialogs.filter.applySettings('filterGallery', settings);
+      } })),
     { id: 'filter-average', label: 'Average', enabled: hasTargetPixels, run: () => engine.averageFill() },
     { id: 'filter-last', label: () => { const k = dialogs.filter.lastFilter; return k ? FILTER_LABELS[k] : 'Last Filter'; }, keys: ['Mod+F'], enabled: () => !!dialogs.filter.lastFilter && hasTargetPixels(), run: () => { void dialogs.filter.applyLast(); } },
   );

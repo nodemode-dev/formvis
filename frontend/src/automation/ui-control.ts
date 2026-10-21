@@ -231,7 +231,7 @@ export class UiControl {
     for (const [key, set] of [['foreground', (c: { r: number; g: number; b: number }) => { e.fg = c; }], ['background', (c: { r: number; g: number; b: number }) => { e.bg = c; }]] as const) {
       if (typeof a[key] !== 'string') continue;
       const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(a[key] as string);
-      if (!m) return fail(`${key} is a colour such as #ff8800.`);
+      if (!m) return fail(`${key} is a color such as #ff8800.`);
       set({ r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) }); done.push(`${key} ${a[key]}`);
     }
     if (typeof a.mask_target === 'boolean') {

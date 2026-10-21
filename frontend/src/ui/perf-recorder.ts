@@ -83,7 +83,7 @@ function report(ctx: PerfContext, t: Tally, gaps: number[], wall: number, pings:
     `browser: ${navigator.userAgent}`,
     `desktop app: ${'__TAURI_INTERNALS__' in window ? 'yes' : 'no'}  screen scale: ${window.devicePixelRatio}  window: ${innerWidth} x ${innerHeight}  cores: ${navigator.hardwareConcurrency ?? '?'}`,
     `status bar: ${ctx.gpuText()}  canvas drawn on: ${stage.gpuReason === undefined ? '?' : stage.gpuReason ? `CPU, because ${stage.gpuReason}` : 'GPU'}`,
-    `canvas pixels: ${stage.scene ? `${stage.scene.width} x ${stage.scene.height}` : '?'}  renderer pref: ${pr.renderer}  use GPU: ${pr.useGpu}  monitor profile pref: ${pr.colour?.useDisplay ?? '?'}  view colour table: ${ctx.engine.viewTransform ? 'on' : 'off'}`,
+    `canvas pixels: ${stage.scene ? `${stage.scene.width} x ${stage.scene.height}` : '?'}  renderer pref: ${pr.renderer}  use GPU: ${pr.useGpu}  monitor profile pref: ${pr.colour?.useDisplay ?? '?'}  view color table: ${ctx.engine.viewTransform ? 'on' : 'off'}`,
     `document: ${p ? `${p.doc.width} x ${p.doc.height}, ${p.doc.layers.length} layers, ${p.doc.mode ?? 'rgb'}` : 'none open'}  page elements: ${document.getElementsByTagName('*').length}`,
     `engine answer (ms): ${pings.map((x) => (x < 0 ? 'failed' : f(x))).join(', ')}`,
     `frames: ${gaps.length} (${f(gaps.length / (wall / 1000))} per second)  gap median ${f(q(0.5))} ms, 90% ${f(q(0.9))} ms, worst ${f(sorted[sorted.length - 1] ?? 0)} ms  stutters over 50 ms: ${gaps.filter((x) => x > 50).length}, over 200 ms: ${gaps.filter((x) => x > 200).length}`,

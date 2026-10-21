@@ -127,7 +127,6 @@ export const da: Record<string, string> = {
   'Colored Pencil': 'Farveblyant',
   'Colorize': 'Farvelæg',
   'Color profile': 'Farveprofil',
-  'Colours': 'Farver',
   'Conditional Mode Change': 'Betinget tilstandsskift',
   'Cone': 'Kegle',
   'Cone (°)': 'Kegle (°)',

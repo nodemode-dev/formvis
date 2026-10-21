@@ -335,9 +335,9 @@ export function applyDistort(host: EntryHost, d: DistortEditState): void {
       if (!l || !l.raster) continue;
       const quad = d.members ? carried(l.transform, d.box, d.corners) : d.corners;
       if (!distortUsable(quad)) continue;
-      if (l.vector && !d.members) {
-        if (host.shapeThrough(pr, l, cornersOf(l.transform), quad)) any = true;
-        continue;
+      if ((l.vector || (l.shape && !l.mask?.raster)) && !d.members) {
+        if (host.shapeThrough(pr, l, cornersOf(l.transform), quad)) { any = true; continue; }
+        if (l.vector) continue;
       }
       const w = warpRaster(l.raster, l.transform, quad);
       if (!w) continue;

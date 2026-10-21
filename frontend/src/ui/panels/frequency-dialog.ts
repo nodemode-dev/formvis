@@ -12,7 +12,7 @@ export class FrequencyDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Frequency Separation', 340);
     this.radiusRow.set(8);
-    this.body.append(el('<p class="cv-dialog-note">Splits what is visible into a blurred Low Frequency layer for colour and tone and a High Frequency layer for fine detail. A larger radius puts more into the detail layer.</p>'), this.radiusRow.el);
+    this.body.append(el('<p class="cv-dialog-note">Splits what is visible into a blurred Low Frequency layer for color and tone and a High Frequency layer for fine detail. A larger radius puts more into the detail layer.</p>'), this.radiusRow.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
   }

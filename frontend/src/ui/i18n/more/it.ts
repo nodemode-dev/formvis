@@ -127,7 +127,6 @@ export const it: Record<string, string> = {
   'Colored Pencil': 'Matita colorata',
   'Colorize': 'Colora',
   'Color profile': 'Profilo colore',
-  'Colours': 'Colori',
   'Conditional Mode Change': 'Cambio di modalità condizionale',
   'Cone': 'Cono',
   'Cone (°)': 'Cono (°)',

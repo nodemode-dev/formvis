@@ -27,7 +27,7 @@ export class ArtboardDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Artboard Options', 340);
     this.body.append(this.x.el, this.y.el, this.w.el, this.h.el, this.bg.el);
-    this.field('Colour', this.colour);
+    this.field('Color', this.colour);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
   }
@@ -79,7 +79,7 @@ export class NewArtboardDialog extends Dialog {
     super('New Artboard', 340);
     this.field('Name', this.name);
     this.body.append(this.preset.el, this.w.el, this.h.el, this.bg.el);
-    this.colourRow = this.field('Colour', this.colour);
+    this.colourRow = this.field('Color', this.colour);
     setHidden(this.colourRow, true);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());

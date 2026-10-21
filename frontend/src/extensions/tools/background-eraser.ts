@@ -11,7 +11,7 @@ const opts: BgEraseOpts = { tolerance: 50, sampling: 'continuous', contiguous: t
 export const backgroundEraserTool: Tool = {
   id: 'backgroundEraser', label: 'Background Eraser', key: 'E', order: 62.1,
   icon: () => 'tBgEraser',
-  hint: () => 'Drag with the centre over the colour to erase · Tolerance widens it · Protect Foreground keeps the foreground colour',
+  hint: () => 'Drag with the center over the color to erase · Tolerance widens it · Protect Foreground keeps the foreground color',
   cursor: () => 'none',
   down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginBackgroundErase(p.doc, { ...opts }); },
   move(ctx, p) { hover = p.doc; ctx.engine.backgroundEraseTo(p.doc); ctx.engine.emit('overlay', null); },

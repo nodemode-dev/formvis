@@ -8,7 +8,7 @@ import { icon } from './icons';
 import { JobsList } from './jobs-list';
 
 /** The one note when the engine service is not running (DEV_PLAN 36.19): the status bar's title and the boot toast. */
-export const SERVICE_NOTE = 'The engine service is not running, so editing works but these wait for it: saving to the library, HEIC, RAW, DPX and other camera and film formats, colour conversion, AI tools, video, the terminal and agents. Start it with ./formvis boot.';
+export const SERVICE_NOTE = 'The engine service is not running, so editing works but these wait for it: saving to the library, HEIC, RAW, DPX and other camera and film formats, color conversion, AI tools, video, the terminal and agents. Start it with ./formvis boot.';
 
 const INFO_KEY = 'formvis_status_info';
 const INFO_KINDS = ['sizes', 'profile', 'resolution', 'efficiency', 'timing'] as const;

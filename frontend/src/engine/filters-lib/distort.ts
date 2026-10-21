@@ -255,6 +255,43 @@ export function zigZagWarp(amount: number, ridges: number, style: string, area: 
 const EDGES: ReadonlyArray<readonly [string, string]> = [['wrap', 'Wrap Around'], ['repeat', 'Repeat Edge Pixels']];
 const areaOf = (ctx: LibContext): Box => boxOf(ctx.area);
 
+/** Chromatic shift: each colour channel is moved on its own, bilinearly and premultiplied, inside the frame (edge
+ *  pixels repeat). Plates moves red up, green down-left and blue down-right by `amount`; Lateral moves red out from
+ *  the frame's centre and blue in, reaching `amount` at the frame's corner; Linear moves red along `angle` and blue
+ *  the opposite way. A channel moves the way its offset points, so the picture's red edge appears there. */
+export function chromaticShiftImage(src: ImageData, style: string, amount: number, angle: number, area: Box): ImageData {
+  const out = copyImage(src), b = clipBox(area, src.width, src.height);
+  if (!b || amount === 0) return out;
+  const { width: w } = src, s = src.data, d = out.data, k = Math.PI / 180, plates = [[0, -1], [-Math.cos(30 * k), Math.sin(30 * k)], [Math.cos(30 * k), Math.sin(30 * k)]];
+  const ux = Math.cos(angle * k), uy = -Math.sin(angle * k), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, far = Math.max(1, Math.hypot(b.x1 - b.x0, b.y1 - b.y0) / 2);
+  const off = new Float64Array(6), premul = new Float64Array(3), clampX = (x: number): number => (x < b.x0 ? b.x0 : x >= b.x1 ? b.x1 - 1 : x), clampY = (y: number): number => (y < b.y0 ? b.y0 : y >= b.y1 ? b.y1 - 1 : y);
+  for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) {
+    if (style === 'lateral') {
+      const rx = x + 0.5 - cx, ry = y + 0.5 - cy, r = Math.hypot(rx, ry), m = r > 0 ? (amount * r) / far / r : 0;
+      off[0] = rx * m; off[1] = ry * m; off[2] = off[3] = 0; off[4] = -rx * m; off[5] = -ry * m;
+    } else if (style === 'linear') {
+      off[0] = ux * amount; off[1] = uy * amount; off[2] = off[3] = 0; off[4] = -ux * amount; off[5] = -uy * amount;
+    } else for (let c = 0; c < 3; c++) { off[c * 2] = plates[c][0] * amount; off[c * 2 + 1] = plates[c][1] * amount; }
+    let alpha = 0;
+    for (let c = 0; c < 3; c++) {
+      const fx = x - off[c * 2], fy = y - off[c * 2 + 1], x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
+      let v = 0, a = 0;
+      for (let j = 0; j < 4; j++) {
+        const wt = (j & 1 ? tx : 1 - tx) * (j & 2 ? ty : 1 - ty);
+        if (wt === 0) continue;
+        const q = (clampY(y0 + (j >> 1)) * w + clampX(x0 + (j & 1))) * 4, qa = s[q + 3];
+        v += s[q + c] * qa * wt; a += qa * wt;
+      }
+      premul[c] = v; if (a > alpha) alpha = a;
+    }
+    const o = (y * w + x) * 4;
+    d[o + 3] = alpha;
+    if (alpha > 0) for (let c = 0; c < 3; c++) d[o + c] = Math.min(255, premul[c] / alpha);
+    else d[o] = d[o + 1] = d[o + 2] = 0;
+  }
+  return out;
+}
+
 export const DISTORT_FILTERS: LibFilter[] = [
   {
     id: 'displace', label: 'Displace', group: 'Distort', grows: false, reach: null,
@@ -339,5 +376,15 @@ params: [
       { key: 'style', label: 'Style', kind: 'select', def: 'pondRipples', options: [['pondRipples', 'Pond ripples'], ['outFromCenter', 'Out from center'], ['aroundCenter', 'Around center']] },
     ],
     run: (src, v, ctx) => zigZagImage(src, num(v, 'amount'), num(v, 'ridges'), str(v, 'style'), areaOf(ctx)),
+  },
+  {
+    id: 'chromaticShift', label: 'Chromatic Shift', group: 'Distort', grows: false, reach: null,
+    note: 'Plates moves red, green and blue in three directions; Lateral moves red out and blue in from the center, most at the corners; Linear moves red and blue in opposite directions along the angle (used by Linear only).',
+    params: [
+      { key: 'style', label: 'Style', kind: 'select', def: 'plates', options: [['plates', 'Plates'], ['lateral', 'Lateral'], ['linear', 'Linear']] },
+      { key: 'amount', label: 'Amount (px)', kind: 'range', min: 0, max: 200, step: 1, def: 6 },
+      { key: 'angle', label: 'Angle (°)', kind: 'range', min: -180, max: 180, step: 1, def: 0 },
+    ],
+    run: (src, v, ctx) => chromaticShiftImage(src, str(v, 'style'), num(v, 'amount') * ctx.scale, num(v, 'angle'), areaOf(ctx)),
   },
 ];

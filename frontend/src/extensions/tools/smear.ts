@@ -9,10 +9,10 @@ const SMEAR_NAMES = { blur: 'Blur', sharpen: 'Sharpen', smudge: 'Smudge', liquif
 
 let hover: Pt | null = null;
 const HINTS: Record<string, string> = {
-  liquify: 'Drag to push pixels along with the brush, most at its centre · Strength sets how far they move',
+  liquify: 'Drag to push pixels along with the brush, most at its center · Strength sets how far they move',
   blur: 'Paint to soften; another stroke over the same place softens more · Radius 0 makes the blur follow the brush size',
   sharpen: 'Paint to crisp up edges; a new stroke over the same area sharpens it further · Lower Strength for subtle work',
-  smudge: 'Drag to smear colour along the stroke · Strength sets how far the colour carries',
+  smudge: 'Drag to smear color along the stroke · Strength sets how far the color carries',
 };
 
 export const smearTool: Tool = {

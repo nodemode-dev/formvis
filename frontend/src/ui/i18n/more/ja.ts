@@ -20,7 +20,7 @@ export const ja: Record<string, string> = {
   'Chrome': 'クローム', 'Clarity': '明瞭度', 'Clarity adjustment layer': '明瞭度調整レイヤー', 'Claude Code': 'Claude Code', 'Clean the brush after each stroke': 'ストロークごとにブラシをクリーン',
   'Cleanliness': 'クリーン度', 'Clipboard': 'クリップボード', 'Close Document': 'ドキュメントを閉じる', 'Cloud': '雲', 'Clouds': '雲模様 1', 'Color Balance': 'カラーバランス', 'Color Burn': '焼き込みカラー', 'Color Dodge': '覆い焼きカラー',
   'Color Dynamics': 'カラー', 'Color Halftone': 'カラーハーフトーン', 'Color Handling': 'カラー処理', 'Color Lookup': 'カラールックアップ', 'Color Management Policies': 'カラーマネジメントポリシー', 'Color Overlay': 'カラーオーバーレイ',
-  'Color Picker': 'カラーピッカー', 'Colored Pencil': '色鉛筆', 'Colorize': 'カラー化', 'Color profile': 'カラープロファイル', 'Colours': 'カラー', 'Conditional Mode Change': '条件付きモード変更', 'Cone': '円錐',
+  'Color Picker': 'カラーピッカー', 'Colored Pencil': '色鉛筆', 'Colorize': 'カラー化', 'Color profile': 'カラープロファイル', 'Conditional Mode Change': '条件付きモード変更', 'Cone': '円錐',
   'Cone (°)': '円錐 (°)', 'Cone - Inverted': '円錐 - 反転', 'Confirm': '確認', 'Contents': 'コンテンツ', 'Contents only (no artboard background)': 'コンテンツのみ (アートボードの背景なし)', 'Contextual': '文脈',
   'Contextual Alternates': '文脈依存の代替字形', 'Continue': '続行', 'Contour': '輪郭', 'Contrast (%)': 'コントラスト (%)', 'Conté Crayon': 'コンテクレヨン', 'Conversion': '変換', 'Conversion Options': '変換オプション',
   'Convert Profile to sRGB': 'プロファイルを sRGB に変換', 'Convert to Working Space': 'ワーキングスペースに変換', 'Copper': '銅', 'Copy Error Log': 'エラーログをコピー', 'Copyright Info': '著作権情報',

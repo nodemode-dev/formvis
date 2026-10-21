@@ -7,11 +7,11 @@ export type ExportFormat = 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'd
  *  entries for 256 and BMP below, or PNG for every size. The first of each list is the default. */
 export const FORMAT_OPTIONS: Readonly<Partial<Record<ExportFormat, ReadonlyArray<readonly [string, string]>>>> = {
   qoi: [['srgb', 'sRGB with linear alpha'], ['linear', 'All channels linear']],
-  pnm: [['ppm', 'PPM colour (P6)'], ['pgm', 'PGM grayscale (P5)'], ['pbm', 'PBM bitmap, thresholded (P4)'], ['pam', 'PAM with alpha (P7)']],
+  pnm: [['ppm', 'PPM color (P6)'], ['pgm', 'PGM grayscale (P5)'], ['pbm', 'PBM bitmap, thresholded (P4)'], ['pam', 'PAM with alpha (P7)']],
   tga: [['32', '32-bit with alpha'], ['32rle', '32-bit, run-length'], ['24', '24-bit, on white'], ['24rle', '24-bit, run-length, on white']],
   ico: [['mixed', 'PNG for 256, BMP for smaller'], ['png', 'PNG for every size']],
   bmp: [['32', '32-bit with alpha'], ['24', '24-bit, on white']],
-  fits: [['rgb', 'Three planes (red, green, blue)'], ['gray', 'One grey plane']],
+  fits: [['rgb', 'Three planes (red, green, blue)'], ['gray', 'One gray plane']],
   png: [['6', 'Compression level 6 (default)'], ['0', 'Level 0, none (fastest)'], ['3', 'Level 3, fast'], ['9', 'Level 9, smallest'], ['9o', 'Level 9 with the best filters'], ['i', 'Interlaced (Adam7), level 6']],
   jpg: [['420', 'Chroma 4:2:0 (smallest)'], ['422', 'Chroma 4:2:2'], ['444', 'Chroma 4:4:4 (no subsampling)'], ['420p', 'Progressive, 4:2:0'], ['gray', 'Grayscale, one channel']],
   webp: [['lossy', 'Lossy, at the quality below'], ['lossless', 'Lossless']],
@@ -44,7 +44,7 @@ export interface ExportSettings { format: ExportFormat; quality: number; scale: 
   /** Transparency: the picture's see-through areas (and the margins) laid on white or black instead of kept; JPEG is always on white. */
   matte?: 'white' | 'black' }
 export const MATTES: ReadonlyArray<readonly [string, string]> = [['keep', 'Keep transparency'], ['white', 'Matte on white'], ['black', 'Matte on black']];
-export const CANVAS_ANCHORS: ReadonlyArray<readonly [string, string]> = [['0', 'Top left'], ['1', 'Top'], ['2', 'Top right'], ['3', 'Left'], ['4', 'Centre'], ['5', 'Right'], ['6', 'Bottom left'], ['7', 'Bottom'], ['8', 'Bottom right']];
+export const CANVAS_ANCHORS: ReadonlyArray<readonly [string, string]> = [['0', 'Top left'], ['1', 'Top'], ['2', 'Top right'], ['3', 'Left'], ['4', 'Center'], ['5', 'Right'], ['6', 'Bottom left'], ['7', 'Bottom'], ['8', 'Bottom right']];
 export const CANVAS_FILLS: ReadonlyArray<readonly [string, string]> = [['transparent', 'Transparent (white in JPEG)'], ['white', 'White'], ['black', 'Black']];
 export interface ExportSize { x: number; suffix: string }
 export const MAX_EXPORT_SIZES = 8;
@@ -172,7 +172,7 @@ function keptLoss(kind: string, name: string, doc: FlatDoc): string[] {
 export function fidelityNotes(s: ExportSettings, doc: FlatDoc, clear: boolean): string[] {
   const name = s.format === 'jpg' ? 'JPEG' : s.format.toUpperCase(), out: string[] = [];
   if ((doc.depth ?? 8) > 8 && !['qoi', 'tga', 'ico'].includes(s.format)) out.push(`${name} is written at 8 bits a channel here; the ${doc.depth}-bit picture is reduced.`);
-  if (doc.mode === 'cmyk' || doc.mode === 'lab') out.push(`The ${doc.mode === 'cmyk' ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}; colours outside the RGB gamut are clipped to its edge.`);
+  if (doc.mode === 'cmyk' || doc.mode === 'lab') out.push(`The ${doc.mode === 'cmyk' ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}; colors outside the RGB gamut are clipped to its edge.`);
   if (clear && dropsAlpha(s)) out.push(`${name} keeps no transparency; clear areas are laid on ${s.format === 'pdf' && s.option === 'black' ? 'black' : s.format === 'wbmp' ? 'white and thresholded' : 'white'}.`);
   if (s.format === 'jpg' || s.format === 'avif' || (s.format === 'webp' && s.option !== 'lossless')) out.push(`${name} is lossy; written at quality ${s.quality}.`);
   if (['qoi', 'pnm', 'tga', 'ico', 'fits', 'wbmp', 'dpx'].includes(s.format) && (doc.resolution ?? 72) !== 72) out.push(`${name} has no resolution field; the document's ${doc.resolution} ppi is not recorded.`);
@@ -186,14 +186,14 @@ export function saveCopyNotes(kind: string, doc: FlatDoc, clear: boolean, qualit
   const wide = kind === 'hdr' || kind === 'exr' || kind === 'pfm', keepsInk = cmyk && (kind === 'tiff' || kind === 'jpg'), keepsLab = lab && kind === 'tiff';
   if (wide) {
     out.push(`${name} stores linear light; the ${depth}-bit picture is written as the canvas shows it${depth < 32 ? ', so nothing brighter than white is in it' : ''}.`);
-    if (cmyk || lab) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}; colours outside the RGB gamut are clipped to its edge.`);
+    if (cmyk || lab) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}; colors outside the RGB gamut are clipped to its edge.`);
     if (kind !== 'exr' && clear) out.push(`${name} keeps no transparency.`);
     if ((doc.resolution ?? 72) !== 72) out.push(`${name} has no resolution field; the document's ${doc.resolution} ppi is not recorded.`);
     return [...out, ...keptLoss(kind, name, doc)];
   }
   if (depth === 32 && kind === 'png') out.push('PNG is written at 16 bits, sRGB encoded; values brighter than white are clipped.');
   else if (depth > 8 && !((kind === 'png' || kind === 'tiff') && !cmyk && !lab) && !(kind === 'tiff' && (cmyk || lab) && depth === 16) && !(depth === 32 && kind === 'tiff')) out.push(`${name} is written at 8 bits a channel; the ${depth}-bit picture is reduced.`);
-  if ((cmyk && !keepsInk) || (lab && !keepsLab)) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}; colours outside the RGB gamut are clipped to its edge.`);
+  if ((cmyk && !keepsInk) || (lab && !keepsLab)) out.push(`The ${cmyk ? 'CMYK' : 'Lab'} picture is converted to RGB for ${name}; colors outside the RGB gamut are clipped to its edge.`);
   if (clear && (kind === 'jpg' || kind === 'pdf' || keepsInk || keepsLab)) out.push(`${name} keeps no transparency here; clear areas are laid on ${cmyk ? 'paper white' : 'white'}.`);
   if (kind === 'jpg' || kind === 'avif' || (kind === 'webp' && quality < 1)) out.push(`${name} is lossy; written at quality ${Math.round(quality * 100)}.`);
   if (cmyk && (kind === 'jpg' || kind === 'tiff')) out.push(`${name} CMYK files carry no File Info or AI label here.`);

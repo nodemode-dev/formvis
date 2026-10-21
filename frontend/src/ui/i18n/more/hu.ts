@@ -127,7 +127,6 @@ export const hu: Record<string, string> = {
   'Colored Pencil': 'Színes ceruza',
   'Colorize': 'Színezés',
   'Color profile': 'Színprofil',
-  'Colours': 'Színek',
   'Conditional Mode Change': 'Feltételes módváltás',
   'Cone': 'Kúp',
   'Cone (°)': 'Kúp (°)',

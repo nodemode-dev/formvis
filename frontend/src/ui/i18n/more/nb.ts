@@ -127,7 +127,6 @@ export const nb: Record<string, string> = {
   'Colored Pencil': 'Fargeblyant',
   'Colorize': 'Farglegg',
   'Color profile': 'Fargeprofil',
-  'Colours': 'Farger',
   'Conditional Mode Change': 'Betinget modusendring',
   'Cone': 'Kjegle',
   'Cone (°)': 'Kjegle (°)',

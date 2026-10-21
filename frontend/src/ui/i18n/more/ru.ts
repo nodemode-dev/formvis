@@ -127,7 +127,6 @@ export const ru: Record<string, string> = {
   'Colored Pencil': 'Цветные карандаши',
   'Colorize': 'Тонирование',
   'Color profile': 'Цветовой профиль',
-  'Colours': 'Цвета',
   'Conditional Mode Change': 'Условное изменение режима',
   'Cone': 'Конус',
   'Cone (°)': 'Конус (°)',

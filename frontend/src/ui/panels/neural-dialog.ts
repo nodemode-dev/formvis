@@ -144,7 +144,7 @@ export class NeuralFiltersDialog extends Dialog {
       this.color = { layerId: pixelsKey(l), pixels: g.getImageData(0, 0, c.width, c.height) };
       this.showRows();
       this.schedule();
-    } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The colour could not be read.'); }
+    } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The color could not be read.'); }
     finally { this.colorPending = false; }
   }
 

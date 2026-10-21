@@ -20,7 +20,7 @@ export const frameTool: Tool = {
     { id: 'rect', label: 'Rectangular Frame', icon: 'tFrame', active: () => e.frameShape !== 'ellipse', pick: () => { e.frameShape = 'rect'; e.emit('options', null); } },
     { id: 'ellipse', label: 'Elliptical Frame', icon: 'tFrameEllipse', active: () => e.frameShape === 'ellipse', pick: () => { e.frameShape = 'ellipse'; e.emit('options', null); } },
   ],
-  hint: () => 'Drag to draw a frame · Shift for a square or circle · Alt to draw from the centre · Import an image with the frame selected to fill it',
+  hint: () => 'Drag to draw a frame · Shift for a square or circle · Alt to draw from the center · Import an image with the frame selected to fill it',
   cursor: () => 'crosshair',
   down(ctx, p) { if (p.button !== 0 || !ctx.engine.current) return; from = p.doc; to = p.doc; square = p.shift; centre = p.alt; ctx.engine.emit('overlay', null); },
   move(ctx, p) { if (!from) return; to = p.doc; square = p.shift; centre = p.alt; ctx.engine.emit('overlay', null); },

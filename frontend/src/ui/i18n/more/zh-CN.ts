@@ -20,7 +20,7 @@ export const zhCN: Record<string, string> = {
   'Chrome': '铬黄', 'Clarity': '清晰度', 'Clarity adjustment layer': '清晰度调整图层', 'Claude Code': 'Claude Code', 'Clean the brush after each stroke': '每次描边后清理画笔',
   'Cleanliness': '清洁度', 'Clipboard': '剪贴板', 'Close Document': '关闭文档', 'Cloud': '云', 'Clouds': '云彩', 'Color Balance': '色彩平衡', 'Color Burn': '颜色加深', 'Color Dodge': '颜色减淡',
   'Color Dynamics': '颜色动态', 'Color Halftone': '彩色半调', 'Color Handling': '颜色处理', 'Color Lookup': '颜色查找', 'Color Management Policies': '色彩管理方案', 'Color Overlay': '颜色叠加',
-  'Color Picker': '拾色器', 'Colored Pencil': '彩色铅笔', 'Colorize': '着色', 'Color profile': '颜色配置文件', 'Colours': '颜色', 'Conditional Mode Change': '条件模式更改', 'Cone': '圆锥',
+  'Color Picker': '拾色器', 'Colored Pencil': '彩色铅笔', 'Colorize': '着色', 'Color profile': '颜色配置文件', 'Conditional Mode Change': '条件模式更改', 'Cone': '圆锥',
   'Cone (°)': '圆锥 (°)', 'Cone - Inverted': '圆锥 - 反转', 'Confirm': '确认', 'Contents': '内容', 'Contents only (no artboard background)': '仅内容 (无画板背景)', 'Contextual': '上下文',
   'Contextual Alternates': '上下文替代字', 'Continue': '继续', 'Contour': '等高线', 'Contrast (%)': '对比度 (%)', 'Conté Crayon': '粗铅笔', 'Conversion': '转换', 'Conversion Options': '转换选项',
   'Convert Profile to sRGB': '将配置文件转换为 sRGB', 'Convert to Working Space': '转换为工作空间', 'Copper': '铜', 'Copy Error Log': '拷贝错误日志', 'Copyright Info': '版权信息',

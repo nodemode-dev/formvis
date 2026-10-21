@@ -16,7 +16,7 @@ export const zhCN: Record<string, string> = {
   'Vector Mask': '矢量蒙版', 'Video Layers': '视频图层', 'Video': '视频',
   // Panel names
   'Layers': '图层', 'Channels': '通道', 'Paths': '路径', 'History': '历史记录', 'Properties': '属性',
-  'Swatches': '色板', 'Colour': '颜色', 'Color': '颜色', 'Navigator': '导航器', 'Info': '信息',
+  'Swatches': '色板', 'Color': '颜色', 'Navigator': '导航器', 'Info': '信息',
   'Histogram': '直方图', 'Styles': '样式', 'Measurement Log': '测量记录', 'Modifier Keys': '修饰键',
   'Timeline': '时间轴', 'Brushes': '画笔', 'Brush Settings': '画笔设置', 'Check Spelling': '拼写检查', 'Resolve Missing Fonts': '解析缺失字体', 'Ignore': '忽略', 'Ignore All': '全部忽略', 'Change': '更改', 'Change All': '全部更改', 'Replace All': '全部替换', 'Reveal in File Manager': '在文件管理器中显示', 'Character': '字符', 'Paragraph': '段落',
   // Dialog buttons and tooltips
@@ -143,7 +143,7 @@ export const zhCN: Record<string, string> = {
   'Actual pixels': '实际像素', 'Add': '添加', 'Airbrush': '喷枪', 'Aligned': '对齐', 'Angle': '角度', 'Anti-alias': '消除锯齿', 'Anti-aliasing': '消除锯齿',
   'Apply Redactions': '应用涂黑', 'Auto Add/Delete': '自动添加/删除', 'Auto Erase': '自动抹除', 'Auto Hide': '自动隐藏',
   'Auto-Select': '自动选择', 'Auto-Select Target': '自动选择目标', 'Background': '背景', 'Behind': '背后', 'Block': '块', 'Bold': '粗体',
-  'Bold Italic': '粗斜体', 'Center': '居中', 'Centre': '居中', 'Classic': '经典', 'Clear All': '全部清除', 'Clipped': '已剪切', 'Colors': '颜色',
+  'Bold Italic': '粗斜体', 'Center': '居中', 'Classic': '经典', 'Clear All': '全部清除', 'Clipped': '已剪切', 'Colors': '颜色',
   'Column': '列', 'Content-Aware': '内容识别', 'Contiguous': '连续', 'Continuous': '连续', 'Contrast': '对比度', 'Corner radius': '圆角半径',
   'Create Texture': '创建纹理', 'Current & Below': '当前和下方', 'Current Layer': '当前图层', 'Curve fit': '曲线拟合', 'Custom': '自定',
   'Custom shape': '自定形状', 'Darken Amount': '变暗量', 'Dashed': '虚线', 'Delete Crop Preset': '删除裁剪预设',

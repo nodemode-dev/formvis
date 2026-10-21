@@ -441,7 +441,7 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
     label: 'Dehaze',
     params: [
       range('dehaze', 'Dehaze', -100, 100),
-      { key: 'method', label: 'Haze from', kind: 'select', options: [['heuristic', 'Colour and tone'], ['dark', 'Dark channel'], ['depth', 'Depth map']], def: 'heuristic' },
+      { key: 'method', label: 'Haze from', kind: 'select', options: [['heuristic', 'Color and tone'], ['dark', 'Dark channel'], ['depth', 'Depth map']], def: 'heuristic' },
       range('density', 'Density', 0, 100, 50), range('sky', 'Protect sky', 0, 100, 0),
     ],
     kernel: (v) => {
@@ -555,7 +555,7 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
     },
   },
   normalise: {
-    label: 'Normalise',
+    label: 'Normalize',
     params: [{ key: 'mode', label: 'Mode', kind: 'select', options: [['stretch', 'Stretch to the ends'], ['mean', 'Towards the mean']], def: 'stretch' }, { key: 'each', label: 'Each channel on its own', kind: 'check', def: false },
       range('clip', 'Clip %', 0, 10, 0.1, 0.05), range('mean', 'Target mean', 0, 100, 50), range('spread', 'Target spread', 1, 50, 22), range('amount', 'Amount', 0, 100, 100)],
     kernel: (v) => (px) => normalisePixels(px, v.mode === 'mean', v.each === true, n(v, 'clip') / 100, n(v, 'mean') / 100 * 255, n(v, 'spread') / 100 * 255, n(v, 'amount') / 100),

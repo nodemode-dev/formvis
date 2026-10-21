@@ -57,7 +57,7 @@ export const marqueeTool: Tool = {
     { id: 'row', label: 'Single Row Marquee', icon: 'tRowMarquee', active: () => e.marqueeKind === 'row', pick: () => e.update({ marqueeKind: 'row' }) },
     { id: 'column', label: 'Single Column Marquee', icon: 'tColMarquee', active: () => e.marqueeKind === 'column', pick: () => e.update({ marqueeKind: 'column' }) },
   ],
-  hint: (e) => (e.marqueeKind === 'ellipse' ? 'Drag an ellipse' : 'Drag a rectangle') + ' · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the centre · Drag inside to move the outline · Shift+M switches shape · A click, Escape or Cmd or Ctrl+D deselects',
+  hint: (e) => (e.marqueeKind === 'ellipse' ? 'Drag an ellipse' : 'Drag a rectangle') + ' · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the center · Drag inside to move the outline · Shift+M switches shape · A click, Escape or Cmd or Ctrl+D deselects',
   cursor: (ctx, p) => (p && !p.shift && !p.alt && ctx.engine.selectionMode === 'replace' && inside(ctx, p) ? 'move' : modeCursor(ctx.engine, p)),
   down(ctx, p) {
     const e = ctx.engine;

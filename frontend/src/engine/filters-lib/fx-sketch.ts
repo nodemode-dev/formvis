@@ -1,6 +1,6 @@
 import { clamp01, ease, facing, grain, inkOnPaper, isOn, LIGHTS, lit, lumaOf, menu, noiseField, num, opt, slider, soften, steepness, streak, strokeReach, strokesOf, surfaceParams, texturize, WAYS, type FxDef, type Way } from './gallery-fx';
 
-const INK = 'Drawn in the foreground colour on paper of the background colour.';
+const INK = 'Drawn in the foreground color on paper of the background color.';
 
 export const SKETCH_FX: readonly FxDef[] = [
   {

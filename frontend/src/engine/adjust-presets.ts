@@ -23,5 +23,5 @@ export const PHOTO_FILTERS: ReadonlyArray<readonly [string, string, number, numb
 /** By film speed: id, label, amount, size, roughness, colour, speckle. */
 export const GRAIN_PRESETS: ReadonlyArray<readonly [string, string, number, number, number, number, number]> = [
   ['iso100', 'ISO 100 (fine)', 12, 0.8, 30, 0, 0], ['iso400', 'ISO 400 (classic)', 25, 1.5, 50, 0, 0], ['iso800', 'ISO 800', 35, 2, 60, 0, 0], ['iso1600', 'ISO 1600 (pushed)', 50, 2.8, 70, 0, 0], ['iso3200', 'ISO 3200 (coarse)', 65, 3.6, 80, 0, 0],
-  ['slide', 'Slide film (fine, colour)', 14, 0.9, 25, 40, 0], ['negative', 'Colour negative', 30, 1.6, 55, 60, 5], ['bw400', 'Black and white 400', 32, 1.7, 45, 0, 8], ['bwpush', 'Black and white pushed', 55, 2.6, 65, 0, 30], ['cine', 'Cine night stock', 45, 2.2, 70, 80, 15], ['expired', 'Expired film', 60, 3, 80, 100, 40],
+  ['slide', 'Slide film (fine, color)', 14, 0.9, 25, 40, 0], ['negative', 'Color negative', 30, 1.6, 55, 60, 5], ['bw400', 'Black and white 400', 32, 1.7, 45, 0, 8], ['bwpush', 'Black and white pushed', 55, 2.6, 65, 0, 30], ['cine', 'Cine night stock', 45, 2.2, 70, 80, 15], ['expired', 'Expired film', 60, 3, 80, 100, 40],
 ];

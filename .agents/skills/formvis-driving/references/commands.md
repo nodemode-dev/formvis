@@ -1,12 +1,12 @@
 # formvis commands
 
-Generated from the window's command catalogue (1616 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1664 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 108
 - File: 102
-- Filter: 93
+- Filter: 141
 - Generate: 6
 - Help: 5
 - Image: 122
@@ -250,6 +250,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `filter-blur` | Blur |  | Opens the Blur filter on the active layer. (changes the picture) |
 | `filter-blurMore` | Blur More |  | Opens the Blur More filter on the active layer. (changes the picture) |
 | `filter-boxBlur` | Box Blur... |  | Opens the Box Blur filter on the active layer. (changes the picture) |
+| `filter-chromaticShift` | Chromatic Shift... |  | Opens the Chromatic Shift filter on the active layer. (changes the picture) |
 | `filter-clouds` | Clouds |  | Opens the Clouds filter on the active layer. (changes the picture) |
 | `filter-colorHalftone` | Color Halftone... |  | Opens the Color Halftone filter on the active layer. (changes the picture) |
 | `filter-colorToAlpha` | Color to Alpha... |  | Opens the Color to Alpha filter on the active layer. (changes the picture) |
@@ -273,6 +274,53 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `filter-findEdges` | Find Edges |  | Opens the Find Edges filter on the active layer. (changes the picture) |
 | `filter-flame` | Flame... |  | Opens the Flame filter on the active layer. (changes the picture) |
 | `filter-fragment` | Fragment |  | Opens the Fragment filter on the active layer. (changes the picture) |
+| `filter-fx-accentedEdges` | Accented Edges... |  | Opens the Filter Gallery with the Accented Edges effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-angledStrokes` | Angled Strokes... |  | Opens the Filter Gallery with the Angled Strokes effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-basRelief` | Bas Relief... |  | Opens the Filter Gallery with the Bas Relief effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-chalkCharcoal` | Chalk & Charcoal... |  | Opens the Filter Gallery with the Chalk & Charcoal effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-charcoal` | Charcoal... |  | Opens the Filter Gallery with the Charcoal effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-chrome` | Chrome... |  | Opens the Filter Gallery with the Chrome effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-coloredPencil` | Colored Pencil... |  | Opens the Filter Gallery with the Colored Pencil effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-conteCrayon` | Conté Crayon... |  | Opens the Filter Gallery with the Conté Crayon effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-craquelure` | Craquelure... |  | Opens the Filter Gallery with the Craquelure effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-crosshatch` | Crosshatch... |  | Opens the Filter Gallery with the Crosshatch effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-cutout` | Cutout... |  | Opens the Filter Gallery with the Cutout effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-darkStrokes` | Dark Strokes... |  | Opens the Filter Gallery with the Dark Strokes effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-diffuseGlow` | Diffuse Glow... |  | Opens the Filter Gallery with the Diffuse Glow effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-dryBrush` | Dry Brush... |  | Opens the Filter Gallery with the Dry Brush effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-filmGrain` | Film Grain... |  | Opens the Filter Gallery with the Film Grain effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-fresco` | Fresco... |  | Opens the Filter Gallery with the Fresco effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-glass` | Glass... |  | Opens the Filter Gallery with the Glass effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-glowingEdges` | Glowing Edges... |  | Opens the Filter Gallery with the Glowing Edges effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-grain` | Grain... |  | Opens the Filter Gallery with the Grain effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-graphicPen` | Graphic Pen... |  | Opens the Filter Gallery with the Graphic Pen effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-halftonePattern` | Halftone Pattern... |  | Opens the Filter Gallery with the Halftone Pattern effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-inkOutlines` | Ink Outlines... |  | Opens the Filter Gallery with the Ink Outlines effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-mosaicTiles` | Mosaic Tiles... |  | Opens the Filter Gallery with the Mosaic Tiles effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-neonGlow` | Neon Glow... |  | Opens the Filter Gallery with the Neon Glow effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-notePaper` | Note Paper... |  | Opens the Filter Gallery with the Note Paper effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-oceanRipple` | Ocean Ripple... |  | Opens the Filter Gallery with the Ocean Ripple effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-paintDaubs` | Paint Daubs... |  | Opens the Filter Gallery with the Paint Daubs effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-paletteKnife` | Palette Knife... |  | Opens the Filter Gallery with the Palette Knife effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-patchwork` | Patchwork... |  | Opens the Filter Gallery with the Patchwork effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-photocopy` | Photocopy... |  | Opens the Filter Gallery with the Photocopy effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-plaster` | Plaster... |  | Opens the Filter Gallery with the Plaster effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-plasticWrap` | Plastic Wrap... |  | Opens the Filter Gallery with the Plastic Wrap effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-posterEdges` | Poster Edges... |  | Opens the Filter Gallery with the Poster Edges effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-reticulation` | Reticulation... |  | Opens the Filter Gallery with the Reticulation effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-roughPastels` | Rough Pastels... |  | Opens the Filter Gallery with the Rough Pastels effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-smudgeStick` | Smudge Stick... |  | Opens the Filter Gallery with the Smudge Stick effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-spatter` | Spatter... |  | Opens the Filter Gallery with the Spatter effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-sponge` | Sponge... |  | Opens the Filter Gallery with the Sponge effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-sprayedStrokes` | Sprayed Strokes... |  | Opens the Filter Gallery with the Sprayed Strokes effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-stainedGlass` | Stained Glass... |  | Opens the Filter Gallery with the Stained Glass effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-stamp` | Stamp... |  | Opens the Filter Gallery with the Stamp effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-sumiE` | Sumi-e... |  | Opens the Filter Gallery with the Sumi-e effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-texturizer` | Texturizer... |  | Opens the Filter Gallery with the Texturizer effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-tornEdges` | Torn Edges... |  | Opens the Filter Gallery with the Torn Edges effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-underpainting` | Underpainting... |  | Opens the Filter Gallery with the Underpainting effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-waterPaper` | Water Paper... |  | Opens the Filter Gallery with the Water Paper effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
+| `filter-fx-watercolor` | Watercolor... |  | Opens the Filter Gallery with the Watercolor effect on the active layer; with the values parameter (the effect's controls by key) it applies the effect at once, as one undo step. (changes the picture) |
 | `filter-gaussianBlur` | Gaussian Blur... |  | Opens the Gaussian Blur filter on the active layer. (changes the picture) |
 | `filter-grainPlate` | Grain Plate... |  | Opens the Grain Plate filter on the active layer. (changes the picture) |
 | `filter-haze` | Haze by Depth... |  | Opens the Haze by Depth filter on the active layer. (changes the picture) |
@@ -392,7 +440,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `adj-levels` | Levels... | Mod+L | Opens Levels and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-light` | Light... |  | Opens Light and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-motionBlur` | Motion Blur... |  | Opens Motion Blur and applies it to the pixels of the active layer. (changes the picture) |
-| `adj-normalise` | Normalise... |  | Opens Normalise and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-normalise` | Normalize... |  | Opens Normalize and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-photoFilter` | Photo Filter... |  | Opens Photo Filter and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-posterize` | Posterize... |  | Opens Posterize and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-selectiveColor` | Selective Color... |  | Opens Selective Color and applies it to the pixels of the active layer. (changes the picture) |
@@ -650,7 +698,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `new-adj-levels` | New Levels Layer... |  | Adds a Levels Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-light` | New Light Layer... |  | Adds a Light Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-motionBlur` | New Motion Blur Layer... |  | Adds a Motion Blur Layer adjustment layer; its dialog opens for the values. (changes the picture) |
-| `new-adj-normalise` | New Normalise Layer... |  | Adds a Normalise Layer adjustment layer; its dialog opens for the values. (changes the picture) |
+| `new-adj-normalise` | New Normalize Layer... |  | Adds a Normalize Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-photoFilter` | New Photo Filter Layer... |  | Adds a Photo Filter Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-posterize` | New Posterize Layer... |  | Adds a Posterize Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-selectiveColor` | New Selective Color Layer... |  | Adds a Selective Color Layer adjustment layer; its dialog opens for the values. (changes the picture) |
@@ -812,7 +860,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
-| `paint.stroke` | Paint Stroke |  | Draws one stroke through the points with the active painting tool, its size, colour and dynamics, on the active layer; one history step. (changes the picture) |
+| `paint.stroke` | Paint Stroke |  | Draws one stroke through the points with the active painting tool, its size, color and dynamics, on the active layer; one history step. (changes the picture) |
 
 ### paint.stroke parameters
 
@@ -1385,36 +1433,36 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
-| `tool.select.artHistory` | Art History Brush Tool |  | Makes the Art History Brush tool the active tool (key Y). Paint stylised strokes in the colours of the source snapshot (History panel) · [ ] size |
+| `tool.select.artHistory` | Art History Brush Tool |  | Makes the Art History Brush tool the active tool (key Y). Paint stylized strokes in the colors of the source snapshot (History panel) · [ ] size |
 | `tool.select.artboard` | Artboard Tool |  | Makes the Artboard tool the active tool (key V). Drag on empty canvas to make an artboard · Click its name to select it · Drag inside to move it with its contents · Handles resize · "+" adds one beside it, Alt-click it to copy the contents too |
-| `tool.select.backgroundEraser` | Background Eraser Tool |  | Makes the Background Eraser tool the active tool (key E). Drag with the centre over the colour to erase · Tolerance widens it · Protect Foreground keeps the foreground colour |
+| `tool.select.backgroundEraser` | Background Eraser Tool |  | Makes the Background Eraser tool the active tool (key E). Drag with the center over the color to erase · Tolerance widens it · Protect Foreground keeps the foreground color |
 | `tool.select.boxes` | Boxes Tool |  | Makes the Boxes tool the active tool (key I). Drag to draw a box · Click one to select it, drag to move, drag a handle to resize · Double-click or Enter to describe it · Delete, Mod+D, arrows, Tab |
 | `tool.select.brush` | Brush Tool |  | Makes the Brush tool the active tool (key B). Drag to paint · Shift-click draws a line from the last point · [ ] size · Shift+[ ] hardness · 1-0 opacity · E eraser · B brush · Space pans |
 | `tool.select.bucket` | Paint Bucket Tool |  | Makes the Paint Bucket tool the active tool (key G). Click to fill the area of similar color with the foreground color · Tolerance sets how similar · Stays inside the selection |
 | `tool.select.burn` | Burn Tool |  | Makes the Burn tool the active tool (key O). Paint to darken, most in the chosen tonal range · [ ] size |
 | `tool.select.cloneStamp` | Clone Stamp Tool |  | Makes the Clone Stamp tool the active tool (key S). Alt-click sets the source, then paint to copy from it · Aligned keeps the offset between strokes · Sample All Layers copies what you see · [ ] size |
-| `tool.select.colorReplace` | Color Replacement Tool |  | Makes the Color Replacement tool the active tool (key B). Drag over a colour to replace it with the foreground color · Tolerance sets how far from it colours match · [ ] size |
-| `tool.select.colorSampler` | Color Sampler Tool |  | Makes the Color Sampler tool the active tool (key I). Click to place a sampler (up to ten) · Drag one to move it · Alt-click one or drag it off the canvas to remove it · Its colour shows in Window > Info |
+| `tool.select.colorReplace` | Color Replacement Tool |  | Makes the Color Replacement tool the active tool (key B). Drag over a color to replace it with the foreground color · Tolerance sets how far from it colors match · [ ] size |
+| `tool.select.colorSampler` | Color Sampler Tool |  | Makes the Color Sampler tool the active tool (key I). Click to place a sampler (up to ten) · Drag one to move it · Alt-click one or drag it off the canvas to remove it · Its color shows in Window > Info |
 | `tool.select.contentAwareMove` | Content-Aware Move Tool |  | Makes the Content-Aware Move tool the active tool (key J). Draw around what to move, then drag it: the hole it leaves is filled from around it |
 | `tool.select.convertPoint` | Convert Point Tool |  | Makes the Convert Point tool the active tool (key P). Click a smooth point to make it a corner · Drag from a point to pull out smooth handles · Drag a handle to move it alone |
 | `tool.select.count` | Count Tool |  | Makes the Count tool the active tool (key I). Click to count · Drag a mark to move it · Alt-click a mark to remove it · New Group in the bar starts another count |
-| `tool.select.crop` | Crop Tool |  | Makes the Crop tool the active tool (key C). Drag a frame · Drag inside to move it · Handles resize · Alt keeps the centre · Edges snap to the canvas and layer edges · Enter crops · Escape cancels |
+| `tool.select.crop` | Crop Tool |  | Makes the Crop tool the active tool (key C). Drag a frame · Drag inside to move it · Handles resize · Alt keeps the center · Edges snap to the canvas and layer edges · Enter crops · Escape cancels |
 | `tool.select.curvaturePen` | Curvature Pen Tool |  | Makes the Curvature Pen tool the active tool (key P). Click to place points; the curve runs smoothly through them · Alt-click for a corner · drag a point to move it · double-click a point to toggle corner · click the first point to close · Enter ends |
 | `tool.select.directSelect` | Direct Selection Tool |  | Makes the Direct Selection tool the active tool (key A). Click a point to select it, Shift to add, or drag a box · Drag points to move them, handles to reshape · Alt-drag a point to pull out handles, a handle to break it · Alt-click a segment to select its whole path · Arrows nudge |
 | `tool.select.dodge` | Dodge Tool |  | Makes the Dodge tool the active tool (key O). Paint to lighten, most in the chosen tonal range · [ ] size |
 | `tool.select.eraser` | Eraser Tool |  | Makes the Eraser tool the active tool (key E). Drag to erase · Shift-click erases a line from the last point · [ ] size · Shift+[ ] hardness |
-| `tool.select.eyedropper` | Eyedropper Tool |  | Makes the Eyedropper tool the active tool (key I). Click or drag to sample the foreground colour from the visible image · Alt-click samples the background colour |
-| `tool.select.frame` | Frame Tool |  | Makes the Frame tool the active tool (key K). Drag to draw a frame · Shift for a square or circle · Alt to draw from the centre · Import an image with the frame selected to fill it |
+| `tool.select.eyedropper` | Eyedropper Tool |  | Makes the Eyedropper tool the active tool (key I). Click or drag to sample the foreground color from the visible image · Alt-click samples the background color |
+| `tool.select.frame` | Frame Tool |  | Makes the Frame tool the active tool (key K). Drag to draw a frame · Shift for a square or circle · Alt to draw from the center · Import an image with the frame selected to fill it |
 | `tool.select.freeformPen` | Freeform Pen Tool |  | Makes the Freeform Pen tool the active tool (key P). Drag to draw a path freehand · end near the start to close it · Alt-click for straight segments · Curve Fit sets how closely it follows · Magnetic hugs the edges within Width |
-| `tool.select.gradient` | Gradient Tool |  | Makes the Gradient tool the active tool (key G). Drag to draw a gradient · Drag either end to adjust it · Click the line to add a colour stop, drag stops and midpoints, Alt-click a stop to remove it, Ctrl-click to give it the foreground colour · On a Gradient Fill layer the same handles edit the layer · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies |
+| `tool.select.gradient` | Gradient Tool |  | Makes the Gradient tool the active tool (key G). Drag to draw a gradient · Drag either end to adjust it · Click the line to add a color stop, drag stops and midpoints, Alt-click a stop to remove it, Ctrl-click to give it the foreground color · On a Gradient Fill layer the same handles edit the layer · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies |
 | `tool.select.hand` | Hand Tool |  | Makes the Hand tool the active tool (key H). Drag to pan · Scroll pans · Cmd/Ctrl + scroll zooms · Hold Space to pan with any tool |
 | `tool.select.healingBrush` | Healing Brush Tool |  | Makes the Healing Brush tool the active tool (key J). Alt-click to set the source, then paint; on release the copied texture blends into its surroundings · Aligned keeps the offset between strokes · Shift+J cycles the healing tools · [ ] size |
 | `tool.select.historyBrush` | History Brush Tool |  | Makes the History Brush tool the active tool (key Y). Paint to bring back the layer as it was in the source snapshot or history state (History panel) · [ ] size |
 | `tool.select.lasso` | Lasso Tool |  | Makes the Lasso tool the active tool (key L). Drag around an area · Shift adds · Alt subtracts · Release the mouse with Alt held to click straight segments · A click deselects · Shift+L switches to polygonal |
-| `tool.select.magicEraser` | Magic Eraser Tool |  | Makes the Magic Eraser tool the active tool (key E). Click an area to erase it and the colours like it · Tolerance widens the match · Contiguous keeps to the connected area |
+| `tool.select.magicEraser` | Magic Eraser Tool |  | Makes the Magic Eraser tool the active tool (key E). Click an area to erase it and the colors like it · Tolerance widens the match · Contiguous keeps to the connected area |
 | `tool.select.markup` | Markup Tool |  | Makes the Markup tool the active tool (key I). Drag from the tail of the arrow to its tip |
-| `tool.select.marquee` | Marquee Tool |  | Makes the Marquee tool the active tool (key M). Drag a rectangle · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the centre · Drag inside to move the outline · Shift+M switches shape · A click, Escape or Cmd or Ctrl+D deselects |
-| `tool.select.mixer` | Mixer Brush Tool |  | Makes the Mixer Brush tool the active tool (key B). Drag to paint with wet paint that picks up and mixes the colours under it · [ ] size · Alt-click loads the reservoir from the canvas |
+| `tool.select.marquee` | Marquee Tool |  | Makes the Marquee tool the active tool (key M). Drag a rectangle · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the center · Drag inside to move the outline · Shift+M switches shape · A click, Escape or Cmd or Ctrl+D deselects |
+| `tool.select.mixer` | Mixer Brush Tool |  | Makes the Mixer Brush tool the active tool (key B). Drag to paint with wet paint that picks up and mixes the colors under it · [ ] size · Alt-click loads the reservoir from the canvas |
 | `tool.select.move` | Move Tool |  | Makes the Move tool the active tool (key V). Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Alt-drag inside the box copies the layers · Cmd or Ctrl flips Auto-Select for the drag · Arrows nudge · 1-0 set layer opacity |
 | `tool.select.note` | Note Tool |  | Makes the Note tool the active tool (key I). Click to pin a note · Click a note to edit it · Drag it to move it · Alt-click it to delete it |
 | `tool.select.objectSelect` | Object Selection Tool |  | Makes the Object Selection tool the active tool (key W). Click an object, or drag a box round it · Shift adds · Alt subtracts · Rest the pointer to see the object it finds · The first use on an image takes a few seconds |
@@ -1436,7 +1484,7 @@ Generated from the window's command catalogue (1616 commands) by `./formvis agen
 | `tool.select.sponge` | Sponge Tool |  | Makes the Sponge tool the active tool (key O). Paint to take color out, or with Saturate, to strengthen it · [ ] size |
 | `tool.select.spotHealing` | Spot Healing Tool |  | Makes the Spot Healing tool the active tool (key J). Paint over a spot and it heals on release · Content-Aware copies a matching patch nearby · Create Texture fills smoothly with matching grain · Proximity Match prefers the nearest patch · [ ] size |
 | `tool.select.type` | Type Tool |  | Makes the Type tool the active tool (key T). Click to add point text · Drag a box for paragraph text · Click a type layer to edit its text |
-| `tool.select.wand` | Magic Wand Tool |  | Makes the Magic Wand tool the active tool (key W). Click to select similar colours · Shift adds · Alt subtracts · Tolerance sets how alike · With a layer mask targeted it samples the mask · Arrows nudge the outline |
+| `tool.select.wand` | Magic Wand Tool |  | Makes the Magic Wand tool the active tool (key W). Click to select similar colors · Shift adds · Alt subtracts · Tolerance sets how alike · With a layer mask targeted it samples the mask · Arrows nudge the outline |
 | `tool.select.zoom` | Zoom Tool |  | Makes the Zoom tool the active tool (key Z). Click zooms in · Alt-click zooms out · Drag right or left to zoom smoothly · Space pans |
 
 ## Type

@@ -11,7 +11,7 @@ let hover: Pt | null = null;
 export const artHistoryTool: Tool = {
   id: 'artHistory', label: 'Art History Brush', key: 'Y', order: 61.5,
   icon: () => 'tHistoryBrush',
-  hint: () => 'Paint stylised strokes in the colours of the source snapshot (History panel) · [ ] size',
+  hint: () => 'Paint stylized strokes in the colors of the source snapshot (History panel) · [ ] size',
   cursor: () => 'none',
   down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginRetouchStroke('artHistory', p.doc, p.shift, p.pressure); },
   move(ctx, p) { hover = p.doc; ctx.engine.strokeTo(p.doc, p.pressure, p.pose); ctx.engine.emit('overlay', null); },

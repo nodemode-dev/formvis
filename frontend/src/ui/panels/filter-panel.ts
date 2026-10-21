@@ -224,36 +224,37 @@ export class FilterPanel extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Filter', 440);
     const s = this.s;
-    const gbRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.radius = v; this.schedule(); }, { max: 1000, log: true });
+    const d = defaultFilterSettings(), dl = defaultLensFix(), di = defaultLensIris();
+    const gbRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.radius = v; this.schedule(); }, { max: 1000, log: true, def: d.radius });
     this.section('gaussianBlur', [gbRadius.el], () => gbRadius.set(s.radius));
-    const mbAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { s.angle = v; this.schedule(); });
-    const mbDistance = sliderRow('Distance (px)', 1, 500, 1, (v) => { s.distance = v; this.schedule(); }, { max: 2000 });
+    const mbAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { s.angle = v; this.schedule(); }, { def: d.angle });
+    const mbDistance = sliderRow('Distance (px)', 1, 500, 1, (v) => { s.distance = v; this.schedule(); }, { max: 2000, def: d.distance });
     this.section('motionBlur', [mbAngle.el, mbDistance.el], () => { mbAngle.set(s.angle); mbDistance.set(s.distance); });
-    const nzAmount = sliderRow('Amount (%)', 0.1, 400, 0.1, (v) => { s.amount = v; this.schedule(); });
+    const nzAmount = sliderRow('Amount (%)', 0.1, 400, 0.1, (v) => { s.amount = v; this.schedule(); }, { def: d.amount });
     const nzKind = selectRow('Distribution', [['uniform', 'Uniform'], ['gaussian', 'Gaussian']], (v) => { s.gaussian = v === 'gaussian'; this.schedule(); });
     const nzMono = checkRow('Monochromatic', (v) => { s.monochromatic = v; this.schedule(); });
     this.section('addNoise', [nzAmount.el, nzKind.el, nzMono.el], () => { nzAmount.set(s.amount); nzKind.set(s.gaussian ? 'gaussian' : 'uniform'); nzMono.set(s.monochromatic); });
-    const lcDistortion = sliderRow('Distortion', -100, 100, 1, (v) => { s.distortion = v; this.schedule(); });
+    const lcDistortion = sliderRow('Distortion', -100, 100, 1, (v) => { s.distortion = v; this.schedule(); }, { def: d.distortion });
     const fix = (): LensFix => s.lensFix ?? (s.lensFix = defaultLensFix());
-    const lcRc = sliderRow('Fix Red/Cyan Fringe', -100, 100, 1, (v) => { fix().caRc = v; this.schedule(); });
-    const lcBy = sliderRow('Fix Blue/Yellow Fringe', -100, 100, 1, (v) => { fix().caBy = v; this.schedule(); });
-    const lcVignette = sliderRow('Vignette Amount', -100, 100, 1, (v) => { fix().vignette = v; this.schedule(); });
-    const lcMidpoint = sliderRow('Vignette Midpoint', 0, 100, 1, (v) => { fix().midpoint = v; this.schedule(); });
-    const lcVertical = sliderRow('Vertical Perspective', -100, 100, 1, (v) => { fix().vertical = v; this.schedule(); });
-    const lcHorizontal = sliderRow('Horizontal Perspective', -100, 100, 1, (v) => { fix().horizontal = v; this.schedule(); });
-    const lcAngle = sliderRow('Angle (°)', -45, 45, 0.1, (v) => { fix().angle = v; this.schedule(); });
-    const lcScale = sliderRow('Scale (%)', 50, 150, 1, (v) => { fix().scale = v; this.schedule(); });
+    const lcRc = sliderRow('Fix Red/Cyan Fringe', -100, 100, 1, (v) => { fix().caRc = v; this.schedule(); }, { def: dl.caRc });
+    const lcBy = sliderRow('Fix Blue/Yellow Fringe', -100, 100, 1, (v) => { fix().caBy = v; this.schedule(); }, { def: dl.caBy });
+    const lcVignette = sliderRow('Vignette Amount', -100, 100, 1, (v) => { fix().vignette = v; this.schedule(); }, { def: dl.vignette });
+    const lcMidpoint = sliderRow('Vignette Midpoint', 0, 100, 1, (v) => { fix().midpoint = v; this.schedule(); }, { def: dl.midpoint });
+    const lcVertical = sliderRow('Vertical Perspective', -100, 100, 1, (v) => { fix().vertical = v; this.schedule(); }, { def: dl.vertical });
+    const lcHorizontal = sliderRow('Horizontal Perspective', -100, 100, 1, (v) => { fix().horizontal = v; this.schedule(); }, { def: dl.horizontal });
+    const lcAngle = sliderRow('Angle (°)', -45, 45, 0.1, (v) => { fix().angle = v; this.schedule(); }, { def: dl.angle });
+    const lcScale = sliderRow('Scale (%)', 50, 150, 1, (v) => { fix().scale = v; this.schedule(); }, { def: dl.scale });
     const lcAuto = checkRow('Auto Scale Image', (v) => { fix().autoScale = v; this.schedule(); });
     const lcEdge = selectRow('Edge', [['transparent', 'Transparency'], ['extend', 'Edge Extension'], ['black', 'Black Color'], ['white', 'White Color']], (v) => { fix().edge = v as LensFix['edge']; this.schedule(); });
     this.section('lensCorrection', [lcDistortion.el, lcRc.el, lcBy.el, lcVignette.el, lcMidpoint.el, lcVertical.el, lcHorizontal.el, lcAngle.el, lcScale.el, lcAuto.el, lcEdge.el, el('<p class="cv-note">Positive Distortion corrects barrel distortion, negative pincushion. Fringe sliders shift the red and blue channels against green. Auto Scale enlarges the picture just enough to hide the corners the Angle leaves empty.</p>')],
       () => { const f = fix(); lcAngle.set(f.angle ?? 0); lcScale.set(f.scale ?? 100); lcAuto.set(!!f.autoScale); lcDistortion.set(s.distortion); lcRc.set(f.caRc); lcBy.set(f.caBy); lcVignette.set(f.vignette); lcMidpoint.set(f.midpoint); lcVertical.set(f.vertical); lcHorizontal.set(f.horizontal); lcEdge.set(f.edge); });
-    const usAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { s.usmAmount = v; this.schedule(); });
-    const usRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 1000 });
-    const usThreshold = sliderRow('Threshold (levels)', 0, 255, 1, (v) => { s.threshold = v; this.schedule(); });
+    const usAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { s.usmAmount = v; this.schedule(); }, { def: d.usmAmount });
+    const usRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 1000, def: d.usmRadius });
+    const usThreshold = sliderRow('Threshold (levels)', 0, 255, 1, (v) => { s.threshold = v; this.schedule(); }, { def: d.threshold });
     this.section('unsharpMask', [usAmount.el, usRadius.el, usThreshold.el], () => { usAmount.set(s.usmAmount); usRadius.set(s.usmRadius); usThreshold.set(s.threshold); });
-    const lensR = sliderRow('Radius (px)', 1, 100, 1, (v) => { s.lensRadius = v; this.schedule(); });
-    const lensB = sliderRow('Specular brightness', 0, 100, 1, (v) => { s.lensBrightness = v; this.schedule(); });
-    const lensT = sliderRow('Specular threshold', 0, 255, 1, (v) => { s.lensThreshold = v; this.schedule(); });
+    const lensR = sliderRow('Radius (px)', 1, 100, 1, (v) => { s.lensRadius = v; this.schedule(); }, { def: d.lensRadius });
+    const lensB = sliderRow('Specular brightness', 0, 100, 1, (v) => { s.lensBrightness = v; this.schedule(); }, { def: d.lensBrightness });
+    const lensT = sliderRow('Specular threshold', 0, 255, 1, (v) => { s.lensThreshold = v; this.schedule(); }, { def: d.lensThreshold });
     // Radial and Surface Blur, and the Blur Gallery. Positions are percentages of the image, set here with sliders
     // (the gallery's pins and handles are not on the canvas). Every control reads and writes s.gallery when
     // used, never a copy taken now, so loaded settings are what is edited.
@@ -261,7 +262,7 @@ export class FilterPanel extends Dialog {
     const gv = <K extends keyof G>(k: K): G[K] => s.gallery[k];
     const gset = <K extends keyof G>(k: K, v: G[K]): void => { s.gallery = { ...s.gallery, [k]: v }; this.schedule(); };
     const gs = (label: string, min: number, max: number, step: number, k: keyof G): { el: HTMLElement; sync: () => void } => {
-      const r = sliderRow(label, min, max, step, (v) => gset(k, v as never));
+      const r = sliderRow(label, min, max, step, (v) => gset(k, v as never), { def: d.gallery[k] as number });
       return { el: r.el, sync: () => r.set(gv(k) as number) };
     };
     const gsel = (label: string, opts: Array<[string, string]>, k: 'radialMethod' | 'radialQuality'): { el: HTMLElement; sync: () => void } => {
@@ -293,13 +294,13 @@ export class FilterPanel extends Dialog {
       'Blurs along the path from start through the bend to end, as if moving along it. With the drawn path, every sub-path of the active path blurs the pixels nearest to it.');
     const ir = (): LensIris => s.lensIris ?? (s.lensIris = defaultLensIris());
     const lensShape = selectRow('Iris Shape', [['0', 'Circle'], ['3', 'Triangle'], ['4', 'Square'], ['5', 'Pentagon'], ['6', 'Hexagon'], ['7', 'Heptagon'], ['8', 'Octagon']], (v) => { ir().blades = Number(v); this.schedule(); });
-    const lensCurve = sliderRow('Blade Curvature', 0, 100, 1, (v) => { ir().curve = v; this.schedule(); });
-    const lensRot = sliderRow('Rotation (°)', -180, 180, 1, (v) => { ir().rotation = v; this.schedule(); });
+    const lensCurve = sliderRow('Blade Curvature', 0, 100, 1, (v) => { ir().curve = v; this.schedule(); }, { def: di.curve });
+    const lensRot = sliderRow('Rotation (°)', -180, 180, 1, (v) => { ir().rotation = v; this.schedule(); }, { def: di.rotation });
     const lensSource = selectRow('Depth Map', [['none', 'None'], ['depthMap', 'Depth Map layer'], ['channel', 'Alpha channel'], ['transparency', 'Layer transparency']], (v) => { ir().source = v; this.pullDepth(); this.schedule(0); });
-    const lensChannel = sliderRow('Channel number', 1, 16, 1, (v) => { ir().channel = v; this.pullDepth(); this.schedule(); });
-    const lensFocal = sliderRow('Focal Distance', 0, 255, 1, (v) => { ir().focal = v; this.schedule(); });
+    const lensChannel = sliderRow('Channel number', 1, 16, 1, (v) => { ir().channel = v; this.pullDepth(); this.schedule(); }, { def: di.channel });
+    const lensFocal = sliderRow('Focal Distance', 0, 255, 1, (v) => { ir().focal = v; this.schedule(); }, { def: di.focal });
     const lensInvert = checkRow('Invert', (v) => { ir().invert = v; this.schedule(); });
-    const lensNoise = sliderRow('Noise Amount', 0, 100, 1, (v) => { ir().noise = v; this.schedule(); });
+    const lensNoise = sliderRow('Noise Amount', 0, 100, 1, (v) => { ir().noise = v; this.schedule(); }, { def: di.noise });
     const lensDist = selectRow('Noise Distribution', [['uniform', 'Uniform'], ['gaussian', 'Gaussian']], (v) => { ir().gaussian = v === 'gaussian'; this.schedule(); });
     const lensMono = checkRow('Monochromatic', (v) => { ir().mono = v; this.schedule(); });
     this.section('lensBlur', [lensR.el, lensShape.el, lensCurve.el, lensRot.el, lensSource.el, lensChannel.el, lensFocal.el, lensInvert.el, lensB.el, lensT.el, lensNoise.el, lensDist.el, lensMono.el, el('<p class="cv-note">An iris-shaped blur in linear light; pixels at or above the threshold bloom into bright discs. With a depth source, the blur grows with each pixel\'s distance from the focal depth (bright is near).</p>')], () => {
@@ -309,29 +310,30 @@ export class FilterPanel extends Dialog {
       this.pullDepth();
     });
     const ss = s.smart;
-    const ssAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { ss.amount = v; this.schedule(); });
-    const ssRadius = sliderRow('Radius (px)', 0.1, 64, 0.1, (v) => { ss.radius = v; this.schedule(); });
-    const ssNoise = sliderRow('Reduce Noise (%)', 0, 100, 1, (v) => { ss.noise = v; this.schedule(); });
-    const ssAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { ss.angle = v; this.schedule(); });
+    const ssAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { ss.amount = v; this.schedule(); }, { def: d.smart.amount });
+    const ssRadius = sliderRow('Radius (px)', 0.1, 64, 0.1, (v) => { ss.radius = v; this.schedule(); }, { def: d.smart.radius });
+    const ssNoise = sliderRow('Reduce Noise (%)', 0, 100, 1, (v) => { ss.noise = v; this.schedule(); }, { def: d.smart.noise });
+    const ssAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { ss.angle = v; this.schedule(); }, { def: d.smart.angle });
     const angleOn = (): void => { const off = ss.remove !== 'motion'; ssAngle.el.classList.toggle('is-off', off); for (const i of ssAngle.el.querySelectorAll('input')) i.disabled = off; };
     const ssRemove = selectRow('Remove', [['gaussian', 'Gaussian Blur'], ['lens', 'Lens Blur'], ['motion', 'Motion Blur']], (v) => { ss.remove = v as SharpenRemove; angleOn(); this.schedule(); });
-    const ssShadows = sliderRow('Shadows fade (%)', 0, 100, 1, (v) => { ss.shadows = v; this.schedule(); });
-    const ssHighlights = sliderRow('Highlights fade (%)', 0, 100, 1, (v) => { ss.highlights = v; this.schedule(); });
+    const ssShadows = sliderRow('Shadows fade (%)', 0, 100, 1, (v) => { ss.shadows = v; this.schedule(); }, { def: d.smart.shadows });
+    const ssHighlights = sliderRow('Highlights fade (%)', 0, 100, 1, (v) => { ss.highlights = v; this.schedule(); }, { def: d.smart.highlights });
     this.section('smartSharpen', [ssAmount.el, ssRadius.el, ssNoise.el, ssRemove.el, ssAngle.el, ssShadows.el, ssHighlights.el], () => {
       ssAmount.set(ss.amount); ssRadius.set(ss.radius); ssNoise.set(ss.noise); ssRemove.set(ss.remove); ssAngle.set(ss.angle); angleOn(); ssShadows.set(ss.shadows); ssHighlights.set(ss.highlights);
     });
     // Develop: Camera Raw-style controls over formnodal's develop core, grouped as the develop studio groups them.
     const sh = s.shake;
-    const shAngle = sliderRow('Trace angle (\u00b0)', -90, 90, 1, (v) => { sh.angle = v; this.schedule(); });
-    const shLength = sliderRow('Trace length (px)', 1, 100, 1, (v) => { sh.length = v; this.schedule(); }, { max: 300 });
-    const shSmooth = sliderRow('Smoothing (%)', 0, 100, 1, (v) => { sh.smoothing = v; this.schedule(); });
-    const shAmount = sliderRow('Amount (%)', 1, 300, 1, (v) => { sh.amount = v; this.schedule(); });
+    const shAngle = sliderRow('Trace angle (\u00b0)', -90, 90, 1, (v) => { sh.angle = v; this.schedule(); }, { def: d.shake.angle });
+    const shLength = sliderRow('Trace length (px)', 1, 100, 1, (v) => { sh.length = v; this.schedule(); }, { max: 300, def: d.shake.length });
+    const shSmooth = sliderRow('Smoothing (%)', 0, 100, 1, (v) => { sh.smoothing = v; this.schedule(); }, { def: d.shake.smoothing });
+    const shAmount = sliderRow('Amount (%)', 1, 300, 1, (v) => { sh.amount = v; this.schedule(); }, { def: d.shake.amount });
     const shEstimate = el<HTMLButtonElement>('<button class="cv-btn" type="button">Estimate from image</button>');
     shEstimate.addEventListener('click', () => this.estimateShake());
     this.section('shakeReduction', [this.shakeNote, shAngle.el, shLength.el, shSmooth.el, shAmount.el, shEstimate], () => { shAngle.set(sh.angle); shLength.set(sh.length); shSmooth.set(sh.smoothing); shAmount.set(sh.amount); });
     // s.develop is replaced when saved settings are recalled, so the tone and detail rows reach it through these views.
     const view = <T extends object>(get: () => T): T => new Proxy({} as T, { get: (_o, k) => (get() as Record<string | symbol, unknown>)[k], set: (_o, k, v) => { (get() as Record<string | symbol, unknown>)[k] = v; return true; } });
     const t = view(() => s.develop.tone), dt = view(() => s.develop.detail);
+    const D = (): DevelopState => s.develop;
     const devRows: Array<[string, number, number, number, () => number, (v: number) => void] | string> = [
       'Light',
       ['Exposure (EV)', -5, 5, 0.05, () => t.exposure / 100, (v) => { t.exposure = v * 100; }],
@@ -379,7 +381,7 @@ export class FilterPanel extends Dialog {
     for (const row of devRows) {
       if (typeof row === 'string') { devNodes.push(el(`<p class="cv-note">${row}</p>`)); continue; }
       const [label, min, max, step, read, write] = row;
-      const r = sliderRow(label, min, max, step, (v) => { write(v); if (label === 'Temperature' || label === 'Tint') wbCustom(); this.schedule(); });
+      const r = sliderRow(label, min, max, step, (v) => { write(v); if (label === 'Temperature' || label === 'Tint') wbCustom(); this.schedule(); }, { def: read() });
       devNodes.push(r.el);
       if (label === 'Dehaze') dehazeEl = r.el;
       if (label === 'Vignette highlight protection') protectEl = r.el;
@@ -395,7 +397,6 @@ export class FilterPanel extends Dialog {
     }
     // Camera Raw's further panels (the comparison's Develop row). The engine already had the point curve and colour
     // mixer; this dialog did not show them. Every control reads s.develop when used, so loaded settings are what is edited.
-    const D = (): DevelopState => s.develop;
     const darkDehaze = checkRow('Dehaze by dark channel (haze estimate)', (v) => { D().dehazeDark = v; this.schedule(); });
     devNodes.splice(dehazeEl ? devNodes.indexOf(dehazeEl) + 1 : devNodes.length, 0, darkDehaze.el);
     devSync.push(() => darkDehaze.set(D().dehazeDark === true));
@@ -510,7 +511,7 @@ export class FilterPanel extends Dialog {
     devNodes.splice(tintEl ? devNodes.indexOf(tintEl) + 1 : devNodes.length, 0, wbSel.el, wbPick);
     devSync.push(() => { const tn = D().tone; if (tn.temperature !== 0 || tn.tint !== 0) { if (wbSel.el.querySelector('select')?.value === 'shot') wbSel.set('custom'); } else wbSel.set('shot'); });
     const slide =(label: string, min: number, max: number, step: number, read: () => number, write: (v: number) => void): void => {
-      const r = sliderRow(label, min, max, step, (v) => { write(v); this.schedule(); });
+      const r = sliderRow(label, min, max, step, (v) => { write(v); this.schedule(); }, { def: read() });
       devNodes.push(r.el);
       devSync.push(() => r.set(read()));
     };
@@ -544,9 +545,9 @@ export class FilterPanel extends Dialog {
     };
     let band: 'master' | HslBand = 'master';
     const bandState = (): HslBandState => (band === 'master' ? D().color.master : (D().color.bands[band] ??= bandOf(D().color, band)));
-    const mixH = sliderRow('Hue', -180, 180, 1, (v) => { bandState().h = v; this.schedule(); });
-    const mixS = sliderRow('Saturation', -100, 100, 1, (v) => { bandState().s = v; this.schedule(); });
-    const mixL = sliderRow('Luminance', -100, 100, 1, (v) => { bandState().l = v; this.schedule(); });
+    const mixH = sliderRow('Hue', -180, 180, 1, (v) => { bandState().h = v; this.schedule(); }, { def: 0 });
+    const mixS = sliderRow('Saturation', -100, 100, 1, (v) => { bandState().s = v; this.schedule(); }, { def: 0 });
+    const mixL = sliderRow('Luminance', -100, 100, 1, (v) => { bandState().l = v; this.schedule(); }, { def: 0 });
     const syncMix = (): void => { mixH.set(bandState().h); mixS.set(bandState().s); mixL.set(bandState().l); };
     const BAND_NAME: Record<HslBand, string> = { reds: 'Reds', oranges: 'Oranges', yellows: 'Yellows', greens: 'Greens', cyans: 'Aquas', blues: 'Blues', purples: 'Purples', magentas: 'Magentas' };
     const BAND_HUE: Record<HslBand, number> = { reds: 0, oranges: 30, yellows: 60, greens: 120, cyans: 180, blues: 240, purples: 270, magentas: 300 };
@@ -571,9 +572,9 @@ export class FilterPanel extends Dialog {
     devSync.push(() => { setBandSwatch(); syncMix(); });
     let range: 'shadows' | 'midtones' | 'highlights' | 'global' = 'midtones';
     const grading = (): GradingState => (D().grading ??= defaultGrading());
-    const gH = sliderRow('Hue', 0, 360, 1, (v) => { grading()[range].h = v; placeDot(); this.schedule(); });
-    const gS = sliderRow('Saturation', 0, 100, 1, (v) => { grading()[range].s = v; placeDot(); this.schedule(); });
-    const gL = sliderRow('Luminance', -100, 100, 1, (v) => { grading()[range].l = v; this.schedule(); });
+    const gH = sliderRow('Hue', 0, 360, 1, (v) => { grading()[range].h = v; placeDot(); this.schedule(); }, { def: 0 });
+    const gS = sliderRow('Saturation', 0, 100, 1, (v) => { grading()[range].s = v; placeDot(); this.schedule(); }, { def: 0 });
+    const gL = sliderRow('Luminance', -100, 100, 1, (v) => { grading()[range].l = v; this.schedule(); }, { def: 0 });
     // The colour wheel: hue is the angle and saturation the distance from the centre. Painted once; the marker moves in place.
     const WHEEL = 96, wheelBox = el(`<div style="position:relative;width:${WHEEL}px;height:${WHEEL}px;margin:6px auto"></div>`);
     const wheel = el<HTMLCanvasElement>(`<canvas width="${WHEEL}" height="${WHEEL}" aria-label="Color grading wheel" style="display:block;touch-action:none;cursor:crosshair;border-radius:50%"></canvas>`);
@@ -703,8 +704,12 @@ export class FilterPanel extends Dialog {
     this.shot = new FilterPreview(this.engine, () => this.schedule(0));
     setHidden(this.shot.el, true);
     this.body.prepend(this.shot.el);
-    this.previewRow = checkRow('Preview', (v) => { this.preview = v; this.schedule(0); });
-    this.body.append(this.previewRow.el, this.depthLimit.el);
+    const previewLabel = el<HTMLLabelElement>('<label class="cv-adjust-preview"><input type="checkbox" checked><span>Preview</span></label>');
+    const previewBox = q<HTMLInputElement>(previewLabel, 'input');
+    previewBox.addEventListener('change', () => { this.preview = previewBox.checked; this.schedule(0); });
+    this.previewRow = { el: previewLabel, set: (v) => { if (previewBox.checked !== v) previewBox.checked = v; } };
+    this.body.append(this.depthLimit.el);
+    this.foot.appendChild(previewLabel);
     this.button('Cancel', 'ghost', () => this.close());
     this.okBtn = this.button('OK', 'primary', () => this.commit());
     this.onClose = () => this.abandon();
@@ -723,7 +728,7 @@ export class FilterPanel extends Dialog {
   }
 
   private libRow(p: LibParam, put: (key: string, v: LibValue) => void): { el: HTMLElement; set: (v: LibValue) => void } {
-    if (p.kind === 'range') { const r = sliderRow(p.label, p.min, p.max, p.step, (v) => put(p.key, v), { max: p.limit ?? p.max }); return { el: r.el, set: (v) => r.set(v as number) }; }
+    if (p.kind === 'range') { const r = sliderRow(p.label, p.min, p.max, p.step, (v) => put(p.key, v), { max: p.limit ?? p.max, def: p.def }); return { el: r.el, set: (v) => r.set(v as number) }; }
     if (p.kind === 'select') {
       // Hovering a choice previews it on the picture; closing the menu puts back the chosen value (or keeps a new choice).
       let chosen = String(p.def);
@@ -822,7 +827,7 @@ export class FilterPanel extends Dialog {
     const node = el('<div class="cv-panel-section" hidden></div>');
     node.append(...rows.map((r) => r.el));
     if (f.note) { const note = el('<p class="cv-note"></p>'); note.textContent = f.note; node.appendChild(note); }
-    this.body.insertBefore(node, this.previewRow.el);
+    this.body.insertBefore(node, this.depthLimit.el);
     this.sections.set(kind, { node, sync: () => { const v = libValues(kind, s.lib?.[kind]); (s.lib ??= {})[kind] = v; f.params.forEach((p, i) => rows[i].set(v[p.key])); } });
   }
 
@@ -903,7 +908,7 @@ export class FilterPanel extends Dialog {
     this.setTitle(FILTER_LABELS[kind]);
     const lib = isLibKind(kind) ? libFilter(kind) : null;
     (this.frameEl ??= q<HTMLElement>(this.scrim, '.cv-dialog')).style.setProperty('--cv-dialog-w', `${lib?.width ?? 440}px`);
-    setHidden(this.previewRow.el, !!lib?.ownPreview);
+    this.previewRow.el.style.visibility = lib?.ownPreview ? 'hidden' : '';
     setHidden(this.shot.el, !this.windowed(kind));
     if (!this.shot.el.hidden) this.shot.begin();
     if (kind === 'shakeReduction' && !smart) this.estimateShake(false);
@@ -1184,6 +1189,15 @@ export class FilterPanel extends Dialog {
       this.schedule(0);
       this.asking = resolve;
     });
+  }
+
+  /** Opens `kind` with `settings` already in its controls. */
+  showWith(kind: FilterKind, settings: Record<string, unknown>): void {
+    this.show(kind);
+    if (!this.isOpen) return;
+    Object.assign(this.s, structuredClone(settings));
+    this.sections.get(kind)?.sync();
+    this.schedule(0);
   }
 
   private commit(): void {

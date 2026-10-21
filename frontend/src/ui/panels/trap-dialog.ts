@@ -21,7 +21,7 @@ export class TrapDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Trap', 340);
     this.widthRow.set(1); this.unitRow.set('pixels');
-    this.body.append(el('<p class="cv-dialog-note">Overlaps colours where they meet so misregistration on press shows no gap. Black does not spread.</p>'), this.widthRow.el, this.unitRow.el);
+    this.body.append(el('<p class="cv-dialog-note">Overlaps colors where they meet so misregistration on press shows no gap. Black does not spread.</p>'), this.widthRow.el, this.unitRow.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
   }

@@ -52,7 +52,7 @@ export class GradientEditor extends Dialog {
     super('Gradient Editor', BW + 48);
     this.presetRow = selectRow('Preset', [], (id) => this.startFrom(id));
     this.typeRow = selectRow('Type', [['solid', 'Solid'], ['noise', 'Noise']], (v) => { this.kind = v as 'solid' | 'noise'; if (this.kind === 'noise') this.stops = noiseStops(this.seed, this.rough); this.sync(); });
-    this.colorR = colorRow('Stop colour', (h) => { const s = this.pick.kind === 'c' ? this.stops[this.pick.i] : undefined; if (s) { s.color = { r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) }; this.draw(); } });
+    this.colorR = colorRow('Stop color', (h) => { const s = this.pick.kind === 'c' ? this.stops[this.pick.i] : undefined; if (s) { s.color = { r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) }; this.draw(); } });
     this.opacityR = sliderRow('Stop opacity (%)', 0, 100, 1, (v) => { const s = this.pick.kind === 'o' ? this.ops[this.pick.i] : undefined; if (s) { s.alpha = v / 100; this.draw(); } });
     this.locationR = sliderRow('Stop location (%)', 0, 100, 1, (v) => { const s = this.cur(); if (s && (this.pick.kind === 'c' || this.pick.kind === 'o')) { s.at = v / 100; this.resort(); this.draw(); } });
     this.midR = sliderRow('Midpoint location (%)', 5, 95, 1, (v) => { const s = this.cur(); if (s && (this.pick.kind === 'cm' || this.pick.kind === 'om')) { s.mid = v / 100; this.draw(); } });

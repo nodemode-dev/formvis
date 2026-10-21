@@ -852,7 +852,7 @@ export class AdjustPanel extends Dialog {
     };
     const touch = (): void => { custom(); drawStrip(); this.changed(); };
     const addRow = (): (typeof rows)[number] => {
-      const n = el('<div class="cv-stop-row"><input type="range" min="0" max="100" step="1" aria-label="Stop position"><span class="cv-note"></span><input class="cv-input cv-color" type="color" aria-label="Stop colour"><button class="cv-btn" type="button" aria-label="Remove stop">x</button></div>');
+      const n = el('<div class="cv-stop-row"><input type="range" min="0" max="100" step="1" aria-label="Stop position"><span class="cv-note"></span><input class="cv-input cv-color" type="color" aria-label="Stop color"><button class="cv-btn" type="button" aria-label="Remove stop">x</button></div>');
       const r = { node: n, pos: n.querySelector('input[type="range"]') as HTMLInputElement, col: n.querySelector('input[type="color"]') as HTMLInputElement, out: n.querySelector('span') as HTMLElement, del: n.querySelector('button') as HTMLButtonElement };
       const idx = rows.length;
       r.pos.addEventListener('input', () => { const s = stops()[idx]; if (!s) return; s.at = r.pos.valueAsNumber / 100; setText(r.out, `${r.pos.valueAsNumber}%`); touch(); });

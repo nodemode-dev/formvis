@@ -106,7 +106,7 @@ export function readExtraChannels(buf: ArrayBuffer): { alphas: AlphaChannel[]; n
       const name = names[k] ?? `Alpha ${k + 1}`, disp = display[k];
       const spot = !!disp && disp.kind >= 2 && disp.kind !== 128, quick = /^quick mask$/i.test(name);
       alphas.push({ id: uid(), name: name || `Alpha ${k + 1}`, mask: SelectionMask.cropped(0, 0, width, height, plane), ...(disp?.color ? { color: disp.color } : {}), ...(disp?.opacity !== undefined ? { opacity: disp.opacity } : {}), indicates: spot || (disp && disp.kind === 0) ? 'selected' : 'masked', ...(spot ? { spot: true } : {}) });
-      if (spot) notes.push(`"${name}" is a spot channel; it opened as a spot channel with its ink colour and solidity.`);
+      if (spot) notes.push(`"${name}" is a spot channel; it opened as a spot channel with its ink color and solidity.`);
       if (quick) notes.push('The file\'s Quick Mask opened as an alpha channel named Quick Mask; formvis does not start in Quick Mask mode.');
     }
     return { alphas, notes };

@@ -127,7 +127,6 @@ export const nl: Record<string, string> = {
   'Colored Pencil': 'Kleurpotlood',
   'Colorize': 'Inkleuren',
   'Color profile': 'Kleurprofiel',
-  'Colours': 'Kleuren',
   'Conditional Mode Change': 'Voorwaardelijke modusverandering',
   'Cone': 'Kegel',
   'Cone (°)': 'Kegel (°)',

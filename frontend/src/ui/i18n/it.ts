@@ -16,7 +16,7 @@ export const it: Record<string, string> = {
   'Vector Mask': 'Maschera vettoriale', 'Video Layers': 'Livelli video', 'Video': 'Video',
   // Panel names
   'Layers': 'Livelli', 'Channels': 'Canali', 'Paths': 'Tracciati', 'History': 'Cronologia', 'Properties': 'Proprietà',
-  'Swatches': 'Campioni', 'Colour': 'Colore', 'Color': 'Colore', 'Navigator': 'Navigatore', 'Info': 'Info',
+  'Swatches': 'Campioni', 'Color': 'Colore', 'Navigator': 'Navigatore', 'Info': 'Info',
   'Histogram': 'Istogramma', 'Styles': 'Stili', 'Measurement Log': 'Registro misurazioni', 'Modifier Keys': 'Tasti modificatori',
   'Timeline': 'Timeline', 'Brushes': 'Pennelli', 'Brush Settings': 'Impostazioni pennello', 'Check Spelling': 'Controllo ortografia', 'Resolve Missing Fonts': 'Risolvi font mancanti', 'Ignore': 'Ignora', 'Ignore All': 'Ignora tutto', 'Change': 'Cambia', 'Change All': 'Cambia tutto', 'Replace All': 'Sostituisci tutto', 'Reveal in File Manager': 'Mostra nel file manager', 'Character': 'Carattere', 'Paragraph': 'Paragrafo',
   // Dialog buttons and tooltips
@@ -143,7 +143,7 @@ export const it: Record<string, string> = {
   'Actual pixels': 'Pixel effettivi', 'Add': 'Aggiungi', 'Airbrush': 'Aerografo', 'Aligned': 'Allineato', 'Angle': 'Angolo', 'Anti-alias': 'Anti-alias', 'Anti-aliasing': 'Anti-aliasing',
   'Apply Redactions': 'Applica oscuramenti', 'Auto Add/Delete': 'Aggiungi/elimina automatico', 'Auto Erase': 'Cancella automaticamente', 'Auto Hide': 'Nascondi automaticamente',
   'Auto-Select': 'Selezione automatica', 'Auto-Select Target': 'Destinazione selezione automatica', 'Background': 'Sfondo', 'Behind': 'Dietro', 'Block': 'Blocco', 'Bold': 'Grassetto',
-  'Bold Italic': 'Grassetto corsivo', 'Center': 'Centro', 'Centre': 'Centro', 'Classic': 'Classico', 'Clear All': 'Cancella tutto', 'Clipped': 'Ritagliato', 'Colors': 'Colori',
+  'Bold Italic': 'Grassetto corsivo', 'Center': 'Centro', 'Classic': 'Classico', 'Clear All': 'Cancella tutto', 'Clipped': 'Ritagliato', 'Colors': 'Colori',
   'Column': 'Colonna', 'Content-Aware': 'In base al contenuto', 'Contiguous': 'Contigui', 'Continuous': 'Continuo', 'Contrast': 'Contrasto', 'Corner radius': 'Raggio angolo',
   'Create Texture': 'Crea texture', 'Current & Below': 'Corrente e sottostanti', 'Current Layer': 'Livello corrente', 'Curve fit': 'Adattamento curva', 'Custom': 'Personale',
   'Custom shape': 'Forma personale', 'Darken Amount': 'Quantità scurimento', 'Dashed': 'Tratteggiato', 'Delete Crop Preset': 'Elimina predefinito ritaglio',
