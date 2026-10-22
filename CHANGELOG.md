@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.96.3 · 2026-10-22
+
+- Text fields: right-click in the task bar's prompt offers the system's Cut, Copy and Paste again; away from text fields the canvas menu returns.
+- Folders: with a folder chosen in Layers, painting and pixel edits go to the topmost visible layer inside it instead of warning.
+- The fal catalogue is curated to 76 models: the 51 from before and the strongest new ones (FLUX 3, FIBO 2.0, Kontext, Nano Banana 2.1, Seedream 5, Qwen Image Edit 2511, GPT Image 1.5, FLUX.1 Fill pro, Bria eraser and more).
+- Task bar while generating: a running timer, a labelled Cancel that says fal may still bill a started request, and Again for another variation as a new layer.
+- Improve Prompt rewrites for the task: fill, add, remove, edit, outpaint or upscale, chosen automatically, with Revert.
+- Generative quality: each model gets the area at its best size (Preferences > Generative > High-res), in its own aspect presets when it has no automatic shape, with the answer fitted back exactly; thin selections get more context; the result's colour is matched to the picture around it (Colour match); its edge is softened just outside the selection; one generation per document at a time; a missing fal key is caught before anything is sent.
+
 ## 1.96.2 · 2026-10-22
 
 - Generative: Preferences > Generative sets the model Generative Fill, Remove (Generate with no description) and Generative Expand start with, and which layers are sent: all visible layers (the default; hidden layers and folders are left out), the current layer only, or visible layers at and below it. The task bar has a model picker beside the prompt.
