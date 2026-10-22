@@ -14,7 +14,8 @@ import { cappedFill, cappedUpscale, comfyReadiness, resolveReferenceTokens, stop
 import { PromptImprover, areaView, referenceViews } from './prompt-improver';
 import { GenerationOptions } from './generation-options';
 import { FalOptions } from './fal-options';
-import { preferredModel } from '../../io/gen-prefs';
+import { genPrefs, preferredModel } from '../../io/gen-prefs';
+import { canvasInputs, prepareForModel } from '../../io/fal-size';
 import { editInstruction, falCatalogue, falIdOf, falMaskAsPicture, falMaskKey, falModelsOf, falRunImage, falValue } from '../../io/fal';
 import type { FalModel } from '../../io/api';
 
@@ -318,6 +319,8 @@ export class GenerativeDialog extends Dialog {
     const takesPrompt = cat.inputs.some((i) => i.key === promptKey);
     // An instruction-edit model removes on an empty request (editInstruction), so only a mask model needs the words.
     if (takesPrompt && mode !== 'upscale' && !prompt && cat.inputs.some((i) => i.key === promptKey && i.required) && cat.role !== 'expand' && !!falMaskKey(cat)) { setText(this.state, 'Describe the change first.'); this.prompt.focus(); return; }
+    // Pre-flight (1.96.3): nothing is uploaded until fal has a key.
+    if (this.status && !this.status.configured) { setText(this.state, 'fal has no key yet: paste yours in Preferences > Plugins > API keys, then Generate again.'); return; }
     const withPrompt = (): Record<string, unknown> => ({ ...(takesPrompt && prompt ? { [promptKey]: prompt } : {}), ...extra });
     this.close();
     if (mode === 'upscale') { await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable(async () => (await falRunImage(cat, extra, image)).blob))); return; }
@@ -329,7 +332,7 @@ export class GenerativeDialog extends Dialog {
         bmp.close();
         const inner = await c.convertToBlob({ type: 'image/png' });
         const keys = new Set(cat.inputs.map((i) => i.key));
-        const sent = { ...withPrompt(), ...(keys.has('expand_left') ? { expand_left: margins.left, expand_right: margins.right, expand_top: margins.top, expand_bottom: margins.bottom } : {}), ...(keys.has('image_size') ? { image_size: { width: w, height: h } } : {}) };
+        const sent = { ...withPrompt(), ...(keys.has('expand_left') ? { expand_left: margins.left, expand_right: margins.right, expand_top: margins.top, expand_bottom: margins.bottom } : {}), ...(keys.has('image_size') ? { image_size: { width: w, height: h } } : {}), ...canvasInputs(cat, w, h, margins) };
         return (await falRunImage(cat, sent, inner)).blob;
       });
       await e.task(() => e.generativeExpand(margins, prompt, fill));
@@ -337,7 +340,11 @@ export class GenerativeDialog extends Dialog {
     }
     const maskKey = falMaskKey(cat), asPicture = falMaskAsPicture(cat);
     const told = (): Record<string, unknown> => ({ ...withPrompt(), ...(takesPrompt ? { [promptKey]: editInstruction(cat, prompt) } : {}) });
-    const fill = stoppableFill(() => cappedFill(async (image: Blob, mask: Blob): Promise<Blob> => (await falRunImage(cat, maskKey ? withPrompt() : told(), image, maskKey || asPicture ? mask : null)).blob));
+    // Sized for the model and padded to its aspect preset when it has no automatic shape (1.96.3, fal-size.ts).
+    const fill = stoppableFill(() => cappedFill(async (image: Blob, mask: Blob): Promise<Blob> => {
+      const prep = await prepareForModel(cat, image, maskKey || asPicture ? mask : null, genPrefs().highres, extra);
+      return prep.restore((await falRunImage(cat, { ...prep.inputs, ...(maskKey ? withPrompt() : told()) }, prep.image, prep.mask)).blob);
+    }));
     await e.task(() => e.generativeFill(prompt, fill));
   }
 

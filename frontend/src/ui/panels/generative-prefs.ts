@@ -41,6 +41,8 @@ export class GenerativePrefsSection {
   private readonly remove = el<HTMLSelectElement>('<select class="cv-input" aria-label="Remove model"></select>');
   private readonly expand = el<HTMLSelectElement>('<select class="cv-input" aria-label="Generative Expand model"></select>');
   private readonly source = el<HTMLSelectElement>('<select class="cv-input" aria-label="Layers sent"></select>');
+  private readonly highres = el<HTMLSelectElement>('<select class="cv-input" aria-label="High-res"><option value="max">The model\'s largest size (best detail)</option><option value="4x">Four times the area</option><option value="2x">Twice the area</option><option value="target">About one megapixel (faster, cheaper)</option><option value="off">The area as it is</option></select>');
+  private readonly match = el<HTMLInputElement>('<input class="cv-input" type="range" min="0" max="100" step="5" aria-label="Colour match">');
   private readonly note = el('<p class="cv-note" role="status"></p>');
 
   constructor() {
@@ -51,13 +53,17 @@ export class GenerativePrefsSection {
       row('Remove (no description)', this.remove),
       row('Generative Expand', this.expand),
       row('Layers sent', this.source),
-      el('<p class="cv-note">The model each task starts with when you press Generate or Remove in the task bar; the Generative Fill dialog can still pick another for one run. Only the selection plus surrounding context is sent, never the whole picture, and the result comes back as a new layer masked to the selection. Instruction-edit models are told to change only the selected area and keep the rest.</p>'),
+      row('High-res', this.highres),
+      row('Colour match', this.match),
+      el('<p class="cv-note">The model each task starts with when you press Generate or Remove in the task bar; the Generative Fill dialog can still pick another for one run. Only the selection plus surrounding context is sent, never the whole picture, and the result comes back as a new layer masked to the selection. Instruction-edit models are told to change only the selected area and keep the rest. High-res sets how large the area is sent (larger is sharper, slower and costs more on models priced by megapixel); the answer is always fitted back to the area. Colour match evens the result\'s colour and contrast to the picture around the selection.</p>'),
       this.note);
     const save = (patch: Partial<GenPrefs>): void => { saveGenPrefs(patch); setText(this.note, 'Saved.'); };
     this.fill.addEventListener('change', () => save({ fill: this.fill.value }));
     this.remove.addEventListener('change', () => save({ remove: this.remove.value }));
     this.expand.addEventListener('change', () => save({ expand: this.expand.value }));
     this.source.addEventListener('change', () => save({ source: this.source.value as GenSource }));
+    this.highres.addEventListener('change', () => save({ highres: this.highres.value as GenPrefs['highres'] }));
+    this.match.addEventListener('change', () => save({ match: Number(this.match.value) }));
   }
 
   async refresh(): Promise<void> {
@@ -67,5 +73,7 @@ export class GenerativePrefsSection {
     fillChoices(this.remove, [{ value: '', label: 'Same as Generative Fill' }, ...remove.slice(1)], g.remove);
     fillChoices(this.expand, expand, g.expand);
     if (this.source.value !== g.source) this.source.value = g.source;
+    if (this.highres.value !== g.highres) this.highres.value = g.highres;
+    if (this.match.value !== String(g.match)) this.match.value = String(g.match);
   }
 }

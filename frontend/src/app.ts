@@ -379,8 +379,9 @@ export function startApp(): void {
 
   const engine = new Engine();
   engine.tiledDocuments = stored(TILE_ENGINE_KEY) !== 'off';
-  engine.generativeSource = genPrefs().source;   // Preferences > Generative > Layers sent (1.96.2)
-  window.addEventListener(GEN_CHANGED, () => { engine.generativeSource = genPrefs().source; });
+  const syncGenerative = (): void => { const g = genPrefs(); engine.generativeSource = g.source; engine.generativeMatch = g.match; };   // Preferences > Generative (1.96.2, 1.96.3)
+  syncGenerative();
+  window.addEventListener(GEN_CHANGED, syncGenerative);
   templateContext.size = () => (engine.current ? { width: engine.current.doc.width, height: engine.current.doc.height } : null);
   engine.on('notice', (n) => toast(n.text, n.kind));
   const errorLog = new ErrorLog((t) => toast(t, 'error'), () => engine.failures);

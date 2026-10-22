@@ -11341,7 +11341,39 @@ export class Engine {
     return true;
   }
 
+  /** Preferences > Generative > Colour match, 0 to 100 (1.96.3). */
+  generativeMatch = 100;
+  /** The documents a generation is running in: one at a time each (1.96.3). */
+  private readonly generating = new Set<Project>();
+
   private async fillArea(p: Project, sel: SelectionMask, prompt: string, generate: (image: Blob, mask: Blob) => Promise<Blob>, undoName: string, emptyName: string): Promise<boolean> {
+    if (this.generating.has(p)) { this.notice(`A generation is already running in ${p.name}: wait for it, or stop it in the task bar.`); return false; }
+    this.generating.add(p);
+    try { return await this.fillAreaOnce(p, sel, prompt, generate, undoName, emptyName); } finally { this.generating.delete(p); }
+  }
+
+  /** Per-channel gain and offset that bring the answer's ring around the selection to the picture's own ring (scale held to
+   *  0.5 to 2), laid on at `strength`; a colour cast or contrast shift of the model is evened out where it meets the picture. */
+  private matchColour(answer: ImageData, original: ImageData, ring: Uint8ClampedArray, strength: number): void {
+    if (strength <= 0) return;
+    const a = answer.data, o = original.data, n = [0, 0, 0], sa = [0, 0, 0], so = [0, 0, 0], qa = [0, 0, 0], qo = [0, 0, 0];
+    let count = 0;
+    for (let i = 0; i < ring.length; i++) {
+      if (ring[i] < 128 || o[i * 4 + 3] < 200 || a[i * 4 + 3] < 200) continue;
+      count++;
+      for (let c = 0; c < 3; c++) { const x = a[i * 4 + c], y = o[i * 4 + c]; sa[c] += x; so[c] += y; qa[c] += x * x; qo[c] += y * y; }
+    }
+    if (count < 64) return;
+    for (let c = 0; c < 3; c++) n[c] = count;
+    const gain = [0, 1, 2].map((c) => {
+      const ma = sa[c] / n[c], mo = so[c] / n[c], da = Math.sqrt(Math.max(0, qa[c] / n[c] - ma * ma)), dd = Math.sqrt(Math.max(0, qo[c] / n[c] - mo * mo));
+      const k = da > 1 ? Math.min(2, Math.max(0.5, dd / da)) : 1;
+      return { k, b: mo - k * ma };
+    });
+    for (let i = 0; i < a.length; i += 4) for (let c = 0; c < 3; c++) { const v = a[i + c]; a[i + c] = v + strength * (gain[c].k * v + gain[c].b - v); }
+  }
+
+  private async fillAreaOnce(p: Project, sel: SelectionMask, prompt: string, generate: (image: Blob, mask: Blob) => Promise<Blob>, undoName: string, emptyName: string): Promise<boolean> {
     const view = this.generativeView(p);
     if (!view) return false;
     // Context in proportion to the selection (1.96.2): padding from its diagonal, and at least 512 px a side where the
@@ -11353,7 +11385,14 @@ export class Engine {
       if (b - a < want) { const grow = want - (b - a); a = Math.max(0, a - Math.ceil(grow / 2)); b = Math.min(full, a + want); a = Math.max(0, b - want); }
       return [a, b - a];
     };
-    const [x0, w] = span(sel.x, sel.w, p.doc.width), [y0, h] = span(sel.y, sel.h, p.doc.height);
+    let [x0, w] = span(sel.x, sel.w, p.doc.width), [y0, h] = span(sel.y, sel.h, p.doc.height);
+    // A thin selection gets more context across it rather than a strip (1.96.3): at most 3 to 1, where the canvas allows.
+    const widen = (a: number, len: number, want: number, full: number): [number, number] => {
+      const to = Math.min(full, Math.ceil(want)), lo = Math.max(0, Math.min(full - to, a - Math.floor((to - len) / 2)));
+      return to > len ? [lo, to] : [a, len];
+    };
+    if (w > 3 * h) [y0, h] = widen(y0, h, w / 3, p.doc.height);
+    else if (h > 3 * w) [x0, w] = widen(x0, w, h / 3, p.doc.width);
     if (w < 1 || h < 1) { this.notice('The selection is outside the canvas.'); return false; }
     const context = new Raster(w, h);
     context.ctx.drawImage(view, -x0, -y0);
@@ -11383,14 +11422,35 @@ export class Engine {
     layer.ctx.imageSmoothingQuality = 'high';
     layer.ctx.drawImage(bitmap, 0, 0, w, h);
     bitmap.close();
+    // Colour match (1.96.3): the ring just outside the model's mask, where the answer should equal the picture.
+    if (this.generativeMatch > 0) {
+      const band = new Raster(w, h), r = Math.max(6, Math.round(feather / 3));
+      band.ctx.filter = `blur(${r}px)`;
+      band.ctx.drawImage(mask.canvas, 0, 0);
+      band.ctx.filter = 'none';
+      const outer = band.ctx.getImageData(0, 0, w, h).data, inner = mask.ctx.getImageData(0, 0, w, h).data, ring = new Uint8ClampedArray(w * h);
+      for (let i = 0; i < ring.length; i++) ring[i] = outer[i * 4] > 8 && inner[i * 4] < 128 ? 255 : 0;
+      const answer = layer.ctx.getImageData(0, 0, w, h);
+      this.matchColour(answer, pixels, ring, this.generativeMatch / 100);
+      layer.ctx.putImageData(answer, 0, 0);
+    }
+    // The layer's mask: the selection, softened outward by a few pixels so the seam blends, never smaller than it.
+    const soft = Math.max(2, Math.min(8, Math.round(feather / 8))), edge = new Raster(w, h);
+    edge.ctx.filter = `blur(${soft}px)`;
+    edge.ctx.drawImage(cover.canvas, 0, 0);
+    edge.ctx.drawImage(cover.canvas, 0, 0);
+    edge.ctx.filter = 'none';
+    edge.ctx.globalCompositeOperation = 'lighten';
+    edge.ctx.drawImage(cover.canvas, 0, 0);
+    edge.ctx.globalCompositeOperation = 'source-over';
     layer.touch();
-    cover.touch();
+    edge.touch();
     const name = `${undoName}: ${prompt.trim() || emptyName}`;
     // Never into a hidden folder (1.96.2): with the current layer hidden or inside one, the result goes above the topmost
     // layer that shows, so it is seen and the hidden ones stay hidden.
     const a = p.activeLayer;
     if (a && !this.shownInDoc(p, a)) this.focus(p, [...p.doc.layers].reverse().find((x) => !x.isGroup && this.shownInDoc(p, x))?.id ?? null);
-    this.insertRasterLayer(layer, name.length > 60 ? `${name.slice(0, 57)}...` : name, x0, y0, { mask: { raster: cover, enabled: true, linked: true, placement: null } }, undoName);
+    this.insertRasterLayer(layer, name.length > 60 ? `${name.slice(0, 57)}...` : name, x0, y0, { mask: { raster: edge, enabled: true, linked: true, placement: null } }, undoName);
     return true;
   }
 
