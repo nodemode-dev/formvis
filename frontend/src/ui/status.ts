@@ -82,16 +82,10 @@ export class StatusBar {
     this.steps = document.createElement('span');
     this.steps.className = 'cv-st-steps';
     this.steps.appendChild(this.stepsText);
-    this.stop = document.createElement('button');
-    this.stop.type = 'button';
-    this.stop.className = 'cv-st-stop';
-    this.stop.hidden = true;
-    this.stop.appendChild(document.createTextNode(t('Cancel')));
-    this.stop.addEventListener('click', () => { this.engine.cancelJob(); });
-    this.busy.append(this.bar, this.steps, this.stop);
+    this.busy.append(this.bar, this.steps);
     this.jobs = new JobsList(engine, root);
     this.busy.title = t('Show the running jobs, each with its own Stop');
-    this.busy.addEventListener('click', (e) => { if (!(e.target instanceof Element && e.target.closest('.cv-st-stop'))) this.jobs.toggle(); });
+    this.busy.addEventListener('click', () => this.jobs.toggle());
     engine.on('progress', () => this.syncProgress());
     engine.on('notice', (n) => { if (n.kind === 'error') this.flashError(n.text); });
     this.engineState = q(root, '.cv-st-engine');
@@ -169,7 +163,6 @@ export class StatusBar {
   private readonly bar: HTMLElement;
   private readonly steps: HTMLElement;
   private readonly stepsText = document.createTextNode('');
-  private readonly stop: HTMLButtonElement;
   private errText = '';
   private errTimer = 0;
   private agentText = '';
@@ -194,10 +187,8 @@ export class StatusBar {
     const pc = inner ? `${Math.round((p.done / p.total) * 100)}%` : '';
     const label = [part, pc].filter(Boolean).join(' · ');
     if (this.stepsText.data !== label) this.stepsText.data = label;
-    const jobs = this.engine.jobs, live = jobs.some((j) => !j.cancelled);
-    if (this.stop.hidden === live) this.stop.hidden = !live;
-    const names = jobs.map((j) => (j.cancelled ? `${j.name} (stopping)` : j.name)).join(', ');
-    if (this.stop.title !== names) this.stop.title = names ? `${t('Cancel')}: ${names}` : '';
+    const names = this.engine.jobs.map((j) => (j.cancelled ? `${j.name} (stopping)` : j.name)).join(', ');
+    setTitle(this.busy, names ? `${names}: ${t('Show the running jobs, each with its own Stop')}` : t('Show the running jobs, each with its own Stop'));
   }
 
   /** An error sits in the hint slot in the danger colour for six seconds, then the tool's hint comes back; nothing blinks. */
