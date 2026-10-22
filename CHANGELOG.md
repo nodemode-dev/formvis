@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.96.2 · 2026-10-22
+
+- Generative: Preferences > Generative sets the model Generative Fill, Remove (Generate with no description) and Generative Expand start with, and which layers are sent: all visible layers (the default; hidden layers and folders are left out), the current layer only, or visible layers at and below it. The task bar has a model picker beside the prompt.
+- Defaults: FLUX 3 edit for Generative Fill and Bria's eraser for removal. Every fal image model is now in the catalogue (545, from 51), FIBO 2.0 edit among them.
+- Instruction-edit models are told exactly what to do: edit only the selected area (the mask goes with the picture), keep everything else, and match the light and perspective, with your request repeated; an empty request removes what is selected. More context is sent around the selection (at least 512 px a side), and the result is never placed in a hidden folder.
+- macOS: Cmd+V, Cmd+C, Cmd+X, Cmd+A and Cmd+Z work in text fields such as the fal key field.
+- Clicking the Working indicator opens the jobs list and no longer stops the job; each job has its own Stop there.
+- A model's required settings are filled in and sent, instead of the run being refused.
+
 ## 1.96.1 · 2026-10-21
 
 - macOS app: the splash card's rounded corners are cut away; the window behind the card is clipped to the same radius instead of showing square corners.
