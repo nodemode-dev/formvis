@@ -15,6 +15,7 @@ mod integration;
 mod native;
 mod packaged;
 mod reveal;
+mod text_edit;
 mod traffic_lights;
 mod window_state;
 
@@ -687,6 +688,7 @@ fn main() {
             window_state::ui_zoom,
             traffic_lights::set_window_title,
             reveal::app_ready,
+            text_edit::text_edit,
             native::native_start,
             native::native_stop,
             native::native_doc,

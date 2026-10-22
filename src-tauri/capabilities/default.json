@@ -44,6 +44,7 @@
     "allow-system-fonts-english",
     "allow-ui-zoom",
     "allow-set-window-title",
-    "allow-app-ready"
+    "allow-app-ready",
+    "allow-text-edit"
   ]
 }

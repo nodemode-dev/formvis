@@ -33,6 +33,18 @@ export function accelerator(combo: string | undefined): string | null {
 
 type Api = typeof import('@tauri-apps/api/menu');
 
+/** The Edit commands whose keys a focused text field needs for itself (1.96.2): while one has focus the menu sends the
+ *  standard edit action to it through the shell's text_edit, so Cmd+V pastes into the field instead of as a layer. */
+const TEXT_EDITS = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'select-all']);
+const NOT_TEXT = new Set(['button', 'checkbox', 'radio', 'range', 'color', 'file', 'submit', 'reset', 'image']);
+
+export function textFieldFocused(): boolean {
+  const a = document.activeElement;
+  if (a instanceof HTMLTextAreaElement) return !a.readOnly && !a.disabled;
+  if (a instanceof HTMLInputElement) return !NOT_TEXT.has(a.type) && !a.readOnly && !a.disabled;
+  return a instanceof HTMLElement && a.isContentEditable;
+}
+
 export class NativeMenus {
   private items: Array<{ id: string; item: { setEnabled(on: boolean): Promise<void>; setChecked?(on: boolean): Promise<void> } }> = [];
   private building = false;
@@ -40,7 +52,7 @@ export class NativeMenus {
   private stateTimer = 0;
 
   constructor(private readonly commands: Commands, private readonly menus: () => MenuDef[]) {
-    for (const ev of ['pointerup', 'keyup'] as const) window.addEventListener(ev, () => { if (this.items.length) this.refresh(); }, { passive: true });
+    for (const ev of ['pointerup', 'keyup', 'focusin', 'focusout'] as const) window.addEventListener(ev, () => { if (this.items.length) this.refresh(); }, { passive: true });
   }
 
   /** Builds (or rebuilds) the menu bar; later calls while one is building are folded into one more build. */
@@ -56,7 +68,11 @@ export class NativeMenus {
         const cmd = this.commands.get(spec);
         if (!cmd) return null;
         const text = t(this.commands.label(cmd)), acc = accelerator(cmd.keys?.[0]);
-        const opts = { text, enabled: this.commands.enabled(cmd), action: () => { this.commands.run(spec); this.refresh(); } };
+        const opts = { text, enabled: this.enabled(spec), action: () => {
+          if (TEXT_EDITS.has(spec) && textFieldFocused()) void import('@tauri-apps/api/core').then((m) => m.invoke('text_edit', { action: spec })).catch(() => undefined);
+          else this.commands.run(spec);
+          this.refresh();
+        } };
         let item;
         if (cmd.checked) {
           const copts = { ...opts, checked: !!cmd.checked() };
@@ -90,6 +106,13 @@ export class NativeMenus {
     }
   }
 
+  /** A command's item is enabled when the command is, and an Edit item also whenever a text field has focus. */
+  private enabled(id: string): boolean {
+    if (TEXT_EDITS.has(id) && textFieldFocused()) return true;
+    const cmd = this.commands.get(id);
+    return !!cmd && this.commands.enabled(cmd);
+  }
+
   /** The enabled and tick states, refreshed a moment after the app changes (grouped, so a burst of changes is one pass). */
   refresh(): void {
     if (this.stateTimer) return;
@@ -98,7 +121,7 @@ export class NativeMenus {
       for (const { id, item } of this.items) {
         const cmd = this.commands.get(id);
         if (!cmd) continue;
-        void item.setEnabled(this.commands.enabled(cmd)).catch(() => undefined);
+        void item.setEnabled(this.enabled(id)).catch(() => undefined);
         if (cmd.checked && item.setChecked) void item.setChecked(!!cmd.checked()).catch(() => undefined);
       }
     }, 150);

@@ -25,6 +25,7 @@ const APP_COMMANDS: &[&str] = &[
     "ui_zoom",
     "set_window_title",
     "app_ready",
+    "text_edit",
 ];
 
 fn main() {
