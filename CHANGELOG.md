@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.96.4 · 2026-10-22
+
+- Generative Expand from a selection: enlarge the canvas, select the new border around the picture, and Expand fills it with no margins to type; any other selection is refused with a clear rule.
+- Every fal result layer carries its seed in its name; open Generative Fill on that layer and a model that takes a seed starts with it, for the same result again. Again in the task bar still makes a fresh variation.
+- Reference pictures reach fal models that take a picture list, named in the instruction; a model that takes none, or fewer than you added, is caught before anything is sent.
+- The new task bar, Preferences > Generative and Improve Prompt words are translated into all 26 languages.
+
 ## 1.96.3 · 2026-10-22
 
 - Text fields: right-click in the task bar's prompt offers the system's Cut, Copy and Paste again; away from text fields the canvas menu returns.
