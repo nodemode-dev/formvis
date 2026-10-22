@@ -7,15 +7,16 @@ export interface GenPrefs { fill: string; remove: string; expand: string; source
 
 const KEY = 'formvis.generative';
 export const GEN_CHANGED = 'formvis:generative';
-export const DEFAULT_GEN: GenPrefs = { fill: '', remove: '', expand: '', source: 'visible' };
+/** The owner's defaults (1.96.2): FLUX 3 edit for Generative Fill, Bria's eraser for a fill with no words. */
+export const DEFAULT_GEN: GenPrefs = { fill: 'falcat:blackforestlabs/flux-3/edit-image', remove: 'falcat:fal-ai/bria/eraser', expand: '', source: 'visible' };
 const SOURCES: readonly GenSource[] = ['visible', 'current', 'below'];
 
-const text = (v: unknown): string => (typeof v === 'string' ? v.slice(0, 300) : '');
+const text = (v: unknown, fallback: string): string => (typeof v === 'string' ? v.slice(0, 300) : fallback);
 
 export function genPrefs(): GenPrefs {
   try {
     const r = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Record<keyof GenPrefs, unknown>>;
-    return { fill: text(r.fill), remove: text(r.remove), expand: text(r.expand), source: SOURCES.includes(r.source as GenSource) ? (r.source as GenSource) : 'visible' };
+    return { fill: text(r.fill, DEFAULT_GEN.fill), remove: text(r.remove, DEFAULT_GEN.remove), expand: text(r.expand, DEFAULT_GEN.expand), source: SOURCES.includes(r.source as GenSource) ? (r.source as GenSource) : 'visible' };
   } catch { return { ...DEFAULT_GEN }; }
 }
 

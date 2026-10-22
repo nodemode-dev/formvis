@@ -31,7 +31,17 @@ export class FalOptions {
     const inputs = falOptionInputs(model, falSupplied(model, extra));
     this.fields.replaceChildren(...inputs.map((i) => this.field(i)));
     setHidden(this.more, inputs.length === 0);
-    this.more.open = false;
+    // A required input is sent as shown (1.96.2: the full catalogue has models such as a document upscaler whose task
+    // must be named): its default or first choice set at once, and More options opened so the person sees it.
+    const needed = inputs.filter((i) => i.required);
+    for (const i of needed) {
+      const v = i.default ?? i.enum?.[0];
+      if (v === undefined || v === null) continue;
+      this.set.set(i.key, v);
+      const c = this.fields.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-key="${i.key}"]`);
+      if (c && !(c instanceof HTMLInputElement && c.type === 'checkbox')) c.value = String(v);
+    }
+    this.more.open = needed.length > 0;
   }
 
   /** What the person changed, by schema key; a key left alone is not sent, so the model's own default stands. */

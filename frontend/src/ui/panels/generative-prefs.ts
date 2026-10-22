@@ -10,7 +10,7 @@ export interface ModelChoice { value: string; label: string }
 export async function modelChoices(task: 'fill' | 'remove' | 'expand'): Promise<ModelChoice[]> {
   let all: Awaited<ReturnType<typeof falCatalogue>> = [];
   try { all = await falCatalogue(); } catch { all = []; }
-  const cat = task === 'expand' ? falModelsOf(all, 'expand') : falModelsOf(all, 'edit', 'inpaint');
+  const cat = task === 'expand' ? falModelsOf(all, 'expand') : task === 'remove' ? falModelsOf(all, 'remove', 'inpaint', 'edit') : falModelsOf(all, 'edit', 'inpaint', 'remove');
   return [
     { value: '', label: 'The model last used in the dialog' },
     { value: 'fal', label: 'FLUX.1 Fill (fal)' },
@@ -62,9 +62,9 @@ export class GenerativePrefsSection {
 
   async refresh(): Promise<void> {
     const g = genPrefs();
-    const [fill, expand] = await Promise.all([modelChoices('fill'), modelChoices('expand')]);
+    const [fill, remove, expand] = await Promise.all([modelChoices('fill'), modelChoices('remove'), modelChoices('expand')]);
     fillChoices(this.fill, fill, g.fill);
-    fillChoices(this.remove, [{ value: '', label: 'Same as Generative Fill' }, ...fill.slice(1)], g.remove);
+    fillChoices(this.remove, [{ value: '', label: 'Same as Generative Fill' }, ...remove.slice(1)], g.remove);
     fillChoices(this.expand, expand, g.expand);
     if (this.source.value !== g.source) this.source.value = g.source;
   }

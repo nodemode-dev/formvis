@@ -144,7 +144,7 @@ export class GenerativeDialog extends Dialog {
     // Upscale: Real-ESRGAN on fal or on this computer (1.53.1); the fill models otherwise.
     for (const b of this.modelRow.querySelectorAll('button')) setHidden(b as HTMLElement, mode === 'upscale');
     this.status = await api.generativeStatus();   // first, so the default knows whether fal has a key (1.58.5)
-    this.catalogue = falModelsOf(await falCatalogue(), ...(mode === 'upscale' ? ['upscale' as const] : mode === 'expand' ? ['expand' as const] : ['edit' as const, 'inpaint' as const]));
+    this.catalogue = falModelsOf(await falCatalogue(), ...(mode === 'upscale' ? ['upscale' as const] : mode === 'expand' ? ['expand' as const] : ['edit' as const, 'inpaint' as const, 'remove' as const]));
     this.falGroup.replaceChildren(...this.catalogue.map((m) => Object.assign(document.createElement('option'), { value: falValue(m), textContent: m.label })));
     if (mode === 'upscale') { this.upscaleModels(await upscalerReady(), await upscaleFiles()); void this.loadComfyUpscalers(); }
     else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.problems = await comfyReadiness(); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
@@ -312,10 +312,12 @@ export class GenerativeDialog extends Dialog {
   private async generateWith(cat: FalModel): Promise<void> {
     const prompt = this.prompt.value.trim(), mode = this.mode, scale = this.scale, e = this.engine, scope = this.scope.value, extra = this.fal.values();
     const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
-    const takesPrompt = cat.inputs.some((i) => i.key === 'prompt');
+    // The words go to the model's own key (1.96.2): prompt for most, instruction or text_prompt for some (FIBO edit).
+    const promptKey = (['prompt', 'instruction', 'text_prompt'] as const).find((k) => cat.inputs.some((i) => i.key === k)) ?? 'prompt';
+    const takesPrompt = cat.inputs.some((i) => i.key === promptKey);
     // An instruction-edit model removes on an empty request (editInstruction), so only a mask model needs the words.
-    if (takesPrompt && mode !== 'upscale' && !prompt && cat.inputs.some((i) => i.key === 'prompt' && i.required) && cat.role !== 'expand' && !!falMaskKey(cat)) { setText(this.state, 'Describe the change first.'); this.prompt.focus(); return; }
-    const withPrompt = (): Record<string, unknown> => ({ ...(takesPrompt && prompt ? { prompt } : {}), ...extra });
+    if (takesPrompt && mode !== 'upscale' && !prompt && cat.inputs.some((i) => i.key === promptKey && i.required) && cat.role !== 'expand' && !!falMaskKey(cat)) { setText(this.state, 'Describe the change first.'); this.prompt.focus(); return; }
+    const withPrompt = (): Record<string, unknown> => ({ ...(takesPrompt && prompt ? { [promptKey]: prompt } : {}), ...extra });
     this.close();
     if (mode === 'upscale') { await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable(async () => (await falRunImage(cat, extra, image)).blob))); return; }
     if (mode === 'expand') {
@@ -333,7 +335,7 @@ export class GenerativeDialog extends Dialog {
       return;
     }
     const maskKey = falMaskKey(cat), asPicture = falMaskAsPicture(cat);
-    const told = (): Record<string, unknown> => ({ ...withPrompt(), ...(takesPrompt ? { prompt: editInstruction(cat, prompt) } : {}) });
+    const told = (): Record<string, unknown> => ({ ...withPrompt(), ...(takesPrompt ? { [promptKey]: editInstruction(cat, prompt) } : {}) });
     const fill = stoppableFill(() => cappedFill(async (image: Blob, mask: Blob): Promise<Blob> => (await falRunImage(cat, maskKey ? withPrompt() : told(), image, maskKey || asPicture ? mask : null)).blob));
     await e.task(() => e.generativeFill(prompt, fill));
   }

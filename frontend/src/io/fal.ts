@@ -47,7 +47,7 @@ export function editInstruction(m: FalModel, prompt: string): string {
 
 /** The keys a dialog never offers as options: the prompt, the pictures, the shape it supplies, and run plumbing. */
 export function falSupplied(m: FalModel, extra: readonly string[] = []): Set<string> {
-  const s = new Set<string>(['prompt', 'text_prompt', 'sync_mode', 'num_images', 'output_format', 'image_size', ...extra]);
+  const s = new Set<string>(['prompt', 'text_prompt', 'instruction', 'sync_mode', 'num_images', 'output_format', 'image_size', ...extra]);
   for (const i of m.inputs) if (isUrlKey(i.key)) s.add(i.key);
   return s;
 }
