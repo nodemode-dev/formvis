@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The releases link opens formcompiler's release page · _v1.96.5 (app.ts)
+
+- Releases are built and drafted by formcompiler (`nodemode-ai/formcompiler`) as `formvis-vX.Y.Z`, so the portable copy's "releases page" link opens formcompiler's release page. The About dialog's "Source and releases" link still opens the source repository. The engine side of this release (desktop.yml moved into `setup/package_desktop.py`, the updater feed) is in backend/HASHOUT_LOG.md.
+- Verified: the link text only; `./formvis counts --check` reports the README accurate. Not run: the frontend tests.
+
+```text
+      window.open('https://github.com/nodemode-ai/formvis/releases', '_blank', 'noopener');
+```
+
 ## Expand from a drawn border, the seed on each result, reference pictures with pre-flight, translations · _v1.96.4 (engine/index.ts, ui/panels/generative-dialog.ts, ui/panels/fal-options.ts, io/fal.ts, io/fal-size.ts, ui/i18n/extra/*.ts)
 
 - engine `borderMargins()`: the selection's margins when it is a frame around an untouched rectangle (the unselected box, with at most half a percent of pixels disagreeing), else null. `generativeExpand` with no margins and such a selection fills a full-canvas frame mask built from those margins, without resizing the canvas, so a crop of the whole canvas reaches the generator; with neither, the notice "Expand from a selection needs a frame around the picture: ...". Removed: `if (!(left + top + right + bottom)) { this.notice('Set how far to expand the canvas.'); return false; }`. The catalogue expand generator uses the border's margins (`edge`) when none were typed.

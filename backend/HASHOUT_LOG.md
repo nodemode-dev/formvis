@@ -2,6 +2,154 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Releases move to formcompiler, desktop.yml removed · _v1.96.5 (setup/package_desktop.py, .github/workflows/desktop.yml, .github/workflows/ci.yml, src-tauri/tauri.conf.json, frontend/src/app.ts, packaging/)
+
+- The owner: formvis must not build releases in its own repository. The separate repo nodemode-ai/formcompiler builds every form* app from a `compile_vX.Y.Z` branch (8-hourly watch or a manual run) and drafts the release `formvis-vX.Y.Z` on its own release page, holding the Apple and Windows signing identities and the updater key. So `.github/workflows/desktop.yml` was deleted after its inline logic became app-owned code in `setup/package_desktop.py`, which formcompiler calls; the build matrix is the `MATRIX` constant there and the call order is in the module docstring.
+- Where each step went: updater and signing config python -> `config`; macOS update archive rename -> `mac-archive`; notarize, staple, validate and spctl -> `notarize`; portable Windows zip and Authenticode signing -> `portable-windows` (powershell for the signing only); Microsoft Store package -> `msix`; Linux tar.gz -> `linux-tar`; portable macOS zip -> `portable-macos`; the whole linux-riscv64 job packing -> `riscv64` (expects `frontend/dist` built); latest.json -> `feed --tag --base-url --dir` (version from the tag with a `formvis-` prefix and `v` removed, notes from `release_notes.section("v" + version)`, download base URL passed in); SHA256SUMS -> `sums`; the AppImage zsync string -> `zsync-info`. Plain tool installs, `actions/*` uses, the Windows certificate import, the unset of empty secrets, `./formvis install`, `./formvis desktop build`, `release_notes.py` and `mcpb.py` stay as direct calls listed in the docstring.
+- Other changes: the updater endpoint in `src-tauri/tauri.conf.json` is now `https://github.com/nodemode-ai/formcompiler/releases/download/formvis-updates/latest.json` (formcompiler must keep the newest latest.json on a release tagged `formvis-updates`); the portable-copy releases page in `app.ts` and the download URLs in the flatpak, FreeBSD and Homebrew manifests point at formcompiler as `formvis-v<version>`; `ci.yml` also runs on pushes to `compile_v*`. Left alone on purpose and to be done at each release by the owner: the flatpak and Homebrew sha256 and version lines, the flatpak x-checker URL (api.github.com/repos/nodemode-ai/formvis/releases/latest) and the Homebrew `strategy :github_latest` livecheck, which no longer see the releases; the "Source and releases" link in the About dialog stays on the source repository.
+- Verified: `python3 -m py_compile setup/package_desktop.py`; `config` with and without environment, `feed`, `sums`, `mac-archive`, `zsync-info` and the `msix` skips run on Linux against fake files in a scratch folder; `sha256sum -c` accepted the sums. Not run here: notarize, portable-windows, msix packing, linux-tar, portable-macos (need the platform tools) and riscv64 (no `frontend/dist`).
+- Removed, quoted in full: the inline step bodies of `desktop.yml` (the env block of the build job followed by its run scripts).
+
+```text
+env:
+  LDAI_UPDATE_INFORMATION: matrix.appimage && format('gh-releases-zsync|{0}|{1}|latest|formvis_*_{2}.AppImage.zsync', github.repository_owner, github.event.repository.name, matrix.appimage) || ''
+  NOTARIZE: secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && 'true' || 'false'
+  TAURI_TARGET_ARGS: matrix.target && format('--target {0}', matrix.target) || ''
+  RELEASE_DIR: matrix.target && format('src-tauri/target/{0}/release', matrix.target) || 'src-tauri/target/release'
+  FORMVIS_FREEZE_ML: inputs.bundle_ml && '1' || '0'
+
+Linux webview packages:
+  sudo apt-get update
+  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev
+
+Import the Windows signing certificate (pwsh, when WINDOWS_CERTIFICATE is set):
+  $pfx = Join-Path $env:RUNNER_TEMP 'formvis-signing.pfx'
+  [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+  $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+  $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+  Remove-Item $pfx
+  "WINDOWS_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+Install both sides and the desktop toolchain:
+  ./formvis install --lite
+  ./formvis install-desktop
+
+Build the desktop bundle (bash):
+  # Unset empty secrets: an empty APPLE_CERTIFICATE would make Tauri try to import a blank certificate.
+  [ -n "$APPLE_CERTIFICATE" ] || unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY
+  [ -n "$APPLE_ID" ] || unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+  [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] || unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  # One merged config: updater artifacts only with the updater key (its public half from the TAURI_UPDATER_PUBKEY variable), the Windows thumbprint only when imported.
+  cfg="$(WINDOWS_CERT_THUMBPRINT="${WINDOWS_CERT_THUMBPRINT:-}" python - <<'PY'
+  import json, os, sys
+  conf, bundle = {}, {}
+  if os.environ.get('TAURI_SIGNING_PRIVATE_KEY'):
+      bundle['createUpdaterArtifacts'] = True
+      pub = os.environ.get('TAURI_UPDATER_PUBKEY', '')
+      if pub:
+          conf['plugins'] = {'updater': {'pubkey': pub}}
+      elif not json.load(open('src-tauri/tauri.conf.json', encoding='utf-8'))['plugins']['updater']['pubkey']:
+          print('warning: the updater key is set but no public key is configured, so installed apps cannot verify updates', file=sys.stderr)
+  if os.environ.get('WINDOWS_CERT_THUMBPRINT'):
+      bundle['windows'] = {'certificateThumbprint': os.environ['WINDOWS_CERT_THUMBPRINT']}
+  if bundle:
+      conf['bundle'] = bundle
+  print(json.dumps(conf) if conf else '')
+  PY
+  )"
+  if [ -n "$cfg" ]; then ./formvis desktop build $TAURI_TARGET_ARGS --config "$cfg"; else ./formvis desktop build $TAURI_TARGET_ARGS; fi
+
+Name the macOS update archive by architecture (bash):
+  cd "$RELEASE_DIR/bundle/macos"
+  for f in formvis.app.tar.gz formvis.app.tar.gz.sig; do [ -f "$f" ] && mv "$f" "${f/formvis/formvis_ARCH}"; done
+  true
+
+Notarize and staple the DMG (bash, macOS, when NOTARIZE is true):
+  for dmg in "$RELEASE_DIR"/bundle/dmg/*.dmg; do
+    xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+    xcrun stapler staple "$dmg"
+    xcrun stapler validate "$dmg"
+  done
+  spctl -a -t exec -vv "$RELEASE_DIR/bundle/macos/formvis.app"
+
+Portable Windows zip (pwsh):
+  $out = "portable/formvis"
+  New-Item -ItemType Directory -Force $out | Out-Null
+  Copy-Item "$env:RELEASE_DIR/formvis.exe" $out
+  Copy-Item "$env:RELEASE_DIR/formvis-engine.exe" $out
+  if ($env:WINDOWS_CERT_THUMBPRINT) {
+    $cert = Get-Item "Cert:\CurrentUser\My\$env:WINDOWS_CERT_THUMBPRINT"
+    Get-ChildItem "$out/*.exe" | ForEach-Object { Set-AuthenticodeSignature -FilePath $_.FullName -Certificate $cert -HashAlgorithm SHA256 -TimestampServer http://timestamp.digicert.com | Out-Null }
+  }
+  Set-Content -Path "$out/portable.txt" -Value "formvis keeps its data in the FormvisData folder beside this file."
+  Compress-Archive -Path "portable/formvis" -DestinationPath "portable/formvis-portable-windows-ARCH.zip"
+
+Microsoft Store package (pwsh, Windows, arch not x86, MSIX_IDENTITY_NAME and MSIX_PUBLISHER set):
+  $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+  $version = ($conf.version -replace '[-+].*$', '') + '.0'
+  $arch = if ('ARCH' -eq 'arm64') { 'arm64' } else { 'x64' }
+  $root = 'msix/layout'
+  New-Item -ItemType Directory -Force "$root/Assets" | Out-Null
+  Copy-Item src-tauri/target/release/formvis.exe, src-tauri/target/release/formvis-engine.exe $root
+  $py = 'backend\venv\Scripts\python.exe'
+  & $py -c "from PIL import Image; im = Image.open('src-tauri/icons/icon.png').convert('RGBA'); [im.resize((s, s), Image.LANCZOS).save('$root/Assets/' + n + '.png') for n, s in (('Square44x44Logo', 44), ('Square150x150Logo', 150), ('StoreLogo', 50))]"
+  $manifest = Get-Content packaging/msix/AppxManifest.xml -Raw
+  $manifest = $manifest.Replace('@MSIX_IDENTITY_NAME@', $env:MSIX_IDENTITY_NAME).Replace('@MSIX_PUBLISHER@', $env:MSIX_PUBLISHER).Replace('@MSIX_PUBLISHER_DISPLAY_NAME@', $env:MSIX_PUBLISHER_DISPLAY_NAME).Replace('@MSIX_VERSION@', $version).Replace('@MSIX_ARCH@', $arch)
+  Set-Content -Path "$root/AppxManifest.xml" -Value $manifest -Encoding utf8
+  $tool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" | Sort-Object FullName | Select-Object -Last 1
+  & $tool.FullName pack /d $root /p "msix/formvis_${version}_$arch.msix" /o
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Linux tar.gz:
+  tar -czf formvis-linux-ARCH.tar.gz -C src-tauri/target/release/bundle/deb/formvis_*_DEBARCH/data usr
+
+Portable macOS zip:
+  ditto -c -k --keepParent "$RELEASE_DIR/bundle/macos/formvis.app" formvis-portable-macos-ARCH.zip
+
+linux-riscv64 job (ubuntu-22.04, continue-on-error; node 22):
+  npm ci --prefix frontend
+  npm run build --prefix frontend
+  root=formvis-linux-riscv64/usr/lib/formvis
+  mkdir -p "$root/backend" "$root/frontend" formvis-linux-riscv64/usr/bin formvis-linux-riscv64/usr/share/applications
+  cp -r backend/app backend/formvis_engine.py backend/requirements.txt "$root/backend/"
+  cp -r frontend/dist "$root/frontend/dist"
+  cp -r backend/app/profiles "$root/backend/profiles"
+  cp packaging/linux/ai.nodemode.formvis.desktop formvis-linux-riscv64/usr/share/applications/
+  printf '%s\n' '#!/bin/sh' 'here="$(cd "$(dirname "$0")/../lib/formvis" && pwd)"' 'FORMVIS_DIST="$here/frontend/dist"; export FORMVIS_DIST' 'cd "$here/backend" && exec python3 -m uvicorn app.main:app --host 127.0.0.1 --port "${FORMVIS_PORT:-8190}"' > formvis-linux-riscv64/usr/bin/formvis
+  chmod +x formvis-linux-riscv64/usr/bin/formvis
+  tar -czf formvis-linux-riscv64.tar.gz -C formvis-linux-riscv64 usr
+  cp formvis-linux-riscv64.tar.gz formvis-web.tar.gz
+
+release job (needs build and linux-riscv64; RELEASE_TAG = inputs.tag or the pushed tag; bundles/ from download-artifact with merge-multiple):
+  PYTHONPATH=setup python3 - <<'PY'
+  import datetime, glob, json, os
+  tag = os.environ['RELEASE_TAG']
+  base = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{tag}/"
+  targets = {'darwin-aarch64': '*_aarch64.app.tar.gz', 'darwin-x86_64': '*_x86_64.app.tar.gz', 'linux-x86_64': '*amd64.AppImage',
+             'linux-aarch64': '*aarch64.AppImage', 'windows-x86_64': '*x64-setup.exe', 'windows-aarch64': '*arm64-setup.exe', 'windows-i686': '*x86-setup.exe'}
+  platforms = {}
+  for key, pattern in targets.items():
+      for f in sorted(glob.glob('bundles/**/' + pattern, recursive=True)):
+          if os.path.exists(f + '.sig'):
+              platforms[key] = {'signature': open(f + '.sig').read().strip(), 'url': base + os.path.basename(f)}
+              break
+  if platforms:
+      import release_notes
+      feed = {'version': tag.lstrip('v'), 'notes': release_notes.section(tag), 'platforms': platforms,
+              'pub_date': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}
+      json.dump(feed, open('bundles/latest.json', 'w'), indent=2)
+      print('latest.json written for', ', '.join(platforms))
+  else:
+      print('no updater signatures (TAURI_SIGNING_PRIVATE_KEY unset); latest.json not written')
+  PY
+  python3 setup/release_notes.py "$RELEASE_TAG" --out release-notes.md
+  python3 setup/mcpb.py --out bundles
+  cd bundles && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+  softprops/action-gh-release@v2: draft true, tag_name RELEASE_TAG, target_commitish github.sha, body_path release-notes.md, files bundles/**/*
+
+Triggers and matrix: push of tags v*.*.* and workflow_dispatch (draft_release, tag, bundle_ml); matrix as in MATRIX; macos-x64, macos-universal, linux-arm64, windows-x86 and windows-arm64 experimental (continue-on-error).
+```
+
 ## The catalogue at 76, use-case prompt rewriting · _v1.96.3 (app/data/fal_models.json, app/routers/llm.py, app/services/llm.py, tests/test_fal_run.py, tests/test_mcp_fal_tools.py)
 
 - The owner: 545 models was far too many, 76 at most. fal_models.json is regenerated by the unchanged generator from the sidecar's tools/fal_full/picks_76.json: the 51 earlier entries and 25 new ones (FLUX 3 and klein edit and generate, FIBO 2.0 edit and generate, FIBO Edit 1.5 edit and expand, Kontext pro and max, Nano Banana 2.1 edit and generate, Seedream 5 lite edit, Qwen Image Edit 2511, GPT Image 1.5 edit, FLUX.1 Fill pro, Ideogram v3 edit, Kontext inpaint, Bria eraser, FLUX erase, an outpaint app, Crystal and SeedVR seamless upscalers, SAM 3.1, BiRefNet v2). Tests count 76.

@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.96.5 · 2026-10-22
+
+### Changed
+
+- Releases are now built and published on formcompiler's release page; the app checks formcompiler for updates.
+
 ## 1.96.4 · 2026-10-22
 
 - Generative Expand from a selection: enlarge the canvas, select the new border around the picture, and Expand fills it with no margins to type; any other selection is refused with a clear rule.
