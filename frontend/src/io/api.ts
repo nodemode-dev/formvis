@@ -157,7 +157,7 @@ export function socketTo(path: string): WebSocket {
   return new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api${path}`);
 }
 
-export type FalRole = 'generate' | 'edit' | 'inpaint' | 'expand' | 'upscale' | 'relight' | 'cutout' | 'segment';
+export type FalRole = 'generate' | 'edit' | 'inpaint' | 'remove' | 'expand' | 'upscale' | 'relight' | 'cutout' | 'segment';
 export interface FalInput { key: string; type: string; label: string; description?: string; required?: boolean; default?: unknown; enum?: string[]; min?: number; max?: number; step?: number; isArray?: boolean }
 export interface FalModel { id: string; label: string; role: FalRole; row?: string; category?: string; pricing?: string | null; license?: string; inputs: FalInput[] }
 export interface FalRunResult { images: Array<{ png: string; width: number; height: number }>; masks?: Array<{ png: string; width: number; height: number }>; seed?: number; model?: string }

@@ -99,7 +99,7 @@ def test_listing_and_ready(client, monkeypatch):
     monkeypatch.setenv("FAL_KEY", "k-abcdefgh")
     data = client.get("/api/fal/models").json()
     assert data["ready"] is True
-    assert len(data["models"]) == 51
+    assert len(data["models"]) == 545
     first = data["models"][0]
     assert {"id", "label", "role", "row", "category", "pricing", "license", "inputs"} <= set(first)
     monkeypatch.delenv("FAL_KEY")
@@ -110,7 +110,7 @@ def test_listing_and_ready(client, monkeypatch):
 
 
 def test_uncatalogued_model_refused(client, stub):
-    r = client.post("/api/fal/run", json={"model": "fal-ai/flux-pro/v1.1", "inputs": {"prompt": "x"}})
+    r = client.post("/api/fal/run", json={"model": "fal-ai/not-in-the-catalogue/v0", "inputs": {"prompt": "x"}})
     assert r.status_code == 404
     assert stub.submits == []
 

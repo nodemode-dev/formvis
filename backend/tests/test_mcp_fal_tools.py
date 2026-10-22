@@ -42,7 +42,7 @@ def fal_run_ids(role):
 
 def test_fal_models_lists_the_catalogue_by_role_without_a_window(client):
     everything = call(client, "fal_models")["structuredContent"]
-    assert len(everything["models"]) == 51 and "upscale" in everything["roles"] and "segment" in everything["roles"]
+    assert len(everything["models"]) == 545 and "upscale" in everything["roles"] and "segment" in everything["roles"]
     ups = call(client, "fal_models", role="upscale")["structuredContent"]["models"]
     assert {m["id"] for m in ups} == set(fal_run_ids("upscale")) and all(m["role"] == "upscale" for m in ups)
     one = call(client, "fal_models", model="fal-ai/sam-3/image")["structuredContent"]["model"]
@@ -88,8 +88,13 @@ def test_what_the_window_sends_for_an_upscale_model_passes_the_engine_checks():
     for model_id in fal_run_ids("upscale"):
         spec = {s["key"]: s for s in fal_run.find(model_id)["inputs"]}
         inputs = {"upscale_factor": 4} if "upscale_factor" in spec else {}
-        body = accepted(model_id, inputs, {"image_url": picture})
-        assert body["image_url"] == picture and body.get("upscale_factor", 4) == 4
+        # The window sends a required input as shown: its default, else its first choice (fal-options.ts, 1.96.2).
+        # The picture goes to the model's own key, as falImageKey picks it in the window: image, image_url or image_urls.
+        key = next(k for k in ("image", "image_url", "image_urls") if k in spec)
+        sent = [picture] if spec[key].get("isArray") else picture
+        inputs.update({k: s.get("default", (s.get("enum") or [None])[0]) for k, s in spec.items() if s.get("required") and k != key and k not in inputs})
+        body = accepted(model_id, inputs, {key: sent})
+        assert body[key] == sent and body.get("upscale_factor", 4) == 4
 
 
 def test_what_the_window_sends_for_select_by_text_passes_the_engine_checks():
@@ -112,5 +117,6 @@ def test_the_run_route_returns_masks_for_select_by_text(client, monkeypatch):
 
 def test_the_listing_text_names_roles_and_is_json(client):
     r = call(client, "fal_models", role="segment")
-    assert "1 fal model of role segment" in r["content"][0]["text"] and json.loads(r["content"][0]["text"].split(". ", 1)[1])[0]["id"] == "fal-ai/sam-3/image"
+    n = len(fal_run_ids("segment"))
+    assert f"{n} fal models of role segment" in r["content"][0]["text"] and "fal-ai/sam-3/image" in {m["id"] for m in json.loads(r["content"][0]["text"].split(". ", 1)[1])}
     assert M.TOOLS and any(t["name"] == "select_by_text" for t in M.TOOLS)
