@@ -84,6 +84,18 @@ export class TaskBar {
   private frame = 0;
   private at = { x: 0, y: 0 };
   private dragging = false;
+  private readonly timer: HTMLElement;
+  private readonly cancel: HTMLButtonElement;
+  private readonly again: HTMLButtonElement;
+  private ticker = 0;
+  private startedAt = 0;
+  private stopping = false;
+  /** Generate was pressed and its job has not started yet / is running; the prompt it ran with; the Generative Fill layers there were before it. */
+  private armed = false;
+  private running = false;
+  private runPrompt = '';
+  private before = new Set<string>();
+  private againPrompt: string | null = null;
 
   constructor(private readonly stage: HTMLElement, private readonly engine: Engine, private readonly commands: Commands, private readonly view: () => ViewInfo) {
     this.bar = el('<div class="cv-taskbar" role="toolbar" hidden></div>');
@@ -104,8 +116,14 @@ export class TaskBar {
         g.appendChild(b);
       }
     }
-    this.busyGroup = el(`<div class="cv-tb-set cv-tb-busy" role="status" hidden>${icon('loading', 14)}<span class="cv-tb-busy-text"></span></div>`);
+    this.again = el<HTMLButtonElement>(`<button type="button" class="cv-tb-btn cv-tb-again" data-act="again" hidden>${icon('generate', 16)}<span class="cv-tb-lbl"></span></button>`);
+    this.again.addEventListener('click', () => this.runAgain());
+    (this.buttons.get('generate') as HTMLButtonElement).after(this.again);
+    this.busyGroup = el(`<div class="cv-tb-set cv-tb-busy" hidden>${icon('loading', 14)}<span class="cv-tb-busy-text" role="status"></span><span class="cv-tb-timer" aria-hidden="true">0:00</span><button type="button" class="cv-tb-btn cv-tb-cancel"></button></div>`);
     this.busyText = q(this.busyGroup, '.cv-tb-busy-text');
+    this.timer = q(this.busyGroup, '.cv-tb-timer');
+    this.cancel = q<HTMLButtonElement>(this.busyGroup, '.cv-tb-cancel');
+    this.cancel.addEventListener('click', () => this.stop());
     this.bar.appendChild(this.busyGroup);
     this.more = el<HTMLButtonElement>(`<button type="button" class="cv-tb-more" aria-haspopup="menu">${icon('more3', 14)}</button>`);
     this.bar.appendChild(this.more);
@@ -130,9 +148,17 @@ export class TaskBar {
     this.bindDrag();
 
     for (const k of ['projects', 'doc', 'selection', 'active', 'history', 'options', 'tool', 'viewport'] as const) this.engine.on(k, () => this.queue());
+    for (const k of ['projects', 'doc', 'selection', 'active'] as const) this.engine.on(k, () => { if (!this.engine.busy && !this.running) { this.armed = false; this.againPrompt = null; } });
     this.engine.on('busy', (on: boolean) => {
-      if (on) { if (!this.dismiss) this.dismiss = delayedIndicator(() => { this.busyShown = true; this.queue(); }, () => { this.busyShown = false; this.job = ''; this.queue(); }); }
-      else { this.dismiss?.(); this.dismiss = null; }
+      if (on) {
+        if (!this.startedAt) this.startedAt = Date.now();
+        if (this.armed) { this.armed = false; this.running = true; this.before = this.fillLayers(); }
+        if (!this.dismiss) this.dismiss = delayedIndicator(() => { this.busyShown = true; this.tick(); if (!this.ticker) this.ticker = window.setInterval(() => this.tick(), 1000); this.queue(); }, () => { this.busyShown = false; this.job = ''; this.startedAt = 0; this.stopping = false; window.clearInterval(this.ticker); this.ticker = 0; this.queue(); });
+      }
+      else {
+        this.dismiss?.(); this.dismiss = null; this.startedAt = 0;
+        if (this.running) { this.running = false; this.againPrompt = [...this.fillLayers()].some((id) => !this.before.has(id)) ? this.runPrompt : null; }
+      }
       this.queue();
     });
     new ResizeObserver(() => this.queue()).observe(this.stage);
@@ -182,8 +208,38 @@ export class TaskBar {
     const b = this.buttons.get(a.key);
     if (!b || b.getAttribute('aria-disabled') === 'true') return;
     this.job = t(a.label).replace(/\.\.\.$/, '');
+    this.armed = a.key === 'generate';
+    if (this.armed) this.runPrompt = this.prompt.value.trim();
     // Generate hands its prompt to Generative Fill, which starts at once when its model needs nothing more.
     this.commands.run(a.cmd, a.key === 'generate' ? { prompt: this.prompt.value.trim() } : undefined);
+  }
+
+  private runAgain(): void {
+    if (this.again.getAttribute('aria-disabled') === 'true' || this.againPrompt === null) return;
+    this.job = t('Generate');
+    this.armed = true;
+    this.runPrompt = this.againPrompt;
+    this.commands.run('generative-fill', { prompt: this.againPrompt });
+  }
+
+  private stop(): void {
+    if (this.stopping) return;
+    if (!this.engine.cancelJob()) { this.engine.notice(t('Nothing to stop yet.')); return; }
+    this.stopping = true;
+    this.engine.notice(t('Stopped. fal may still finish and bill a request it already started.'));
+    this.queue();
+  }
+
+  private tick(): void {
+    const s = this.startedAt ? Math.max(0, Math.floor((Date.now() - this.startedAt) / 1000)) : 0;
+    setText(this.timer, `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+  }
+
+  /** The ids of the layers whose name starts with Generative Fill. */
+  private fillLayers(): Set<string> {
+    const ids = new Set<string>();
+    for (const l of this.engine.current?.doc.layers ?? []) if (l.name.startsWith('Generative Fill')) ids.add(l.id);
+    return ids;
   }
 
   /** The words, in the current language: set again in place when it changes. */
@@ -193,6 +249,11 @@ export class TaskBar {
       setText(q(b, '.cv-tb-lbl'), t(a.label));
       b.setAttribute('aria-label', t(a.label));
     }
+    setText(q(this.again, '.cv-tb-lbl'), t('Again'));
+    this.again.setAttribute('aria-label', t('Again'));
+    setTitle(this.again, t('Another variation as a new layer, with a fresh seed'));
+    setText(this.cancel, t('Cancel'));
+    setTitle(this.cancel, t('Stops the running job'));
     const ph = t('Describe what to generate (optional)');
     if (this.prompt.placeholder !== ph) this.prompt.placeholder = ph;
     this.prompt.setAttribute('aria-label', ph);
@@ -220,7 +281,13 @@ export class TaskBar {
     const mode = this.mode(), busy = this.engine.busy;
     for (const [m, g] of this.groups) setHidden(g, this.busyShown || m !== mode);
     setHidden(this.busyGroup, !this.busyShown);
-    setText(this.busyText, `${this.job || t('Working')}...`);
+    setText(this.busyText, this.stopping ? `${t('Stopping')}...` : `${this.job || t('Working')}...`);
+    this.tick();
+    if (this.cancel.getAttribute('aria-disabled') !== String(this.stopping)) this.cancel.setAttribute('aria-disabled', String(this.stopping));
+    setHidden(this.again, this.againPrompt === null || mode !== 'selection');
+    const againOff = busy ? 'true' : 'false';
+    if (this.again.getAttribute('aria-disabled') !== againOff) this.again.setAttribute('aria-disabled', againOff);
+    setClass(this.again, 'is-off', busy);
     for (const a of ACTS) {
       if (a.mode !== mode) continue;
       const b = this.buttons.get(a.key) as HTMLButtonElement;

@@ -485,6 +485,12 @@ html[dir='rtl'] .cv-stage { direction: ltr; }
 .cv-tb-model { flex: none; width: 168px; height: var(--ctl-md); margin: 0 var(--space-1) 0 0; padding: 0 var(--space-2); border: 1px solid var(--border-color); border-radius: var(--radius-pill); background: var(--bg-input); color: var(--text-primary); font: inherit; text-overflow: ellipsis; }
 .cv-tb-model:focus { outline: none; border-color: var(--accent-color); }
 .cv-taskbar.is-tiny .cv-tb-model { width: 110px; }
+.cv-tb-timer { flex: none; min-width: 4ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.cv-tb-cancel { border: 1px solid var(--border-color); }
+.cv-tb-cancel[aria-disabled="true"] { color: var(--text-muted); cursor: default; }
+.cv-tb-cancel[aria-disabled="true"]:hover { background: transparent; }
+.cv-tb-again[hidden] { display: inline-flex; visibility: hidden; }
+.cv-tb-busy-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-tb-busy { justify-content: center; gap: var(--space-2); padding: 0 var(--space-2); color: var(--text-secondary); }
 .cv-tb-busy .icon { animation: spin 1s linear infinite; }
 .cv-tb-grip:focus-visible, .cv-tb-more:focus-visible, .cv-tb-btn:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -1px; }
