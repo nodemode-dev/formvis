@@ -31,8 +31,9 @@ export const falMaskAsPicture = (m: FalModel): boolean => !falMaskKey(m) && !!fa
 /** The prompt an instruction-edit model gets for a fill (1.96.2): what to edit, where (the mask picture when it is sent,
  *  else the request alone), what must stay, and the request repeated last, since edit models given only the bare request
  *  repainted freely and drifted from it. An empty request removes what the area holds. Mask models get the prompt as is. */
-export function editInstruction(m: FalModel, prompt: string): string {
-  const asked = prompt.trim();
+export function editInstruction(m: FalModel, prompt: string, references = 0): string {
+  const asked = prompt.trim(), first = falMaskAsPicture(m) ? 3 : 2;
+  const refs = references > 0 ? (references === 1 ? `Picture ${first} is a reference: use it as the request says.` : `Pictures ${first} to ${first + references - 1} are references: use them as the request says.`) : '';
   if (falMaskKey(m)) return asked;
   const where = falMaskAsPicture(m)
     ? 'Picture 2 is a black and white mask of the same size: change only the area that is white in it, and keep everything in its black area exactly as it is.'
@@ -40,7 +41,7 @@ export function editInstruction(m: FalModel, prompt: string): string {
   const what = asked
     ? `Request: ${asked}.`
     : 'Request: remove whatever is in that area completely and continue the surrounding background, surfaces and lighting through it, so no trace of it remains.';
-  return [`Edit picture 1 and keep its size, framing and camera exactly.`, where, what,
+  return [`Edit picture 1 and keep its size, framing and camera exactly.`, where, refs, what,
     'Match the lighting direction, colour, contrast, perspective, scale, focus and grain of the surrounding picture so the change blends in seamlessly.',
     asked ? `Follow the request exactly: ${asked}.` : ''].filter(Boolean).join(' ');
 }
@@ -72,12 +73,13 @@ export function pngBlob(b64: string): Blob {
 
 /** One run of a catalogue model on `image` (and `mask` when the model takes one): the schema's image key gets the
  *  picture, its mask key the mask; the answer's first picture comes back as a PNG blob. */
-export async function falRunImage(m: FalModel, inputs: Record<string, unknown>, image: Blob | null, mask: Blob | null = null): Promise<{ result: FalRunResult; blob: Blob }> {
+export async function falRunImage(m: FalModel, inputs: Record<string, unknown>, image: Blob | null, mask: Blob | null = null, references: Blob[] = []): Promise<{ result: FalRunResult; blob: Blob }> {
   const images: Record<string, string | string[]> = {};
   const ik = falImageKey(m), mk = falMaskKey(m);
   if (image && ik) { const url = await blobToDataUrl(image); images[ik] = falIsArray(m, ik) ? [url] : url; }
   if (mask && mk) images[mk] = await blobToDataUrl(mask);
   else if (mask && ik && falMaskAsPicture(m)) (images[ik] as string[]).push(await blobToDataUrl(mask));
+  if (references.length && ik && Array.isArray(images[ik])) for (const r of references) (images[ik] as string[]).push(await blobToDataUrl(r));
   const result = await api.falRun(m.id, inputs, images);
   const first = result.images?.[0];
   if (!first) throw new Error('fal returned no picture.');

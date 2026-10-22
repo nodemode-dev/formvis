@@ -17,6 +17,24 @@ const RULES: ReadonlyArray<[RegExp, SizeRule]> = [
 const DEFAULT_RULE: SizeRule = { max: 2048, step: 16, min: 512 };
 export const sizeRule = (m: FalModel): SizeRule => RULES.find(([re]) => re.test(m.id))?.[1] ?? DEFAULT_RULE;
 
+/** How many pictures a model takes in its picture list, the area itself included (1.96.4); 1 for a single picture input. */
+const PICTURES: ReadonlyArray<[RegExp, number]> = [
+  [/^blackforestlabs\/flux-3\/klein/, 4],
+  [/^blackforestlabs\/flux-3/, 10],
+  [/nano-banana/, 14],
+  [/^fal-ai\/flux-2\/klein/, 4],
+  [/^fal-ai\/flux-2/, 8],
+  [/seedream/, 10],
+  [/gpt-image/, 16],
+  [/qwen-image-edit/, 3],
+  [/kontext\/(max\/)?multi/, 4],
+];
+export function pictureLimit(m: FalModel): number {
+  const list = m.inputs.find((i) => /^image(_url|_urls)?$/.test(i.key));
+  if (!list?.isArray) return list ? 1 : 0;
+  return PICTURES.find(([re]) => re.test(m.id))?.[1] ?? 4;
+}
+
 const ratioOf = (s: string): number => { const [a, b] = s.split(':').map(Number); return a > 0 && b > 0 ? a / b : 0; };
 
 /** The model's aspect presets when it has no automatic choice (an answer of another shape would be stretched). */

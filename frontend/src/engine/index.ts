@@ -10969,6 +10969,24 @@ export class Engine {
     return this.fillArea(p, sel, prompt, generate, 'Generative Fill', 'remove');
   }
 
+  /** The margins of the selection when it is a frame around an untouched rectangle (1.96.4): the new border of an enlarged
+   *  canvas, selected or drawn; at most half a percent of the pixels may disagree. Null for any other selection. */
+  borderMargins(): { left: number; top: number; right: number; bottom: number } | null {
+    const p = this.current, sel = p?.selection;
+    if (!p || !sel) return null;
+    const W = p.doc.width, H = p.doc.height, s = createSurface(W, H), g = ctxOf(s);
+    g.drawImage(sel.surface() as CanvasImageSource, sel.x, sel.y);
+    const a = g.getImageData(0, 0, W, H).data;
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (a[(y * W + x) * 4 + 3] < 128) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) return null;
+    let bad = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const inside = x >= x0 && x <= x1 && y >= y0 && y <= y1, on = a[(y * W + x) * 4 + 3] >= 128; if (inside === on) bad++; }
+    if (bad > W * H * 0.005) return null;
+    const m = { left: x0, top: y0, right: W - 1 - x1, bottom: H - 1 - y1 };
+    return m.left + m.top + m.right + m.bottom > 0 ? m : null;
+  }
+
   /** Generative Expand: grows the canvas by the margins, then fills the new border from `prompt` (an empty prompt
    *  extends the scene) as a layer masked to the border. The canvas change and the fill are two undo steps. */
   async generativeExpand(margins: { left: number; top: number; right: number; bottom: number }, prompt: string, generate: (image: Blob, mask: Blob) => Promise<Blob>): Promise<boolean> {
@@ -10976,7 +10994,17 @@ export class Engine {
     if (!p) return false;
     const side = (v: number): number => Math.max(0, Math.round(Number.isFinite(v) ? v : 0));
     const left = side(margins.left), top = side(margins.top), right = side(margins.right), bottom = side(margins.bottom);
-    if (!(left + top + right + bottom)) { this.notice('Set how far to expand the canvas.'); return false; }
+    if (!(left + top + right + bottom)) {
+      // A border selected around an untouched picture (1.96.4): the canvas already holds it, so it is filled where it is.
+      const m = this.borderMargins();
+      if (m) {
+        const W = p.doc.width, H = p.doc.height, frame = new Uint8Array(W * H).fill(255);
+        for (let y = m.top; y < H - m.bottom; y++) frame.fill(0, y * W + m.left, y * W + W - m.right);
+        return this.fillArea(p, new SelectionMask(0, 0, W, H, frame), prompt, generate, 'Generative Expand', 'extend');
+      }
+      this.notice('Expand from a selection needs a frame around the picture: select the new border around an untouched rectangle, or set the margins.');
+      return false;
+    }
     const oldW = p.doc.width, oldH = p.doc.height, W = oldW + left + right, H = oldH + top + bottom;
     if (!this.resizeCanvas(W, H, left, top, null, 'Generative Expand')) return false;
     const border = new Uint8Array(W * H).fill(255);
@@ -11343,6 +11371,8 @@ export class Engine {
 
   /** Preferences > Generative > Colour match, 0 to 100 (1.96.3). */
   generativeMatch = 100;
+  /** The seed the generator reports for the run in progress, written into the result layer's name (1.96.4). */
+  generativeSeed: number | null = null;
   /** The documents a generation is running in: one at a time each (1.96.3). */
   private readonly generating = new Set<Project>();
 
@@ -11445,12 +11475,15 @@ export class Engine {
     edge.ctx.globalCompositeOperation = 'source-over';
     layer.touch();
     edge.touch();
-    const name = `${undoName}: ${prompt.trim() || emptyName}`;
+    // The seed goes at the end of the name, kept whole when the prompt is cut (1.96.4), so a variation can be repeated.
+    const seed = this.generativeSeed, tail = seed !== null ? ` (seed ${seed})` : '', head = `${undoName}: ${prompt.trim() || emptyName}`;
+    this.generativeSeed = null;
+    const name = head.length + tail.length > 60 ? `${head.slice(0, 57 - tail.length)}...${tail}` : `${head}${tail}`;
     // Never into a hidden folder (1.96.2): with the current layer hidden or inside one, the result goes above the topmost
     // layer that shows, so it is seen and the hidden ones stay hidden.
     const a = p.activeLayer;
     if (a && !this.shownInDoc(p, a)) this.focus(p, [...p.doc.layers].reverse().find((x) => !x.isGroup && this.shownInDoc(p, x))?.id ?? null);
-    this.insertRasterLayer(layer, name.length > 60 ? `${name.slice(0, 57)}...` : name, x0, y0, { mask: { raster: edge, enabled: true, linked: true, placement: null } }, undoName);
+    this.insertRasterLayer(layer, name, x0, y0, { mask: { raster: edge, enabled: true, linked: true, placement: null } }, undoName);
     return true;
   }
 

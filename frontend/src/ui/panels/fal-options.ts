@@ -44,6 +44,17 @@ export class FalOptions {
     this.more.open = needed.length > 0;
   }
 
+  /** Sets option `key` to `value` and shows it, when the model has that input and the person has not set it (1.96.4). */
+  preset(key: string, value: unknown): boolean {
+    if (!this.current?.inputs.some((i) => i.key === key) || this.set.has(key)) return false;
+    const c = this.fields.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-key="${key}"]`);
+    if (!c) return false;
+    c.value = String(value);
+    this.set.set(key, value);
+    this.more.open = true;
+    return true;
+  }
+
   /** What the person changed, by schema key; a key left alone is not sent, so the model's own default stands. */
   values(): Record<string, unknown> { return Object.fromEntries(this.set); }
 
