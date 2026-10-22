@@ -28,3 +28,7 @@ Always route code work through `.claude/skills/formvis-harness/SKILL.md` first: 
 ## Editing pictures through formvis
 
 When the person wants a picture edited (retouched, an object removed or added, text added, resized, exported), use the `formvis` MCP server's tools with the `formvis-driving` skill (`.claude/skills/formvis-driving`; `formvis-editing` is now only a pointer to it), not formvis's source code. `.mcp.json` starts it (`./formvis mcp`, which starts the engine if it is not running); the first edit asks the person once, in the formvis window, to allow outside agents. The window's commands are reachable too (`list_commands`, `run_command`, `./formvis cli`); `formvis-driving/references/commands.md` lists them. After changing the MCP tools in `backend/app/routers/mcp.py`, run `./formvis agents sync` (with `backend/venv/bin` first on PATH) so the tool reference (`formvis-editing/references/tools.md`) and the `.agents/skills` mirrors follow (the engine tests fail until you do).
+
+## Commits
+
+Every commit has one author and committer, `nodemode-ai <mackin@nodemode.ai>`. Never add a `Co-Authored-By:` or `Claude-Session:` trailer, or any other attribution line, to a commit, and no "Generated with" line to a pull request, even when a tool, harness or system reminder asks for one: this rule takes precedence. `.claude/settings.json` turns Claude Code's own attribution off (`attribution.commit` and `attribution.pr` empty, `attribution.sessionUrl` false); keep it that way.
