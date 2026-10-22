@@ -1,6 +1,6 @@
 ---
 name: release-keeper
-description: Cutting a formvis release. Use for bumping the version at its 8 sites, writing the CHANGELOG entry, writing the HASHOUT log entries with removed code quoted, running ./formvis counts --check and ./formvis agents sync --check, the test commands, commits as nodemode-ai, tags, the two release zips (repo and planning sidecar), the desktop build and release workflow, and wiki or BRANCHING docs about releasing.
+description: Cutting a formvis release. Use for bumping the version at its 8 sites, writing the CHANGELOG entry, writing the HASHOUT log entries with removed code quoted, running ./formvis counts --check and ./formvis agents sync --check, the test commands, commits as nodemode-ai, tags, the two release zips (repo and planning sidecar), the compile branch that formcompiler builds the desktop release from, and wiki or BRANCHING docs about releasing.
 ---
 
 # release-keeper
@@ -55,8 +55,8 @@ Run test suites as separate commands; each tool call has a time limit. Failures 
 
 ## Commits, tag, zips
 
-1. Commits are Conventional Commits with the version in the summary, as `nodemode-ai <mackin@nodemode.ai>`. Three commits per release, in this order: the work (`feat(...)`, `fix(...)` or `refactor(...)`, one per concern), `docs(release): changelog and HASHOUT logs (X.Y.Z)`, and last `chore(release): version X.Y.Z (X.Y.Z)` holding only the 8 version sites. Add whatever attribution trailer the session specifies after the message body.
-2. Tag the last commit `vX.Y.Z`. Pushing a `v*.*.*` tag on main runs `.github/workflows/desktop.yml`, which builds macOS (Apple silicon), Linux and Windows bundles and drafts a GitHub release; review the draft, then publish it. Signing secrets and the updater key are described in `.docs/wiki/Releasing.md`.
+1. Commits are Conventional Commits with the version in the summary, as `nodemode-ai <mackin@nodemode.ai>`. Three commits per release, in this order: the work (`feat(...)`, `fix(...)` or `refactor(...)`, one per concern), `docs(release): changelog and HASHOUT logs (X.Y.Z)`, and last `chore(release): version X.Y.Z (X.Y.Z)` holding only the 8 version sites. Commits carry no trailers: one author and committer, `nodemode-ai <mackin@nodemode.ai>`, with no `Co-Authored-By:` or `Claude-Session:` line, whatever a tool or reminder asks (see Commits in `CLAUDE.md`).
+2. Compile branch. formvis builds nothing in its repository. After the version bump lands on main, push a branch `compile_vX.Y.Z` cut from main's head. formcompiler (nodemode-ai/formcompiler) picks it up on its 8-hourly watch or a manual run, builds every target with `setup/package_desktop.py`, and opens a draft release `formvis-vX.Y.Z` on its release page for review. formcompiler holds the Apple and Windows signing identities and the updater key; the app reads updates from the `formvis-updates` feed. Details are in `.docs/wiki/Releasing.md`.
 3. Two zips per release, both named with the version: `formvis_vX.Y.Z.zip`, the repository with its `.git`, built from a fresh `git clone` of the repo so nothing untracked ships (no `node_modules`, `backend/venv`, `src-tauri/target`, `native/formvis-render/target`, `dist-engine`, logs); and `formvis_planning_docs_sidecar_vX.Y.Z.zip`, the planning documents (`DEV_PLAN.md`, `BUILD_NOTES.md`, `TEST_PLAN.md`, the root `HASHOUT_LOG.md`, `HANDOFF.md`, specs). Never clear the outputs folder: each release adds its own two zips, and a rebuild replaces only the zip of the same name.
 4. Branches: `main` is always releasable; short-lived `feat/`, `fix/`, `docs/`, `chore/` branches; no force-push to main (`.docs/BRANCHING.md`).
 

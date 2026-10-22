@@ -11,7 +11,7 @@ The desktop app is a thin Tauri 2 shell around the same engine, frozen with PyIn
 | `src-tauri/capabilities/default.json` | Window permissions; the app uses no Tauri IPC |
 | `setup/freeze_backend` | PyInstaller one-file build, named `formvis-engine-<target triple>` |
 | `setup/desktop_build`, `setup/desktop_dev` | Bundle and dev flows |
-| `.github/workflows/desktop.yml` | macOS arm64, Linux x64 and Windows x64 bundles, draft release on tags |
+| `setup/package_desktop.py` | The packaging steps formcompiler (nodemode-ai/formcompiler) runs after `tauri build`; it builds and drafts `formvis-vX.Y.Z` from a `compile_vX.Y.Z` branch, formvis builds nothing itself |
 
 ## Contract
 

@@ -9,7 +9,7 @@ The desktop app is a thin Tauri shell around the same engine, frozen with PyInst
 1. `setup/freeze_backend` runs PyInstaller one-file on `backend/formvis_engine.py`, bundles `frontend/dist` as `frontend_dist`, excludes `pillow_heif`, copies the result to `src-tauri/binaries/formvis-engine-[target triple]`, then runs `--selfcheck`.
 2. `src-tauri/src/main.rs` shows the splash, spawns the sidecar with `FORMVIS_PORT=0`, reads `http://127.0.0.1:PORT` from its output, opens the main window at 90 percent of the screen, closes the splash, and kills the engine on exit. If no port appears, it shows a dialog and quits.
 3. `setup/desktop_build` builds the frontend, freezes, generates icons from `assets/formvis_icon.png` when `src-tauri/icons/icon.icns` is missing, and runs `tauri build`. `./build_app` wraps all of it.
-4. `.github/workflows/desktop.yml` builds macOS arm64, Linux x64 and Windows x64 on `v*.*.*` tags and drafts a release.
+4. formvis builds nothing in its repository. After the version bump lands on main, push a branch `compile_vX.Y.Z` cut from main's head; formcompiler (nodemode-ai/formcompiler) picks it up on its 8-hourly watch or a manual run, builds every target with `setup/package_desktop.py`, and opens a draft release `formvis-vX.Y.Z` on its release page for review. formcompiler holds the Apple and Windows signing identities and the updater key; the app reads updates from formcompiler's `formvis-updates` feed.
 
 Rules:
 

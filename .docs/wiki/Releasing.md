@@ -1,10 +1,10 @@
 # Releasing
 
-Desktop releases build in GitHub Actions (`.github/workflows/desktop.yml`) on every `v*.*.*` tag: macOS (Apple silicon), Linux (AppImage, deb, rpm) and Windows (MSI, NSIS). The release job collects the bundles into a draft GitHub release; publishing the draft makes it the one the updater feed points at.
+formvis builds nothing in its own repository. After the version bump lands on main, push a branch `compile_vX.Y.Z` cut from main's head. formcompiler (nodemode-ai/formcompiler) picks it up on its 8-hourly watch or a manual run, builds every target with `setup/package_desktop.py` (macOS, Linux with AppImage, deb and rpm, Windows with MSI and NSIS), and opens a draft release `formvis-vX.Y.Z` on its release page at https://github.com/nodemode-ai/formcompiler/releases for review. formcompiler holds the Apple and Windows signing identities and the updater key. The app reads updates from formcompiler's `formvis-updates` feed.
 
-## One-time setup: repository secrets
+## One-time setup: formcompiler secrets
 
-Add these under Settings, Secrets and variables, Actions. Builds work without them (unsigned, no updater artifacts); each group switches on its feature when present.
+Add these to the formcompiler repository (Settings, Secrets and variables, Actions), not to formvis. Builds work without them (unsigned, no updater artifacts); each group switches on its feature when present.
 
 | Secret | What it is |
 | --- | --- |
@@ -33,19 +33,20 @@ Put the private key file's contents in `TAURI_SIGNING_PRIVATE_KEY` and paste the
 
 ## Cutting a release
 
-1. Bump the version in all six places (see `CLAUDE.md`), commit, and tag `vX.Y.Z`.
-2. Push the tag. The workflow builds the three platforms, signs and notarizes the macOS app, and writes `latest.json` from the updater signatures.
-3. Check the draft release's assets, then publish it. Installed apps see the update the next time they open and ask before installing.
+1. Bump the version in all eight places (see `CLAUDE.md` and the release-keeper skill) and let it land on main.
+2. Push a branch `compile_vX.Y.Z` cut from main's head.
+3. formcompiler builds the targets, signs and notarizes the macOS app, and writes `latest.json` from the updater signatures with `setup/package_desktop.py feed`.
+4. Check the draft release `formvis-vX.Y.Z` on formcompiler's release page, then publish it. Installed apps see the update the next time they open and ask before installing.
 
-## Running it by hand (draft release without a tag push)
+## Running it by hand
 
-Actions, desktop, Run workflow. `draft_release` with a `tag` such as `v1.89.6` uploads every bundle and `latest.json` to a draft release; the tag does not exist until you publish the draft. `bundle_ml` freezes rembg and ONNX Runtime into the engine. Nothing is published or tagged by the workflow.
+Run formcompiler's workflow manually and give it the branch. The `formvis-updates` release on formcompiler holds the newest `latest.json` that the app's updater endpoint (`https://github.com/nodemode-ai/formcompiler/releases/download/formvis-updates/latest.json`) reads. The AppImage update information is printed by `python3 setup/package_desktop.py zsync-info --appimage ARCH`. Nothing is published or tagged in the formvis repository.
 
 Builds per run: macOS Apple silicon and Intel (separate DMGs; a universal DMG would need the PyInstaller engine built as one universal binary, which is not done), Linux x64 and arm64 (AppImage, deb, rpm, tar.gz), Windows x64 and arm64 (MSI, NSIS setup, portable zip, and the Store package when its variables exist). The Intel macOS, Linux arm64 and Windows arm64 jobs are marked experimental: if one fails the others still release. Windows x86 is not built: it needs a 32-bit Python and Rust target and every engine dependency in a 32-bit wheel, none of which is checked.
 
 ## Turning the updater on (owner steps)
 
-The updater stays off until you do all three: generate the key pair (above), paste the public key into `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`, and add the private key as the `TAURI_SIGNING_PRIVATE_KEY` secret. The workflow then builds updater artifacts and writes `latest.json` for every platform that has a signature. Help, Check for Updates says "no update key" until the public key is there.
+The updater stays off until you do all three: generate the key pair (above), paste the public key into `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`, and add the private key as the `TAURI_SIGNING_PRIVATE_KEY` secret in formcompiler. formcompiler then builds updater artifacts and writes `latest.json` for every platform that has a signature. Help, Check for Updates says "no update key" until the public key is there.
 
 ## Portable Windows zip and Linux checks
 
