@@ -4,6 +4,7 @@ import { saveTemplates, templates } from '../io/prompt-templates';
 import { recipes } from '../io/comfy';
 import { comfyuiProbeText } from './panels/send-to';
 import { LocalModelsSection } from './panels/local-models';
+import { GenerativePrefsSection } from './panels/generative-prefs';
 import { ApiKeysSection, ComfyAuthSection, HuggingFaceToken, LlmRows, LocalFilesSection, ModelFolderSection, PluginSwitchesSection, PluginsFolderSection, RecipesSection, RenderingSection, SettingsLocationSection, SkinsSection, TemplateFiles, UpdatesSection } from './panels/connection-settings';
 import { IMAGE_ACCEPT, PROJECT_ACCEPT } from '../io/images';
 import { RAW_SHARPEN_AMOUNTS, RAW_SHARPEN_CHOICES, type RawSharpen, type RawSharpenAmount } from '../io/raw-sharpen';
@@ -663,7 +664,7 @@ export class SettingsDialog extends Dialog {
     const row = el('<div class="cv-prefs-themes"></div>');
     row.appendChild(this.grid);
     const pages = el('<div class="cv-prefs-pages"></div>');
-    const railIcons: Record<string, string> = { General: 'pfGeneral', Interface: 'pfInterface', Performance: 'pfPerformance', Workspace: 'pfWorkspace', Tools: 'pfTools', 'History & Cache': 'pfHistory', 'File Handling': 'pfFile', 'Placing Pictures': 'pfPlace', 'History Log': 'pfLog', Cursors: 'pfCursor', Type: 'pfType', 'Camera Raw Defaults': 'pfCamera', 'Transparency & Gamut': 'pfTransparency', 'Scratch Disks': 'pfScratch', Language: 'pfLanguage', 'Units & Rulers': 'pfUnits', 'Guides & Grid': 'pfGuides', 'Enhanced Controls': 'pfGestures', Plugins: 'pfPlugins' };
+    const railIcons: Record<string, string> = { General: 'pfGeneral', Interface: 'pfInterface', Performance: 'pfPerformance', Workspace: 'pfWorkspace', Tools: 'pfTools', 'History & Cache': 'pfHistory', 'File Handling': 'pfFile', 'Placing Pictures': 'pfPlace', 'History Log': 'pfLog', Cursors: 'pfCursor', Type: 'pfType', 'Camera Raw Defaults': 'pfCamera', 'Transparency & Gamut': 'pfTransparency', 'Scratch Disks': 'pfScratch', Language: 'pfLanguage', 'Units & Rulers': 'pfUnits', 'Guides & Grid': 'pfGuides', 'Enhanced Controls': 'pfGestures', Plugins: 'pfPlugins', Generative: 'generate' };
     const grp = (label: string, ...content: HTMLElement[]): HTMLElement => {
       const g = el('<section class="cv-prefs-group"><h3 class="cv-prefs-label"></h3></section>');
       const h = q<HTMLElement>(g, '.cv-prefs-label');
@@ -815,7 +816,8 @@ export class SettingsDialog extends Dialog {
       grp('Outside Agents', ag, agNote),
       grp('Keys and Models', this.keysNote, this.apiKeys.el, this.modelFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el),
       grp('Updates', this.updates.el));
-    for (const name of ['General', 'Interface', 'Workspace', 'Tools', 'Cursors', 'Enhanced Controls', 'Type', 'Placing Pictures', 'File Handling', 'History & Cache', 'Performance', 'Scratch Disks', 'Transparency & Gamut', 'Units & Rulers', 'Guides & Grid', 'Camera Raw Defaults', 'Plugins']) {
+    add('Generative', grp('Models and Layers', this.genPrefs.el));
+    for (const name of ['General', 'Interface', 'Workspace', 'Tools', 'Cursors', 'Enhanced Controls', 'Type', 'Placing Pictures', 'File Handling', 'History & Cache', 'Performance', 'Scratch Disks', 'Transparency & Gamut', 'Units & Rulers', 'Guides & Grid', 'Camera Raw Defaults', 'Plugins', 'Generative']) {
       const tab = this.nav.querySelector<HTMLElement>(`[data-section="${name}"]`), card = this.sections.get(name);
       if (tab?.parentElement) tab.parentElement.appendChild(tab);
       if (card) pages.appendChild(card);
@@ -1133,6 +1135,7 @@ export class SettingsDialog extends Dialog {
   readonly pluginSwitches = new PluginSwitchesSection();
   private readonly hfToken = new HuggingFaceToken();
   private readonly apiKeys = new ApiKeysSection();
+  private readonly genPrefs = new GenerativePrefsSection();
   private readonly localFiles = new LocalFilesSection();
   /** Help > Check for Updates, connected by the app. */
   checkUpdates: (() => Promise<string>) | null = null;
@@ -1233,6 +1236,7 @@ export class SettingsDialog extends Dialog {
     void this.hfToken.refresh();
     void this.location.refresh();
     void this.apiKeys.refresh();
+    void this.genPrefs.refresh();
     void this.localFiles.refresh();
     this.recipesList.refresh();
     this.showBudget();

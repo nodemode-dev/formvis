@@ -5,6 +5,8 @@ import { delayedIndicator, el, q, setClass, setHidden, setText, setTitle, type D
 import { icon } from './icons';
 import { onLanguage, t } from './i18n';
 import { PopupMenu } from './menu';
+import { GEN_CHANGED, genPrefs, saveGenPrefs } from '../io/gen-prefs';
+import { fillChoices, modelChoices } from './panels/generative-prefs';
 
 /** The Contextual Task Bar: a small pill floating over the canvas that puts the next likely steps in front of the
  *  person. With a selection it offers Generative Fill with a prompt, Remove, Invert, Feather and
@@ -69,6 +71,7 @@ export class TaskBar {
   private readonly grip: HTMLButtonElement;
   private readonly more: HTMLButtonElement;
   private readonly prompt: HTMLInputElement;
+  private readonly model = el<HTMLSelectElement>('<select class="cv-tb-model" aria-label="Generative Fill model" title="The model Generate uses (also in Preferences > Generative)"><option value="">Model</option></select>');
   private readonly groups = new Map<Mode, HTMLElement>();
   private readonly busyGroup: HTMLElement;
   private readonly busyText: HTMLElement;
@@ -91,7 +94,7 @@ export class TaskBar {
       const g = el(`<div class="cv-tb-set" data-mode="${mode}" hidden></div>`);
       this.groups.set(mode, g);
       this.bar.appendChild(g);
-      if (mode === 'selection') g.appendChild(this.prompt);
+      if (mode === 'selection') g.append(this.prompt, this.model);
       for (const a of ACTS.filter((x) => x.mode === mode)) {
         // The Remove button and the three after it sit after a divider, apart from the generative pair.
         if (a.key === 'remove') g.appendChild(el('<span class="cv-tb-sep" aria-hidden="true"></span>'));
@@ -109,6 +112,12 @@ export class TaskBar {
     stage.appendChild(this.bar);
     this.menu = new PopupMenu(commands, null, true);
 
+    // The model Generate starts with (1.96.2): Preferences > Generative's Generative Fill choice, picked here too.
+    const loadModels = (): void => { void modelChoices('fill').then((c) => fillChoices(this.model, c, genPrefs().fill)); };
+    this.model.addEventListener('pointerdown', loadModels);
+    this.model.addEventListener('change', () => saveGenPrefs({ fill: this.model.value }));
+    window.addEventListener(GEN_CHANGED, () => { const v = genPrefs().fill; if ([...this.model.options].some((o) => o.value === v)) { if (this.model.value !== v) this.model.value = v; } else loadModels(); });
+    loadModels();
     this.prompt.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); const a = ACTS[0]; this.activate(a); }
       else if (e.key === 'Escape') { e.stopPropagation(); this.prompt.blur(); }

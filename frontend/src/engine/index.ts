@@ -11305,12 +11305,35 @@ export class Engine {
     return this.fillArea(p, area, '', generate, undoName, 'remove');
   }
 
+  /** What Generative Fill and Expand send (1.96.2, Preferences > Generative): everything shown (the default; hidden layers
+   *  and folders never), the current layer alone, or what shows at and below the current layer. */
+  generativeSource: 'visible' | 'current' | 'below' = 'visible';
+
+  private generativeView(p: Project): Surface | null {
+    const l = p.activeLayer;
+    if (this.generativeSource !== 'visible' && l && !l.isGroup) return this.healSampleSurface(p, l, this.generativeSource);
+    return this.flattened();
+  }
+
+  /** Whether `l` shows: it and every folder holding it visible. */
+  private shownInDoc(p: Project, l: Layer): boolean {
+    for (let x: Layer | undefined = l; x; x = x.parentId ? p.doc.layers.find((y) => y.id === x?.parentId) : undefined) if (!x.visible) return false;
+    return true;
+  }
+
   private async fillArea(p: Project, sel: SelectionMask, prompt: string, generate: (image: Blob, mask: Blob) => Promise<Blob>, undoName: string, emptyName: string): Promise<boolean> {
-    const view = this.flattened();
+    const view = this.generativeView(p);
     if (!view) return false;
-    const reach = Math.min(256, Math.max(16, Math.round(Math.max(sel.w, sel.h) * 0.25)));
-    const x0 = Math.max(0, sel.x - reach), y0 = Math.max(0, sel.y - reach);
-    const w = Math.min(p.doc.width, sel.x + sel.w + reach) - x0, h = Math.min(p.doc.height, sel.y + sel.h + reach) - y0;
+    // Context in proportion to the selection (1.96.2): padding from its diagonal, and at least 512 px a side where the
+    // canvas allows, centred on the selection and slid inside the canvas, so the model can match light and perspective.
+    const diag = Math.hypot(sel.w, sel.h), feather = Math.max(32, diag * 0.1), reach = Math.round(feather + 4 + diag * 0.06);
+    const span = (lo: number, len: number, full: number): [number, number] => {
+      let a = Math.max(0, lo - reach), b = Math.min(full, lo + len + reach);
+      const want = Math.min(full, 512);
+      if (b - a < want) { const grow = want - (b - a); a = Math.max(0, a - Math.ceil(grow / 2)); b = Math.min(full, a + want); a = Math.max(0, b - want); }
+      return [a, b - a];
+    };
+    const [x0, w] = span(sel.x, sel.w, p.doc.width), [y0, h] = span(sel.y, sel.h, p.doc.height);
     if (w < 1 || h < 1) { this.notice('The selection is outside the canvas.'); return false; }
     const context = new Raster(w, h);
     context.ctx.drawImage(view, -x0, -y0);
@@ -11318,8 +11341,10 @@ export class Engine {
     if (fillTransparent(pixels)) context.ctx.putImageData(pixels, 0, 0);
     const cover = new Raster(w, h);
     cover.ctx.drawImage(sel.surface(), sel.x - x0, sel.y - y0);
-    const mask = Raster.filled(w, h, '#000000');
-    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (dx * dx + dy * dy <= 9) mask.ctx.drawImage(cover.canvas, dx, dy);
+    // The model's mask is grown past the selection so it repaints the seam; the layer's own mask stays the selection,
+    // so nothing outside the selection changes.
+    const mask = Raster.filled(w, h, '#000000'), grow = Math.max(3, Math.min(8, Math.round(feather / 6)));
+    for (let dy = -grow; dy <= grow; dy++) for (let dx = -grow; dx <= grow; dx++) if (dx * dx + dy * dy <= grow * grow) mask.ctx.drawImage(cover.canvas, dx, dy);
     let result: Blob;
     try {
       result = await generate(await toBlob(context.canvas), await toBlob(mask.canvas));
@@ -11341,6 +11366,10 @@ export class Engine {
     layer.touch();
     cover.touch();
     const name = `${undoName}: ${prompt.trim() || emptyName}`;
+    // Never into a hidden folder (1.96.2): with the current layer hidden or inside one, the result goes above the topmost
+    // layer that shows, so it is seen and the hidden ones stay hidden.
+    const a = p.activeLayer;
+    if (a && !this.shownInDoc(p, a)) this.focus(p, [...p.doc.layers].reverse().find((x) => !x.isGroup && this.shownInDoc(p, x))?.id ?? null);
     this.insertRasterLayer(layer, name.length > 60 ? `${name.slice(0, 57)}...` : name, x0, y0, { mask: { raster: cover, enabled: true, linked: true, placement: null } }, undoName);
     return true;
   }

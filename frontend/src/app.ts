@@ -266,6 +266,7 @@ import { LoadStackDialog } from './ui/panels/load-stack-dialog';
 import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { BackgroundPanel, mattingChoice } from './ui/panels/background-panel';
 import { subjectMask } from './io/fal';
+import { GEN_CHANGED, genPrefs } from './io/gen-prefs';
 import { FalTaskDialog } from './ui/panels/fal-task-dialog';
 import { ColorPickerDialog } from './ui/panels/color-picker';
 import { LiveMaskDialog } from './ui/panels/live-mask-dialog';
@@ -378,6 +379,8 @@ export function startApp(): void {
 
   const engine = new Engine();
   engine.tiledDocuments = stored(TILE_ENGINE_KEY) !== 'off';
+  engine.generativeSource = genPrefs().source;   // Preferences > Generative > Layers sent (1.96.2)
+  window.addEventListener(GEN_CHANGED, () => { engine.generativeSource = genPrefs().source; });
   templateContext.size = () => (engine.current ? { width: engine.current.doc.width, height: engine.current.doc.height } : null);
   engine.on('notice', (n) => toast(n.text, n.kind));
   const errorLog = new ErrorLog((t) => toast(t, 'error'), () => engine.failures);

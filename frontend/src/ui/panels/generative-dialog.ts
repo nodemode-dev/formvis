@@ -14,7 +14,8 @@ import { cappedFill, cappedUpscale, comfyReadiness, resolveReferenceTokens, stop
 import { PromptImprover, areaView, referenceViews } from './prompt-improver';
 import { GenerationOptions } from './generation-options';
 import { FalOptions } from './fal-options';
-import { falCatalogue, falIdOf, falMaskKey, falModelsOf, falRunImage, falValue } from '../../io/fal';
+import { preferredModel } from '../../io/gen-prefs';
+import { editInstruction, falCatalogue, falIdOf, falMaskAsPicture, falMaskKey, falModelsOf, falRunImage, falValue } from '../../io/fal';
 import type { FalModel } from '../../io/api';
 
 type Mode = 'fill' | 'expand' | 'upscale';
@@ -156,8 +157,8 @@ export class GenerativeDialog extends Dialog {
     setHidden(this.opts.el, mode === 'upscale');
     this.improver.refresh();
     if (start && mode !== 'upscale') this.improver.history.set(start.prompt);
-    if (start && !this.picked) {   // a run that starts without the dialog showing still uses the model the person chose last time
-      const kept = recalled(TITLES[mode], 'select:Model');
+    if (start && !this.picked) {   // a run that starts without the dialog showing: Preferences > Generative's model, else the one chosen last time
+      const kept = preferredModel(mode, start.prompt) || recalled(TITLES[mode], 'select:Model');
       if (typeof kept === 'string' && [...this.model.options].some((o) => o.value === kept && !o.disabled)) { this.model.value = kept; this.picked = true; }
     }
     this.sync();
@@ -312,7 +313,8 @@ export class GenerativeDialog extends Dialog {
     const prompt = this.prompt.value.trim(), mode = this.mode, scale = this.scale, e = this.engine, scope = this.scope.value, extra = this.fal.values();
     const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
     const takesPrompt = cat.inputs.some((i) => i.key === 'prompt');
-    if (takesPrompt && mode !== 'upscale' && !prompt && cat.inputs.some((i) => i.key === 'prompt' && i.required) && cat.role !== 'expand') { setText(this.state, 'Describe the change first.'); this.prompt.focus(); return; }
+    // An instruction-edit model removes on an empty request (editInstruction), so only a mask model needs the words.
+    if (takesPrompt && mode !== 'upscale' && !prompt && cat.inputs.some((i) => i.key === 'prompt' && i.required) && cat.role !== 'expand' && !!falMaskKey(cat)) { setText(this.state, 'Describe the change first.'); this.prompt.focus(); return; }
     const withPrompt = (): Record<string, unknown> => ({ ...(takesPrompt && prompt ? { prompt } : {}), ...extra });
     this.close();
     if (mode === 'upscale') { await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable(async () => (await falRunImage(cat, extra, image)).blob))); return; }
@@ -330,8 +332,9 @@ export class GenerativeDialog extends Dialog {
       await e.task(() => e.generativeExpand(margins, prompt, fill));
       return;
     }
-    const maskKey = falMaskKey(cat);
-    const fill = stoppableFill(() => cappedFill(async (image: Blob, mask: Blob): Promise<Blob> => (await falRunImage(cat, withPrompt(), image, maskKey ? mask : null)).blob));
+    const maskKey = falMaskKey(cat), asPicture = falMaskAsPicture(cat);
+    const told = (): Record<string, unknown> => ({ ...withPrompt(), ...(takesPrompt ? { prompt: editInstruction(cat, prompt) } : {}) });
+    const fill = stoppableFill(() => cappedFill(async (image: Blob, mask: Blob): Promise<Blob> => (await falRunImage(cat, maskKey ? withPrompt() : told(), image, maskKey || asPicture ? mask : null)).blob));
     await e.task(() => e.generativeFill(prompt, fill));
   }
 

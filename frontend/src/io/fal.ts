@@ -25,6 +25,26 @@ export function falImageKey(m: FalModel): string { return m.inputs.find((i) => /
 export function falMaskKey(m: FalModel): string { return m.inputs.find((i) => isMaskKey(i.key))?.key ?? ''; }
 export const falIsArray = (m: FalModel, key: string): boolean => !!m.inputs.find((i) => i.key === key)?.isArray;
 
+/** An instruction-edit model (no mask input) that takes a list of pictures gets the mask as picture 2 (1.96.2). */
+export const falMaskAsPicture = (m: FalModel): boolean => !falMaskKey(m) && !!falImageKey(m) && falIsArray(m, falImageKey(m));
+
+/** The prompt an instruction-edit model gets for a fill (1.96.2): what to edit, where (the mask picture when it is sent,
+ *  else the request alone), what must stay, and the request repeated last, since edit models given only the bare request
+ *  repainted freely and drifted from it. An empty request removes what the area holds. Mask models get the prompt as is. */
+export function editInstruction(m: FalModel, prompt: string): string {
+  const asked = prompt.trim();
+  if (falMaskKey(m)) return asked;
+  const where = falMaskAsPicture(m)
+    ? 'Picture 2 is a black and white mask of the same size: change only the area that is white in it, and keep everything in its black area exactly as it is.'
+    : 'Change only what the request is about, and keep everything else exactly as it is.';
+  const what = asked
+    ? `Request: ${asked}.`
+    : 'Request: remove whatever is in that area completely and continue the surrounding background, surfaces and lighting through it, so no trace of it remains.';
+  return [`Edit picture 1 and keep its size, framing and camera exactly.`, where, what,
+    'Match the lighting direction, colour, contrast, perspective, scale, focus and grain of the surrounding picture so the change blends in seamlessly.',
+    asked ? `Follow the request exactly: ${asked}.` : ''].filter(Boolean).join(' ');
+}
+
 /** The keys a dialog never offers as options: the prompt, the pictures, the shape it supplies, and run plumbing. */
 export function falSupplied(m: FalModel, extra: readonly string[] = []): Set<string> {
   const s = new Set<string>(['prompt', 'text_prompt', 'sync_mode', 'num_images', 'output_format', 'image_size', ...extra]);
@@ -57,6 +77,7 @@ export async function falRunImage(m: FalModel, inputs: Record<string, unknown>, 
   const ik = falImageKey(m), mk = falMaskKey(m);
   if (image && ik) { const url = await blobToDataUrl(image); images[ik] = falIsArray(m, ik) ? [url] : url; }
   if (mask && mk) images[mk] = await blobToDataUrl(mask);
+  else if (mask && ik && falMaskAsPicture(m)) (images[ik] as string[]).push(await blobToDataUrl(mask));
   const result = await api.falRun(m.id, inputs, images);
   const first = result.images?.[0];
   if (!first) throw new Error('fal returned no picture.');
