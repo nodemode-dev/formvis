@@ -4638,7 +4638,7 @@ export class Engine {
   maskFromTransparency(): void {
     this.edit('Add Layer Mask', (p) => {
       const l = p.activeLayer;
-      if (!l || l.mask || !this.paintable(l) || l.adjustment || !l.raster || this.smartLocked(p)) return false;
+      if (!l || l.mask || l.isGroup || !this.paintable(l) || l.adjustment || !l.raster || this.smartLocked(p)) return false;
       const { mask, opaque } = alphaToMask(l.raster.read());
       const m = new Raster(l.raster.width, l.raster.height);
       m.write(mask);
@@ -5080,9 +5080,29 @@ export class Engine {
    *  its mask when that is the target (1.66.0); a type, shape, fill or smart-object layer asks to be rasterized first
    *  (and is, on OK, so the next action paints). A refusal's own message stands alone: the caller's generic one is held
    *  back (lockedAt). */
+  /** The topmost layer with pixels inside folder `g` that shows within it (hidden children and sub-folders skipped). */
+  private topPaintableIn(p: Project, g: Layer): Layer | null {
+    const layers = p.doc.layers, byId = new Map(layers.map((x) => [x.id, x]));
+    const inside = (x: Layer): boolean => {
+      for (let a = x.parentId ? byId.get(x.parentId) : undefined; a; a = a.parentId ? byId.get(a.parentId) : undefined) {
+        if (a.id === g.id) return true;
+        if (!a.visible) return false;
+      }
+      return false;
+    };
+    for (let i = layers.length - 1; i >= 0; i--) { const x = layers[i]; if (!x.isGroup && x.visible && x.raster && inside(x)) return x; }
+    return null;
+  }
+
   private paintable(l: Layer | null, allowTiled = false): l is Layer {   // allowTiled: the plain stroke (1.62.5)
     if (!l) return false;
-    if (l.isGroup) { this.notice(`"${l.name}" is a group: choose a layer inside it.`); this.lockedAt = performance.now(); return false; }
+    if (l.isGroup) {
+      // A folder chosen in Layers (1.96.3, the owner: its warning was a nuisance): the work goes to the topmost visible
+      // pixel layer inside it, which becomes the current layer; only a folder with none says so.
+      const p = this.current, inner = p && l.id === p.activeId ? this.topPaintableIn(p, l) : null;
+      if (p && inner) { this.focus(p, inner.id); return this.paintable(inner, allowTiled); }
+      this.notice(`"${l.name}" has no visible pixel layer to work on.`); this.lockedAt = performance.now(); return false;
+    }
     // A layer past 268 MP, kept in tiles (1.62.3): painting it had given it a full-size canvas the browser cannot make.
     if (l.tiled && !allowTiled) { this.notice(`"${l.name}" is kept in tiles: the brush, pencil, eraser, Fill, Clear, Flip Layer, Copy and the filters that run in bands work on it; this comes in a later release.`); this.lockedAt = performance.now(); return false; }
     if (this.locked(l, 'pixels')) return false;
@@ -5138,8 +5158,8 @@ export class Engine {
   }
 
   private target(p: Project, at?: Pt): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
-    const l0 = p.activeLayer;
-    if (!this.paintable(l0)) return null;
+    if (!this.paintable(p.activeLayer)) return null;
+    const l0 = p.activeLayer;   // read after the check: a chosen folder hands over to the layer inside it
     // An adjustment layer paints its mask (made, revealing all, when it has none).
     if (l0.adjustment && !l0.mask) p.updateLayer(l0.id, { mask: { raster: null, enabled: true, linked: true, placement: null } });
     const la = p.layer(l0.id) as Layer, target: Target = la.adjustment || (p.maskTarget && la.mask) ? 'mask' : 'pixels';
@@ -10431,8 +10451,8 @@ export class Engine {
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
+    if (!p.activeLayer || !this.paintable(p.activeLayer)) { this.notice('Select a pixel layer first.'); return false; }
     const l0 = p.activeLayer;
-    if (!l0 || !this.paintable(l0)) { this.notice('Select a pixel layer first.'); return false; }
     if (this.smartLocked(p)) return false;
     const onMask = !!p.maskTarget && !!l0.mask;
     if (onMask && kind !== 'blur') { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }

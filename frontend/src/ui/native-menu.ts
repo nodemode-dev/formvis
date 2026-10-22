@@ -69,7 +69,7 @@ export class NativeMenus {
         if (!cmd) return null;
         const text = t(this.commands.label(cmd)), acc = accelerator(cmd.keys?.[0]);
         const opts = { text, enabled: this.enabled(spec), action: () => {
-          if (TEXT_EDITS.has(spec) && textFieldFocused()) void import('@tauri-apps/api/core').then((m) => m.invoke('text_edit', { action: spec })).catch(() => undefined);
+          if (TEXT_EDITS.has(spec) && textFieldFocused()) void import('@tauri-apps/api/core').then((m) => m.invoke('text_edit', { action: spec })).catch(() => { document.execCommand(spec === 'select-all' ? 'selectAll' : spec); });
           else this.commands.run(spec);
           this.refresh();
         } };

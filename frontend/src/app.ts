@@ -530,6 +530,8 @@ export function startApp(): void {
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
   q(root, '.cv-stage').addEventListener('contextmenu', (e) => {
+    // A text field on the stage (the task bar's prompt) keeps the system's Cut, Copy and Paste menu (1.96.3).
+    if (e.target instanceof Element && e.target.closest('input, textarea, [contenteditable="true"]')) return;
     if (['brush', 'spotHealing', 'remove', 'cloneStamp', 'smear', 'type'].includes(engine.tool) || (e.ctrlKey && e.altKey)) return;
     const pt = stage.docPoint(e.clientX, e.clientY), vp = engine.current?.viewport;
     if (!pt || !vp || engine.guideAt(vp.toScreen(pt.x, pt.y)) !== null) return;
