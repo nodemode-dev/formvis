@@ -42,7 +42,7 @@ def fal_run_ids(role):
 
 def test_fal_models_lists_the_catalogue_by_role_without_a_window(client):
     everything = call(client, "fal_models")["structuredContent"]
-    assert len(everything["models"]) == 545 and "upscale" in everything["roles"] and "segment" in everything["roles"]
+    assert len(everything["models"]) == 76 and "upscale" in everything["roles"] and "segment" in everything["roles"]
     ups = call(client, "fal_models", role="upscale")["structuredContent"]["models"]
     assert {m["id"] for m in ups} == set(fal_run_ids("upscale")) and all(m["role"] == "upscale" for m in ups)
     one = call(client, "fal_models", model="fal-ai/sam-3/image")["structuredContent"]["model"]

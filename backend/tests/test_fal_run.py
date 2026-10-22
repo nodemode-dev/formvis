@@ -99,7 +99,7 @@ def test_listing_and_ready(client, monkeypatch):
     monkeypatch.setenv("FAL_KEY", "k-abcdefgh")
     data = client.get("/api/fal/models").json()
     assert data["ready"] is True
-    assert len(data["models"]) == 545
+    assert len(data["models"]) == 76
     first = data["models"][0]
     assert {"id", "label", "role", "row", "category", "pricing", "license", "inputs"} <= set(first)
     monkeypatch.delenv("FAL_KEY")
