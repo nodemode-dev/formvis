@@ -243,8 +243,8 @@ export const api = {
   async recipeFileDelete(name: string): Promise<void> { await request(`/comfyui/recipe-files/${encodeURIComponent(name)}`, { method: 'DELETE' }); },
   async llmModels(): Promise<string[]> { return ((await (await request('/llm/models')).json()) as { models: string[] }).models; },
   /** The prompt rewritten; with `picture` (a data address of the area it is for) a model row that reads pictures sees it too (`seen`), and `restored` names the @img tokens the model dropped and the engine put back. */
-  async improvePrompt(prompt: string, instructions: string, picture = '', references: ReadonlyArray<{ token: string; picture: string }> = []): Promise<{ prompt: string; restored: string[]; seen: boolean; shown: string[]; dropped: string[]; added: string[] }> {
-    const r = (await (await request('/llm/improve', { method: 'POST', body: form({ prompt, instructions, ...(picture ? { picture } : {}), ...(references.length ? { references: JSON.stringify(references) } : {}) }) })).json()) as { prompt: string; restored?: string[]; seen?: boolean; shown?: string[]; dropped?: string[]; added?: string[] };
+  async improvePrompt(prompt: string, instructions: string, picture = '', references: ReadonlyArray<{ token: string; picture: string }> = [], useCase = ''): Promise<{ prompt: string; restored: string[]; seen: boolean; shown: string[]; dropped: string[]; added: string[] }> {
+    const r = (await (await request('/llm/improve', { method: 'POST', body: form({ prompt, instructions, ...(useCase ? { use_case: useCase } : {}), ...(picture ? { picture } : {}), ...(references.length ? { references: JSON.stringify(references) } : {}) }) })).json()) as { prompt: string; restored?: string[]; seen?: boolean; shown?: string[]; dropped?: string[]; added?: string[] };
     return { prompt: r.prompt, restored: r.restored ?? [], seen: r.seen === true, shown: r.shown ?? [], dropped: r.dropped ?? [], added: r.added ?? [] };
   },
 

@@ -134,12 +134,13 @@ def chat_delete(chat_id: str, request: Request) -> dict:
 
 
 @router.post("/improve")
-async def improve(prompt: str = Form(...), instructions: str = Form(""), picture: str = Form(""), references: str = Form("")) -> dict:
-    """`references` is a JSON list of {token, picture}: the @img tokens the prompt may name and their pictures as data addresses."""
+async def improve(prompt: str = Form(...), instructions: str = Form(""), picture: str = Form(""), references: str = Form(""), use_case: str = Form("")) -> dict:
+    """`references` is a JSON list of {token, picture}: the @img tokens the prompt may name and their pictures as data addresses.
+    `use_case` (fill, add, remove, edit, outpaint or upscale) picks the rewrite rules; empty keeps the template alone."""
     try:
         named = json.loads(references) if references.strip() else []
         if not isinstance(named, list) or len(named) > 16:
             raise ValueError
     except ValueError:
         raise HTTPException(422, "The references are a list of an @img token and its picture, at most 16.")
-    return await run_in_threadpool(_run, llm.improve, prompt, instructions, picture, named)
+    return await run_in_threadpool(_run, llm.improve, prompt, instructions, picture, named, use_case)

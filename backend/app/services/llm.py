@@ -469,15 +469,30 @@ def _named_pictures(prompt: str, references: list | None) -> list[tuple[str, str
     return sorted(out.items(), key=lambda kv: (kv[0] not in named, int(kv[0][4:])))
 
 
-def improve(prompt: str, instructions: str, picture: str = "", references: list | None = None) -> dict:
-    """`prompt` rewritten by the model under `instructions` (a prompt template). With `picture` (a data address of the
+_SHARED_RULES = "Follow every colour and material word of the request exactly. Write in English, translating the request if it is in another language. Output only the finished prompt as plain text: no list, no preamble, no quotes and no negative prompt. The request is repeated at the end of the message; keep to it."
+
+USE_RULES = {
+    "fill": "You rewrite a request for filling a selected area of a picture. Write one English paragraph of about 40 to 80 words that describes the final content of that area. Start with the subject, then its materials and colours, then the lighting, perspective and scale, matched to the surroundings.",
+    "add": "You rewrite a request for adding something to a picture. Write one English paragraph of about 40 to 80 words that describes the final content of the area. Start with the subject, then its materials and colours, then the lighting, perspective and scale, matched to the surroundings.",
+    "remove": "You rewrite a request for taking something out of a picture. Write 30 to 60 words that describe only the background that remains once the thing is gone: its surface, colours, texture and light. Never name the thing that is taken out and never use the word remove.",
+    "edit": "You rewrite a request for changing a picture. Write one imperative sentence of 15 to 35 words that starts with a verb and names the subject as it is seen. Apply exactly the colours and materials asked for, and end with what must stay unchanged.",
+    "outpaint": "You rewrite a request for extending a picture past its edges. Write 40 to 80 words that describe how the scene continues beyond the edges: what lies there, in the same light, perspective and style, with no visible seam.",
+    "upscale": "You rewrite a request for enlarging a picture. Describe faithfully what is present and ask for fine detail and crisp texture, without changing the content or adding anything new.",
+}
+
+
+def improve(prompt: str, instructions: str, picture: str = "", references: list | None = None, use_case: str = "") -> dict:
+    """`prompt` rewritten by the model under `instructions` (a prompt template). With a `use_case` (a key of USE_RULES) its
+    rules lead the system message, the template follows as lower priority guidance, and the request is repeated last. With `picture` (a data address of the
     area the prompt is for) and `references` (each a token such as @img1 and the data address of the picture it names)
     and a model row marked as reading pictures, the model sees them too, each reference labelled with its token; at
     most MAX_PICTURES go in the request, the area last. The @img tokens of the prompt stay: any the model dropped are
     put back at the end and named in `restored`; `shown` names the references the model saw."""
-    prompt, instructions = prompt.strip(), instructions.strip()
+    prompt, instructions, use_case = prompt.strip(), instructions.strip(), use_case.strip().lower()
     if not prompt:
         raise LlmError("Write a prompt to improve first.", 400)
+    if use_case and use_case not in USE_RULES:
+        raise LlmError(f"The use case is one of {', '.join(USE_RULES)}.", 400)
     reads = bool(_active().get("vision"))
     area = picture.startswith("data:image/") and len(picture) <= MAX_PICTURE_BYTES and reads
     shown = _named_pictures(prompt, references)[:MAX_PICTURES - (1 if area else 0)] if reads else []
@@ -490,9 +505,12 @@ def improve(prompt: str, instructions: str, picture: str = "", references: list 
         parts += [{"type": "text", "text": f"{token}:"}, {"type": "image_url", "image_url": {"url": url}}]
     if seen:
         parts += [{"type": "text", "text": "The area:"}, {"type": "image_url", "image_url": {"url": picture}}]
+    if use_case and len(parts) > 1:
+        parts.append({"type": "text", "text": f"The request again: {prompt[:4000]}"})
     user = parts if len(parts) > 1 else prompt[:4000]
+    lead = f"{USE_RULES[use_case]}\n\n{_SHARED_RULES}" + (f"\n\nGuidance from the person's template, below the rules above:\n{instructions[:8000]}" if instructions else "") if use_case else instructions[:8000]
     body = {"model": _active().get("model"), "temperature": 0.7, "max_tokens": 600,
-            "messages": [{"role": "system", "content": f"{instructions[:8000]}{keep}{look}{who}\n\n{RULE}"}, {"role": "user", "content": user}]}
+            "messages": [{"role": "system", "content": f"{lead}{keep}{look}{who}\n\n{RULE}"}, {"role": "user", "content": user}]}
     choices = _call("/chat/completions", body).get("choices") or []
     text = str(((choices[0] if choices else {}).get("message") or {}).get("content") or "").strip()
     for prefix in ("prompt:", "rewritten prompt:", "improved prompt:"):

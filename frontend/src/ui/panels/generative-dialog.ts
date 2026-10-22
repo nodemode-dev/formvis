@@ -93,6 +93,7 @@ export class GenerativeDialog extends Dialog {
     this.body.appendChild(this.chips.el);
     this.improver = new PromptImprover(this.prompt, 'Fill a selection');
     this.improver.view = areaView(engine, true);
+    this.improver.mode = () => (this.mode === 'fill' ? '' : this.mode);
     this.improver.refs = referenceViews(() => this.chips.ordered());
     this.body.appendChild(this.improver.el);
     this.body.appendChild(this.opts.el);
