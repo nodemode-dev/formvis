@@ -24,7 +24,7 @@ modules:
       - install -Dm644 ai.nodemode.formvis.metainfo.xml /app/share/metainfo/ai.nodemode.formvis.metainfo.xml
     sources:
       - type: file
-        url: https://github.com/nodemode-ai/formvis/releases/download/v1.89.0/formvis_1.89.0_amd64.deb
+        url: https://github.com/nodemode-ai/formcompiler/releases/download/formvis-v1.89.0/formvis_1.89.0_amd64.deb
         sha256: REPLACE_WITH_THE_RELEASE_DEB_SHA256
         dest-filename: formvis.deb
         only-arches: [x86_64]
@@ -34,7 +34,7 @@ modules:
           version-query: .tag_name | sub("^v"; "")
           url-query: .assets[] | select(.name == "formvis_" + $version + "_amd64.deb") | .browser_download_url
       - type: file
-        url: https://github.com/nodemode-ai/formvis/releases/download/v1.89.0/formvis_1.89.0_arm64.deb
+        url: https://github.com/nodemode-ai/formcompiler/releases/download/formvis-v1.89.0/formvis_1.89.0_arm64.deb
         sha256: REPLACE_WITH_THE_RELEASE_ARM64_DEB_SHA256
         dest-filename: formvis.deb
         only-arches: [aarch64]

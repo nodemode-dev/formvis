@@ -2,7 +2,7 @@ cask "formvis" do
   version "1.89.0"
   sha256 "REPLACE_WITH_THE_RELEASE_DMG_SHA256"
 
-  url "https://github.com/nodemode-ai/formvis/releases/download/v#{version}/formvis_#{version}_aarch64.dmg"
+  url "https://github.com/nodemode-ai/formcompiler/releases/download/formvis-v#{version}/formvis_#{version}_aarch64.dmg"
   name "formvis"
   desc "Layered image editor"
   homepage "https://github.com/nodemode-ai/formvis"

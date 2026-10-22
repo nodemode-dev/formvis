@@ -3235,7 +3235,7 @@ export function startApp(): void {
     if ((await api.capabilities())?.switches?.portable) {
       const text = `Version ${report.version ?? ''} is available. This portable copy does not update itself; the releases page is opening.`;
       toast(text, 'info');
-      window.open('https://github.com/nodemode-ai/formvis/releases', '_blank', 'noopener');
+      window.open('https://github.com/nodemode-ai/formcompiler/releases', '_blank', 'noopener');
       return text;
     }
     const again = !!report.version && stored(SKIPPED_UPDATE_KEY) === report.version;

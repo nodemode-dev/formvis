@@ -1,7 +1,7 @@
 PORTNAME=	formvis
 DISTVERSION=	1.90.7
 CATEGORIES=	graphics python
-MASTER_SITES=	https://github.com/nodemode-ai/formvis/releases/download/v${DISTVERSION}/
+MASTER_SITES=	https://github.com/nodemode-ai/formcompiler/releases/download/formvis-v${DISTVERSION}/
 DISTFILES=	formvis-web.tar.gz
 DIST_SUBDIR=	${PORTNAME}-${DISTVERSION}
 
