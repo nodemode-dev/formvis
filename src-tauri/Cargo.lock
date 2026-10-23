@@ -1230,7 +1230,7 @@ dependencies = [
 
 [[package]]
 name = "formvis"
-version = "1.96.5"
+version = "1.96.6"
 dependencies = [
  "fontdb",
  "formvis-render",

@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.96.6 · 2026-10-23
+
+- About formvis has a closed "Licences and notices" section with Adobe's required DNG notice; the notice is also in NOTICE.md and the README.
+- A trademark notice (Adobe, Camera Raw, Photoshop) is in NOTICE.md and the README, and CLAUDE.md carries the trademark, copyright and licence rules for agents.
+- Not verified yet: the About section was not seen in the window under throttling.
+
 ## 1.96.5 · 2026-10-22
 
 ### Changed
