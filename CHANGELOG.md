@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.96.7 · 2026-10-23
+
+- NOTICE.md lists five more downloaded-on-request models (YuNet, Depth Anything V2 Small, DDColor-tiny, the fast neural style presets, the sky segmenter) and gives the OpenCV wheel's OpenSSL 1.1.1k its own licence terms.
+- The macOS build stops if OpenCV's GPL codec libraries reach the engine; macOS releases build OpenCV without them.
+
 ## 1.96.6 · 2026-10-23
 
 - About formvis has a closed "Licences and notices" section with Adobe's required DNG notice; the notice is also in NOTICE.md and the README.
