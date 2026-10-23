@@ -18,7 +18,7 @@ const CHANNELS: ReadonlyArray<readonly [string, string, readonly [boolean, boole
 /** Edit > Fill (Shift+F5): Contents, then Mode (all 27 modes), Opacity, Preserve Transparency and the Channels filled.
  *  Every row exists from the start; the colour, pattern and adaptation rows are disabled, not hidden, when the contents
  *  do not use them, so the dialog keeps one size. Content-Aware fills the selection in place with the chosen Color
- *  Adaptation; Edit > Content-Aware Fill opens the workspace. */
+ *  Adaptation; Edit > Selection-Aware Fill opens the workspace. */
 export class FillDialog extends Dialog {
   private contents: Contents = 'fg';
   private color: RGB = { r: 255, g: 0, b: 0 };

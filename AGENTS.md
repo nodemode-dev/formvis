@@ -8,6 +8,10 @@ When the person wants a picture edited (retouched, an object removed or added, a
 
 The MCP server is configured for this repository in `.codex/config.toml` (Codex) and `.cursor/mcp.json` (Cursor); both run `./formvis mcp`, which starts the formvis engine when it is not running. From any other folder, `./formvis agents install` sets Claude Code, Codex and Cursor up for the user account. The first edit asks the person once, in the formvis window, to allow outside agents; every tool error says what to do next.
 
+## Selection-Aware Fill and Liquify face tools (declined for patent risk, 2026-10-23)
+
+The fill's painted sampling area is a preference weight and never excludes the rest of the picture: do not turn it into a mask that limits where patches come from. The feature keeps the name Selection-Aware Fill. Liquify's face tools never build or warp a mesh fitted to the face; they stay on the generic Liquify grid, with warps placed from the landmarks. Not checked by `./formvis counts --check` yet.
+
 ## Changing formvis's code
 
 Read `CLAUDE.md` and `.agents/skills/formvis-harness/SKILL.md` first (the same skill sits in `.claude/skills`): they map the subsystems, the laws that apply everywhere, and the specialist sub-skills. After changing the MCP tools in `backend/app/routers/mcp.py` or the window's commands, run `./formvis agents sync` (with the engine's `backend/venv/bin` first on PATH, after the window has run once so the catalogue is mirrored): it regenerates the tool reference, the command reference, the command map and the tool map, and mirrors every skill into `.agents/skills`; `./formvis agents sync --check` fails on any drift and on a skill file that breaks the upload gates, and the engine tests run it.

@@ -368,14 +368,14 @@ export function contentAwareFill(host: EditHost): void {
   const p = host.current;
   if (!p) return;
   if (!p.selection) {
-    host.notice('Content-Aware Fill needs a selection.');
+    host.notice('Selection-Aware Fill needs a selection.');
     return;
   }
   if (!host.canPaint(p)) {
     host.notice(NEED_LAYER);
     return;
   }
-  regionEdit(host, 'Content-Aware Fill', ({ raster, target, rect, cover }) => {
+  regionEdit(host, 'Selection-Aware Fill', ({ raster, target, rect, cover }) => {
     const w = raster.width;
     const h = raster.height;
     const tl = host.target(p);

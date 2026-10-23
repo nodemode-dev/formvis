@@ -40,8 +40,8 @@ Generated from the window's command catalogue (1666 commands) by `./formvis agen
 | `compare-documents` | Compare with... |  | Opens Compare with: picks another open document and makes a new document with both pictures and a Differences layer in Difference blend mode, selecting where they differ. |
 | `compare-split` | Compare with Snapshot (Split) |  | Shows the current state on the left and a kept snapshot (the opening snapshot unless one is named) on the right of a divider that can be dragged; run again to close it. History is not changed. |
 | `composite-pixel` | Read Composite Pixel |  | Reads the composited color and opacity (red, green, blue, alpha 0 to 255 and the hex code) of the one document pixel at x and y, as the picture shows it with every layer, adjustment and effect. |
-| `content-fill` | Quick Content-Aware Fill | Shift+Backspace | Fills the selection from its surroundings. (changes the picture) |
-| `content-fill-workspace` | Content-Aware Fill... |  | Opens the Content-Aware Fill workspace for the selection. (changes the picture) |
+| `content-fill` | Quick Selection-Aware Fill | Shift+Backspace | Fills the selection from its surroundings. (changes the picture) |
+| `content-fill-workspace` | Selection-Aware Fill... |  | Opens the Selection-Aware Fill workspace for the selection. (changes the picture) |
 | `copy` | Copy | Mod+C | Copies the selection to the clipboard. |
 | `copy-merged` | Copy Merged | Shift+Mod+C | Copies the selection from all visible layers. |
 | `customize-toolbar` | Toolbar... |  | Opens the Toolbar dialog to choose which tools the tool rail shows, how they are grouped and in what order. |
@@ -213,7 +213,7 @@ Generated from the window's command catalogue (1666 commands) by `./formvis agen
 | `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
 | `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
 | `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip, as a formvis project pointing at the copies under Links, or as a PSD or PSB beside them. Pass format fvd, psd or psb to skip the dialog. (changes the picture) |
-| `photomerge` | Photomerge... |  | Stitches files or the open documents (documents true) into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional crop, vignette and lens distortion correction, or (layers true) as one layer per photo with seam masks, or (fill true) with the transparent edges and gaps filled by Content-Aware Fill; without parameters it opens the dialog. (changes the picture) |
+| `photomerge` | Photomerge... |  | Stitches files or the open documents (documents true) into a panorama (Auto, Perspective, Cylindrical, Collage or Reposition) with optional crop, vignette and lens distortion correction, or (layers true) as one layer per photo with seam masks, or (fill true) with the transparent edges and gaps filled by Selection-Aware Fill; without parameters it opens the dialog. (changes the picture) |
 | `pin-tab` | Pin Tab |  | Pins or unpins the current document tab: a pinned tab moves to the front, loses its close button and is kept by Close All and Close Others. |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
 | `place-embedded` | Place Embedded... |  | Places an image file as an embedded smart object. (changes the picture) |

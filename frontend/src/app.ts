@@ -4425,7 +4425,7 @@ export function startApp(): void {
         ...SOURCE_PARAMS,
         layout: { type: 'string', enum: ['auto', 'perspective', 'cylindrical', 'collage', 'reposition'], description: 'How the photos are joined; auto when left out.' },
         crop: { type: 'boolean', description: 'Crop to the largest rectangle the photos fill (else the edges stay transparent).' },
-        fill: { type: 'boolean', description: 'Fill the transparent edges and gaps of the joined picture by Content-Aware Fill; off when left out, not used with layers.' },
+        fill: { type: 'boolean', description: 'Fill the transparent edges and gaps of the joined picture by Selection-Aware Fill; off when left out, not used with layers.' },
         layers: { type: 'boolean', description: 'Open one layer per photo, each with a seam mask, instead of one joined picture.' },
         vignette: { type: 'boolean', description: 'Vignette Removal; needs photos of one size.' },
         distortion: { type: 'boolean', description: 'Geometric Distortion Correction.' },
@@ -4583,7 +4583,7 @@ export function startApp(): void {
     { id: 'fill-bg-keep', label: 'Fill with Background, Keep Transparency', keys: ['Shift+Mod+Backspace', 'Shift+Mod+Delete'], enabled: pixel, run: () => engine.fillWith({ color: { ...engine.bg } }, 'normal', 1, true) },
     { id: 'fill-history', label: 'Fill with History', keys: ['Alt+Mod+Backspace', 'Alt+Mod+Delete'], enabled: pixel, run: () => engine.fillWith({ history: true }, 'normal', 1, false) },
     { id: 'fill-dialog', label: 'Fill...', keys: ['Shift+F5'], enabled: pixel, run: () => dialogs.fill.show() },
-    { id: 'content-fill-workspace', label: 'Content-Aware Fill...', enabled: () => pixel() && selected(), run: () => dialogs.contentFill.show() },
+    { id: 'content-fill-workspace', label: 'Selection-Aware Fill...', enabled: () => pixel() && selected(), run: () => dialogs.contentFill.show() },
     { id: 'cancel-job', label: 'Cancel Background Job', enabled: () => engine.jobs.some((j) => !j.cancelled), run: () => { const n = engine.cancelJob(); if (n) toast(n === 1 ? 'Stopping the running job.' : `Stopping ${n} running jobs.`); } },
     { id: 'clone-source-slot', label: 'Clone Source: Choose Slot', params: { slot: { type: 'integer', required: true, min: 1, max: 5, description: 'Which of the five clone sources to use.' } }, run: (a) => { engine.selectCloneSlot(Math.round(Number(a?.slot)) - 1); } },
     { id: 'clone-source-set', label: 'Clone Source: Set Source', params: { x: { type: 'number', description: 'Document x of the source point; the current point when left out.' }, y: { type: 'number', description: 'Document y of the source point; the current point when left out.' }, width: { type: 'number', min: 1, max: 1000, description: 'Source width in percent.' }, height: { type: 'number', min: 1, max: 1000, description: 'Source height in percent; follows the width when left out and the two are linked.' }, angle: { type: 'number', min: -180, max: 180, description: 'Source angle in degrees.' }, flipH: { type: 'boolean', description: 'Flip the source horizontally.' }, flipV: { type: 'boolean', description: 'Flip the source vertically.' } }, run: (a) => {
@@ -5591,7 +5591,7 @@ export function startApp(): void {
     { id: 'stroke-dialog', label: 'Stroke...', enabled: () => pixel() && (selected() || !!engine.activeLayer?.raster), run: () => dialogs.stroke.show() },
     { id: 'transform', label: () => (engine.pathTarget ? 'Free Transform Path' : engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Mod+T'], enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.floatingSelection, run: () => engine.transformCommand() },
     { id: 'transform-copy', label: 'Free Transform a Copy', keys: ['Alt+Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => { engine.transformCopy(); } },
-    { id: 'content-fill', label: 'Quick Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
+    { id: 'content-fill', label: 'Quick Selection-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
     { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: (a) => void dialogs.generative.show('fill', 2, typeof a?.prompt === 'string' ? { prompt: a.prompt } : undefined) },   // the Contextual Task Bar passes the prompt it holds (undeclared: agents and the menus open the dialog)
     { id: 'generate-image', label: 'Generate Image...', enabled: () => true, run: () => void generateImage.show() },   // 1.51.2, in the Edit menu
     { id: 'new-canvas-model-preset', label: 'New Canvas from Model Preset...', enabled: () => true, run: () => void modelCanvas.show() },

@@ -18,6 +18,13 @@ Layered image editor for the web and the desktop in the NodeMode design system: 
 - The three-star sparkle icon is banned app-wide (the owner's rule, harness law 12): no icon, glyph or SVG of it under any name, including when porting from formlit; `./formvis counts --check` fails if it returns. Claude Code lives in the terminal dock as in formlit (the `agent`, `agentChat` and `terminal` icons).
 - Planning documents (DEV_PLAN, BUILD_NOTES, TEST_PLAN, the root HASHOUT_LOG) ship in the planning sidecar zip, not in this tree. The living logs `frontend/HASHOUT_LOG.md` and `backend/HASHOUT_LOG.md` are in the tree: read them before editing.
 
+## Selection-Aware Fill sampling and Liquify face tools (declined for patent risk, 2026-10-23)
+
+- The fill's painted sampling area (Sampling Area: Custom, its brush and Preference Strength) is a preference weight only: a candidate patch there has its cost multiplied by 1 minus the strength times its painted share, and the search always covers the rest of the picture. Never store a painted or user-edited area as a mask that limits where patches may come from, never pass one to `contentFill` as its `limit`, and never skip candidates outside it. `limit` is only the automatic Rectangular box. Keep the strength capped (`FILL_PREFERENCE_MAX`) so outside patches stay competitive.
+- The feature is called Selection-Aware Fill in every language. Do not bring back the old product name for it.
+- Liquify's face tools (Find faces and the face sliders) never build, fit or warp a mesh of the face. They stay on the generic Liquify grid, with the warps placed from the detected landmarks; do not add a face mesh, a dense landmark model, or a mesh tied to a face.
+- `./formvis counts --check` does not check these yet (docs only for now); they could be added to `counts --check` later.
+
 ## Skills
 
 - `formvis-harness` · for changing formvis's code: engine, commands, tools, brushes, colour, filters, UI, agent bridge, terminal, native renderer, file formats and releases. Route through its `SKILL.md` routing table to the specialist `SUB-SKILL.md`.

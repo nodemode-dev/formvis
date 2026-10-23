@@ -192,7 +192,11 @@ ask it questions.
   make it the current source; each of the five slots remembers its own position, scale, angle and flips (Reset Transform clears them). The
   overlay shows the source on the canvas as you paint: Show, Opacity, Clipped (only inside the brush) and Auto Hide
   (hidden while you paint).
-- Edit > Content-Aware Fill shows a dialog with Sampling Area, Show Result and Output To, and four adaptation
+- Edit > Selection-Aware Fill shows a dialog with Sampling Area (Auto, Rectangular or Custom), Show Result and Output To.
+  With Custom you paint the places you would like the fill to draw from (Alt to erase). The painted area is a preference,
+  not a limit: patches there get a lower cost, set by Preference Strength (0 to 0.6, default 0.4), and the fill still
+  searches the rest of the picture, so a clearly better match elsewhere can win. Rectangular is an automatic box around
+  the selection. There are also four adaptation
   controls that all start off: Color Adaptation (None, Default, High, Very High), Rotation Adaptation (None to Full),
   Scale and Mirror. With them off the fill is as fast as before. Color adaptation makes the search about 8 times
   slower and the rotation and scale options about 20 times slower with color, so use them on small holes. Transformed

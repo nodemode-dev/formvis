@@ -28,7 +28,7 @@ def paint_sampling_on_blue(page, d):
     page.mouse.up()
 
 
-def test_custom_sampling_on_the_blue_side_fills_blue_as_one_step(page):
+def test_custom_painted_preference_fills_as_one_step(page):
     page.evaluate(SCENE)
     d = dlg(page)
     d.locator(".cv-field", has_text="Sampling Area").first.locator("select").select_option("custom")
@@ -46,8 +46,10 @@ def test_custom_sampling_on_the_blue_side_fills_blue_as_one_step(page):
     d.locator(".cv-dialog-foot button", has_text="OK").click()
     page.wait_for_timeout(1500)
     r, b = page.evaluate(MEAN)
-    assert b > 150 and r < 100, (r, b)
-    assert page.evaluate("window.formvis.engine.historySteps.names.slice(-1)[0]") == "Content-Aware Fill"
+    # The painted blue side is only a preference: the grey stripe around the hole still matches far better, so the
+    # fill stays grey instead of turning blue (the search covers the whole picture).
+    assert abs(r - 128) < 30 and abs(b - 128) < 30, (r, b)
+    assert page.evaluate("window.formvis.engine.historySteps.names.slice(-1)[0]") == "Selection-Aware Fill"
     page.evaluate("window.formvis.engine.undo()")
     r, b = page.evaluate(MEAN)
     assert abs(r - 128) < 5 and abs(b - 128) < 5
@@ -62,4 +64,4 @@ def test_new_layer_output_and_show_result(page):
     d.locator(".cv-dialog-foot button", has_text="OK").click()
     page.wait_for_timeout(1500)
     r = page.evaluate("(() => { const e = window.formvis.engine, ls = e.current.doc.layers; return [ls.length, ls[ls.length - 1].name, e.historySteps.names.slice(-1)[0]]; })()")
-    assert r == [2, "Content-Aware Fill", "Content-Aware Fill"], r
+    assert r == [2, "Selection-Aware Fill", "Selection-Aware Fill"], r

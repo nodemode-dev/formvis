@@ -44,7 +44,7 @@ export class MergeDialog extends Dialog {
     });
     const layout = selectRow('Layout', [['auto', 'Auto'], ['perspective', 'Perspective'], ['cylindrical', 'Cylindrical'], ['collage', 'Collage'], ['reposition', 'Reposition']], (v) => { this.layout = v as MergeDialog['layout']; });
     const crop = checkRow('Crop to the picture', (v) => { this.crop = v; });
-    const fill = checkRow('Fill transparent edges (Content-Aware Fill)', (v) => { this.fill = v; });
+    const fill = checkRow('Fill transparent edges (Selection-Aware Fill)', (v) => { this.fill = v; });
     const vig = checkRow('Vignette Removal', (v) => { this.vignette = v; });
     const geo = checkRow('Geometric Distortion Correction', (v) => { this.distortion = v; });
     this.panoRows = el('<div></div>');

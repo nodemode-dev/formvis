@@ -36,7 +36,7 @@ interface Act {
 
 const ACTS: Act[] = [
   { key: 'generate', cmd: 'generative-fill', label: 'Generate', tip: 'Generative Fill: fills the selection from your description, or removes what is in it when the description is empty.', why: 'Make a selection first.', icon: 'generate', mode: 'selection', lead: true, primary: true },
-  { key: 'remove', cmd: 'content-fill', label: 'Remove', tip: 'Fills the selection from its surroundings (Quick Content-Aware Fill).', why: 'Make a selection on a pixel layer first.', icon: 'tRemove', mode: 'selection', lead: true },
+  { key: 'remove', cmd: 'content-fill', label: 'Remove', tip: 'Fills the selection from its surroundings (Quick Selection-Aware Fill).', why: 'Make a selection on a pixel layer first.', icon: 'tRemove', mode: 'selection', lead: true },
   { key: 'invert', cmd: 'inverse', label: 'Invert', tip: 'Selects everything except the current selection.', why: 'Make a selection first.', icon: 'invert', mode: 'selection', bare: true },
   { key: 'feather', cmd: 'feather', label: 'Feather...', tip: 'Softens the edge of the selection.', why: 'Make a selection first.', icon: 'feather', mode: 'selection', bare: true },
   { key: 'deselect', cmd: 'deselect', label: 'Deselect', tip: 'Drops the selection.', why: 'There is no selection.', icon: 'deselect', mode: 'selection', bare: true },
