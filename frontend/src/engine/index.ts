@@ -137,7 +137,7 @@ import { traceAlpha } from './trace-outline';
 export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from './custom-shapes';
 import { replaceColours } from './color-replace';
 import { fillOffThread } from './retouch-jobs';
-import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, featherEdge, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
+import { FILL_DEFAULTS, FILL_PREFERENCE_DEFAULT, WarpStroke, contentFill, diffusionFill, featherEdge, frequencySplit, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { PIXEL_BLENDS, blendPixels, dissolveNoise } from './blend';
 import { LUT3_N, adjustmentHood, adjustmentLut, adjustmentLut3, type GpuHood } from './lut';
 import { paramValues } from './adjust-params';
@@ -9488,7 +9488,7 @@ export class Engine {
   fillTransparentWithContent(): boolean {
     const p0 = this.current, l0 = p0?.activeLayer;
     if (!p0 || !l0?.raster || !this.paintable(l0)) return false;
-    return this.edit('Content-Aware Fill', (p) => {
+    return this.edit('Selection-Aware Fill', (p) => {
       const l = p.layer(l0.id), r = l?.raster;
       if (!l || !r) return false;
       const img = r.read(), mask = new Uint8Array(r.width * r.height);
@@ -11692,16 +11692,18 @@ export class Engine {
 
   contentAwareFill(): void { IE.contentAwareFill(this.editHost); }
 
-  /** The Content-Aware Fill workspace's OK: fills the selection on the active layer, sampling only from `allowDoc`
-   *  (1 where sampling is allowed, over the whole canvas) when given, and sends the result to the current layer, a
-   *  new layer holding only the filled pixels (for an upright, unscaled layer), or a duplicate of the layer. One step. */
-  contentAwareFillWith(allowDoc: Uint8Array | null, output: 'current' | 'new' | 'duplicate', options: FillOptions = FILL_DEFAULTS, sampleAll = false, areaDoc: Uint8Array | null = null, channel = 3): void {
+  /** The Selection-Aware Fill workspace's OK: fills the selection on the active layer. `limitDoc` is the automatic
+   *  Rectangular box (1 inside, over the whole canvas) that sources must lie in; `preferDoc` is the painted preference
+   *  (same layout) that lowers the cost of candidate patches lying in it by up to `strength`, with the rest of the
+   *  picture still searched. The result goes to the current layer, a new layer holding only the filled pixels (for an
+   *  upright, unscaled layer), or a duplicate of the layer. One step. */
+  contentAwareFillWith(limitDoc: Uint8Array | null, output: 'current' | 'new' | 'duplicate', options: FillOptions = FILL_DEFAULTS, sampleAll = false, areaDoc: Uint8Array | null = null, channel = 3, preferDoc: Uint8Array | null = null, strength = FILL_PREFERENCE_DEFAULT): void {
     const p0 = this.current;
-    if (!p0?.selection) { this.notice('Content-Aware Fill needs a selection.'); return; }
+    if (!p0?.selection) { this.notice('Selection-Aware Fill needs a selection.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
     const l0 = p0.activeLayer as Layer, plain = !!l0.raster && !l0.transform.rotation && l0.transform.w === l0.raster.width && l0.transform.h === l0.raster.height && !l0.transform.flipX && !l0.transform.flipY;
     const mode = output === 'new' && !plain ? 'duplicate' : output;
-    this.edit('Content-Aware Fill', (p) => {
+    this.edit('Selection-Aware Fill', (p) => {
       if (mode === 'duplicate') this.duplicateLayers();
       const l = p.activeLayer as Layer, r = l.raster;
       if (!r) return false;
@@ -11720,7 +11722,8 @@ export class Engine {
         for (let i = 0; i < out.length; i++) out[i] = ld[i * 4 + 3] >= 128 ? 1 : 0;
         return out;
       };
-      const allow = allowDoc && allowDoc.length === p.doc.width * p.doc.height ? toLayer(allowDoc) : null;
+      const limit = limitDoc && limitDoc.length === p.doc.width * p.doc.height ? toLayer(limitDoc) : null;
+      const prefer = preferDoc && preferDoc.length === p.doc.width * p.doc.height ? { mask: toLayer(preferDoc), strength } : null;
       // The fill area edited in the workspace (lasso adds and subtracts) replaces the selection's, keeping its softness where they overlap.
       if (areaDoc && areaDoc.length === p.doc.width * p.doc.height) {
         const area = toLayer(areaDoc), soft = new Uint8ClampedArray(cov.length);
@@ -11730,7 +11733,7 @@ export class Engine {
       // Sample All Layers: the fill is worked out on everything shown and laid onto this layer over the hole only.
       const own = r.read(), src = sampleAll ? this.rasterSpace(this.healSampleSurface(p, l, 'all'), l, r.width, r.height) : own, pm = premultiply(src.data), hole = new Uint8Array(r.width * r.height);
       for (let i = 0; i < hole.length; i++) hole[i] = cov[i * 4 + 3] ? 1 : 0;
-      if (!contentFill(pm, hole, r.width, r.height, allow, options)) { this.notice('There is nothing opaque in the sampling area to fill from.'); return false; }
+      if (!contentFill(pm, hole, r.width, r.height, limit, options, prefer)) { this.notice('There is nothing opaque in the sampling area to fill from.'); return false; }
       const out = new ImageData(r.width, r.height);
       unpremultiply(pm, out.data);
       const blended = this.blendThrough(src, out, cov), result = sampleAll ? this.layHeal(own, blended, hole.map((v) => (v ? 255 : 0)), 1) : blended;
@@ -11744,7 +11747,7 @@ export class Engine {
         for (let i = 0; i < hole.length; i++) if (hole[i]) only.data.set(result.data.subarray(i * 4, i * 4 + 4), i * 4);
         const nr = new Raster(r.width, r.height);
         nr.ctx.putImageData(only, 0, 0);
-        this.insertRasterLayer(nr, 'Content-Aware Fill', l.transform.x, l.transform.y, {}, 'Content-Aware Fill');
+        this.insertRasterLayer(nr, 'Selection-Aware Fill', l.transform.x, l.transform.y, {}, 'Selection-Aware Fill');
         return true;
       }
       const nr = new Raster(r.width, r.height);

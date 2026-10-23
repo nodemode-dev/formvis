@@ -589,7 +589,7 @@ export const uk: Record<string, string> = {
   'Row Order': 'Порядок рядків',
   'Run': 'Запустити',
   'Run Action': 'Виконати дію',
-  'Sampling Area': 'Область вибірки',
+  'Sampling Area': 'Область вибірки', 'Preference Strength': 'Сила переваги',
   'Sand (light)': 'Пісок (світлий)',
   'Satin': 'Атлас',
   'Saturation': 'Насиченість',

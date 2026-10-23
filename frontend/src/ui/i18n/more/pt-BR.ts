@@ -589,7 +589,7 @@ export const ptBR: Record<string, string> = {
   'Row Order': 'Ordem das linhas',
   'Run': 'Executar',
   'Run Action': 'Executar ação',
-  'Sampling Area': 'Área de amostragem',
+  'Sampling Area': 'Área de amostragem', 'Preference Strength': 'Intensidade da preferência',
   'Sand (light)': 'Areia (clara)',
   'Satin': 'Cetim',
   'Saturation': 'Saturação',

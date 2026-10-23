@@ -7,7 +7,7 @@ import { wasmMembrane, wasmPatchCorrect } from './wasm-kernels';
  *  best matches the spot's own ring (least squared difference), then heals it as in Poisson image editing (Perez,
  *  Gangnet and Blake, 2003): the source's texture is kept, and a harmonic correction, solved coarse to fine, makes it
  *  meet the spot's edge without a seam. Create Texture instead fills the spot with the harmonic interpolation of its
- *  edge plus grain matched to the ring's fine detail. Content-Aware Fill is exemplar-based inpainting (Criminisi,
+ *  edge plus grain matched to the ring's fine detail. Selection-Aware Fill is exemplar-based inpainting (Criminisi,
  *  Perez and Toyama, 2004): whole patches from the surroundings are copied into the hole from its edge inward,
  *  confident, structure-carrying spots first. Smudge and Liquify are brush warps: Liquify pushes pixels along the
  *  stroke, Smudge drags paint picked up where the stroke began. Everything works on premultiplied pixels. */
@@ -398,7 +398,7 @@ export function spotHeal(rgba: Uint8ClampedArray, coverage: Uint8Array, W: numbe
   return true;
 }
 
-/** Content-Aware Fill's adaptation settings: how far a candidate patch may be recoloured toward
+/** Selection-Aware Fill's adaptation settings: how far a candidate patch may be recoloured toward
  *  the known pixels around the target (colour: 0 None, 1 Default, 2 High, 3 Very High), turned (rotation: 0 None to 4
  *  Full), scaled (0.8 to 1.25) or flipped left to right before it is compared and copied. */
 export interface FillOptions { color: number; rotation: number; scale: boolean; mirror: boolean }
@@ -539,12 +539,26 @@ export function diffusionFill(px: Uint8ClampedArray, hole: Uint8Array, w: number
   return true;
 }
 
-/** Content-Aware Fill: fills the pixels where `mask` is set in premultiplied `px` from the surrounding image. Returns
+/** A painted preference for Selection-Aware Fill: `mask` marks the pixels a person painted as the place to draw from
+ *  and `strength` (0 to FILL_PREFERENCE_MAX) says how much a candidate patch lying there gains. It only lowers a
+ *  candidate's cost; every other patch of the search stays a candidate. */
+export interface FillPreference { mask: Uint8Array; strength: number }
+/** The strongest preference the workspace offers: a fully painted candidate's cost is at least 0.4 times its plain
+ *  cost, so a patch outside the painted area that matches clearly better still wins. */
+export const FILL_PREFERENCE_MAX = 0.6;
+/** The workspace's starting strength. */
+export const FILL_PREFERENCE_DEFAULT = 0.4;
+
+/** Selection-Aware Fill: fills the pixels where `mask` is set in premultiplied `px` from the surrounding image. Returns
  *  false when there is nothing opaque around the hole, or no whole patch of the surroundings to copy from. `options`
  *  adds the workspace's adaptation: extra rotated, scaled and mirrored candidates (searched on a bounded subsample, at
  *  most about 6000 more than the 8000 plain ones) and a per-candidate gain and offset per colour channel. The default,
- *  no options, is the plain search with no colour adaptation. */
-export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, h: number, allow: Uint8Array | null = null, options: FillOptions = FILL_NONE): boolean {
+ *  no options, is the plain search with no colour adaptation. `limit` is the automatic Rectangular box the workspace
+ *  builds around the hole (never a painted area): source patches must lie wholly inside it. `prefer` is a painted
+ *  preference: the search always covers the whole remaining picture (the window around the hole, grown to take the
+ *  painted pixels in), and a candidate's patch distance is multiplied by 1 minus the strength times the painted share
+ *  of its patch, so painted places win ties and near-ties but never shut the rest out. */
+export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, h: number, limit: Uint8Array | null = null, options: FillOptions = FILL_NONE, prefer: FillPreference | null = null): boolean {
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (let y = 0; y < h; y++) {
     for (let x = 0, row = y * w; x < w; x++) {
@@ -559,8 +573,9 @@ export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, 
   const extent = Math.max(x1 - x0 + 1, y1 - y0 + 1), half = extent > 48 ? 4 : 3, side = 2 * half + 1;
   const margin = Math.max(side * 3, Math.min(160, extent));
   let rx0 = Math.max(0, x0 - margin), ry0 = Math.max(0, y0 - margin), rx1 = Math.min(w - 1, x1 + margin), ry1 = Math.min(h - 1, y1 + margin);
-  // A sampling area (Content-Aware Fill's workspace) may lie beyond the margin: the region grows to take it in.
-  if (allow) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (allow[y * w + x]) { rx0 = Math.min(rx0, x); ry0 = Math.min(ry0, y); rx1 = Math.max(rx1, x); ry1 = Math.max(ry1, y); }
+  // The Rectangular box or the painted preference (the workspace) may lie beyond the margin: the region grows to take it in.
+  const painted = prefer && prefer.strength > 0 ? prefer.mask : null;
+  if (limit || painted) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if ((limit && limit[y * w + x]) || (painted && painted[y * w + x])) { rx0 = Math.min(rx0, x); ry0 = Math.min(ry0, y); rx1 = Math.max(rx1, x); ry1 = Math.max(ry1, y); }
   const rw = rx1 - rx0 + 1, rh = ry1 - ry0 + 1, rn = rw * rh;
   const global = (l: number): number => ((Math.floor(l / rw) + ry0) * w + (l % rw) + rx0) * 4;
   const unknown = new Uint8Array(rn);
@@ -576,14 +591,29 @@ export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, 
   const holeIn = (ax: number, ay: number, bx: number, by: number): number => table[(by + 1) * (rw + 1) + bx + 1] - table[ay * (rw + 1) + bx + 1] - table[(by + 1) * (rw + 1) + ax] + table[ay * (rw + 1) + ax];
   let sources: number[] = [];
   let outside: ((ax: number, ay: number, bx: number, by: number) => number) | null = null;
-  if (allow) {
+  if (limit) {
     const t2 = new Int32Array((rw + 1) * (rh + 1));
-    for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) t2[(y + 1) * (rw + 1) + x + 1] = (allow[(y + ry0) * w + x + rx0] ? 0 : 1) + t2[y * (rw + 1) + x + 1] + t2[(y + 1) * (rw + 1) + x] - t2[y * (rw + 1) + x];
+    for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) t2[(y + 1) * (rw + 1) + x + 1] = (limit[(y + ry0) * w + x + rx0] ? 0 : 1) + t2[y * (rw + 1) + x + 1] + t2[(y + 1) * (rw + 1) + x] - t2[y * (rw + 1) + x];
     outside = (ax, ay, bx, by) => t2[(by + 1) * (rw + 1) + bx + 1] - t2[ay * (rw + 1) + bx + 1] - t2[(by + 1) * (rw + 1) + ax] + t2[ay * (rw + 1) + ax];
+  }
+  // The painted preference: a summed-area table of the painted pixels gives each candidate patch its painted share.
+  // It never rejects a candidate; it only scales the candidate's cost (see `cm` below).
+  let paintedIn: ((ax: number, ay: number, bx: number, by: number) => number) | null = null;
+  const pStrength = prefer ? Math.max(0, Math.min(FILL_PREFERENCE_MAX, prefer.strength)) : 0;
+  if (painted && pStrength > 0) {
+    const t3 = new Int32Array((rw + 1) * (rh + 1));
+    for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) t3[(y + 1) * (rw + 1) + x + 1] = (painted[(y + ry0) * w + x + rx0] ? 1 : 0) + t3[y * (rw + 1) + x + 1] + t3[(y + 1) * (rw + 1) + x] - t3[y * (rw + 1) + x];
+    paintedIn = (ax, ay, bx, by) => t3[(by + 1) * (rw + 1) + bx + 1] - t3[ay * (rw + 1) + bx + 1] - t3[(by + 1) * (rw + 1) + ax] + t3[ay * (rw + 1) + ax];
   }
   for (let cy = half; cy < rh - half; cy++) for (let cx = half; cx < rw - half; cx++) if (!holeIn(cx - half, cy - half, cx + half, cy + half) && (!outside || !outside(cx - half, cy - half, cx + half, cy + half))) sources.push(cy * rw + cx);
   if (!sources.length) return false;
-  if (sources.length > 8000) { const step = sources.length / 8000, all = sources; sources = Array.from({ length: 8000 }, (_, i) => all[Math.floor(i * step)]); }
+  const thin = (list: number[]): number[] => { if (list.length <= 8000) return list; const step = list.length / 8000; return Array.from({ length: 8000 }, (_, i) => list[Math.floor(i * step)]); };
+  if (paintedIn) {
+    // Painted places keep a full budget of their own, so a preference is never lost to thinning; the rest keep theirs.
+    const inPaint: number[] = [], elsewhere: number[] = [];
+    for (const s of sources) { const sx = s % rw, sy = (s - sx) / rw; (paintedIn(sx, sy, sx, sy) ? inPaint : elsewhere).push(s); }
+    sources = [...thin(inPaint), ...thin(elsewhere)];
+  } else sources = thin(sources);
   // Candidates: each a patch centre and a transform (index into `tf`, a 2 by 2 matrix applied to the offset from the
   // target). Transform 0 is the identity with the plain sources above; the others share one bounded budget.
   const tf: number[][] = [[1, 0, 0, 1]];
@@ -606,6 +636,12 @@ export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, 
         cs.push(cy * rw + cx); ct.push(t);
       }
     }
+  }
+  // Each candidate's cost multiplier: 1 plain, down to 1 - strength where its patch is wholly painted (never below 0.4).
+  const cm = new Float32Array(cs.length).fill(1);
+  if (paintedIn) for (let i = 0; i < cs.length; i++) {
+    const cx = cs[i] % rw, cy = (cs[i] - cx) / rw;
+    cm[i] = 1 - (pStrength * paintedIn(cx - half, cy - half, cx + half, cy + half)) / (side * side);
   }
   const lv = FILL_COLOR[Math.max(0, Math.min(3, Math.round(options.color)))], adapt = lv[2] > 0;
   const ad = new Float64Array(6), bestAd = new Float64Array(6), tq = new Float64Array(6), kx = new Int32Array(side * side), ky = new Int32Array(side * side);
@@ -687,7 +723,8 @@ export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, 
         }
       }
       let cost = 0;
-      for (let dy = -half; dy <= half && cost < bestCost; dy++) {
+      const mult = cm[i];
+      for (let dy = -half; dy <= half && cost * mult < bestCost; dy++) {
         const yy = ty + dy;
         if (yy < 0 || yy >= rh) continue;
         for (let dx = -half; dx <= half; dx++) {
@@ -698,7 +735,7 @@ export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, 
           cost += d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3;
         }
       }
-      if (cost < bestCost) { bestCost = cost; from = s; bestT = ct[i]; bestAd.set(ad); }
+      if (cost * mult < bestCost) { bestCost = cost * mult; from = s; bestT = ct[i]; bestAd.set(ad); }
     }
     if (from < 0) break;
     const fx = from % rw, fy = (from - fx) / rw, fm = tf[bestT];

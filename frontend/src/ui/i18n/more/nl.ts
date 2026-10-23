@@ -589,7 +589,7 @@ export const nl: Record<string, string> = {
   'Row Order': 'Rijvolgorde',
   'Run': 'Uitvoeren',
   'Run Action': 'Actie uitvoeren',
-  'Sampling Area': 'Opnamegebied',
+  'Sampling Area': 'Opnamegebied', 'Preference Strength': 'Voorkeurssterkte',
   'Sand (light)': 'Zand (licht)',
   'Satin': 'Satijn',
   'Saturation': 'Verzadiging',

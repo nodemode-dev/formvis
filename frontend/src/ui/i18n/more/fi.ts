@@ -589,7 +589,7 @@ export const fi: Record<string, string> = {
   'Row Order': 'Rivijärjestys',
   'Run': 'Suorita',
   'Run Action': 'Suorita toiminto',
-  'Sampling Area': 'Näytteenottoalue',
+  'Sampling Area': 'Näytteenottoalue', 'Preference Strength': 'Suosinnan voimakkuus',
   'Sand (light)': 'Hiekka (vaalea)',
   'Satin': 'Satiini',
   'Saturation': 'Kylläisyys',

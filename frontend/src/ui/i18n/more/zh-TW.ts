@@ -88,7 +88,7 @@ export const zhTW: Record<string, string> = {
   'Remove Warp Split': '移除彎曲分割', 'Rename': '重新命名', 'Renderer': '彩現器', 'Rendering Intent': '轉換方式', 'Replace': '取代', 'Reset All': '全部重設', 'Reset Swatches': '重設色票',
   'Resize to Fit': '調整大小以符合', 'Result': '結果', 'Reticulation': '網狀', 'Ridges': '稜線', 'Ring': '環形', 'Ring - Double': '環形 - 雙重', 'Ripple': '波紋', 'Rolling Slope - Descending': '滾動斜坡 - 遞減',
   'Rose Noir': '黑玫瑰', 'Rotate Canvas': '旋轉影像畫布', 'Rotate For Best Fit': '旋轉以取得最佳符合', 'Rotation (degrees)': '旋轉 (度)', 'Rotation (°)': '旋轉 (°)', 'Rough Pastels': '粗糙粉筆',
-  'Roughness': '粗糙度', 'Roughness (%)': '粗糙度 (%)', 'Rounded Steps': '圓角階梯', 'Roundness': '圓度', 'Row Order': '列順序', 'Run': '執行', 'Run Action': '執行動作', 'Sampling Area': '取樣區域',
+  'Roughness': '粗糙度', 'Roughness (%)': '粗糙度 (%)', 'Rounded Steps': '圓角階梯', 'Roundness': '圓度', 'Row Order': '列順序', 'Run': '執行', 'Run Action': '執行動作', 'Sampling Area': '取樣區域', 'Preference Strength': '偏好強度',
   'Sand (light)': '沙 (淺)', 'Satin': '緞面', 'Saturation': '飽和度', 'Save Selection as Channel': '將選取範圍儲存為色版', 'Save Set': '儲存組合', 'Save Swatches': '儲存色票', 'Save as': '儲存為',
   'Save as JPEG': '儲存為 JPEG', 'Save as PDF': '儲存為 PDF', 'Save as PSD': '儲存為 PSD', 'Save as TIFF': '儲存為 TIFF', 'Sawtooth 1': '鋸齒 1', 'Scale (%)': '縮放 (%)', 'Scale Horiz. (%)': '水平縮放 (%)',
   'Scale Layer Effects': '縮放圖層效果', 'Scale Vert. (%)': '垂直縮放 (%)', 'Scale to Fit Media': '縮放以符合媒體', 'Scattering': '散佈', 'Screen': '濾色', 'Seamless Tones and Colors': '無縫色調和顏色',

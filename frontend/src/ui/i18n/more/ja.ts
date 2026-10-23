@@ -88,7 +88,7 @@ export const ja: Record<string, string> = {
   'Remove Warp Split': 'ワープ分割を削除', 'Rename': '名前を変更', 'Renderer': 'レンダラー', 'Rendering Intent': 'レンダリングインテント', 'Replace': '置き換え', 'Reset All': 'すべてリセット', 'Reset Swatches': 'スウォッチをリセット',
   'Resize to Fit': 'サイズを合わせる', 'Result': '結果', 'Reticulation': 'ひび割れ', 'Ridges': '尾根', 'Ring': 'リング', 'Ring - Double': 'リング - ダブル', 'Ripple': 'さざ波', 'Rolling Slope - Descending': 'ローリングスロープ - 下り',
   'Rose Noir': 'ローズノワール', 'Rotate Canvas': 'カンバスを回転', 'Rotate For Best Fit': '最適な向きに回転', 'Rotation (degrees)': '回転 (度)', 'Rotation (°)': '回転 (°)', 'Rough Pastels': '粗いパステル画',
-  'Roughness': '粗さ', 'Roughness (%)': '粗さ (%)', 'Rounded Steps': '丸い階段', 'Roundness': '真円率', 'Row Order': '行の順序', 'Run': '実行', 'Run Action': 'アクションを実行', 'Sampling Area': 'サンプル範囲',
+  'Roughness': '粗さ', 'Roughness (%)': '粗さ (%)', 'Rounded Steps': '丸い階段', 'Roundness': '真円率', 'Row Order': '行の順序', 'Run': '実行', 'Run Action': 'アクションを実行', 'Sampling Area': 'サンプル範囲', 'Preference Strength': '優先の強さ',
   'Sand (light)': '砂 (明)', 'Satin': 'サテン', 'Saturation': '彩度', 'Save Selection as Channel': '選択範囲をチャンネルとして保存', 'Save Set': 'セットを保存', 'Save Swatches': 'スウォッチを保存', 'Save as': '別名で保存',
   'Save as JPEG': 'JPEG として保存', 'Save as PDF': 'PDF として保存', 'Save as PSD': 'PSD として保存', 'Save as TIFF': 'TIFF として保存', 'Sawtooth 1': 'のこぎり波 1', 'Scale (%)': '拡大・縮小 (%)', 'Scale Horiz. (%)': '水平比率 (%)',
   'Scale Layer Effects': 'レイヤー効果を拡大・縮小', 'Scale Vert. (%)': '垂直比率 (%)', 'Scale to Fit Media': 'メディアサイズに合わせて拡大・縮小', 'Scattering': '散布', 'Screen': 'スクリーン', 'Seamless Tones and Colors': 'シームレスなトーンとカラー',

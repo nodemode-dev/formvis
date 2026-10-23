@@ -589,7 +589,7 @@ export const hu: Record<string, string> = {
   'Row Order': 'Sorrend',
   'Run': 'Futtatás',
   'Run Action': 'Művelet futtatása',
-  'Sampling Area': 'Mintavételi terület',
+  'Sampling Area': 'Mintavételi terület', 'Preference Strength': 'Előnyben részesítés erőssége',
   'Sand (light)': 'Homok (világos)',
   'Satin': 'Szatén',
   'Saturation': 'Telítettség',

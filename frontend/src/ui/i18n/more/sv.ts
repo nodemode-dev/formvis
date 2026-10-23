@@ -589,7 +589,7 @@ export const sv: Record<string, string> = {
   'Row Order': 'Radordning',
   'Run': 'Kör',
   'Run Action': 'Kör åtgärd',
-  'Sampling Area': 'Provområde',
+  'Sampling Area': 'Provområde', 'Preference Strength': 'Preferensstyrka',
   'Sand (light)': 'Sand (ljus)',
   'Satin': 'Satin',
   'Saturation': 'Färgmättnad',

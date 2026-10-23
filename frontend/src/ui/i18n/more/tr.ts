@@ -589,7 +589,7 @@ export const tr: Record<string, string> = {
   'Row Order': 'Satır Sırası',
   'Run': 'Çalıştır',
   'Run Action': 'Eylemi Çalıştır',
-  'Sampling Area': 'Örnekleme Alanı',
+  'Sampling Area': 'Örnekleme Alanı', 'Preference Strength': 'Tercih Gücü',
   'Sand (light)': 'Kum (açık)',
   'Satin': 'Saten',
   'Saturation': 'Doygunluk',

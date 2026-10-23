@@ -589,7 +589,7 @@ export const el: Record<string, string> = {
   'Row Order': 'Σειρά γραμμών',
   'Run': 'Εκτέλεση',
   'Run Action': 'Εκτέλεση ενέργειας',
-  'Sampling Area': 'Περιοχή δειγματοληψίας',
+  'Sampling Area': 'Περιοχή δειγματοληψίας', 'Preference Strength': 'Ένταση προτίμησης',
   'Sand (light)': 'Άμμος (ανοιχτή)',
   'Satin': 'Σατέν',
   'Saturation': 'Κορεσμός',

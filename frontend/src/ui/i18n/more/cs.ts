@@ -589,7 +589,7 @@ export const cs: Record<string, string> = {
   'Row Order': 'Pořadí řádků',
   'Run': 'Spustit',
   'Run Action': 'Spustit akci',
-  'Sampling Area': 'Oblast vzorkování',
+  'Sampling Area': 'Oblast vzorkování', 'Preference Strength': 'Síla preference',
   'Sand (light)': 'Písek (světlý)',
   'Satin': 'Satén',
   'Saturation': 'Sytost',

@@ -88,7 +88,7 @@ export const ko: Record<string, string> = {
   'Remove Warp Split': '변형 분할 제거', 'Rename': '이름 바꾸기', 'Renderer': '렌더러', 'Rendering Intent': '렌더링 의도', 'Replace': '바꾸기', 'Reset All': '모두 재설정', 'Reset Swatches': '색상 견본 재설정',
   'Resize to Fit': '맞게 크기 조정', 'Result': '결과', 'Reticulation': '망상', 'Ridges': '능선', 'Ring': '링', 'Ring - Double': '링 - 이중', 'Ripple': '잔물결', 'Rolling Slope - Descending': '롤링 경사 - 하강',
   'Rose Noir': '로즈 누아', 'Rotate Canvas': '캔버스 회전', 'Rotate For Best Fit': '최적으로 맞게 회전', 'Rotation (degrees)': '회전 (도)', 'Rotation (°)': '회전 (°)', 'Rough Pastels': '거친 파스텔',
-  'Roughness': '거칠기', 'Roughness (%)': '거칠기 (%)', 'Rounded Steps': '둥근 계단', 'Roundness': '진원율', 'Row Order': '행 순서', 'Run': '실행', 'Run Action': '액션 실행', 'Sampling Area': '샘플링 영역',
+  'Roughness': '거칠기', 'Roughness (%)': '거칠기 (%)', 'Rounded Steps': '둥근 계단', 'Roundness': '진원율', 'Row Order': '행 순서', 'Run': '실행', 'Run Action': '액션 실행', 'Sampling Area': '샘플링 영역', 'Preference Strength': '선호 강도',
   'Sand (light)': '모래 (밝음)', 'Satin': '새틴', 'Saturation': '채도', 'Save Selection as Channel': '선택 영역을 채널로 저장', 'Save Set': '세트 저장', 'Save Swatches': '색상 견본 저장', 'Save as': '다른 이름으로 저장',
   'Save as JPEG': 'JPEG로 저장', 'Save as PDF': 'PDF로 저장', 'Save as PSD': 'PSD로 저장', 'Save as TIFF': 'TIFF로 저장', 'Sawtooth 1': '톱니 1', 'Scale (%)': '비율 (%)', 'Scale Horiz. (%)': '가로 비율 (%)',
   'Scale Layer Effects': '레이어 효과 비율 조절', 'Scale Vert. (%)': '세로 비율 (%)', 'Scale to Fit Media': '미디어에 맞게 비율 조절', 'Scattering': '흩뿌리기', 'Screen': '스크린', 'Seamless Tones and Colors': '매끄러운 톤과 색상',

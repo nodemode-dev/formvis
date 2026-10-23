@@ -589,7 +589,7 @@ export const srLatn: Record<string, string> = {
   'Row Order': 'Redosled redova',
   'Run': 'Pokreni',
   'Run Action': 'Pokreni akciju',
-  'Sampling Area': 'Oblast uzorkovanja',
+  'Sampling Area': 'Oblast uzorkovanja', 'Preference Strength': 'Jačina preferencije',
   'Sand (light)': 'Pesak (svetao)',
   'Satin': 'Saten',
   'Saturation': 'Zasićenost',

@@ -589,7 +589,7 @@ export const da: Record<string, string> = {
   'Row Order': 'Rækkefølge',
   'Run': 'Kør',
   'Run Action': 'Kør handling',
-  'Sampling Area': 'Prøveområde',
+  'Sampling Area': 'Prøveområde', 'Preference Strength': 'Præferencestyrke',
   'Sand (light)': 'Sand (lys)',
   'Satin': 'Satin',
   'Saturation': 'Farvemætning',

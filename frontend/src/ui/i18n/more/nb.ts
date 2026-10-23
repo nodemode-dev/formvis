@@ -589,7 +589,7 @@ export const nb: Record<string, string> = {
   'Row Order': 'Radrekkefølge',
   'Run': 'Kjør',
   'Run Action': 'Kjør handling',
-  'Sampling Area': 'Prøveområde',
+  'Sampling Area': 'Prøveområde', 'Preference Strength': 'Preferansestyrke',
   'Sand (light)': 'Sand (lys)',
   'Satin': 'Satin',
   'Saturation': 'Metning',

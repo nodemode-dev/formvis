@@ -589,7 +589,7 @@ export const ru: Record<string, string> = {
   'Row Order': 'Порядок строк',
   'Run': 'Запустить',
   'Run Action': 'Выполнить операцию',
-  'Sampling Area': 'Область выборки',
+  'Sampling Area': 'Область выборки', 'Preference Strength': 'Сила предпочтения',
   'Sand (light)': 'Песок (светлый)',
   'Satin': 'Атлас',
   'Saturation': 'Насыщенность',

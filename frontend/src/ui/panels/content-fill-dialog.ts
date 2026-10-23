@@ -1,5 +1,5 @@
 import { SelectionMask, createSurface, ctxOf, type Engine } from '../../engine';
-import { FILL_DEFAULTS, contentFill, premultiply, unpremultiply, type FillOptions } from '../../engine/retouch';
+import { FILL_DEFAULTS, FILL_PREFERENCE_DEFAULT, FILL_PREFERENCE_MAX, contentFill, premultiply, unpremultiply, type FillOptions } from '../../engine/retouch';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { toast } from '../toast';
@@ -10,14 +10,17 @@ type Sampling = 'auto' | 'rectangular' | 'custom';
 type Output = 'current' | 'new' | 'duplicate';
 type FillTool = 'brush' | 'lassoAdd' | 'lassoSub' | 'hand';
 
-/** Edit > Content-Aware Fill: the document with the sampling area tinted green and the area
- *  to fill red. Sampling Area is Auto (around the selection), Rectangular (a box around it) or Custom (painted here,
- *  Alt to erase); Show Result fills the preview so the choice can be judged; Output To the current layer, a new layer
+/** Edit > Selection-Aware Fill: the document with the sampling area tinted green and the area
+ *  to fill red. Sampling Area is Auto (around the selection), Rectangular (an automatic box around it) or Custom (a
+ *  preference painted here, Alt to erase). A painted area is only a preference: patches there get a lower cost, scaled
+ *  by Preference Strength, and the fill still searches the rest of the picture; nothing painted ever shuts it out.
+ *  Show Result fills the preview so the choice can be judged; Output To the current layer, a new layer
  *  or a duplicate. OK fills at full resolution through Engine.contentAwareFillWith. The preview keeps one size. */
 export class ContentFillDialog extends Dialog {
   private sampling: Sampling = 'auto';
   private output: Output = 'current';
   private brush = 40;
+  private strength = FILL_PREFERENCE_DEFAULT;
   private showResult = false;
   private sampleAll = false;
   private subtract = false;
@@ -47,9 +50,10 @@ export class ContentFillDialog extends Dialog {
   private readonly buf = createSurface(PW, PH);
   private readonly canvas = el(`<canvas class="cv-fill-canvas" width="${PW}" height="${PH}"></canvas>`) as HTMLCanvasElement;
   private readonly brushRow = sliderRow('Brush size (px)', 4, 200, 1, (v) => { this.brush = v; });
+  private readonly strengthRow = sliderRow('Preference Strength', 0, FILL_PREFERENCE_MAX, 0.05, (v) => { this.strength = v; this.refresh(); });
 
   constructor(private readonly engine: Engine) {
-    super('Content-Aware Fill', PW + 48);
+    super('Selection-Aware Fill', PW + 48);
     const samplingRow = selectRow('Sampling Area', [['auto', 'Auto'], ['rectangular', 'Rectangular'], ['custom', 'Custom']], (v) => { this.sampling = v as Sampling; this.rebuildAllow(); });
     const resultRow = checkRow('Show Result', (v) => { this.showResult = v; this.refresh(); });
     const outRow = selectRow('Output To', [['current', 'Current Layer'], ['new', 'New Layer'], ['duplicate', 'Duplicate Layer']], (v) => { this.output = v as Output; });
@@ -69,11 +73,11 @@ export class ContentFillDialog extends Dialog {
       else if (act === 'fit') { this.zoom = 1; this.panX = 0; this.panY = 0; this.refresh(false); }
       else if (act === 'reset') { this.edits = []; this.rebuildHole(); }
     });
-    this.body.append(this.canvas, bar, toolRow.el, samplingRow.el, modeRow.el, this.brushRow.el, colorRow.el, rotRow.el, scaleRow.el, mirrorRow.el, channelRow.el, resultRow.el, allRow.el, outRow.el);
+    this.body.append(this.canvas, bar, toolRow.el, samplingRow.el, modeRow.el, this.brushRow.el, this.strengthRow.el, colorRow.el, rotRow.el, scaleRow.el, mirrorRow.el, channelRow.el, resultRow.el, allRow.el, outRow.el);
     this.sync = () => {
       toolRow.set(this.tool); channelRow.set(String(this.channel));
       modeRow.set(this.subtract ? 'subtract' : 'add'); allRow.set(this.sampleAll);
-      samplingRow.set(this.sampling); outRow.set(this.output); resultRow.set(this.showResult); this.brushRow.set(this.brush); this.syncBrush();
+      samplingRow.set(this.sampling); outRow.set(this.output); resultRow.set(this.showResult); this.brushRow.set(this.brush); this.strengthRow.set(this.strength); this.syncBrush();
       colorRow.set(String(this.opts.color)); rotRow.set(String(this.opts.rotation)); scaleRow.set(this.opts.scale); mirrorRow.set(this.opts.mirror);
     };
     this.button('Cancel', 'ghost', () => this.close());
@@ -85,7 +89,10 @@ export class ContentFillDialog extends Dialog {
 
   private sync: () => void = () => undefined;
 
-  private syncBrush(): void { const off = this.sampling !== 'custom'; this.brushRow.el.classList.toggle('is-off', off); for (const i of this.brushRow.el.querySelectorAll('input')) i.disabled = off; }
+  private syncBrush(): void {
+    const off = this.sampling !== 'custom';
+    for (const row of [this.brushRow, this.strengthRow]) { row.el.classList.toggle('is-off', off); for (const i of row.el.querySelectorAll('input')) i.disabled = off; }
+  }
 
   show(): void {
     const p = this.engine.current;
@@ -116,7 +123,8 @@ export class ContentFillDialog extends Dialog {
     this.open();
   }
 
-  /** The sampling area for the current choice, at preview scale. Auto shows the region the fill searches by default. */
+  /** The sampling area for the current choice, at preview scale. Auto shows the region the fill searches by default;
+   *  Rectangular's box limits the search; Custom starts from that region and the brush edits it into the painted preference. */
   private rebuildAllow(): void {
     const hole = this.hole;
     if (!hole) return;
@@ -238,7 +246,7 @@ export class ContentFillDialog extends Dialog {
       if (!img || !hole || !allow || !g) return;
       if (this.showResult && !this.result) {
         const pm = premultiply(img.data);
-        if (contentFill(pm, hole, this.pw, this.ph, this.sampling === 'auto' ? null : allow, this.opts)) { const r = new ImageData(this.pw, this.ph); unpremultiply(pm, r.data); this.result = r; }
+        if (contentFill(pm, hole, this.pw, this.ph, this.sampling === 'rectangular' ? allow : null, this.opts, this.sampling === 'custom' ? { mask: allow, strength: this.strength } : null)) { const r = new ImageData(this.pw, this.ph); unpremultiply(pm, r.data); this.result = r; }
       }
       const base = this.showResult && this.result ? this.result : img, out = new ImageData(this.pw, this.ph), d = out.data, s = base.data, ch = this.channel;
       for (let i = 0; i < hole.length; i++) {
@@ -271,15 +279,16 @@ export class ContentFillDialog extends Dialog {
 
   private apply(): void {
     const p = this.engine.current, a = this.allow, sampling = this.sampling, output = this.output, s = this.scale, pw = this.pw, ph = this.ph;
-    const opts = { ...this.opts }, all = this.sampleAll, channel = this.channel, area = p ? this.areaDoc(p.doc.width, p.doc.height) : null;
+    const opts = { ...this.opts }, strength = this.strength, all = this.sampleAll, channel = this.channel, area = p ? this.areaDoc(p.doc.width, p.doc.height) : null;
     this.close();
     if (!p) return;
-    let allowDoc: Uint8Array | null = null;
+    let areaMap: Uint8Array | null = null;
     if (sampling !== 'auto' && a) {
       const W = p.doc.width, H = p.doc.height;
-      allowDoc = new Uint8Array(W * H);
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) allowDoc[y * W + x] = a[Math.min(ph - 1, Math.floor(y * s)) * pw + Math.min(pw - 1, Math.floor(x * s))];
+      areaMap = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) areaMap[y * W + x] = a[Math.min(ph - 1, Math.floor(y * s)) * pw + Math.min(pw - 1, Math.floor(x * s))];
     }
-    this.engine.contentAwareFillWith(allowDoc, output, opts, all, area, channel);
+    // Rectangular's automatic box limits the search; Custom's painted area is only a preference weight.
+    this.engine.contentAwareFillWith(sampling === 'rectangular' ? areaMap : null, output, opts, all, area, channel, sampling === 'custom' ? areaMap : null, strength);
   }
 }

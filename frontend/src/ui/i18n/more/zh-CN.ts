@@ -88,7 +88,7 @@ export const zhCN: Record<string, string> = {
   'Remove Warp Split': '移除变形拆分', 'Rename': '重命名', 'Renderer': '渲染器', 'Rendering Intent': '渲染方法', 'Replace': '替换', 'Reset All': '全部复位', 'Reset Swatches': '复位色板',
   'Resize to Fit': '调整大小以适合', 'Result': '结果', 'Reticulation': '网状', 'Ridges': '脊线', 'Ring': '环形', 'Ring - Double': '环形 - 双', 'Ripple': '波纹', 'Rolling Slope - Descending': '滚动斜坡 - 递减',
   'Rose Noir': '黑玫瑰', 'Rotate Canvas': '旋转画布', 'Rotate For Best Fit': '旋转以获得最佳适合', 'Rotation (degrees)': '旋转 (度)', 'Rotation (°)': '旋转 (°)', 'Rough Pastels': '粗糙蜡笔',
-  'Roughness': '粗糙度', 'Roughness (%)': '粗糙度 (%)', 'Rounded Steps': '圆角台阶', 'Roundness': '圆度', 'Row Order': '行顺序', 'Run': '运行', 'Run Action': '运行动作', 'Sampling Area': '取样区域',
+  'Roughness': '粗糙度', 'Roughness (%)': '粗糙度 (%)', 'Rounded Steps': '圆角台阶', 'Roundness': '圆度', 'Row Order': '行顺序', 'Run': '运行', 'Run Action': '运行动作', 'Sampling Area': '取样区域', 'Preference Strength': '偏好强度',
   'Sand (light)': '沙子 (浅)', 'Satin': '光泽', 'Saturation': '饱和度', 'Save Selection as Channel': '将选区存储为通道', 'Save Set': '存储组', 'Save Swatches': '存储色板', 'Save as': '存储为',
   'Save as JPEG': '存储为 JPEG', 'Save as PDF': '存储为 PDF', 'Save as PSD': '存储为 PSD', 'Save as TIFF': '存储为 TIFF', 'Sawtooth 1': '锯齿 1', 'Scale (%)': '缩放 (%)', 'Scale Horiz. (%)': '水平缩放 (%)',
   'Scale Layer Effects': '缩放图层效果', 'Scale Vert. (%)': '垂直缩放 (%)', 'Scale to Fit Media': '缩放以适合媒体', 'Scattering': '散布', 'Screen': '滤色', 'Seamless Tones and Colors': '无缝色调和颜色',

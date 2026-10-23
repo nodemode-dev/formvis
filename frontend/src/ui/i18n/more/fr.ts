@@ -589,7 +589,7 @@ export const fr: Record<string, string> = {
   'Row Order': 'Ordre des lignes',
   'Run': 'Exécuter',
   'Run Action': 'Exécuter l\'action',
-  'Sampling Area': 'Zone d\'échantillonnage',
+  'Sampling Area': 'Zone d\'échantillonnage', 'Preference Strength': 'Force de la préférence',
   'Sand (light)': 'Sable (clair)',
   'Satin': 'Satin',
   'Saturation': 'Saturation',

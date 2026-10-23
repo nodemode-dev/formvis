@@ -21,7 +21,7 @@ const holeMean = (px: Uint8ClampedArray, hole: Uint8Array): number[] => {
   return s.map((v) => v / n);
 };
 
-describe('Content-Aware Fill sampling area', () => {
+describe('Selection-Aware Fill Rectangular limit (the automatic box; a painted area is only a preference)', () => {
   it('fills only from the red side when only the red side may be sampled', () => {
     const { px, hole } = scene();
     expect(contentFill(px, hole, W, H, side((x) => x < 30))).toBe(true);
