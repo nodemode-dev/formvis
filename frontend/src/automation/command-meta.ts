@@ -708,7 +708,7 @@ const ROWS: Record<string, Row> = {
   'stroke-dialog': ['Edit', 'Opens the Stroke dialog for the selection.', 'Use when you want an outline along the selection.', 'm'],
   'transform': ['Edit', 'Starts Free Transform on the layer or selection.', 'Use when you want to move, scale and rotate by hand.', 'm'],
   'transform-copy': ['Edit', 'Copies the layer or selected pixels in place, then starts Free Transform on the copy.', 'Use when the original must stay as it is while a transformed copy is made.', 'm'],
-  'content-fill': ['Edit', 'Fills the selection from its surroundings.', 'Use when you want an object removed and the gap healed.', 'm'],
+  'content-fill': ['Edit', 'Fills the selection from its surroundings; with prefer (rectangles {x, y, width, height} in document pixels) and strength (0 to 0.6) it favours patches from those rectangles while still searching the whole picture.', 'Use when you want an object removed and the gap healed, or healed from one place in the picture (prefer, strength 0.6).', 'm'],
   'generative-fill': ['Edit', 'Opens Generative Fill for the selection.', 'Use when you want to add or remove something with a prompt.', 'm'],
   'generate-image': ['File', 'Opens Generate Image.', 'Use when you want a new picture from a prompt.', 'm'],
   'new-canvas-model-preset': ['File', 'Opens New Canvas from Model Preset, which makes a blank document at a size a chosen model family works well at.', 'Use when a new canvas should match the sizes a generation model takes.', 'm'],

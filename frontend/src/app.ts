@@ -5591,7 +5591,22 @@ export function startApp(): void {
     { id: 'stroke-dialog', label: 'Stroke...', enabled: () => pixel() && (selected() || !!engine.activeLayer?.raster), run: () => dialogs.stroke.show() },
     { id: 'transform', label: () => (engine.pathTarget ? 'Free Transform Path' : engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Mod+T'], enabled: () => (!!engine.activeLayer || engine.pathTarget) && !engine.floatingSelection, run: () => engine.transformCommand() },
     { id: 'transform-copy', label: 'Free Transform a Copy', keys: ['Alt+Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => { engine.transformCopy(); } },
-    { id: 'content-fill', label: 'Quick Selection-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
+    { id: 'content-fill', label: 'Quick Selection-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), params: { prefer: { type: 'array', description: 'Where the fill should prefer to draw from: a list of rectangles {x, y, width, height} in document pixels. A preference only: the whole picture is still searched, and the strength sets how much a patch inside these rectangles is favoured. Left out, the plain quick fill runs.' }, strength: { type: 'number', min: 0, max: 0.6, description: 'Preference Strength for prefer, 0 to 0.6 (0.4 when left out); 0.6 is the strongest.' } }, run: (a) => {
+      const p = engine.current, rects = Array.isArray(a?.prefer) ? a.prefer : [];
+      if (p && rects.length) {
+        const W = p.doc.width, H = p.doc.height, m = new Uint8Array(W * H);
+        for (const r of rects as Array<{ x?: number; y?: number; width?: number; height?: number }>) {
+          const rx = Number(r?.x), ry = Number(r?.y), rw = Number(r?.width), rh = Number(r?.height);
+          if (![rx, ry, rw, rh].every(Number.isFinite)) continue;
+          const x0 = Math.max(0, Math.floor(rx)), y0 = Math.max(0, Math.floor(ry)), x1 = Math.min(W, Math.ceil(rx + rw)), y1 = Math.min(H, Math.ceil(ry + rh));
+          for (let y = y0; y < y1; y++) m.fill(1, y * W + x0, y * W + Math.max(x0, x1));
+        }
+        const strength = typeof a?.strength === 'number' ? a.strength : undefined;
+        void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFillWith(null, 'current', undefined, false, null, 3, m, strength); });
+        return;
+      }
+      void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); });
+    } },
     { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: (a) => void dialogs.generative.show('fill', 2, typeof a?.prompt === 'string' ? { prompt: a.prompt } : undefined) },   // the Contextual Task Bar passes the prompt it holds (undeclared: agents and the menus open the dialog)
     { id: 'generate-image', label: 'Generate Image...', enabled: () => true, run: () => void generateImage.show() },   // 1.51.2, in the Edit menu
     { id: 'new-canvas-model-preset', label: 'New Canvas from Model Preset...', enabled: () => true, run: () => void modelCanvas.show() },

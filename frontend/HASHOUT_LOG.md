@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The quick fill command takes a preference area · _v1.97.1 (app.ts `content-fill`, automation/command-meta.ts)
+
+- Why: Custom's brush exists only in the dialog, so an agent had no way to give the fill a preferred place. `content-fill` now declares `prefer` (a list of `{x, y, width, height}` rectangles in document pixels) and `strength` (0 to 0.6). With `prefer` it builds a document-sized 0 or 1 map and calls `Engine.contentAwareFillWith(null, 'current', undefined, false, null, 3, map, strength)`: the map goes in as `preferDoc`, the weight, and `limitDoc` stays null. Without `prefer` the command is the plain quick fill as before. Non-finite rectangles are skipped; `contentFill` still clamps the strength to `FILL_PREFERENCE_MAX`.
+- No removed code. The skill `steering-selection-aware-fill` (formvis-driving) teaches the steps; there is deliberately no parameter that limits the fill.
+- Verified: tsc --noEmit and vite build. Not run in the window.
+
 ## Selection-Aware Fill: the painted sampling area is a preference weight · _v1.97.0 (engine/retouch.ts contentFill, FillPreference; engine/index.ts contentAwareFillWith; ui/panels/content-fill-dialog.ts; the name in app.ts, command-meta.ts and every i18n table)
 
 - Why: a painted area that limits where patches may come from is declined for patent risk. Custom keeps its brush, but the painted pixels now only lower the cost of candidate patches that lie in them.
