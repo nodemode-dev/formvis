@@ -148,4 +148,10 @@ Release history, with each version's test counts: `CHANGELOG.md`. What is not ve
 
 ## Licensing
 
-Apache License 2.0. Copyright 2026 nodemode-ai. See `LICENSE`.
+Apache License 2.0. Copyright 2026 nodemode-ai. See `LICENSE`, and `NOTICE.md` for every component that ships.
+
+This product includes DNG technology under license by Adobe Systems Incorporated.
+
+## Trademarks
+
+Adobe, Camera Raw and Photoshop are either registered trademarks or trademarks of Adobe in the United States and/or other countries. formvis is not affiliated with or endorsed by Adobe; the names describe file formats and compatibility only.
