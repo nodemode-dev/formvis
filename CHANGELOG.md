@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.97.1 · 2026-10-23
+
+- Agents can steer Selection-Aware Fill: the quick fill command `content-fill` takes `prefer` (rectangles in document pixels) and `strength` (0 to 0.6), and a new `steering-selection-aware-fill` skill covers drawing a fill from one place, checking it, fixing wrong texture with a second pass or the Clone and Healing tools, and using Auto for uniform textures. The area stays a preference, never a limit.
+
 ## 1.97.0 · 2026-10-23
 
 - The Edit menu's fill is now called Selection-Aware Fill, in every language (also Quick Selection-Aware Fill and Photomerge's fill option). Content-Aware Move keeps its name.
