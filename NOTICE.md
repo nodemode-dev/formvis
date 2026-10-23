@@ -85,6 +85,11 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 | SAM 2.1 tiny (Meta), exported to ONNX by onnx-community (sam2.1-hiera-tiny-ONNX; the export states no licence of its own) | Apache-2.0 (Meta's weights) | Object Selection, fetched on first use |
 | U²-Net (Qin et al.), the u2net.onnx rembg publishes | Apache-2.0 | Select Subject and Remove Background, fetched on first use |
 | Real-ESRGAN x4plus (Xintao Wang et al.), converted to ONNX (skillsafe-ai/realesrgan-x4plus) | BSD-3-Clause | Image > Upscale on this computer, downloaded from Preferences > Plugins > Local models |
+| YuNet face detector (Shiqi Yu, OpenCV Zoo), face_detection_yunet_2023mar.onnx | MIT | Face-Aware Liquify; downloaded on request from https://huggingface.co/opencv/face_detection_yunet (pinned revision and SHA-256 in `backend/app/localgen/model_manager.py`), run by OpenCV's FaceDetectorYN |
+| Depth Anything V2 Small (Yang et al.), ONNX export by onnx-community | Apache-2.0 (the Small checkpoint only; the Base, Large and Giant checkpoints are CC-BY-NC and are not used) | Depth Blur in the Neural Filters; downloaded on request from https://huggingface.co/onnx-community/depth-anything-v2-small (pinned revision and SHA-256) |
+| DDColor-tiny (piddnad/DDColor), fp16 ONNX export by edgetools | Apache-2.0 | Colour for black-and-white pictures in the Neural Filters; downloaded on request from https://huggingface.co/edgetools/ddcolor (pinned revision and SHA-256) |
+| Fast neural style presets from the ONNX model zoo (candy-9, mosaic-9, rain-princess-9, udnie-9, pointilism-9) | BSD-3-Clause, as `model_manager.py` records for the zoo's files | Style Transfer in the Neural Filters; downloaded on request from https://github.com/onnx/models/tree/main/validated/vision/style_transfer/fast_neural_style/model (each file pinned by SHA-256) |
+| Sky segmenter skyseg.onnx (xiongzhu666, a U-2-Net model), Hugging Face copy JianyuanWang/skyseg | MIT | Select > Sky; downloaded on request from https://huggingface.co/JianyuanWang/skyseg (pinned revision and SHA-256) |
 | mflux (Apple silicon) and diffusers (Windows and Linux) | MIT; Apache-2.0 | The runtimes the models run in, installed into their own environment with a model |
 | Marigold IID Lighting v1.1 and Marigold Normals v1.1 (Ke, Obukhov et al., PRS ETH Zurich; prs-eth/marigold-iid-lighting-v1-1 and prs-eth/marigold-normals-v1-1, fine-tuned from Stable Diffusion 2) | CreativeML Open RAIL++-M (use-based restrictions apply and pass on to users; see each model card) | Relight's learned light split (albedo, shading, normals), 1.75.0. fp16 files pinned to their revisions, about 5.2 GB; downloaded only after the button that names the licence |
 | MediaPipe selfie multiclass (Google), as the 256x256 ONNX export senty-au/selfie_multiclass_256x256-ONNX, pinned by SHA-256 as formlit 0.45.3 pins it | Apache-2.0 | Relight's per-material split (background, hair, skin, clothes), downloaded from Relight; not used by the 1.82.0 scene |
@@ -823,11 +828,11 @@ Several wheels carry compiled libraries of their own. These ship inside the froz
 | Pillow 12.3.0 | zstd | BSD-3-Clause |
 | Pillow 12.3.0 | XZ Utils (liblzma) | 0BSD |
 | Pillow 12.3.0 | libxcb, libXau (Linux) | MIT |
-| opencv-python-headless 5.0.0.93 | FFmpeg (libavcodec 62.28, libavformat 62.12, libavutil, libswscale, libswresample) | LGPL-2.1-or-later |
+| opencv-python-headless 5.0.0.93 | FFmpeg (libavcodec 62.28, libavformat 62.12, libavutil, libswscale, libswresample), Linux and Windows wheels | LGPL-2.1-or-later. The macOS wheel carries GPL FFmpeg parts (libx264, libx265, rubberband, vidstab, postproc), so macOS builds install OpenCV from source without FFmpeg and `setup/freeze_backend` stops if any of those libraries reach the engine |
 | opencv-python-headless 5.0.0.93 | libvpx | BSD-3-Clause |
 | opencv-python-headless 5.0.0.93 | libaom | BSD-2-Clause, with the Alliance for Open Media Patent License 1.0 |
 | opencv-python-headless 5.0.0.93 | libavif | BSD-2-Clause |
-| opencv-python-headless 5.0.0.93 | OpenSSL (libssl, libcrypto) | Apache-2.0 |
+| opencv-python-headless 5.0.0.93 | OpenSSL 1.1.1k (libssl, libcrypto) | OpenSSL License and original SSLeay License (dual; not Apache-2.0, which applies only from OpenSSL 3.0). Confirmed in the wheel's `LICENSE-3RD-PARTY.txt` (copy in `licenses/python/opencv-python-headless/`) and the bundled `libssl`/`libcrypto` 1.1.1k files |
 | opencv-python-headless 5.0.0.93 | libdrm (Linux) | MIT |
 | opencv-python-headless 5.0.0.93 | libjpeg-turbo 3.1.2, libpng 1.6.58, libtiff 4.7.1, libwebp, OpenJPEG 2.5.3 | as for Pillow above |
 | opencv-python-headless 5.0.0.93 | OpenBLAS 0.3.15 | BSD-3-Clause |
