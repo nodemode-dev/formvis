@@ -201,7 +201,9 @@ ask it questions.
   Scale and Mirror. With them off the fill is as fast as before. Color adaptation makes the search about 8 times
   slower and the rotation and scale options about 20 times slower with color, so use them on small holes. Transformed
   patches are sampled to the nearest pixel. The adaptation options are in the dialog only, not on the quick
-  command or the agents' tools.
+  command or the agents' tools. An agent can set a preference area without the dialog: the quick fill command
+  `content-fill` takes `prefer` (rectangles in document pixels) and `strength` (0 to 0.6), with the same preference
+  meaning and never a limit; the `steering-selection-aware-fill` skill covers it.
 - Dodge and Burn (Range, Exposure, Protect Tones) and Sponge (Saturate or Desaturate, Flow, Vibrance).
 - Blur and Sharpen (Mode and Sample All Layers; Sharpen's Protect Detail) and Smudge (Sample All Layers, Finger
   Painting), in the Smear tool with Liquify.

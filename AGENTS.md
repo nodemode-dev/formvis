@@ -10,7 +10,7 @@ The MCP server is configured for this repository in `.codex/config.toml` (Codex)
 
 ## Selection-Aware Fill and Liquify face tools (declined for patent risk, 2026-10-23)
 
-The fill's painted sampling area is a preference weight and never excludes the rest of the picture: do not turn it into a mask that limits where patches come from. The feature keeps the name Selection-Aware Fill. Liquify's face tools never build or warp a mesh fitted to the face; they stay on the generic Liquify grid, with warps placed from the landmarks. Not checked by `./formvis counts --check` yet.
+The fill's painted sampling area is a preference weight and never excludes the rest of the picture: do not turn it into a mask that limits where patches come from. The same holds on the agent surface: `content-fill` `prefer` and `strength` are a preference only, and no command, tool, parameter or skill step may limit the fill to an area. The feature keeps the name Selection-Aware Fill. Liquify's face tools never build or warp a mesh fitted to the face; they stay on the generic Liquify grid, with warps placed from the landmarks. Not checked by `./formvis counts --check` yet.
 
 ## Changing formvis's code
 

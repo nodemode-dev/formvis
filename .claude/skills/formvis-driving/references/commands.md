@@ -40,7 +40,7 @@ Generated from the window's command catalogue (1666 commands) by `./formvis agen
 | `compare-documents` | Compare with... |  | Opens Compare with: picks another open document and makes a new document with both pictures and a Differences layer in Difference blend mode, selecting where they differ. |
 | `compare-split` | Compare with Snapshot (Split) |  | Shows the current state on the left and a kept snapshot (the opening snapshot unless one is named) on the right of a divider that can be dragged; run again to close it. History is not changed. |
 | `composite-pixel` | Read Composite Pixel |  | Reads the composited color and opacity (red, green, blue, alpha 0 to 255 and the hex code) of the one document pixel at x and y, as the picture shows it with every layer, adjustment and effect. |
-| `content-fill` | Quick Selection-Aware Fill | Shift+Backspace | Fills the selection from its surroundings. (changes the picture) |
+| `content-fill` | Quick Selection-Aware Fill | Shift+Backspace | Fills the selection from its surroundings; with prefer (rectangles {x, y, width, height} in document pixels) and strength (0 to 0.6) it favours patches from those rectangles while still searching the whole picture. (changes the picture) |
 | `content-fill-workspace` | Selection-Aware Fill... |  | Opens the Selection-Aware Fill workspace for the selection. (changes the picture) |
 | `copy` | Copy | Mod+C | Copies the selection to the clipboard. |
 | `copy-merged` | Copy Merged | Shift+Mod+C | Copies the selection from all visible layers. |

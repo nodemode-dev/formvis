@@ -13,6 +13,7 @@ Every tool in the formvis MCP catalogue (`TOOLS` in `backend/app/routers/mcp.py`
 | `type-and-shapes` | `add_text`, `draw_shape` |
 | `transform-and-warp` | `transform_layer`, `flip_canvas`, `resize_image`, `resize_canvas`, `crop` |
 | `generation-and-ai` | `generative_fill`, `generative_expand`, `generate_image`, `upscale` |
+| `steering-selection-aware-fill` | `select`, `run_command` (`content-fill` with `prefer` and `strength`, `clone-source-set`, `paint.stroke`), `get_image`, `undo` |
 | `timeline-and-video` | `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render` |
 | `export` | `export_image`, `save_project`, `timeline_render` |
 | `terminal` | `list_commands`, `describe_command`, `run_command`, `run_commands` (the command catalogue); no terminal tool |

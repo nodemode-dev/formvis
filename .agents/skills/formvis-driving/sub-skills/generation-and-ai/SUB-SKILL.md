@@ -64,6 +64,10 @@ If nothing can run, the error names exactly what to download (Preferences > Plug
 ### Cut out a subject
 Use `remove_background` (active layer) for a mask-based cut-out, or `select_subject` then `select` `shape: "invert"` and `generative_fill` with no prompt to wipe the surroundings. See `layers-and-masks`.
 
+## Selection-Aware Fill (not generative)
+
+To heal or remove from the picture's own pixels, and to draw the fill from a place the person chose, load `steering-selection-aware-fill`: `run_command` `content-fill` with `prefer` and `strength`.
+
 ## Habits
 
 - Look first, select precisely, fill, then look again. Generative steps are slow; ask for the fewest tries.

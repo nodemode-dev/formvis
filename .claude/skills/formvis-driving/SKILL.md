@@ -27,6 +27,7 @@ Each sub-skill is `sub-skills/[name]/SUB-SKILL.md` next to this file.
 | Move, scale, rotate, flip, resize, crop, extend the canvas, warp | `transform-and-warp` |
 | Remove or add things with AI, generate a picture, expand or upscale | `generation-and-ai` |
 | A video timeline: clips, fades, keyframes, render to mp4 or gif | `timeline-and-video` |
+| Steer Selection-Aware Fill as an agent: draw a fill from one place, fix texture from the wrong place, or choose Auto for sky and noise | `steering-selection-aware-fill` |
 | Save a project, export PNG, JPEG or WebP, deliver at a destination size | `export` |
 | A terminal, a shell or running commands inside formvis | `terminal` |
 

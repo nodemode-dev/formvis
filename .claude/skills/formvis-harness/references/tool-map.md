@@ -10,17 +10,17 @@ Generated from the MCP catalogue (138 tools, `TOOLS` in `backend/app/routers/mcp
 
 | Tool | Reads or changes | Driving sub-skills that name it |
 | --- | --- | --- |
-| `get_document` | reads only | `adjustments-and-filters`, `colour-and-modes`, `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `selections`, `terminal`, `transform-and-warp`, `type-and-shapes` |
-| `get_image` | reads only | `adjustments-and-filters`, `colour-and-modes`, `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `painting-and-brushes`, `selections`, `transform-and-warp`, `type-and-shapes` |
+| `get_document` | reads only | `adjustments-and-filters`, `colour-and-modes`, `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `selections`, `steering-selection-aware-fill`, `terminal`, `transform-and-warp`, `type-and-shapes` |
+| `get_image` | reads only | `adjustments-and-filters`, `colour-and-modes`, `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `painting-and-brushes`, `selections`, `steering-selection-aware-fill`, `transform-and-warp`, `type-and-shapes` |
 | `new_document` | adds or changes | `documents-and-files`, `export`, `generation-and-ai`, `timeline-and-video`, `type-and-shapes` |
-| `select` | adds or changes | `adjustments-and-filters`, `generation-and-ai`, `painting-and-brushes`, `selections` |
+| `select` | adds or changes | `adjustments-and-filters`, `generation-and-ai`, `painting-and-brushes`, `selections`, `steering-selection-aware-fill` |
 | `add_layer` | adds or changes | `layers-and-masks`, `painting-and-brushes`, `type-and-shapes` |
-| `set_layer` | adds or changes | `adjustments-and-filters`, `generation-and-ai`, `layers-and-masks`, `painting-and-brushes`, `selections`, `type-and-shapes` |
+| `set_layer` | adds or changes | `adjustments-and-filters`, `generation-and-ai`, `layers-and-masks`, `painting-and-brushes`, `selections`, `steering-selection-aware-fill`, `type-and-shapes` |
 | `delete_layer` | replaces or removes | `layers-and-masks`, `type-and-shapes` |
 | `fill` | adds or changes | `layers-and-masks`, `painting-and-brushes`, `selections`, `timeline-and-video`, `transform-and-warp`, `type-and-shapes` |
 | `add_adjustment` | adds or changes | `adjustments-and-filters`, `colour-and-modes`, `painting-and-brushes` |
 | `place_image` | adds or changes | `colour-and-modes`, `documents-and-files`, `layers-and-masks`, `timeline-and-video`, `transform-and-warp` |
-| `undo` | adds or changes | `adjustments-and-filters`, `colour-and-modes`, `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `painting-and-brushes`, `selections`, `timeline-and-video` |
+| `undo` | adds or changes | `adjustments-and-filters`, `colour-and-modes`, `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `painting-and-brushes`, `selections`, `steering-selection-aware-fill`, `timeline-and-video` |
 | `redo` | adds or changes | `documents-and-files` |
 | `generative_fill` | adds or changes | `generation-and-ai`, `layers-and-masks`, `painting-and-brushes`, `selections`, `transform-and-warp` |
 | `generative_expand` | adds or changes | `generation-and-ai`, `transform-and-warp` |
@@ -30,8 +30,8 @@ Generated from the MCP catalogue (138 tools, `TOOLS` in `backend/app/routers/mcp
 | `select_by_text` | adds or changes | `generation-and-ai`, `selections` |
 | `remove_background` | adds or changes | `export`, `generation-and-ai`, `layers-and-masks` |
 | `open_file` | adds or changes | `documents-and-files`, `export`, `terminal`, `timeline-and-video`, `type-and-shapes` |
-| `save_project` | replaces or removes | `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks` |
-| `export_image` | replaces or removes | `colour-and-modes`, `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `terminal`, `type-and-shapes` |
+| `save_project` | replaces or removes | `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `steering-selection-aware-fill` |
+| `export_image` | replaces or removes | `colour-and-modes`, `documents-and-files`, `export`, `generation-and-ai`, `layers-and-masks`, `steering-selection-aware-fill`, `terminal`, `type-and-shapes` |
 | `switch_document` | adds or changes | `documents-and-files`, `selections` |
 | `close_document` | replaces or removes | none |
 | `ping` | reads only | none |
@@ -48,7 +48,7 @@ Generated from the MCP catalogue (138 tools, `TOOLS` in `backend/app/routers/mcp
 | `flatten_image` | replaces or removes | `layers-and-masks` |
 | `add_text` | adds or changes | `layers-and-masks`, `painting-and-brushes`, `timeline-and-video`, `type-and-shapes` |
 | `draw_shape` | adds or changes | `layers-and-masks`, `painting-and-brushes`, `type-and-shapes` |
-| `select_subject` | adds or changes | `adjustments-and-filters`, `generation-and-ai`, `selections` |
+| `select_subject` | adds or changes | `adjustments-and-filters`, `generation-and-ai`, `selections`, `steering-selection-aware-fill` |
 | `select_color_range` | adds or changes | `painting-and-brushes`, `selections` |
 | `select_feather` | adds or changes | none |
 | `select_grow` | adds or changes | none |
@@ -69,8 +69,8 @@ Generated from the MCP catalogue (138 tools, `TOOLS` in `backend/app/routers/mcp
 | `timeline_frame_image` | reads only | `timeline-and-video` |
 | `timeline_render` | replaces or removes | `export`, `timeline-and-video` |
 | `list_commands` | reads only | `painting-and-brushes`, `terminal` |
-| `describe_command` | reads only | `terminal` |
-| `run_command` | replaces or removes | `adjustments-and-filters`, `painting-and-brushes`, `terminal` |
+| `describe_command` | reads only | `steering-selection-aware-fill`, `terminal` |
+| `run_command` | replaces or removes | `adjustments-and-filters`, `generation-and-ai`, `painting-and-brushes`, `steering-selection-aware-fill`, `terminal` |
 | `command_job` | reads only | none |
 | `run_commands` | replaces or removes | `terminal` |
 | `get_selection` | reads only | `documents-and-files` |
@@ -91,7 +91,7 @@ Generated from the MCP catalogue (138 tools, `TOOLS` in `backend/app/routers/mcp
 | `ui_menu_invoke` | replaces or removes | none |
 | `ui_set` | adds or changes | none |
 | `ui_dialog` | adds or changes | none |
-| `ui_pointer` | replaces or removes | none |
+| `ui_pointer` | replaces or removes | `steering-selection-aware-fill` |
 | `ui_key` | replaces or removes | none |
 | `ui_window` | adds or changes | none |
 | `control_call` | replaces or removes | none |

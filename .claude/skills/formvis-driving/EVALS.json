@@ -8,6 +8,7 @@
     { "prompt": "Make a 1280 by 720 thumbnail with a dark blue background and the title Launch day in big white bold text.", "route": "type-and-shapes" },
     { "prompt": "Make this photo warmer and a bit brighter, but keep it editable.", "route": "adjustments-and-filters" },
     { "prompt": "Extend the picture 300 pixels to the right so it fits a wider banner.", "route": "generation-and-ai" },
+    { "prompt": "Remove the lamp post in formvis, but make the fill use the grass on the left, not the road.", "route": "steering-selection-aware-fill" },
     { "prompt": "Create a 5 second video in formvis where the title fades in over the photo, and render it to an mp4.", "route": "timeline-and-video" },
     { "prompt": "formvis says the person did not allow outside agents. What do I do next?", "route": "SKILL.md failure table" }
   ],
