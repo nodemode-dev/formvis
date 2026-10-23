@@ -2,6 +2,11 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The DNG notice in About, a closed Licences and notices section · _v1.96.6 (ui/app-dialogs.ts AboutDialog; styles/dialogs.css .cv-about-notices)
+
+- The owner's licensing plan (L1, approved 2026-10-23): Adobe's DNG patent licence asks distributed products that read or write DNG to show "This product includes DNG technology under license by Adobe Systems Incorporated." prominently, and the owner chose the About box, in an accordion closed by default. AboutDialog gains a native `<details class="cv-about-notices">` "Licences and notices" after the Credits line, built once in the constructor; `<details>` opens in place, so nothing else in the dialog moves. dialogs.css gains three `.cv-about-notices` rules (tokens only, no z-index).
+- Verified: tsc --noEmit passes. Not verified in the window under throttling.
+
 ## The releases link opens formcompiler's release page · _v1.96.5 (app.ts)
 
 - Releases are built and drafted by formcompiler (`nodemode-ai/formcompiler`) as `formvis-vX.Y.Z`, so the portable copy's "releases page" link opens formcompiler's release page. The About dialog's "Source and releases" link still opens the source repository. The engine side of this release (desktop.yml moved into `setup/package_desktop.py`, the updater feed) is in backend/HASHOUT_LOG.md.

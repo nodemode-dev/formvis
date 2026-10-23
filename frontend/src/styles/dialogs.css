@@ -41,6 +41,9 @@
 .cv-input:focus { outline: none; border-color: var(--accent-color); }
 .cv-note { color: var(--text-muted); font-size: var(--fs-11); }
 .cv-note-head { color: var(--text-secondary); font-size: var(--fs-11); font-weight: 600; padding-top: var(--space-2); }
+.cv-about-notices { border-top: 1px solid var(--border-color); padding-top: var(--space-2); }
+.cv-about-notices summary { cursor: pointer; color: var(--text-secondary); font-size: var(--fs-11); }
+.cv-about-notices .cv-note { margin-top: var(--space-2); }
 .cv-comfy-report { white-space: pre-line; word-break: break-word; user-select: text; }
 .cv-run-bar { height: 6px; border-radius: var(--radius-sm); background: var(--bg-tertiary); overflow: hidden; }
 .cv-run-bar > i { display: block; height: 100%; width: 0; background: var(--accent-color); transform-origin: left; }
