@@ -148,7 +148,7 @@ Release history, with each version's test counts: `CHANGELOG.md`. What is not ve
 
 ## Licensing
 
-Apache License 2.0. Copyright 2026 nodemode-ai. See `LICENSE`, and `NOTICE.md` for every component that ships.
+Apache License 2.0. Copyright 2026 NodeAgentc, Inc. See `LICENSE`, and `NOTICE.md` for every component that ships.
 
 This product includes DNG technology under license by Adobe Systems Incorporated.
 
