@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
 
 from app.core import config, runtime
+from app.core.local_guard import LocalGuard
 from app.routers import fal as _fal_router
 from app.routers import comfyui, generative, io, large, llm, mcp, ops, plugins, projects, system, nodemode, colour
 from app.services import claude_code as _claude_service, sessions, terminal as _terminal_service
@@ -28,6 +29,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=config.APP_NAME, version=config.VERSION, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=config.cors_origins(), allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(LocalGuard, origins=config.window_origins())
 
 
 PLUGIN_WORKER_CSP = "default-src 'none'; script-src blob:; connect-src 'none'; worker-src 'none'; frame-src 'none'; img-src 'none'; style-src 'none'"

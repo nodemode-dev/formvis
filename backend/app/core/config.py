@@ -160,3 +160,8 @@ def cors_origins() -> list[str]:
     if raw:
         return [item.strip() for item in raw.split(",") if item.strip()]
     return [f"http://localhost:{FRONTEND_PORT}", f"http://127.0.0.1:{FRONTEND_PORT}"]
+
+
+def window_origins() -> list[str]:
+    preview = FRONTEND_PORT + 1
+    return [*cors_origins(), f"http://localhost:{preview}", f"http://127.0.0.1:{preview}", "tauri://localhost", "http://tauri.localhost"]
