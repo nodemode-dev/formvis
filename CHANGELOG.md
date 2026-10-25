@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.97.5 · 2026-10-25
+
+- A web page can no longer reach the engine through an image or a link.
+
 ## 1.97.4 · 2026-10-25
 
 - The engine answers only this computer's own window and agents.
