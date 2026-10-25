@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Zero npm audit findings: Vite 8.3.5, Vitest 5.0.5, source-map-js 1.2.2 · _v1.97.3 (package.json devDependencies `vite`, `vitest`; package-lock.json)
+
+- Why: the family rule from `FAMILY_DEV_PLAN.md` v0.4.x Phase 2b (formai_dev sidecar), every frontend installs with zero `npm audit` findings. Four were open, all in development tools: Vite 8.3.0 carries `launch-editor`'s two command-injection advisories in the dev server (ledger FB-004); Vitest and @vitest/mocker 5.0.1 accept unauthenticated manual mock registration; source-map-js 1.2.1, through Vite, can stall the event loop on crafted index maps (FB-005). The exact pins move to 8.3.5 and 5.0.5; `npm update source-map-js` moved the transitive one inside Vite's range; npm wrote the lock. Nothing in the shipped bundle's own code changed.
+- No removed code.
+- Gotcha: the dev server cannot be checked under the family throttle (4x CPU, 150 ms, about 1.6 Mbps): it serves the tree unbundled and the first load passes 120 seconds. The production build under `vite preview` is the throttled check.
+- Verified: `npm audit` 0; `npm run typecheck`; `vite build`; `vitest run` 48 files and 222 tests; `./formvis counts --check`; the production build under `vite preview` in Chromium 1440 by 900 at that throttle, hard reload, three runs: layout shift 0, no page or console error, no failed request.
+
 ## The quick fill command takes a preference area · _v1.97.1 (app.ts `content-fill`, automation/command-meta.ts)
 
 - Why: Custom's brush exists only in the dialog, so an agent had no way to give the fill a preferred place. `content-fill` now declares `prefer` (a list of `{x, y, width, height}` rectangles in document pixels) and `strength` (0 to 0.6). With `prefer` it builds a document-sized 0 or 1 map and calls `Engine.contentAwareFillWith(null, 'current', undefined, false, null, 3, map, strength)`: the map goes in as `preferDoc`, the weight, and `limitDoc` stays null. Without `prefer` the command is the plain quick fill as before. Non-finite rectangles are skipped; `contentFill` still clamps the strength to `FILL_PREFERENCE_MAX`.

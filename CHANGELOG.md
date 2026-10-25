@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.97.3 · 2026-10-25
+
+- The editor's development tools install with no known vulnerable package (Vite 8.3.5, Vitest 5.0.5). Nothing changes in the app.
+
 ## 1.97.2 · 2026-10-24
 
 - The copyright holder in LICENSE and the README is NodeAgentc, Inc., and the Home screen credit reads "by nodemode.ai".
