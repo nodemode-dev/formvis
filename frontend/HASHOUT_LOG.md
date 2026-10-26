@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The splash logo no longer jumps when the line and bar arrive · _v1.97.8 (public/splash.html body, p; ledger FB-128, S3)
+
+- Why: the body centred the logo, the line and the bar together (`justify-content: center`), so a paint that landed after the logo but before the rest centred the logo alone and moved it when the rest arrived. The window smoke (F7) caught it as a layout shift of 1.05e-4 on the svg in 1 load in about 9 under load; a page streamed up to `</svg>`, a 1 s wait, then the rest, shifted 3.16e-4 every time.
+- Now the body is `justify-content: flex-start` with `padding-top: calc(50vh - 64px)` (half of the 128 px stack) and the line is a fixed 16 px high, so the logo's place no longer depends on its later siblings. The card looks the same.
+- Removed, quoted in full: `justify-content: center;` on `body`, and `p { margin: 0; letter-spacing: 0.2px; }`.
+- Verified: the streamed repro shifts 3.16e-4 on the old file and 0 on the new one; the window smoke on both pages, 15 runs under load (see the sidecar).
+
 ## Zero npm audit findings: Vite 8.3.5, Vitest 5.0.5, source-map-js 1.2.2 · _v1.97.3 (package.json devDependencies `vite`, `vitest`; package-lock.json)
 
 - Why: the family rule from `FAMILY_DEV_PLAN.md` v0.4.x Phase 2b (formai_dev sidecar), every frontend installs with zero `npm audit` findings. Four were open, all in development tools: Vite 8.3.0 carries `launch-editor`'s two command-injection advisories in the dev server (ledger FB-004); Vitest and @vitest/mocker 5.0.1 accept unauthenticated manual mock registration; source-map-js 1.2.1, through Vite, can stall the event loop on crafted index maps (FB-005). The exact pins move to 8.3.5 and 5.0.5; `npm update source-map-js` moved the transitive one inside Vite's range; npm wrote the lock. Nothing in the shipped bundle's own code changed.
