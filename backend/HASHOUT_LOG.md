@@ -2,6 +2,12 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Engine tests send a loopback Host, model tests skip without their model, family layers F1 F4 F5 F9 · _v1.97.7 (tests/conftest.py, tests/test_f*.py)
+
+- Since LocalGuard (1.97.4) the default TestClient Host (testserver) and the httpx base_url `http://test` answered 403, so 125 of the 232 engine tests failed on the 1.97.6 tree and `test_not_allowed_asks_once_in_the_window_then_runs` waited forever for a window that was refused. The shared `client` fixture and every direct client now use `http://127.0.0.1:8190`. The app was right; only the tests were stale.
+- `need_model(model, download=False)` in conftest: the LaMa, Real-ESRGAN and SAM 2.1 ONNX tests need a model in the data folder. They skip with the reason when it is absent, and fetch it (pinned, SHA-256 checked) only with `FORMVIS_TEST_DOWNLOAD_MODELS=1`, so a network-less CI never reaches out. Nothing was deleted. The repo had no registered marker, so the skip is runtime rather than a `skipif`, since the models live in the data folder chosen at run time.
+- `test_f1_guard.py` is the family guard contract on `/api/health` and the agents websocket (`/api/agents/stream`), with an explicit loopback Host on every websocket case. `test_f4_versions.py` checks the six version sites and both lockfiles agree with a one-digit patch. `test_f5_boot.py` starts `formvis_engine.py` on a free port with an empty data folder and checks health, version, `engine.port` and an untouched home. `test_f9_release_profiles.py` fails on a stripping Cargo profile (the two `examples/` wasm crates are exempt, not shipped) or a freeze script that strips. formvis has `engine.port` where the template expects `engine.json`, and no consent policy tests here (F2 and F3 are not in this release's scope). FB-033: formvis answers a foreign Host with 403 before any route, as F1 shows.
+
 ## LocalGuard refuses cross-site requests that carry no Origin · _v1.97.5 (core/local_guard.py LocalGuard._permitted)
 
 - The family agent-stack standard, rule G4 (`AGENT_STACK_STANDARD.md` v0.2.0, owner decision D4, ledger FB-035, formai_dev sidecar; the design of formpdf 0.56.4). The entry below let a request with no Origin through once its Host was local, so a web page could still make the engine answer a GET by pointing an `<img>` or a link at `http://127.0.0.1:<port>/...`: browsers send no Origin on those, and any GET route with a side effect would run.

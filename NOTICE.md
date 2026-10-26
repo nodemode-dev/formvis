@@ -66,7 +66,7 @@ Adobe, Camera Raw and Photoshop are either registered trademarks or trademarks o
 
 ## Build tools, not distributed
 
-Vite (MIT), TypeScript (Apache-2.0), @tauri-apps/cli (Apache-2.0 or MIT), PyInstaller (GPL-2.0-or-later with the bootloader exception, which permits distributing the frozen engine under this project's license).
+Vite (MIT), TypeScript (Apache-2.0), @tauri-apps/cli (Apache-2.0 or MIT), PyInstaller (GPL-2.0-or-later with the bootloader exception, which permits distributing the frozen engine under this project's license). Development only, never installed in the app or shipped: pytest 9.1.1 with iniconfig, packaging, pluggy and pygments (MIT for pytest, iniconfig and pluggy; Apache-2.0 OR BSD-2-Clause for packaging; BSD-2-Clause for pygments), which runs `backend/tests` in CI (`backend/requirements-test.txt`).
 
 ## Phosphor Icons
 
