@@ -36,7 +36,7 @@ def test_the_real_model_selects_by_click_and_by_box_without_torch(monkeypatch):
     assert segment.available() and segment.backend() == "onnx"
     client = TestClient(app, base_url="http://127.0.0.1:8190")
     cap = client.get("/api/capabilities").json()
-    assert cap["selectObject"]["available"] and cap["selectObject"]["device"] == "onnx"
+    assert cap["selectObject"]["available"] and "ONNX Runtime" in cap["selectObject"]["reason"]
     data = picture()
     r = client.post("/api/ops/select-object", data={"key": "t1", "points": json.dumps([[160, 140, 1]])}, files={"file": ("p.png", data, "image/png")})
     assert r.status_code == 200, r.text

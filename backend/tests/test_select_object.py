@@ -7,9 +7,15 @@ import pytest
 from PIL import Image, ImageDraw
 
 from app.services import segment
+from tests.conftest import need_model
 
 needs_sam = pytest.mark.skipif(not segment.available(), reason="SAM 2.1 is optional: ./formvis install-ml installs torch and sam2")
 U = "/api/ops/select-object"
+
+
+def need_sam_model():
+    if not segment.torch_available():
+        need_model("sam2-onnx", download=True)
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +51,7 @@ def test_the_engine_reports_sam(client):
 
 @needs_sam
 def test_a_click_selects_the_object_under_it_and_only_that(client):
+    need_sam_model()
     png, circle, square = _scene()
     first = client.post(U, data={"key": "doc:1", "points": json.dumps([[80, 120, 1]])}, files={"file": ("l.png", png, "image/png")})
     assert first.status_code == 200
@@ -73,6 +80,7 @@ def test_without_the_extras_the_engine_says_so(client, monkeypatch):
 
 @needs_sam
 def test_a_box_selects_the_object_inside_it(client):
+    need_sam_model()
     # Object Selection's box mode (1.49.10): a box round the square, no points.
     png, circle, square = _scene()
     r = client.post(U, data={"key": "doc:box", "points": "[]", "box": json.dumps([185, 65, 295, 175])}, files={"file": ("l.png", png, "image/png")})

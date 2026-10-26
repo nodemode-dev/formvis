@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from app.services import background
+from tests.conftest import need_model
 
 
 def picture():
@@ -16,6 +17,7 @@ def picture():
 
 
 def test_without_rembg_the_same_model_runs_on_onnx_and_finds_the_subject(monkeypatch):
+    need_model("u2net-onnx", download=True)
     real_has = background._has
     monkeypatch.setattr(background, "_has", lambda m: False if m == "rembg" else real_has(m))
     assert background.available()["ml"] and background.available()["default"] == "ml"
