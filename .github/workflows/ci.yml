@@ -22,6 +22,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level=low
       - run: npm test
       - run: npm run build
 
@@ -100,13 +101,28 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m compileall -q app formvis_engine.py
       - run: python formvis_engine.py --selfcheck
-      - run: pip install pytest httpx
-      - run: python -m pytest -q tests
       - name: Boot the engine and probe it
         run: |
           python -m uvicorn app.main:app --host 127.0.0.1 --port 8190 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8190/api/health && break; sleep 1; done
           curl -sf http://127.0.0.1:8190/api/capabilities
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-test.txt
+      - name: Engine and test dependencies
+        run: pip install -r backend/requirements.txt -r backend/requirements-test.txt
+      - name: Engine tests, family layers included (no network, model tests skip)
+        working-directory: backend
+        run: python -m pytest -q -rs -p no:cacheprovider tests
 
   scripts:
     runs-on: ubuntu-latest
