@@ -27,7 +27,7 @@ def test_a_picture_sent_starts_the_image_to_image_and_is_fetched_then_forgotten(
         return [sys.executable, "-c", script, str(out).replace("{seed}", str(seed)), *image]
     monkeypatch.setattr(krea2, "_command", stand_in)
     src = io.BytesIO(); Image.new("RGB", (300, 200), (200, 50, 50)).save(src, "PNG")
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1:8190")
     started = client.post("/api/generate", json={"generator": "local:krea-2", "prompt": "a lighthouse", "size": "source",
                                                   "options": {"image": {"png": base64.b64encode(src.getvalue()).decode()}, "imageStrength": 0.35}})
     assert started.status_code == 202, started.text
@@ -55,5 +55,5 @@ def test_a_picture_that_is_not_one_is_refused(tmp_path, monkeypatch):
     monkeypatch.setattr(krea2, "CONSENT_FILE", tmp_path / "consent.json")
     krea2.record_consent(True)
     monkeypatch.setattr(krea2, "policy", lambda: {"licenceAccepted": True, "ready": True, "reason": None, "build": "mlx-q8", "filterInstalled": False, "removalAcknowledged": True})
-    r = TestClient(app).post("/api/generate", json={"generator": "local:krea-2", "prompt": "x", "options": {"image": {"png": "not a picture"}}})
+    r = TestClient(app, base_url="http://127.0.0.1:8190").post("/api/generate", json={"generator": "local:krea-2", "prompt": "x", "options": {"image": {"png": "not a picture"}}})
     assert r.status_code == 400 and "could not be read" in r.json()["detail"]

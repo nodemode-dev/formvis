@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 
 from app.localgen import inpaint, model_manager
 from app.main import app
+from tests.conftest import need_model
 
 
 def _grey(image, mask):
@@ -30,16 +31,16 @@ def test_only_the_grown_mask_is_filled_and_the_rest_kept_exactly():
 def test_it_waits_for_its_model(monkeypatch):
     monkeypatch.setattr(model_manager, "ready", lambda model: False)
     b = io.BytesIO(); Image.new("RGB", (8, 8)).save(b, "PNG")
-    r = TestClient(app).post("/api/inpaint/local", files={"image": ("i.png", b.getvalue(), "image/png"), "mask": ("m.png", b.getvalue(), "image/png")})
+    r = TestClient(app, base_url="http://127.0.0.1:8190").post("/api/inpaint/local", files={"image": ("i.png", b.getvalue(), "image/png"), "mask": ("m.png", b.getvalue(), "image/png")})
     assert r.status_code == 409 and "LaMa" in r.json()["detail"]
 
 
 def test_the_real_lama_fills_a_hole_from_its_surroundings():
-    assert model_manager.ready("lama-inpaint"), "LaMa is downloaded by the model manager (pinned) before this test"
+    need_model("lama-inpaint", download=True)
     picture = Image.new("RGB", (400, 240), (200, 30, 30)); ImageDraw.Draw(picture).rectangle((200, 0, 399, 239), fill=(30, 60, 200))
     hole = Image.new("L", (400, 240)); ImageDraw.Draw(hole).rectangle((60, 80, 139, 159), fill=255)   # a hole inside the red
     ImageDraw.Draw(picture).rectangle((60, 80, 139, 159), fill=(0, 0, 0))                              # what was there: gone
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1:8190")
     pb, mb = io.BytesIO(), io.BytesIO(); picture.save(pb, "PNG"); hole.save(mb, "PNG")
     r = client.post("/api/inpaint/local", files={"image": ("i.png", pb.getvalue(), "image/png"), "mask": ("m.png", mb.getvalue(), "image/png")})
     assert r.status_code == 200, r.text

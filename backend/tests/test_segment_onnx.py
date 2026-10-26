@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 
 from app.localgen import model_manager
 from app.main import app
+from tests.conftest import need_model
 from app.services import segment
 
 
@@ -31,9 +32,9 @@ def iou(a, b):
 
 def test_the_real_model_selects_by_click_and_by_box_without_torch(monkeypatch):
     monkeypatch.setattr(segment, "torch_available", lambda: False)             # as a base install: no torch
+    need_model("sam2-onnx", download=True)
     assert segment.available() and segment.backend() == "onnx"
-    assert model_manager.ready("sam2-onnx"), "fetched by the model manager (pinned) before this test"
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1:8190")
     cap = client.get("/api/capabilities").json()
     assert cap["selectObject"]["available"] and cap["selectObject"]["device"] == "onnx"
     data = picture()

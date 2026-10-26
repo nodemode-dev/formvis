@@ -12,6 +12,7 @@ from app.localgen import ai_upscale, model_manager
 from app.main import app
 from fastapi.testclient import TestClient
 from PIL import Image
+from tests.conftest import need_model
 
 
 def _nearest(batch: np.ndarray) -> np.ndarray:
@@ -69,16 +70,7 @@ def test_the_real_model_downloads_pinned_and_upscales_through_the_route(monkeypa
     """The real Real-ESRGAN, fetched by the model manager's pinned download (its SHA-256 checked), run through the
     route as a job: four times larger, the alpha kept, the colours of a flat picture kept."""
     import time
-    from app.localgen import jobs
-    if not model_manager.ready("ai-upscale"):
-        job = model_manager.start_download("ai-upscale")
-        for _ in range(1200):
-            state = jobs.status(job["job_id"])
-            if state["status"] in ("done", "error", "failed"):
-                break
-            time.sleep(0.25)
-        assert state["status"] == "done", state
-    assert model_manager.ready("ai-upscale")
+    need_model("ai-upscale", download=True)
     client = TestClient(app, base_url="http://127.0.0.1:8123", headers={"x-formvis-local": "1"})
     picture = Image.new("RGBA", (40, 24), (40, 120, 200, 255)); picture.putpixel((0, 0), (40, 120, 200, 0))
     b = io.BytesIO(); picture.save(b, "PNG")
