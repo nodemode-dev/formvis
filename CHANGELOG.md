@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.97.8 · 2026-10-26
+
+- The splash logo no longer jumps when its line and bar arrive after it (a layout shift the new window smoke caught in 3 of 15 loads under load). The window smoke (F7) loads the built window and the splash page under CPU and network throttling in CI and fails on any layout shift, console error or failed request.
+
 ## 1.97.7 · 2026-10-26
 
 - The engine tests send a loopback Host again (LocalGuard had left 125 of 232 failing), the three model tests skip when their model is absent, and the family guard, version, boot and release-profile tests run in a CI test job with no network. `npm audit --audit-level=low` runs after `npm ci`.
