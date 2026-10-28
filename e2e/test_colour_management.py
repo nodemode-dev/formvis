@@ -1,12 +1,14 @@
 # Colour management (1.53.5, the parity plan's H2): Proof Colors and Gamut Warning against a real press profile,
-# Assign and Convert to Profile, and embedded profiles on open. FOGRA39 comes from TeX Live on the test machine.
+# Assign and Convert to Profile, and embedded profiles on open. FOGRA39 is the profile the engine ships
+# (backend/app/profiles, byte for byte TeX Live's colorprofiles copy; NOTICE.md).
 import io
+from pathlib import Path
 
 from PIL import Image
 
 from e2e.conftest import open_app
 
-FOGRA = "/usr/share/texlive/texmf-dist/tex/generic/colorprofiles/FOGRA39L_coated.icc"
+FOGRA = str(Path(__file__).resolve().parent.parent / "backend" / "app" / "profiles" / "FOGRA39L_coated.icc")
 DLG = ".cv-scrim:not([hidden]) .cv-dialog"
 SCREEN = """([x, y]) => { const e = window.formvis.engine, v = e.current.viewport, d = devicePixelRatio, c = document.querySelector('.cv-scene');
   return Array.from(c.getContext('2d').getImageData(Math.round((v.panX + x * v.zoom) * d), Math.round((v.panY + y * v.zoom) * d), 1, 1).data).slice(0, 3); }"""
