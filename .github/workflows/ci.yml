@@ -40,7 +40,7 @@ jobs:
           python-version: '3.12'
       - run: npm ci
         working-directory: frontend
-      - run: pip install -r backend/requirements.txt pytest playwright psd-tools
+      - run: pip install -r backend/requirements.txt -r backend/requirements-test.txt playwright psd-tools
       - run: python -m playwright install --with-deps chromium
       - name: Start the engine on 8190 (the dev build proxies /api to it)
         working-directory: backend
