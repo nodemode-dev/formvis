@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.98.3 · 2026-10-29
+
+- The browser shards retry a failed test once (pytest-rerunfailures, test only, MPL-2.0). A test that fails twice still fails the shard; one that passes on the retry is listed as RERUN in the shard's summary, so timing races stay visible without turning the run red.
+- The tiled-undo browser test puts the tile memory share back to normal once the tiles have gone to disk, so on a slow runner the pager can no longer send them out again between the undo and the check.
+
 ## 1.98.2 · 2026-10-29
 
 - Preferences > Plugins keeps "Installed." under Krea 2 after an install finishes; the section's redraw had cleared it at once.
