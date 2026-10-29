@@ -24,6 +24,28 @@ def _up() -> bool:
         return False
 
 
+def pytest_collection_modifyitems(config, items):
+    # FORMVIS_E2E_SHARD="i/n" keeps whole files for shard i of n, files dealt largest first to the lightest shard, so CI
+    # runs the suite on n runners at once (1.97.9: one runner took over 3 hours for about 1,500 tests).
+    shard = os.environ.get("FORMVIS_E2E_SHARD")
+    if not shard:
+        return
+    index, total = (int(x) for x in shard.split("/"))
+    sizes: dict[str, int] = {}
+    for item in items:
+        name = item.nodeid.split("::")[0]
+        sizes[name] = sizes.get(name, 0) + 1
+    loads = [0] * total
+    owner: dict[str, int] = {}
+    for name in sorted(sizes, key=lambda n: (-sizes[n], n)):
+        k = loads.index(min(loads))
+        owner[name] = k + 1
+        loads[k] += sizes[name]
+    keep = [i for i in items if owner[i.nodeid.split("::")[0]] == index]
+    config.hook.pytest_deselected(items=[i for i in items if owner[i.nodeid.split("::")[0]] != index])
+    items[:] = keep
+
+
 @pytest.fixture(scope="session", autouse=True)
 def dev_server():
     if _up():
