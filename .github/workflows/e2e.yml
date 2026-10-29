@@ -6,15 +6,22 @@ on:
 permissions:
   contents: read
 
+# A second run started on the same branch replaces the first instead of running beside it.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   e2e:
-    name: e2e (${{ matrix.shard }}/26)
+    name: e2e (${{ matrix.shard }}/12)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
+        # 12, not 26: each shard repeats about 70 s of setup and rounds up to a whole billed minute, so fewer, fuller
+        # shards spend fewer minutes for the same tests (about 15 minutes of tests each instead of 7).
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,15 +30,25 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - uses: actions/setup-python@v5
+        id: py
         with:
           python-version: '3.12'
-          cache: pip
-          cache-dependency-path: |
-            backend/requirements.txt
-            backend/requirements-test.txt
       - run: npm ci
         working-directory: frontend
-      - run: pip install -r backend/requirements.txt -r backend/requirements-test.txt playwright psd-tools
+      # The whole test environment is cached, not only pip's downloads, so a shard with unchanged requirements skips
+      # the install. Playwright is pinned here so the key names exactly what is inside.
+      - name: Test environment (restored whole while the requirements are unchanged)
+        id: venv
+        uses: actions/cache@v4
+        with:
+          path: ~/e2e-venv
+          key: e2e-venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('backend/requirements.txt', 'backend/requirements-test.txt') }}-playwright-1.64.1
+      - name: Install the test environment
+        if: steps.venv.outputs.cache-hit != 'true'
+        run: |
+          python -m venv ~/e2e-venv
+          ~/e2e-venv/bin/pip install -r backend/requirements.txt -r backend/requirements-test.txt playwright==1.64.1
+      - run: echo "$HOME/e2e-venv/bin" >> "$GITHUB_PATH"
       - name: Playwright version (the browser cache key)
         id: pw
         run: echo "version=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
@@ -54,9 +71,9 @@ jobs:
           done
           cat "$RUNNER_TEMP/engine.log"
           exit 1
-      - name: Browser tests against the dev build, shard ${{ matrix.shard }} of 26
+      - name: Browser tests against the dev build, shard ${{ matrix.shard }} of 12
         env:
-          FORMVIS_E2E_SHARD: ${{ matrix.shard }}/26
+          FORMVIS_E2E_SHARD: ${{ matrix.shard }}/12
         run: python -m pytest -q -rfER --reruns 1 --reruns-delay 2 --durations=15 e2e
       - name: Engine log
         if: failure()
