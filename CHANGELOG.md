@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.97.9 · 2026-10-29
+
+- The browser tests run on 10 CI runners at once instead of one, which was at 55% after 100 minutes. `FORMVIS_E2E_SHARD=i/n` keeps the whole test files that fall to shard i of n, dealt largest first so each shard gets about 170 of the 1,696 tests; the e2e checks are now named "e2e (1/10)" to "e2e (10/10)", each with a 45 minute timeout.
+
 ## 1.97.8 · 2026-10-26
 
 - The splash logo no longer jumps when its line and bar arrive after it (a layout shift the new window smoke caught in 3 of 15 loads under load). The window smoke (F7) loads the built window and the splash page under CPU and network throttling in CI and fails on any layout shift, console error or failed request.
