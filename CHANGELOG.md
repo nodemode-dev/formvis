@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.98.0 · 2026-10-29
+
+- The browser tests run on 26 CI runners, dealt by expected seconds instead of test count, and a file heavier than half a shard is dealt test by test (one shard of 10 had held all of test_offered_options and ran 38 minutes). Each shard prints its 15 slowest tests, the e2e checks are "e2e (1/26)" to "e2e (26/26)", each with a 25 minute timeout.
+- A folder holding a new, never-painted layer takes paint into that layer instead of saying it has no pixel layer.
+- Improve Prompt in Generate Image no longer rewrites the prompt as an edit of a picture: Auto means no use rules there, and the chosen template leads.
+- Edit > Paste says the browser blocked clipboard access when the browser refuses at once, then pastes formvis's own copy, as it did when the refusal came after a wait.
+- The Contextual Task Bar fits the room beside the right docks instead of running under them, and panel group tabs count their borders when deciding to compact, so no tab label is cut on wider fonts.
+- Browser tests brought up to date with 1.96.2 and 1.96.3: Fill offers the eraser models, Revert replaced Restore, colour match is off for flat mock answers, the engine's "Set a language model first" message, a folder that hands paint to its layer; the offered-options builders wait for type on a path and clear pending warps, and console errors name their URL.
+
 ## 1.97.9 · 2026-10-29
 
 - The browser tests run on 10 CI runners at once instead of one, which was at 55% after 100 minutes. `FORMVIS_E2E_SHARD=i/n` keeps the whole test files that fall to shard i of n, dealt largest first so each shard gets about 170 of the 1,696 tests; the e2e checks are now named "e2e (1/10)" to "e2e (10/10)", each with a 45 minute timeout.
