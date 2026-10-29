@@ -51,6 +51,13 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - run: pip install -r backend/requirements.txt -r backend/requirements-test.txt playwright psd-tools
+      - name: Playwright version (the browser cache key)
+        id: pw
+        run: echo "version=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
       - run: python -m playwright install --with-deps chromium
       - name: ffmpeg (the video footage tests make their clips with it; Render Video and Export MP4 call it)
         run: sudo apt-get install -y --no-install-recommends ffmpeg
