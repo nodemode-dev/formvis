@@ -5090,7 +5090,7 @@ export class Engine {
       }
       return false;
     };
-    for (let i = layers.length - 1; i >= 0; i--) { const x = layers[i]; if (!x.isGroup && x.visible && x.raster && inside(x)) return x; }
+    for (let i = layers.length - 1; i >= 0; i--) { const x = layers[i]; if (!x.isGroup && x.visible && (x.raster || !(liveText(x) || x.smart || x.vector || x.shape || x.fillContent || x.adjustment)) && inside(x)) return x; }
     return null;
   }
 

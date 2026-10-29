@@ -36,4 +36,4 @@ def test_an_adjustment_layer_paints_its_mask_and_a_group_says_why(page):
     assert m == [True, True, 0, 255], m                                                       # black hid it along the stroke; the rest shows
     notices(page)
     page.evaluate("window.formvis.engine.addLayer(); window.formvis.engine.groupLayers(); window.formvis.engine.paintBucket({ x: 100, y: 60 })")
-    assert any("is a group" in n for n in page.evaluate("window.__n")), page.evaluate("window.__n")
+    assert page.evaluate("window.formvis.engine.activeLayer.name") == "Layer 1" and not page.evaluate("window.__n"), page.evaluate("window.__n")
