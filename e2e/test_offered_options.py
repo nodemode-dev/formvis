@@ -55,7 +55,7 @@ BUILDERS = [
     ("a vector mask", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); e.addVectorMask('reveal'); }"),
     ("data sets", "() => { window.formvis.engine.importDataSets('a,b\\n1,2\\n3,4'); }"),
     ("a redaction box", "() => { const e = window.formvis.engine; e.markupKind = 'redact'; e.addMarkup({ x: 30, y: 30 }, { x: 100, y: 90 }); }"),
-    ("a mesh warp", "async () => { const e = window.formvis.engine; e.cancelTransform?.(); e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); e.deselect(); window.formvis.commands.run('transform-warp'); await new Promise((r) => setTimeout(r, 800)); }"),
+    ("a mesh warp", "async () => { const e = window.formvis.engine; e.cancelTransform?.(); e.cancelDistort?.(); e.cancelPuppetWarp?.(); e.cancelPerspectiveWarp?.(); e.cancelMeshWarp?.(); e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); e.deselect(); window.formvis.commands.run('transform-warp'); await new Promise((r) => setTimeout(r, 800)); }"),
     ("a grayscale document", "async () => { window.formvis.commands.run('mode-grayscale'); await new Promise((r) => setTimeout(r, 300)); }"),
     ("a 32-bit document","() => window.formvis.engine.setDepth(32)"),   # File > Export > Radiance HDR and OpenEXR (1.53.9)
     ("a proof setup", """async () => { const { iccProfile } = await import('/src/engine/icc.ts'), fd = new FormData(); fd.append('file', new Blob([iccProfile('adobe-rgb')]), 'adobe.icc');
@@ -78,7 +78,7 @@ BUILDERS = [
     ("an alpha channel", "() => { const e = window.formvis.engine; e.newAlpha(); e.newAlpha(); }"),
     ("an alpha channel chosen first", "() => { const e = window.formvis.engine; const a = e.newAlpha(); e.newAlpha(); e.showAlpha(a, true); }"),
     ("copied layers", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('copy-layers'); }"),
-    ("type on a circle", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('type-on-circle', { text: 'Round' }); }"),
+    ("type on a circle", "async () => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('type-on-circle', { text: 'Round' }); for (let i = 0; i < 40 && !e.current.activeLayer?.text?.onPath; i++) await new Promise((r) => setTimeout(r, 100)); }"),
     ("a copied selection", "() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.name === 'Paint').id); window.formvis.commands.run('copy'); }"),
     ("a box", "() => window.formvis.commands.run('boxes-from-selection')"),
     ("a copied shape style", "() => { const e = window.formvis.engine; Object.assign(e.shapeSettings, { kind: 'star', mode: 'shape', fill: 'fg', stroke: 'fg', strokeWidth: 2 }); e.drawShape({ x: 40, y: 40 }, { x: 100, y: 100 }, { x: 40, y: 40, w: 60, h: 60 }); e.selectLayer(e.current.doc.layers.find((l) => l.vector).id); window.formvis.commands.run('shape-style-copy'); }"),
@@ -124,7 +124,7 @@ def collect(page):
         raise AssertionError(f"The formvis engine is not running, so this test cannot tell a real failure from a missing engine: {exc}")
     errors = []
     page.on("pageerror", lambda exc: errors.append(f"uncaught: {exc}"[:300]))
-    page.on("console", lambda m: errors.append(f"console: {m.text}"[:300]) if m.type == "error" else None)
+    page.on("console", lambda m: errors.append(f"console: {m.text} {m.location.get('url', '')}"[:300]) if m.type == "error" else None)
     page.on("filechooser", lambda fc: None)                          # Import, Load Brushes and the like: the picker is left unanswered
     page.on("dialog", lambda d: d.dismiss())
     return errors
