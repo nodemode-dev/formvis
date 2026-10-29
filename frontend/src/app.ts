@@ -5529,7 +5529,7 @@ export function startApp(): void {
     if (state === 'denied') throw blocked();
     let timer = 0;
     const wait = new Promise<never>((_, no) => { timer = window.setTimeout(() => no(blocked()), 4000); });
-    try { return await Promise.race([navigator.clipboard.read(), wait]); } finally { window.clearTimeout(timer); }
+    try { return await Promise.race([navigator.clipboard.read().catch((x: unknown) => { throw (x as Error)?.name === 'NotAllowedError' ? blocked() : x; }), wait]); } finally { window.clearTimeout(timer); }
   }
 
   async function pasteFromMenu(outside: boolean | null = null, inPlace = false): Promise<void> {
