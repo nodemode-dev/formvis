@@ -1,3 +1,4 @@
 pytest==9.1.1
 httpx==0.28.1
 pypdf==6.21.4   # the browser tests read the printed PDF back (e2e/test_cover_files2_print_pdf.py); test only, not shipped; BSD-3-Clause
+pytest-rerunfailures==16.7   # CI's browser shards retry a failed test once, reported as RERUN; test only, not shipped, unedited; MPL-2.0

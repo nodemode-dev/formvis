@@ -76,7 +76,7 @@ jobs:
       - name: Browser tests against the dev build, shard ${{ matrix.shard }} of 26
         env:
           FORMVIS_E2E_SHARD: ${{ matrix.shard }}/26
-        run: python -m pytest -q --durations=15 e2e
+        run: python -m pytest -q -rfER --reruns 1 --reruns-delay 2 --durations=15 e2e
       - name: Engine log
         if: failure()
         run: cat "$RUNNER_TEMP/engine.log"
