@@ -24,25 +24,42 @@ def _up() -> bool:
         return False
 
 
+SHARD_SECONDS = 7.0
+SLOW_SECONDS = {
+    "e2e/test_offered_options.py::test_every_menu_command_runs": 240.0,
+    "e2e/test_offered_options.py::test_every_tool_option_at_every_value": 120.0,
+}
+
+
 def pytest_collection_modifyitems(config, items):
-    # FORMVIS_E2E_SHARD="i/n" keeps whole files for shard i of n, files dealt largest first to the lightest shard, so CI
-    # runs the suite on n runners at once (1.97.9: one runner took over 3 hours for about 1,500 tests).
+    # FORMVIS_E2E_SHARD="i/n" keeps the tests that fall to shard i of n, dealt by expected CI seconds (SHARD_SECONDS a
+    # test, SLOW_SECONDS for the long ones), heaviest first to the lightest shard. A file stays whole unless it outweighs
+    # half a shard; then its tests are dealt one by one (1.98.0: test_offered_options alone held one of 10 shards at 38 min).
     shard = os.environ.get("FORMVIS_E2E_SHARD")
     if not shard:
         return
     index, total = (int(x) for x in shard.split("/"))
-    sizes: dict[str, int] = {}
+
+    def seconds(item) -> float:
+        return SLOW_SECONDS.get(item.nodeid.split("[")[0], SHARD_SECONDS)
+
+    files: dict[str, list] = {}
     for item in items:
-        name = item.nodeid.split("::")[0]
-        sizes[name] = sizes.get(name, 0) + 1
-    loads = [0] * total
-    owner: dict[str, int] = {}
-    for name in sorted(sizes, key=lambda n: (-sizes[n], n)):
+        files.setdefault(item.nodeid.split("::")[0], []).append(item)
+    half = sum(seconds(i) for i in items) / total / 2
+    units = []
+    for name, group in files.items():
+        weight = sum(seconds(i) for i in group)
+        units += [(seconds(i), i.nodeid, [i]) for i in group] if weight > half else [(weight, name, group)]
+    loads = [0.0] * total
+    keep, drop = [], []
+    for weight, _key, group in sorted(units, key=lambda u: (-u[0], u[1])):
         k = loads.index(min(loads))
-        owner[name] = k + 1
-        loads[k] += sizes[name]
-    keep = [i for i in items if owner[i.nodeid.split("::")[0]] == index]
-    config.hook.pytest_deselected(items=[i for i in items if owner[i.nodeid.split("::")[0]] != index])
+        loads[k] += weight
+        (keep if k + 1 == index else drop).extend(group)
+    order = {id(i): n for n, i in enumerate(items)}
+    keep.sort(key=lambda i: order[id(i)])
+    config.hook.pytest_deselected(items=drop)
     items[:] = keep
 
 
