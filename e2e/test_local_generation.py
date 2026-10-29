@@ -35,7 +35,7 @@ def engine(page, seen):
 def test_generative_fill_on_krea_2_sends_the_area_and_masks_the_result(page):
     seen = {"posts": [], "deleted": 0}
     engine(page, seen)
-    page.evaluate("""async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine; e.newDocument(200, 120, 'F', 'white');
+    page.evaluate("""async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine; e.newDocument(200, 120, 'F', 'white'); localStorage.setItem('formvis.generative', JSON.stringify({ match: 0 })); e.generativeMatch = 0;
       e.applySelection(E.SelectionMask.cropped(50, 30, 60, 40, new Uint8Array(2400).fill(255)), 'replace', 's'); window.formvis.commands.run('generative-fill'); }""")
     page.locator(DLG, has_text="Generative Fill").wait_for()
     model = page.locator(f"{DLG} select[aria-label='Model']")

@@ -61,7 +61,7 @@ def offered(page):
 
 
 def selection(page):
-    page.evaluate("""async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine; e.newDocument(200, 100, 'Poster', 'white');
+    page.evaluate("""async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine; e.newDocument(200, 100, 'Poster', 'white'); localStorage.setItem('formvis.generative', JSON.stringify({ match: 0 })); e.generativeMatch = 0;
       e.applySelection(E.SelectionMask.cropped(20, 20, 40, 30, new Uint8Array(1200).fill(255)), 'replace', 's'); }""")
 
 
@@ -100,7 +100,7 @@ def test_fill_offers_edit_and_inpaint_and_sends_the_mask_to_the_mask_key(page, f
     page.evaluate("window.formvis.commands.run('generative-fill')")
     page.locator(DLG, has_text="Generative Fill").wait_for()
     page.wait_for_function("() => document.querySelectorAll('.cv-scrim:not([hidden]) select[aria-label=Model] option[value^=\"falcat:\"]').length > 0")
-    assert sorted(offered(page)) == sorted(m["id"] for m in by_role("edit", "inpaint"))
+    assert sorted(offered(page)) == sorted(m["id"] for m in by_role("edit", "inpaint", "remove"))
     inp = by_role("inpaint")[0]
     pick(page, inp["id"])
     page.locator(f"{DLG} input[placeholder^='Describe what to add']").fill("a green kite")

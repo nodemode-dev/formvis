@@ -53,7 +53,7 @@ def address(page, url):
 def test_a_workflow_as_generative_fills_model(page, comfy, tmp_path):
     url, seen = comfy
     address(page, url)
-    page.evaluate("""async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine; e.newDocument(120, 80, 'Poster', 'white');
+    page.evaluate("""async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine; e.newDocument(120, 80, 'Poster', 'white'); localStorage.setItem('formvis.generative', JSON.stringify({ match: 0 })); e.generativeMatch = 0;
       e.applySelection(E.SelectionMask.cropped(20, 20, 40, 30, new Uint8Array(1200).fill(255)), 'replace', 's'); }""")
     page.evaluate("window.formvis.commands.run('generative-fill')")
     page.locator(DLG, has_text="Generative Fill").wait_for()

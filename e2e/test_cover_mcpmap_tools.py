@@ -110,4 +110,4 @@ def test_commands_run_in_the_background_and_report_through_command_job(agent):
 
 def test_improve_prompt_reports_a_missing_language_model_plainly(agent):
     r = tool("improve_prompt", prompt="a red cat @img1")
-    assert r["isError"] and "Nothing answers" in r["content"][0]["text"] or not r["isError"]
+    assert r["isError"] and ("Set a language model first" in r["content"][0]["text"] or "Nothing answers" in r["content"][0]["text"]) or not r["isError"]
