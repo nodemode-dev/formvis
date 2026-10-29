@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.98.4 · 2026-10-29
+
+- The browser tests move to their own workflow, `.github/workflows/e2e.yml`, which runs only when started by hand (Actions, e2e, Run workflow, on any branch). Pushes and pull requests run the six other CI jobs only, so a push no longer spends the e2e shards' minutes (roughly 250 billed minutes a run).
+
 ## 1.98.3 · 2026-10-29
 
 - The browser shards retry a failed test once (pytest-rerunfailures, test only, MPL-2.0). A test that fails twice still fails the shard; one that passes on the retry is listed as RERUN in the shard's summary, so timing races stay visible without turning the run red.
