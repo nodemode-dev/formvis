@@ -27,13 +27,13 @@ jobs:
       - run: npm run build
 
   e2e:
-    name: e2e (${{ matrix.shard }}/10)
+    name: e2e (${{ matrix.shard }}/26)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -66,10 +66,10 @@ jobs:
           done
           cat "$RUNNER_TEMP/engine.log"
           exit 1
-      - name: Browser tests against the dev build, shard ${{ matrix.shard }} of 10
+      - name: Browser tests against the dev build, shard ${{ matrix.shard }} of 26
         env:
-          FORMVIS_E2E_SHARD: ${{ matrix.shard }}/10
-        run: python -m pytest -q e2e
+          FORMVIS_E2E_SHARD: ${{ matrix.shard }}/26
+        run: python -m pytest -q --durations=15 e2e
       - name: Engine log
         if: failure()
         run: cat "$RUNNER_TEMP/engine.log"
