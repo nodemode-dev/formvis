@@ -256,7 +256,10 @@ export type FontFileSource = (family: string, bold: boolean, italic: boolean) =>
 let source: FontFileSource = async (family, bold, italic) => {
   if (!(await (await import('../io/api')).serviceReady())) throw new Error(`No font file for ${family}`);   // the engine service is not running
   const res = await fetch(`/api/fonts/file?family=${encodeURIComponent(family)}&bold=${bold ? 1 : 0}&italic=${italic ? 1 : 0}`);
-  if (!res.ok || res.status === 204) throw new Error(`No font file for ${family}`);   // 204: not installed here (1.72.5)
+  if (!res.ok || res.status === 204) {   // 204: not installed here (1.72.5)
+    await res.arrayBuffer().catch(() => undefined);   // drained: an unread answer is cancelled, which the browser logs as net::ERR_ABORTED
+    throw new Error(`No font file for ${family}`);
+  }
   return res.arrayBuffer();
 };
 

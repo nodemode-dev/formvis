@@ -20,7 +20,8 @@ def scratch(tmp_path, monkeypatch):
 
     monkeypatch.setattr(mm, "ROOT", tmp_path / "models")
     monkeypatch.setattr(mm, "SOURCES_FILE", tmp_path / "models" / "sources.json")
-    with TestClient(app) as c:
+    # The engine answers its own address only (the host guard), so the client calls it there, as backend/tests/conftest.py does.
+    with TestClient(app, base_url="http://127.0.0.1:8190") as c:
         yield c, mm, tmp_path
 
 

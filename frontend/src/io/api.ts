@@ -170,7 +170,10 @@ export const api = {
   /** A font file's bytes (DEV_PLAN 32.6b): the engine finds the family's file on this computer, for OpenType features. */
   async fontFile(family: string, bold: boolean, italic: boolean): Promise<ArrayBuffer> {
     const res = await request(`/fonts/file?family=${encodeURIComponent(family)}&bold=${bold ? 1 : 0}&italic=${italic ? 1 : 0}`);
-    if (res.status === 204) throw new ApiError(`No font file for ${family} on this computer.`, 204);   // not installed (1.72.5)
+    if (res.status === 204) {   // not installed (1.72.5)
+      await res.arrayBuffer().catch(() => undefined);   // drained: an unread answer is cancelled, which the browser logs as net::ERR_ABORTED
+      throw new ApiError(`No font file for ${family} on this computer.`, 204);
+    }
     return res.arrayBuffer();
   },
   async capabilities(): Promise<Capabilities | null> {

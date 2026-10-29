@@ -29,7 +29,9 @@ def dev_server():
     if _up():
         yield
         return
-    proc = subprocess.Popen(["npx", "vite", "--port", "5190", "--strictPort"], cwd=FRONTEND, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # --host 127.0.0.1: the address _up() probes. Left to itself Vite listens on "localhost", which can resolve to ::1
+    # only (it does on macOS, and CI's e2e job stopped with "did not start on 5190" before any test ran).
+    proc = subprocess.Popen(["npx", "vite", "--host", "127.0.0.1", "--port", "5190", "--strictPort"], cwd=FRONTEND, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for _ in range(120):
             if _up():

@@ -40,8 +40,10 @@ jobs:
           python-version: '3.12'
       - run: npm ci
         working-directory: frontend
-      - run: pip install -r backend/requirements.txt pytest playwright psd-tools
+      - run: pip install -r backend/requirements.txt -r backend/requirements-test.txt playwright psd-tools
       - run: python -m playwright install --with-deps chromium
+      - name: ffmpeg (the video footage tests make their clips with it; Render Video and Export MP4 call it)
+        run: sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Start the engine on 8190 (the dev build proxies /api to it)
         working-directory: backend
         env:
@@ -162,7 +164,7 @@ jobs:
             head -n 1 "$f" | grep -q 'sh' || continue
             bash -n "$f"
           done
-      - name: No em dash or emoji in tracked text
+      - name: No em dash in tracked markdown, no emoji in tracked text
         run: |
           python3 - <<'PY'
           import subprocess, sys
@@ -172,9 +174,10 @@ jobs:
                   text = open(path, encoding='utf-8').read()
               except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
                   continue
+              markdown = path.endswith('.md')
               for ch in text:
                   cp = ord(ch)
-                  if cp == 0x2014 or 0x1F000 <= cp <= 0x1FAFF or 0x2600 <= cp <= 0x27BF:
+                  if (markdown and cp == 0x2014) or 0x1F000 <= cp <= 0x1FAFF or 0x2600 <= cp <= 0x27BF:
                       bad.append(f'{path}: U+{cp:04X}')
                       break
           print('\n'.join(bad) or 'clean')

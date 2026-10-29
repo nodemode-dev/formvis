@@ -1,5 +1,5 @@
 """Colour management (1.53.5, H2) on LittleCMS: profiles, conversion and proofing tables, and the gamut warning, with a
-real CMYK press profile (FOGRA39, from TeX Live on the test machine; not shipped with formvis)."""
+real CMYK press profile: the FOGRA39 profile formvis ships (byte for byte TeX Live's colorprofiles copy, NOTICE.md)."""
 
 import base64
 import io
@@ -10,7 +10,7 @@ from PIL import Image, ImageCms
 
 from app.services import colour
 
-FOGRA = "/usr/share/texlive/texmf-dist/tex/generic/colorprofiles/FOGRA39L_coated.icc"
+FOGRA = str(colour.shipped_dir() / "FOGRA39L_coated.icc")
 
 
 def table(data, gamut=False):
