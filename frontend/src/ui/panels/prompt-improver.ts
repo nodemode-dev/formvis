@@ -71,7 +71,7 @@ export class PromptImprover {
   private rewritten = '';
   private reverted = false;
   /** Whether the dialog is expanding the picture or upscaling it, for the Auto use case; empty otherwise. */
-  mode: (() => 'expand' | 'upscale' | '') | null = null;
+  mode: (() => 'expand' | 'upscale' | 'new' | '') | null = null;
   /** The area the prompt is for as a data address, sent when the language model row reads pictures; empty when none. */
   view: ((() => Promise<string>) & { touchesEdge?: () => boolean }) | null = null;
   /** The reference pictures the prompt names, each with its @img token, as small data addresses; sent when the row reads pictures. */
@@ -123,6 +123,7 @@ export class PromptImprover {
     if (this.useCase.value) return '';
     const m = this.mode ? this.mode() : '';
     if (m === 'upscale') return 'upscale';
+    if (m === 'new') return '';
     return m === 'expand' || (this.view?.touchesEdge?.() ?? false) ? 'outpaint' : 'edit';
   }
 

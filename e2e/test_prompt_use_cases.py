@@ -69,7 +69,7 @@ def test_each_use_case_sends_its_template_and_purpose(page, service):
         system = seen["bodies"][-1]["messages"][0]["content"]
         assert system.startswith(starter) and f"The prompt is for {purpose}." in system
         assert starter in field.input_value()
-        restore = page.locator(f"{DLG} .cv-improve button", has_text="Restore")
+        restore = page.locator(f"{DLG} .cv-improve button", has_text="Revert")
         assert restore.is_visible()
         restore.click()
         assert field.input_value() == "a kite over the sea"

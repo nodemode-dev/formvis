@@ -421,6 +421,7 @@ export class GenerateImageDialog extends Dialog {
     this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.opts.forModel(this.model.value); this.fal.show(this.catalogue.find((m) => m.id === falIdOf(this.model.value)) ?? null); this.paintShapes(); });
     this.improver = new PromptImprover(this.prompt, 'Richer detail');
     this.improver.view = areaView(engine, false);
+    this.improver.mode = () => 'new';
     this.improver.refs = referenceViews(() => this.chips.ordered());
     this.paintShapes();
     this.size.addEventListener('change', () => { const c = this.size.value !== 'custom'; this.cw.hidden = c; this.ch.hidden = c; });
