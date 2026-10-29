@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Four fixes the sharded browser suite caught · _v1.98.0 (engine/index.ts topPaintableIn; ui/panels/prompt-improver.ts mode, resolveUse; ui/panels/generate-image.ts; app.ts readClipboardItems; ui/task-bar.ts place; ui/panel-group.ts fitTabs width)
+
+- A folder with a new, never-painted layer said "has no visible pixel layer to work on": `topPaintableIn` required `x.raster`, and a fresh layer gets its raster on first paint. It now also takes a visible plain pixel layer w/o a raster (not type, smart, vector, shape, fill or adjustment). Removed condition, quoted: `x.raster`.
+- Improve Prompt in Generate Image sent the edit rules: with Rewrite for on Auto, `resolveUse` fell through to `'edit'` because Generate Image set no `mode`. `mode` may now return `'new'`, which resolves to no use case; Generate Image sets it. Fill, expand and upscale are unchanged.
+- Edit > Paste with clipboard reading refused at once (Chromium rejects `read()` w/ NotAllowedError instead of waiting) pasted formvis's own copy w/o the blocked-clipboard message; a NotAllowedError now raises the same toast as the denied and 4 s cases. Other read errors pass through as before.
+- The Contextual Task Bar was wider than the room beside the right docks (compact bar 793 px against 770 at 1400 by 900, 1.96.2's model picker), so it ran under the Properties column. `place()` caps `max-width` at the room minus the pads before measuring, only when the value changes; the prompt field already flexes, so nothing else moves.
+- Panel group tabs could be cut on wider fonts: `fitTabs` summed `scrollWidth`, which leaves out each tab's 1 px borders. The sum now adds `offsetWidth - clientWidth` a tab.
+- Verified: tsc --noEmit; the failing browser tests and their files pass locally (21 tests: task bar, measuring, fal models, improve prompt, generative models, local generation, paste); paint targets and prompt use cases pass. Not verified under 4x CPU and network throttling.
+
 ## The splash logo no longer jumps when the line and bar arrive · _v1.97.8 (public/splash.html body, p; ledger FB-128, S3)
 
 - Why: the body centred the logo, the line and the bar together (`justify-content: center`), so a paint that landed after the logo but before the rest centred the logo alone and moved it when the rest arrived. The window smoke (F7) caught it as a layout shift of 1.05e-4 on the svg in 1 load in about 9 under load; a page streamed up to `</svg>`, a 1 s wait, then the rest, shifted 3.16e-4 every time.
