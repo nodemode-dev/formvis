@@ -124,7 +124,8 @@ def collect(page):
         raise AssertionError(f"The formvis engine is not running, so this test cannot tell a real failure from a missing engine: {exc}")
     errors = []
     page.on("pageerror", lambda exc: errors.append(f"uncaught: {exc}"[:300]))
-    page.on("console", lambda m: errors.append(f"console: {m.text} {m.location.get('url', '')}"[:300]) if m.type == "error" else None)
+    # /api/terminal/claude answers 404 where Claude Code is not installed (CI runners); the dock says so, the browser logs it.
+    page.on("console", lambda m: errors.append(f"console: {m.text} {m.location.get('url', '')}"[:300]) if m.type == "error" and not m.location.get("url", "").endswith("/api/terminal/claude") else None)
     page.on("filechooser", lambda fc: None)                          # Import, Load Brushes and the like: the picker is left unanswered
     page.on("dialog", lambda d: d.dismiss())
     return errors
@@ -137,10 +138,10 @@ def close_dialogs(page):
         page.keyboard.press("Escape"); page.wait_for_timeout(60)
 
 
-@pytest.mark.parametrize("part", range(6))
+@pytest.mark.parametrize("part", range(12))
 def test_every_menu_command_runs(page, part):
     errors = collect(page)
-    ids = page.evaluate("window.formvis.commands.all().map((c) => c.id)")[part::6]   # every sixth command, so each part gets a fresh page and finishes in time
+    ids = page.evaluate("window.formvis.commands.all().map((c) => c.id)")[part::12]   # every twelfth command, so each part gets a fresh page and a CI shard of its own (1.98.1: a sixth took 315 s)
     never, ran = [], 0
     last = {"id": None}                                               # the command about to run, so a crash or a lost page names it
     try:
