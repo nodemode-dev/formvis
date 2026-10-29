@@ -150,6 +150,7 @@ export class LocalModelsSection {
     const [t, s] = await Promise.all([api('/models/krea-2/terms'), api('/models/krea-2/status')]);
     const lic = t.licence as Json, builds = Object.entries(t.builds as Json);
     const state = el('<p class="cv-local-state" role="status"></p>'), note = el('<p class="cv-note cv-local-note" role="status"></p>');
+    setText(note, this.krea.querySelector('.cv-local-note')?.textContent ?? '');   // "Installed." and the like outlive the redraw that follows them
     setText(state, s.ready ? `Krea 2 Turbo: installed (${s.build}), ready.` : `Krea 2 Turbo: ${s.reason}.`);
     const accept = el<HTMLInputElement>('<input type="checkbox" aria-label="Accept the Krea 2 license">');
     accept.checked = !!s.licenceAccepted; accept.disabled = !!s.licenceAccepted;

@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## "Installed." stays after Krea 2 finishes installing · _v1.98.2 (ui/panels/local-models.ts showKrea)
+
+- Why: `follow()` wrote "Installed." into the note, then its `done` callback called `showKrea()`, which rebuilds the Krea section with `replaceChildren` and a new empty note, so the message vanished within milliseconds. The browser test caught it on CI (shard 4/26) when its poll missed that window.
+- Now `showKrea()` starts the new note with the text of the note it replaces. One line; nothing else in the section changes.
+- No removed code.
+- Verified: tsc --noEmit; e2e/test_local_models.py passes in 6.2 s. Not verified under throttling.
+
 ## Four fixes the sharded browser suite caught · _v1.98.0 (engine/index.ts topPaintableIn; ui/panels/prompt-improver.ts mode, resolveUse; ui/panels/generate-image.ts; app.ts readClipboardItems; ui/task-bar.ts place; ui/panel-group.ts fitTabs width)
 
 - A folder with a new, never-painted layer said "has no visible pixel layer to work on": `topPaintableIn` required `x.raster`, and a fresh layer gets its raster on first paint. It now also takes a visible plain pixel layer w/o a raster (not type, smart, vector, shape, fill or adjustment). Removed condition, quoted: `x.raster`.
