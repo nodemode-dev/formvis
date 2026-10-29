@@ -24,10 +24,11 @@ def _up() -> bool:
         return False
 
 
-SHARD_SECONDS = 7.0
+SHARD_SECONDS = 5.5
 SLOW_SECONDS = {
-    "e2e/test_offered_options.py::test_every_menu_command_runs": 240.0,
-    "e2e/test_offered_options.py::test_every_tool_option_at_every_value": 120.0,
+    "e2e/test_offered_options.py::test_every_menu_command_runs": 170.0,
+    "e2e/test_offered_options.py::test_every_tool_option_at_every_value": 70.0,
+    "e2e/test_cover_top_history.py::test_earlier_states_lists_the_unsaved_document_a_restart_found_and_opens_it_as_a_tab": 30.0,
 }
 
 
