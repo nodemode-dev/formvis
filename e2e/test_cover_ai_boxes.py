@@ -123,7 +123,8 @@ def test_panel_kind_copy_rows_and_clear(page):
         "Layout boxes (rectangles in document pixels, the picture is 400 x 300; kind | rectangle | description):\n"
         "box 1 | Remove | x=40 y=40 w=120 h=80 | a red / kite")
     page.locator(".cv-boxes-clear").click()
-    assert page.evaluate(BOXES) == [] and page.locator(".cv-box-row").count() == 0 and page.evaluate(STEP) == "Clear Boxes"
+    page.wait_for_function("document.querySelectorAll('.cv-box-row').length === 0", timeout=5000)   # the rows go on the panel's next repaint
+    assert page.evaluate(BOXES) == [] and page.evaluate(STEP) == "Clear Boxes"
     page.evaluate("window.formvis.engine.undo()")
     assert len(page.evaluate(BOXES)) == 1
 

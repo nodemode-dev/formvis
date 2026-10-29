@@ -22,7 +22,7 @@ def test_the_actions_panel_records_plays_and_skips_a_switched_off_step(page, tmp
     undo_all(page, 2)
     page.click(f"{PANEL} .cv-step-row:nth-child(2) .cv-step-on")
     page.wait_for_function("(() => { const a = JSON.parse(localStorage.getItem('formvis.actions') || '[]'); return a[0] && a[0].steps[1].off === true; })()", timeout=5000)
-    assert page.evaluate(f"document.querySelector('{PANEL} .cv-step-row:nth-child(2)').classList.contains('is-off')")
+    page.wait_for_function(f"document.querySelector('{PANEL} .cv-step-row:nth-child(2)').classList.contains('is-off')", timeout=5000)   # the panel repaints on the next frame
     page.click(f"{PANEL} [data-act=play]")
     page.wait_for_function("document.body.innerText.includes('Played \"Inv\", 2 steps')", timeout=10000)
     assert (px(page, 12, 8), px(page, 3, 8)) == ([225, 215, 35], [220, 30, 30])
