@@ -85,7 +85,7 @@ export class PanelGroup {
     const full = strip.clientWidth + (chev.hidden ? 0 : chev.offsetWidth + 6);
     if (!strip.clientWidth) return;
     for (const c of strip.children) c.classList.remove('is-over');
-    const width = (): number => [...strip.children].reduce((w, c) => w + (c as HTMLElement).scrollWidth, 0) + Math.max(0, strip.children.length - 1) * 2;
+    const width = (): number => [...strip.children].reduce((w, c) => w + (c as HTMLElement).scrollWidth + (c as HTMLElement).offsetWidth - (c as HTMLElement).clientWidth, 0) + Math.max(0, strip.children.length - 1) * 2;
     for (const step of ['', 'is-compact', 'is-tight']) {
       strip.classList.remove('is-compact', 'is-tight');
       if (step) strip.classList.add(step);

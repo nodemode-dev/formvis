@@ -309,6 +309,8 @@ export class TaskBar {
    *  below), clamped inside the stage; else at the bottom centre. */
   private place(): void {
     if (this.dragging || this.bar.hidden) return;
+    const cap = this.room ? `${Math.max(0, this.room - PAD.l - PAD.r)}px` : '';
+    if (cap && this.bar.style.maxWidth !== cap) this.bar.style.maxWidth = cap;
     const W = this.room, H = this.stage.clientHeight, bw = this.bar.offsetWidth, bh = this.bar.offsetHeight;
     if (!W || !H || !bw) return;
     const minX = PAD.l, maxX = Math.max(minX, W - bw - PAD.r), minY = PAD.t, maxY = Math.max(minY, H - bh - PAD.b);
