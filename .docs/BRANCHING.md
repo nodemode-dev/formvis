@@ -1,6 +1,6 @@
 # Branching and release model
 
-- **main** is always releasable. CI (`.github/workflows/ci.yml`) must pass before anything lands. No force-push to main.
+- **main** is always releasable. CI (`.github/workflows/ci.yml`) must pass before anything lands. No force-push to main. The browser tests (`.github/workflows/e2e.yml`, 26 shards) run only when started by hand (Actions, e2e, Run workflow): run them before a release and after changes to the UI, the engine or the e2e suite.
 - **Work branches** are short-lived and named by intent: `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`. Rebase on main before merging.
 - **Commits** follow Conventional Commits with the version in the summary, for example `fix(frontend): keep dialog focus inside the scrim (0.1.1)`. The commit identity is `nodemode-ai <mackin@nodemode.ai>`.
 - **Versions** are `v*.*.*` with dots, everywhere: `frontend/package.json`, `frontend/src/version.ts`, `backend/app/__init__.py`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, the README badge and the deliverable zip names. Bump all of them in the same commit.

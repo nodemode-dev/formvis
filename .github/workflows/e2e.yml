@@ -1,0 +1,63 @@
+name: e2e
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: e2e (${{ matrix.shard }}/26)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-test.txt
+      - run: npm ci
+        working-directory: frontend
+      - run: pip install -r backend/requirements.txt -r backend/requirements-test.txt playwright psd-tools
+      - name: Playwright version (the browser cache key)
+        id: pw
+        run: echo "version=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - run: python -m playwright install --with-deps chromium
+      - name: ffmpeg (the video footage tests make their clips with it; Render Video and Export MP4 call it)
+        run: sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Start the engine on 8190 (the dev build proxies /api to it)
+        working-directory: backend
+        env:
+          FORMVIS_DATA_DIR: ${{ runner.temp }}/formvis-data
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8190 > "$RUNNER_TEMP/engine.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8190/api/health; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/engine.log"
+          exit 1
+      - name: Browser tests against the dev build, shard ${{ matrix.shard }} of 26
+        env:
+          FORMVIS_E2E_SHARD: ${{ matrix.shard }}/26
+        run: python -m pytest -q -rfER --reruns 1 --reruns-delay 2 --durations=15 e2e
+      - name: Engine log
+        if: failure()
+        run: cat "$RUNNER_TEMP/engine.log"
