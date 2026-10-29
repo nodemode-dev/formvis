@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.98.2 · 2026-10-29
+
+- Preferences > Plugins keeps "Installed." under Krea 2 after an install finishes; the section's redraw had cleared it at once.
+- Each part of the menu-command sweep has its own shard weight, from timings of all 12 parts: about 55 s each, part 8 80 s, and parts 3 (Export MP4, Contact Sheet, Frame Trace) and 9 (Benchmark) 190 s and 130 s, the two that took 315 s together on CI. The tool-option parts weigh 65 s. All 26 shards expect 400 to 406 s of tests.
+
 ## 1.98.1 · 2026-10-29
 
 - The menu-command sweep runs in 12 parts instead of 6 (one part took 315 s on CI, more than any other shard's whole share), and the shard weights follow the timings CI printed: 5.5 s a test, 170 s a menu part, 70 s a tool-option part. All 26 shards expect 445 to 450 s of tests.
