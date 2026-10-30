@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.98.5 · 2026-10-30
+
+- The desktop build runs on Windows: the install and build scripts find Python as `python` when `python3` is absent, use the Windows layout of the engine's virtual environment, and hand PyInstaller Windows paths.
+- On macOS every program and library inside the engine folder is signed with the hardened runtime, a secure timestamp and the app's entitlements when the Developer ID is available, so the app can pass notarization. Without it the build stays signed ad hoc as before.
+- The macOS notarize step skips an ad hoc build and any disk image already stapled, so it no longer repeats the notarization the app build and the release pipeline already do. The Windows packaging steps no longer sign anything themselves; the release pipeline signs every Windows file.
+- The desktop app now asks for macOS 14 (Sonoma) or newer, which its engine needs; it had said macOS 11.
+- Every text file checks out with LF line endings and batch files with CRLF on every system, so the bash build scripts work in Git Bash on Windows.
+
 ## 1.98.4 · 2026-10-29
 
 - The browser tests move to their own workflow, `.github/workflows/e2e.yml`, which runs only when started by hand (Actions, e2e, Run workflow, on any branch). Pushes and pull requests run the six other CI jobs only, so a push no longer spends the e2e shards' minutes (roughly 250 billed minutes a run).
