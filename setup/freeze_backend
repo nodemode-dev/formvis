@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 set -e
 source "$(dirname "$0")/lib.sh"
+sign_engine() {
+  local ent="$FORMVIS_ROOT/src-tauri/entitlements.plist" f info signed=0 kept=0
+  local files=()
+  while IFS= read -r f; do
+    if file -b "$f" | grep -Eq 'Mach-O.*(executable|shared library|bundle)'; then files+=("$f"); fi
+  done < <(find "$1" -type f | awk -F/ '{print NF "\t" $0}' | sort -rn | cut -f2-)
+  for f in "${files[@]}"; do
+    info="$(codesign -d --verbose=4 "$f" 2>&1 || true)"
+    if printf '%s\n' "$info" | grep -q '^Timestamp=' \
+      && printf '%s\n' "$info" | grep -Eq '^CodeDirectory .*flags=[^ ]*runtime' \
+      && ! printf '%s\n' "$info" | grep -q '^Signature=adhoc' \
+      && codesign -d --entitlements - "$f" 2>/dev/null | grep -q 'com.apple.security.cs.disable-library-validation'; then
+      kept=$((kept + 1))
+      continue
+    fi
+    codesign --force --timestamp --options runtime --entitlements "$ent" --sign "$APPLE_SIGNING_IDENTITY" "$f"
+    signed=$((signed + 1))
+  done
+  for f in "${files[@]}"; do codesign --verify "$f" || cv_die "engine file failed its signature check: $f"; done
+  cv_say "engine signed: ${#files[@]} Mach-O files, $signed signed here, $kept already signed by PyInstaller"
+}
 cv_venv
 python -c "import PyInstaller" 2>/dev/null || cv_die "PyInstaller missing, run ./formvis install-desktop"
 triple="$(cv_target_triple)" || cv_die "rustc not found; install Rust or set FORMVIS_TARGET"
@@ -36,6 +57,7 @@ if [ "$mode" = --onedir ]; then
   out="$FORMVIS_ROOT/src-tauri/engine"
   rm -rf "$out"
   cp -R dist-engine/formvis-engine "$out"
+  [ -z "${APPLE_SIGNING_IDENTITY:-}" ] || sign_engine "$out"
   "$out/formvis-engine" --selfcheck
   cv_say "engine folder ready: $out"
   exit 0
