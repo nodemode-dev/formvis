@@ -6,14 +6,14 @@ in this order and drafts the release formvis-vX.Y.Z on its own release page. Ste
 
 Per target in MATRIX (each target is one runner):
   1. Linux only: apt-get install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev
-  2. Windows only, when WINDOWS_CERTIFICATE is set: import the base64 PFX with WINDOWS_CERTIFICATE_PASSWORD into
-     Cert:\\CurrentUser\\My and export its thumbprint as WINDOWS_CERT_THUMBPRINT
+  2. Windows signing is formcompiler's (its tauri.windows.conf.json and signing step); formvis adds none
   3. ./formvis install --lite   then   ./formvis install-desktop
   4. unset APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY when APPLE_CERTIFICATE is empty;
      unset APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID when APPLE_ID is empty;
      unset TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD when the key is empty
   5. cfg=$(python3 setup/package_desktop.py config); then ./formvis desktop build $TAURI_TARGET_ARGS [--config "$cfg" when cfg is not empty]
-  6. macOS: mac-archive, then notarize when APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are all set
+  6. macOS: mac-archive, then notarize when APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are all set (it checks the
+     app Tauri notarized and notarizes only a dmg not yet stapled; without APPLE_SIGNING_IDENTITY it does nothing)
   7. Windows: portable-windows, then msix (never for x86)
   8. Linux: linux-tar; macOS: portable-macos
   9. keep for the release: RELEASE_DIR/bundle/{dmg/*.dmg, appimage/*.AppImage, appimage/*.AppImage.zsync, deb/*.deb,
@@ -86,10 +86,6 @@ def run(cmd, **kw):
     subprocess.run(cmd, check=True, **kw)
 
 
-def shell_name():
-    return shutil.which("pwsh") or shutil.which("powershell") or "powershell"
-
-
 def cmd_config(args):
     conf, bundle = {}, {}
     if os.environ.get("TAURI_SIGNING_PRIVATE_KEY"):
@@ -101,8 +97,6 @@ def cmd_config(args):
             with open(os.path.join(ROOT, "src-tauri", "tauri.conf.json"), encoding="utf-8") as f:
                 if not json.load(f)["plugins"]["updater"]["pubkey"]:
                     print("warning: the updater key is set but no public key is configured, so installed apps cannot verify updates", file=sys.stderr)
-    if os.environ.get("WINDOWS_CERT_THUMBPRINT"):
-        bundle["windows"] = {"certificateThumbprint": os.environ["WINDOWS_CERT_THUMBPRINT"]}
     if bundle:
         conf["bundle"] = bundle
     print(json.dumps(conf) if conf else "")
@@ -118,14 +112,27 @@ def cmd_mac_archive(args):
     return 0
 
 
+def quiet(cmd):
+    return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
 def cmd_notarize(args):
     env = os.environ
+    identity = env.get("APPLE_SIGNING_IDENTITY", "")
+    if not identity:
+        print("notarize: skipped, no APPLE_SIGNING_IDENTITY (an ad hoc build cannot be notarized)")
+        return 0
+    run(["spctl", "-a", "-t", "exec", "-vv", os.path.join(args.release_dir, "bundle", "macos", "formvis.app")])
     for dmg in sorted(glob.glob(os.path.join(args.release_dir, "bundle", "dmg", "*.dmg"))):
+        if quiet(["xcrun", "stapler", "validate", dmg]):
+            print("notarize: already stapled: " + dmg)
+            continue
+        if not quiet(["codesign", "--verify", dmg]):
+            run(["codesign", "--force", "--timestamp", "--sign", identity, dmg])
         run(["xcrun", "notarytool", "submit", dmg, "--apple-id", env["APPLE_ID"], "--password", env["APPLE_PASSWORD"],
              "--team-id", env["APPLE_TEAM_ID"], "--wait"])
         run(["xcrun", "stapler", "staple", dmg])
         run(["xcrun", "stapler", "validate", dmg])
-    run(["spctl", "-a", "-t", "exec", "-vv", os.path.join(args.release_dir, "bundle", "macos", "formvis.app")])
     return 0
 
 
@@ -134,14 +141,6 @@ def cmd_portable_windows(args):
     os.makedirs(out, exist_ok=True)
     shutil.copy(os.path.join(args.release_dir, "formvis.exe"), out)
     shutil.copy(os.path.join(args.release_dir, "formvis-engine.exe"), out)
-    thumb = os.environ.get("WINDOWS_CERT_THUMBPRINT")
-    if thumb:
-        script = (
-            "$cert = Get-Item \"Cert:\\CurrentUser\\My\\$env:WINDOWS_CERT_THUMBPRINT\"; "
-            "Get-ChildItem \"" + out.replace("\\", "/") + "/*.exe\" | ForEach-Object { Set-AuthenticodeSignature -FilePath $_.FullName "
-            "-Certificate $cert -HashAlgorithm SHA256 -TimestampServer http://timestamp.digicert.com | Out-Null }"
-        )
-        run([shell_name(), "-NoProfile", "-NonInteractive", "-Command", script])
     with open(os.path.join(out, "portable.txt"), "w", encoding="utf-8") as f:
         f.write("formvis keeps its data in the FormvisData folder beside this file.\n")
     target = os.path.join("portable", f"formvis-portable-windows-{args.arch}.zip")

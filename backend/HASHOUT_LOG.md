@@ -2,6 +2,39 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Post-build signing steps leave Tauri's and formcompiler's work alone · _v1.98.5 (setup/package_desktop.py cmd_notarize, cmd_portable_windows, cmd_config)
+
+- `notarize` (formcompiler's macOS post-build when APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are set): Tauri already signs, notarizes and staples `formvis.app` during the build, and formcompiler's own step after post-build notarizes any dmg not yet stapled. The subcommand now returns at once without `APPLE_SIGNING_IDENTITY` (formcompiler sets it in post-build only when its build keychain holds the identity; an ad hoc build cannot be notarized, and it used to submit one anyway). With it, `spctl` checks the app first, then each dmg in `bundle/dmg` is skipped when `stapler validate` passes, signed with the identity and a timestamp when `codesign --verify` fails, then submitted, stapled and validated, the same rule as formcompiler's step, which then sees it stapled and skips it.
+- Windows: formcompiler signs Windows builds itself (its `tauri.windows.conf.json` sign command or the certificate thumbprint it passes in `--config`, and its signing step for the zips). `portable-windows` no longer re-signs the copied exes with `Set-AuthenticodeSignature` (they are the ones Tauri signed in the release folder), and `config`, which formcompiler does not call, no longer adds `certificateThumbprint`. `shell_name` was only used by that signing and is gone. The docstring says so.
+- Verified: `python3 -m py_compile setup/package_desktop.py`. Not run here: notarize and portable-windows need macOS and Windows.
+
+```text
+  2. Windows only, when WINDOWS_CERTIFICATE is set: import the base64 PFX with WINDOWS_CERTIFICATE_PASSWORD into
+     Cert:\\CurrentUser\\My and export its thumbprint as WINDOWS_CERT_THUMBPRINT
+  6. macOS: mac-archive, then notarize when APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are all set
+def shell_name():
+    return shutil.which("pwsh") or shutil.which("powershell") or "powershell"
+    if os.environ.get("WINDOWS_CERT_THUMBPRINT"):
+        bundle["windows"] = {"certificateThumbprint": os.environ["WINDOWS_CERT_THUMBPRINT"]}
+def cmd_notarize(args):
+    env = os.environ
+    for dmg in sorted(glob.glob(os.path.join(args.release_dir, "bundle", "dmg", "*.dmg"))):
+        run(["xcrun", "notarytool", "submit", dmg, "--apple-id", env["APPLE_ID"], "--password", env["APPLE_PASSWORD"],
+             "--team-id", env["APPLE_TEAM_ID"], "--wait"])
+        run(["xcrun", "stapler", "staple", dmg])
+        run(["xcrun", "stapler", "validate", dmg])
+    run(["spctl", "-a", "-t", "exec", "-vv", os.path.join(args.release_dir, "bundle", "macos", "formvis.app")])
+    return 0
+    thumb = os.environ.get("WINDOWS_CERT_THUMBPRINT")
+    if thumb:
+        script = (
+            "$cert = Get-Item \"Cert:\\CurrentUser\\My\\$env:WINDOWS_CERT_THUMBPRINT\"; "
+            "Get-ChildItem \"" + out.replace("\\", "/") + "/*.exe\" | ForEach-Object { Set-AuthenticodeSignature -FilePath $_.FullName "
+            "-Certificate $cert -HashAlgorithm SHA256 -TimestampServer http://timestamp.digicert.com | Out-Null }"
+        )
+        run([shell_name(), "-NoProfile", "-NonInteractive", "-Command", script])
+```
+
 ## The macOS engine folder: every Mach-O signed with the hardened runtime, a secure timestamp and the entitlements · _v1.98.5 (setup/freeze_backend sign_engine)
 
 - On macOS the engine is a PyInstaller one-folder build that `tauri.macos.conf.json` adds to the app as the `engine` resource. Tauri signs the app and its externalBin sidecars but not resources, and notarization refuses the app if any Mach-O inside lacks the hardened runtime, a secure timestamp or a Developer ID signature. formcompiler now imports the Developer ID certificate into a build keychain before the build, so PyInstaller's `--codesign-identity "$APPLE_SIGNING_IDENTITY"` finds it; PyInstaller signs the binaries it classifies as binaries, but a Mach-O it collects as data, or one it leaves ad hoc, would still fail notarization.
