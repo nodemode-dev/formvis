@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The desktop app asks for macOS 14, which its engine needs · _v1.98.5 (src-tauri/tauri.conf.json bundle.macOS.minimumSystemVersion, packaging/homebrew/formvis.rb)
+
+- `minimumSystemVersion` was 11.0 (12.0 until 1.90.7, lowered without a reason recorded), the Homebrew cask said Monterey and formcompiler's catalog says macOS 12. None of them held for the engine that ships: `requirements_macos.txt` is unpinned, and on the macOS 15 runners pip takes NumPy's `macosx_14_0` wheels (built on Accelerate, NumPy 2.0 and later), which load only on macOS 14 and newer; recent ONNX Runtime wheels ask for 13 or 14 as well. An app that opened on 11 or 12 would start an engine that fails at `import numpy`.
+- So the app now says 14.0, which also becomes formcompiler's `MACOSX_DEPLOYMENT_TARGET` for the Rust shell and for OpenCV built from source, and the cask says Sonoma. Going lower would need NumPy's `macosx_11_0` OpenBLAS wheels forced and every other wheel checked; not done.
+- Verified: `src-tauri/tauri.conf.json` parses. The wheel tags are from NumPy's and ONNX Runtime's published wheel names, not from a build here.
+
+```text
+      "minimumSystemVersion": "11.0",
+  depends_on macos: ">= :monterey"
+```
+
 ## Post-build signing steps leave Tauri's and formcompiler's work alone · _v1.98.5 (setup/package_desktop.py cmd_notarize, cmd_portable_windows, cmd_config)
 
 - `notarize` (formcompiler's macOS post-build when APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are set): Tauri already signs, notarizes and staples `formvis.app` during the build, and formcompiler's own step after post-build notarizes any dmg not yet stapled. The subcommand now returns at once without `APPLE_SIGNING_IDENTITY` (formcompiler sets it in post-build only when its build keychain holds the identity; an ad hoc build cannot be notarized, and it used to submit one anyway). With it, `spctl` checks the app first, then each dmg in `bundle/dmg` is skipped when `stapler validate` passes, signed with the identity and a timestamp when `codesign --verify` fails, then submitted, stapled and validated, the same rule as formcompiler's step, which then sees it stapled and skips it.
