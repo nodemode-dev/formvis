@@ -2,6 +2,35 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The bash build chain runs on Windows: `python`, `venv/Scripts`, native paths for PyInstaller · _v1.98.5 (oc_install, setup/lib.sh, setup/freeze_backend)
+
+- formcompiler builds formvis on Windows in Git Bash (`windows_shell` bash, so `--target i686-pc-windows-msvc` reaches the x86 build) with `./formvis install --lite`, `./formvis install-desktop` and `./formvis desktop build`. Three things stopped that chain (audit of 2026-10-30, family problem 3): setup-python gives `python` and `py` but not always `python3`, and the candidates ended at `python3`; a Windows venv keeps `activate` in `venv/Scripts`, and `oc_install` and `cv_venv` only knew `venv/bin`; and PyInstaller got `--add-data "/d/a/.../frontend/dist;frontend_dist"`, an MSYS path inside a `src;dest` pair, which Git Bash may not convert.
+- `oc_install` and `cv_python` try `python` last; `oc_install` and `cv_venv` source `venv/bin/activate`, else `venv/Scripts/activate` (formtxt's pattern). `setup/install_ml`, `setup/install_desktop` and `setup/freeze_backend` reach the venv through `cv_venv` and follow without edits. New `cv_native_path` gives `cygpath -w` of a path on Windows and the path unchanged elsewhere; `freeze_backend` builds every `--add-data` source, the hooks folder and the entry script from it. `cv_os` also takes `*_NT-*` from `uname -s`, so Git for Windows on Arm (CLANGARM64_NT) is Windows. `setup/package_desktop.py msix` already uses `backend/venv/Scripts/python.exe`, which this venv now is.
+- Not changed: `boot_backend`, `setup/doctor`, `bench`, `counts`, `test` and `verify_local` still look for `venv/bin` only; they are not in the release chain, and Windows users have their `.bat` twins.
+- Verified: `bash -n` on the three scripts; no build was run here.
+
+```text
+backend/oc_install:
+for c in python3.14 python3.13 python3.12 python3; do
+# shellcheck disable=SC1091
+source venv/bin/activate
+setup/lib.sh:
+    MINGW*|MSYS*|CYGWIN*) echo windows ;;
+  for c in python3.14 python3.13 python3.12 python3; do
+cv_venv() {
+  [ -f "$FORMVIS_ROOT/backend/venv/bin/activate" ] || cv_die "backend venv missing, run ./formvis install"
+  # shellcheck disable=SC1091
+  source "$FORMVIS_ROOT/backend/venv/bin/activate"
+}
+setup/freeze_backend:
+extra=(--additional-hooks-dir "$FORMVIS_ROOT/setup/pyi_hooks")
+  --add-data "$FORMVIS_ROOT/frontend/dist${sep}frontend_dist" \
+  --add-data "$FORMVIS_ROOT/backend/app/profiles${sep}profiles" \
+  --add-data "$FORMVIS_ROOT/backend/app/data${sep}data" \
+  --add-data "$FORMVIS_ROOT/setup/mcp_stdio.py${sep}setup" --add-data "$FORMVIS_ROOT/setup/agents.py${sep}setup" \
+  "$FORMVIS_ROOT/backend/formvis_engine.py"
+```
+
 ## Engine tests send a loopback Host, model tests skip without their model, family layers F1 F4 F5 F9 · _v1.97.7 (tests/conftest.py, tests/test_f*.py)
 
 - Since LocalGuard (1.97.4) the default TestClient Host (testserver) and the httpx base_url `http://test` answered 403, so 125 of the 232 engine tests failed on the 1.97.6 tree and `test_not_allowed_asks_once_in_the_window_then_runs` waited forever for a window that was refused. The shared `client` fixture and every direct client now use `http://127.0.0.1:8190`. The app was right; only the tests were stale.

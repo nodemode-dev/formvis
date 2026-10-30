@@ -9,7 +9,8 @@ cd "$FORMVIS_ROOT/backend"
 sep=":"
 [ "$(cv_os)" = windows ] && sep=";"
 ext="$(cv_exe)"
-extra=(--additional-hooks-dir "$FORMVIS_ROOT/setup/pyi_hooks")
+src="$(cv_native_path "$FORMVIS_ROOT")"
+extra=(--additional-hooks-dir "$src/setup/pyi_hooks")
 [ -z "${FORMVIS_PYI_ARCH:-}" ] || extra+=(--target-arch "$FORMVIS_PYI_ARCH")
 if [ "${FORMVIS_FREEZE_ML:-0}" = 1 ]; then extra+=(--collect-all rembg --hidden-import onnxruntime --hidden-import rembg); fi
 mode=--onefile
@@ -20,13 +21,13 @@ fi
 rm -rf build/pyinstaller dist-engine
 pyinstaller --noconfirm --clean "$mode" --name formvis-engine \
   --distpath dist-engine --workpath build/pyinstaller --specpath build/pyinstaller \
-  --add-data "$FORMVIS_ROOT/frontend/dist${sep}frontend_dist" \
-  --add-data "$FORMVIS_ROOT/backend/app/profiles${sep}profiles" \
-  --add-data "$FORMVIS_ROOT/backend/app/data${sep}data" \
-  --add-data "$FORMVIS_ROOT/setup/mcp_stdio.py${sep}setup" --add-data "$FORMVIS_ROOT/setup/agents.py${sep}setup" \
+  --add-data "$src/frontend/dist${sep}frontend_dist" \
+  --add-data "$src/backend/app/profiles${sep}profiles" \
+  --add-data "$src/backend/app/data${sep}data" \
+  --add-data "$src/setup/mcp_stdio.py${sep}setup" --add-data "$src/setup/agents.py${sep}setup" \
   --collect-submodules app --collect-submodules uvicorn --collect-submodules keyring --hidden-import cv2 --hidden-import OpenEXR \
   --exclude-module pillow_heif "${extra[@]}" \
-  "$FORMVIS_ROOT/backend/formvis_engine.py"
+  "$src/backend/formvis_engine.py"
 if [ "$(cv_os)" = macos ]; then
   gpl="$(find dist-engine \( -iname 'libx264*' -o -iname 'libx265*' -o -iname 'librubberband*' -o -iname 'libvidstab*' -o -iname 'libpostproc*' \) | head -1)"
   [ -z "$gpl" ] || cv_die "GPL FFmpeg library in the engine: $gpl. Reinstall opencv from source without FFmpeg: PIP_NO_BINARY=opencv-python,opencv-python-headless CMAKE_ARGS=-DWITH_FFMPEG=OFF pip install --force-reinstall -r requirements_macos.txt"

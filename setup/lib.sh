@@ -7,13 +7,13 @@ cv_os() {
   case "$(uname -s 2>/dev/null)" in
     Darwin) echo macos ;;
     Linux) echo linux ;;
-    MINGW*|MSYS*|CYGWIN*) echo windows ;;
+    MINGW*|MSYS*|CYGWIN*|*_NT-*) echo windows ;;
     *) echo unknown ;;
   esac
 }
 cv_python() {
   local c
-  for c in python3.14 python3.13 python3.12 python3; do
+  for c in python3.14 python3.13 python3.12 python3 python; do
     if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
       echo "$c"
       return 0
@@ -22,9 +22,14 @@ cv_python() {
   return 1
 }
 cv_venv() {
-  [ -f "$FORMVIS_ROOT/backend/venv/bin/activate" ] || cv_die "backend venv missing, run ./formvis install"
-  # shellcheck disable=SC1091
-  source "$FORMVIS_ROOT/backend/venv/bin/activate"
+  local act="$FORMVIS_ROOT/backend/venv/bin/activate"
+  [ -f "$act" ] || act="$FORMVIS_ROOT/backend/venv/Scripts/activate"
+  [ -f "$act" ] || cv_die "backend venv missing, run ./formvis install"
+  # shellcheck disable=SC1090
+  source "$act"
+}
+cv_native_path() {
+  if [ "$(cv_os)" = windows ] && command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s\n' "$1"; fi
 }
 cv_target_triple() {
   if [ -n "${FORMVIS_TARGET:-}" ]; then echo "$FORMVIS_TARGET"; return 0; fi
