@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
 
+from app import ffmpeg_fetch
 from app.core import config, runtime
 from app.core.local_guard import LocalGuard
 from app.routers import fal as _fal_router
@@ -17,6 +18,7 @@ from app.services import claude_code as _claude_service, sessions, terminal as _
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("text/css", ".css")
+ffmpeg_fetch.start()
 
 
 @asynccontextmanager

@@ -52,6 +52,7 @@ Adobe, Camera Raw and Photoshop are either registered trademarks or trademarks o
 | pyspellchecker 0.9.1 | MIT | engine, Check Spelling in type layers (`backend/app/services/spell.py`) |
 | numpy | BSD-3-Clause | engine |
 | opencv-python-headless | Apache-2.0 (OpenCV), MIT (packaging) | engine; its wheels carry LGPL FFmpeg as separate shared libraries, kept separable in the frozen engine |
+| FFmpeg 7.1.5, ffprobe | LGPL-2.1-or-later (`--disable-gpl --disable-nonfree`; libopus and libvpx BSD-3-Clause) | not bundled: an installed ffmpeg (or FORMVIS_FFMPEG) is used as before, and when none is found the engine downloads this build from the nodemode-dev/formcut-binaries release on first run, checks every file's SHA-256 against `backend/app/ffmpeg_record.py`, and runs it as a separate program for Video Frames to Layers and video export; its source is attached to that release |
 | pillow-heif | BSD-3-Clause; bundles LGPL libheif and GPL x265 | server-side engine only; excluded from the frozen desktop engine |
 | rawpy, with LibRaw | MIT (rawpy); LibRaw is LGPL-2.1 or CDDL-1.0, at the recipient's choice | engine, camera RAW decoding; LibRaw ships in rawpy's wheels as a separate shared library, kept separable and replaceable in the frozen engine |
 | SAM 2.1 (Meta, facebookresearch/sam2 at commit 2b90b9f) and its tiny checkpoint | Apache-2.0 (the repository's cctorch component is BSD-3-Clause and is not built) | engine, optional (`./formvis install-ml`), click-to-select; the checkpoint is downloaded from Meta and checked against its SHA-256 |

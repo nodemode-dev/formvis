@@ -2,6 +2,12 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## ffmpeg arrives on first run, from formcut-binaries · _v1.98.6 (app/ffmpeg_fetch.py, app/ffmpeg_record.py, app/main.py ffmpeg_fetch.start)
+
+- `app/ffmpeg_fetch.py` and `app/ffmpeg_record.py` are new and identical in formvis, formvfx, formwav, formlit, formpromo and formDAM. ffmpeg stays external, as formcut's does: nothing is bundled. When no ffmpeg is on PATH, the frozen engine downloads, in a background thread, the LGPL build pinned in `ffmpeg_record.py` (release 7.1.5-2, the record formcut carries) from `nodemode-dev/formcut-binaries`, checks every file for the host triple against its SHA-256 before placing any, and installs it in the shared per-person folder `formcut-binaries/ffmpeg-7.1.5-2` (Application Support on macOS, LOCALAPPDATA on Windows, XDG_DATA_HOME or ~/.local/share on Linux), so the family downloads it once. The programs get their plain names and the folder goes first on PATH, so `routers/video.py` (FORMVIS_FFMPEG, then PATH) finds it with no change.
+- `main.py` calls `ffmpeg_fetch.start()` after the MIME lines. An ffmpeg already on PATH is used and nothing is fetched. Outside a frozen build nothing is fetched unless `FORM_FFMPEG_AUTO=1`, so tests never reach the network; `FORM_FFMPEG_AUTO=0` turns it off in a desktop build, and `FORMCUT_FFMPEG_RELEASE` points at a mirror, as in formcut. Archives exist for macOS (Apple silicon and Intel), Linux x86_64 and Windows x86_64; Linux and Windows on ARM keep using an installed ffmpeg.
+- Checked here against the real release: the pins equal formcut-binaries' `ffmpeg-licence.json`; the fetch downloaded, verified and installed the Linux archive and `ffmpeg -version` ran from the new PATH entry (7.1.5, no `--enable-gpl` or `--enable-nonfree`); a tampered hash installed nothing; with no ffmpeg on PATH and auto on, `start()` fetched in its thread; not frozen and no variable, it fetched nothing. Not run in a built desktop app.
+
 ## .js, .mjs and .css keep their types on Windows · _v1.98.6 (app/main.py, the three mimetypes.add_type calls after the last import)
 
 - Python's `mimetypes` takes file types from the Windows registry (`HKEY_CLASSES_ROOT\.js`, value `Content Type`) over its own table, and some installers and editors set `.js` to `text/plain`. On those PCs the engine served the built window's scripts as `text/plain`, WebView2 refused every module script under strict MIME checking, and the desktop window stayed blank; macOS, Linux, dev mode (Vite serves the page) and Windows PCs with the default value never showed it.
@@ -3228,6 +3234,8 @@ app/
     core/
         __init__.py  · package marker
         config.py  · ports, limits, folders, .env loading
+    ffmpeg_fetch.py  · first-run download of the pinned LGPL ffmpeg, PATH order
+    ffmpeg_record.py  · release and per-file SHA-256 pins for that download
     main.py  · app assembly, CORS, static mount
     routers/
         __init__.py  · package marker

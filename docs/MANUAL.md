@@ -77,7 +77,8 @@ ask it questions.
   opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.
 - File > Video Frames to Layers opens a clip's frames (trimmed with From and To, every Nth if you like) as layers of a
   new document, with a frame animation in the Timeline; File > Export > Video (MP4) and Export GIF write it out. Video
-  needs ffmpeg installed (brew install ffmpeg, winget install ffmpeg), or FORMVIS_FFMPEG pointing at it.
+  uses ffmpeg: the desktop app downloads its own LGPL build on first run when none is installed, and an installed ffmpeg,
+  or FORMVIS_FFMPEG pointing at one, is used instead.
 - Window > Timeline on a document without a timeline offers a video timeline or a frame animation (which starts with
   one frame of the document as it is). File > Create Video Timeline puts a timeline under the canvas, a track per layer: drag on the ruler to move through
   time (the canvas shows that moment), drag a clip to move it or its ends to trim it, and Split at Playhead cuts the
