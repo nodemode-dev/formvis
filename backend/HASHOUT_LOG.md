@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## .js, .mjs and .css keep their types on Windows · _v1.98.6 (app/main.py, the three mimetypes.add_type calls after the last import)
+
+- Python's `mimetypes` takes file types from the Windows registry (`HKEY_CLASSES_ROOT\.js`, value `Content Type`) over its own table, and some installers and editors set `.js` to `text/plain`. On those PCs the engine served the built window's scripts as `text/plain`, WebView2 refused every module script under strict MIME checking, and the desktop window stayed blank; macOS, Linux, dev mode (Vite serves the page) and Windows PCs with the default value never showed it.
+- The three calls pin `.js` and `.mjs` to `text/javascript` and `.css` to `text/css`, which covers `StaticFiles`, `FileResponse` and any direct `guess_type`. They sit after the last import, not above the imports: a module that re-reads the registry while importing cannot undo them, and no import follows a statement (E402). They look redundant off Windows; keep them.
+- Repro on a Windows PC: `reg add "HKCU\Software\Classes\.js" /v "Content Type" /d "text/plain" /f`, then launch the rebuilt app (`formvis.bat desktop build`); restore with `/d "text/javascript"`.
+- Checked here: with the table poisoned to `text/plain` for js, mjs and css through `mimetypes.init(files=...)`, the three calls return `text/javascript`, `text/javascript` and `text/css`; `py_compile` passes. Not yet run on a Windows PC.
+
 ## The desktop app asks for macOS 14, which its engine needs · _v1.98.5 (src-tauri/tauri.conf.json bundle.macOS.minimumSystemVersion, packaging/homebrew/formvis.rb)
 
 - `minimumSystemVersion` was 11.0 (12.0 until 1.90.7, lowered without a reason recorded), the Homebrew cask said Monterey and formcompiler's catalog says macOS 12. None of them held for the engine that ships: `requirements_macos.txt` is unpinned, and on the macOS 15 runners pip takes NumPy's `macosx_14_0` wheels (built on Accelerate, NumPy 2.0 and later), which load only on macOS 14 and newer; recent ONNX Runtime wheels ask for 13 or 14 as well. An app that opened on 11 or 12 would start an engine that fails at `import numpy`.

@@ -1,4 +1,5 @@
 import asyncio
+import mimetypes
 import os
 from contextlib import asynccontextmanager
 
@@ -12,6 +13,10 @@ from app.core.local_guard import LocalGuard
 from app.routers import fal as _fal_router
 from app.routers import comfyui, generative, io, large, llm, mcp, ops, plugins, projects, system, nodemode, colour
 from app.services import claude_code as _claude_service, sessions, terminal as _terminal_service
+
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("text/css", ".css")
 
 
 @asynccontextmanager
