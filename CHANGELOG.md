@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.98.6 · 2026-10-31
+
+- The Windows desktop app no longer opens to a blank window on PCs where an installer set the `.js` file type to `text/plain` in the registry: the engine now serves scripts and stylesheets with their real types.
+- Video Frames to Layers and video export no longer need ffmpeg installed: when none is found, the desktop app downloads its own LGPL ffmpeg on first run, checks every file against its pinned SHA-256, and uses it. An ffmpeg you have installed is still used first.
+
 ## 1.98.5 · 2026-10-30
 
 - The desktop build runs on Windows: the install and build scripts find Python as `python` when `python3` is absent, use the Windows layout of the engine's virtual environment, and hand PyInstaller Windows paths.
