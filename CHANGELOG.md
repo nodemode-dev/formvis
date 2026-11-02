@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.98.7 · 2026-11-02
+
+- The checks that run on every push pass again. The Help search test now asks how outside agents such as Codex and Cursor connect, a question the manual answers (it has not named Claude Desktop since 1.53.3), and the README's line counts match the code after the first-run ffmpeg download added to the engine.
+
 ## 1.98.6 · 2026-10-31
 
 - The Windows desktop app no longer opens to a blank window on PCs where an installer set the `.js` file type to `text/plain` in the registry: the engine now serves scripts and stylesheets with their real types.
