@@ -2,6 +2,19 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The README's line counts follow the code again · _v1.98.7 (README.md Stack line; tests/test_readme.py)
+
+- Why: `tests/test_readme.py` failed on main at 1.98.6: "Python: README says 21,800, the code has 22,512". The ffmpeg fetch (`app/ffmpeg_fetch.py`, `app/ffmpeg_record.py`) took the engine past the 3 percent band. The Stack line now carries the figures `python3 setup/line_counts.py` prints: about 166,800 lines of TypeScript, 2,400 of CSS, 22,500 of Python and 6,700 of Rust.
+- No engine code changed.
+- Verified: `python3 setup/line_counts.py` prints the new sentence; `tests/test_readme.py` passes.
+
+```text
+about 163,000 lines of TypeScript, 2,400 of CSS, 21,800 of Python and 6,600 of Rust
+__version__ = "1.98.6"
+version = "1.98.6"
+ "version": "1.98.6",
+```
+
 ## ffmpeg arrives on first run, from formcut-binaries · _v1.98.6 (app/ffmpeg_fetch.py, app/ffmpeg_record.py, app/main.py ffmpeg_fetch.start)
 
 - `app/ffmpeg_fetch.py` and `app/ffmpeg_record.py` are new and identical in formvis, formvfx, formwav, formlit, formpromo and formDAM. ffmpeg stays external, as formcut's does: nothing is bundled. When no ffmpeg is on PATH, the frozen engine downloads, in a background thread, the LGPL build pinned in `ffmpeg_record.py` (release 7.1.5-2, the record formcut carries) from `nodemode-dev/formcut-binaries`, checks every file for the host triple against its SHA-256 before placing any, and installs it in the shared per-person folder `formcut-binaries/ffmpeg-7.1.5-2` (Application Support on macOS, LOCALAPPDATA on Windows, XDG_DATA_HOME or ~/.local/share on Linux), so the family downloads it once. The programs get their plain names and the folder goes first on PATH, so `routers/video.py` (FORMVIS_FFMPEG, then PATH) finds it with no change.

@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Help search test asks a question the manual still answers · _v1.98.7 (src/help/markdown.test.ts, "finds the sections most about a question")
+
+- Why: CI on main went red at 1.98.6 with "expected 'The workspace' to be 'The assistant and outside agents'". The test asked "How does Claude Desktop connect?", but the manual stopped naming Claude Desktop at 1.53.3 (1e4bb439), when the outside-agents item was rewritten around Claude Code, Codex and Cursor. Since then the question matched only "Claude" and "connect", and the agents section tied with The command line and won on order alone. The 1.98.6 ffmpeg wording in The workspace ("the desktop app downloads its own LGPL build") added a "desktop" there, made it a three-way tie, and The workspace comes first.
+- Decision: the manual was rewritten on purpose both times, so it stays as it is and the test follows it. Expecting The workspace would pin a wrong answer, so the question changes to one the current manual answers: "How do outside agents like Codex and Cursor connect?" ranks the agents section first by a clear margin (about 18.9 against 16.6 for The command line), not by a tie.
+- No product code changed.
+- Verified: `npm test` in frontend, all files and tests pass (counts in the PR).
+
+```text
+    expect(relevant(all, 'How does Claude Desktop connect?')[0].title).toBe('The assistant and outside agents');
+export const VERSION = '1.98.6';
+  "version": "1.98.6",
+```
+
 ## "Installed." stays after Krea 2 finishes installing · _v1.98.2 (ui/panels/local-models.ts showKrea)
 
 - Why: `follow()` wrote "Installed." into the note, then its `done` callback called `showKrea()`, which rebuilds the Krea section with `replaceChildren` and a new empty note, so the message vanished within milliseconds. The browser test caught it on CI (shard 4/26) when its poll missed that window.
