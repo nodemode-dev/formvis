@@ -14,7 +14,7 @@ describe('the manual (1.52.3)', () => {
     const all = sections(manual);
     expect(relevant(all, 'How do I send the selection to ComfyUI?')[0].title).toBe('ComfyUI');
     expect(relevant(all, 'Where is the AI label written?')[0].title).toBe('Exporting');
-    expect(relevant(all, 'How does Claude Desktop connect?')[0].title).toBe('The assistant and outside agents');
+    expect(relevant(all, 'How do outside agents like Codex and Cursor connect?')[0].title).toBe('The assistant and outside agents');
     expect(relevant(all, 'zzz qqq')).toEqual([]);
     expect(relevant(all, 'How do I open a very large picture?')[0].title).toBe('Getting started');   // 1.52.7
     expect(relevant(all, 'Where are my API keys kept?')[0].title).toBe('Generating images');
