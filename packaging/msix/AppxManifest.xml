@@ -8,7 +8,7 @@
          IgnorableNamespaces="uap rescap">
   <Identity Name="@MSIX_IDENTITY_NAME@" Publisher="@MSIX_PUBLISHER@" Version="@MSIX_VERSION@" ProcessorArchitecture="@MSIX_ARCH@" />
   <Properties>
-    <DisplayName>formvis</DisplayName>
+    <DisplayName>FormVis</DisplayName>
     <PublisherDisplayName>@MSIX_PUBLISHER_DISPLAY_NAME@</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -20,7 +20,7 @@
   </Resources>
   <Applications>
     <Application Id="Formvis" Executable="formvis.exe" EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements DisplayName="formvis" Description="Layered image editor" BackgroundColor="transparent"
+      <uap:VisualElements DisplayName="FormVis" Description="Layered image editor" BackgroundColor="transparent"
                           Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
       <Extensions>
         <uap:Extension Category="windows.fileTypeAssociation">

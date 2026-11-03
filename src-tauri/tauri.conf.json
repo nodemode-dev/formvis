@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "formvis",
+  "productName": "FormVis",
  "version": "1.98.8",
   "identifier": "ai.nodemode.formvis",
   "build": {
@@ -10,7 +10,7 @@
     "windows": [
       {
         "label": "splash",
-        "title": "formvis",
+        "title": "FormVis",
         "url": "splash.html",
         "width": 360,
         "height": 200,
