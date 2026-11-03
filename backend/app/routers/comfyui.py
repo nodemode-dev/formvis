@@ -44,10 +44,10 @@ class _SameHostRedirects(urllib.request.HTTPRedirectHandler):
 _signed = urllib.request.build_opener(_SameHostRedirects)
 
 
-def _request(url: str, data: bytes | None = None, headers: dict | None = None, method: str = "GET", timeout: float = 20):
+def _request(url: str, data: bytes | None = None, headers: dict | None = None, method: str = "GET", timeout: float = 20, probe: bool = False):
     """outbound.request with the sign-in headers set up in Preferences > Plugins (basic, bearer or a custom header); with a
     sign-in, a redirect to another server is refused rather than sent the credentials."""
-    auth = comfyui_auth.headers()
+    auth = comfyui_auth.headers(probe)
     if not auth:
         return outbound.request(url, data, headers, method, timeout)
     return _signed.open(urllib.request.Request(url, data=data, headers={**auth, **(headers or {})}, method=method), timeout=timeout)
@@ -123,9 +123,11 @@ def status(target: str) -> dict:
     """Whether ComfyUI answers at `target`, and its version when it says."""
     base = _base(target)
     try:
-        with _request(base + "/system_stats", timeout=3) as r:
+        with _request(base + "/system_stats", timeout=3, probe=True) as r:
             stats = json.loads(r.read() or b"{}")
-    except urllib.error.HTTPError:
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403) and comfyui_auth.needs_sign_in():
+            return {"running": True, "detail": f"Something at {base} asks for the sign-in set up in Preferences > Plugins; formvis signs in when it sends a job."}
         return {"running": False, "detail": f"Something answers at {base}, but it is not ComfyUI."}
     except (urllib.error.URLError, OSError, ValueError) as exc:
         return {"running": False, "detail": str(outbound.unreachable("ComfyUI", base, "Preferences > Plugins", exc).detail)}

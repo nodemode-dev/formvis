@@ -506,7 +506,7 @@ def download(model: str, report, cancelled):
             temporary = path.with_suffix(path.suffix + ".download")
             digest = hashlib.sha256()
             try:
-                headers = {"Authorization": f"Bearer {token}"} if (token := hf_token()) and httpx.URL(download_url).host in ("huggingface.co", "www.huggingface.co") else {}
+                headers = {"Authorization": f"Bearer {token}"} if httpx.URL(download_url).host in ("huggingface.co", "www.huggingface.co") and (token := hf_token()) else {}
                 with httpx.stream("GET", download_url, headers=headers, follow_redirects=True, timeout=120) as response:
                     response.raise_for_status()
                     length = int(response.headers.get("content-length", 0))
@@ -640,8 +640,8 @@ class TokenBody(BaseModel):
 def _token_state() -> dict:
     from app.services import secrets
 
-    token = hf_token()
-    return {"hasKey": bool(token), "last4": token[-4:] if token and len(token) >= 8 else "", "store": secrets.where()["store"]}
+    has, last4, _ = secrets.summary("huggingface", _hf_file_read)
+    return {"hasKey": has, "last4": last4, "store": secrets.where()["store"]}
 
 
 @router.get("/token")

@@ -57,15 +57,15 @@ def test_the_fal_key_goes_to_the_store_and_is_forgotten_there(client, store):
     assert ("formvis", "fal") not in store.d and client.get("/api/generative/status").json()["configured"] is False
 
 
-def test_an_old_file_key_moves_to_the_store(client, store):
+def test_an_old_file_key_stays_in_its_file_and_the_store_is_not_asked(client, store):
     path = config.data_dir() / "generative.json"
     path.write_text(json.dumps({"falKey": "old-key"}))
     assert client.get("/api/generative/status").json()["configured"] is True
-    assert store.d[("formvis", "fal")] == "old-key" and not path.exists()                # moved, the file copy gone
+    assert ("formvis", "fal") not in store.d and path.exists()                           # a status check never reaches the store (1.98.9)
     (config.data_dir() / "llm.json").write_text(json.dumps({"baseUrl": "http://127.0.0.1:9/v1", "model": "m", "key": "sk-old"}))
     s = client.get("/api/llm/status").json()
-    assert s["hasKey"] and s["store"] == "system" and store.d[("formvis", "llm")] == "sk-old"
-    assert "key" not in json.loads((config.data_dir() / "llm.json").read_text()) and llm._key() == "sk-old"
+    assert s["hasKey"] and s["store"] == "system" and ("formvis", "llm") not in store.d
+    assert json.loads((config.data_dir() / "llm.json").read_text())["key"] == "sk-old" and llm._key() == "sk-old"
 
 
 def test_the_language_model_key_is_kept_and_forgotten_in_the_store(client, store):
