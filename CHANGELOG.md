@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.98.8 · 2026-11-03
+
+- `./build_app` on macOS gets past the engine freeze again. Every macOS OpenCV wheel on PyPI carries GPL FFmpeg parts (libx264, libx265, rubberband, vidstab, postproc), which the licence guard rightly keeps out of the app; the desktop install step now builds OpenCV from source without FFmpeg when it finds them (`setup/opencv_macos`). The first build after this takes extra time for that compile, and later builds reuse it. No feature changes: the engine reads video through its own ffmpeg, not OpenCV.
+
 ## 1.98.7 · 2026-11-02
 
 - The checks that run on every push pass again. The Help search test now asks how outside agents such as Codex and Cursor connect, a question the manual answers (it has not named Claude Desktop since 1.53.3), and the README's line counts match the code after the first-run ffmpeg download added to the engine.

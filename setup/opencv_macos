@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+[ "$(cv_os)" = macos ] || exit 0
+cv_venv
+gpl_part() {
+  local dir
+  dir="$(python -c 'import importlib.util as u; s = u.find_spec("cv2"); print(s.submodule_search_locations[0] if s and s.submodule_search_locations else "")')"
+  [ -n "$dir" ] || cv_die "OpenCV is missing from the engine's virtual environment; run ./formvis install"
+  find "$dir" \( -iname 'libx264*' -o -iname 'libx265*' -o -iname 'librubberband*' -o -iname 'libvidstab*' -o -iname 'libpostproc*' \) | head -1
+}
+part="$(gpl_part)"
+if [ -z "$part" ]; then
+  cv_say "OpenCV carries no GPL FFmpeg parts"
+  exit 0
+fi
+ver="$(python -c 'from importlib.metadata import version; print(version("opencv-python-headless"))')"
+cv_say "the OpenCV $ver wheel from PyPI carries FFmpeg with GPL parts ($(basename "$part")); building OpenCV $ver from source without FFmpeg"
+cv_say "this happens once and takes about 20 to 40 minutes; pip keeps the built wheel, so later builds reuse it"
+CMAKE_ARGS="-DWITH_FFMPEG=OFF${CMAKE_ARGS:+ $CMAKE_ARGS}" pip install --force-reinstall --no-deps --no-binary opencv-python-headless "opencv-python-headless==$ver"
+part="$(gpl_part)"
+[ -z "$part" ] || cv_die "OpenCV still carries GPL FFmpeg parts after the source build: $part"
+python -c 'import cv2; print("[formvis] OpenCV", cv2.__version__, "built without FFmpeg")'

@@ -51,7 +51,7 @@ pyinstaller --noconfirm --clean "$mode" --name formvis-engine \
   "$src/backend/formvis_engine.py"
 if [ "$(cv_os)" = macos ]; then
   gpl="$(find dist-engine \( -iname 'libx264*' -o -iname 'libx265*' -o -iname 'librubberband*' -o -iname 'libvidstab*' -o -iname 'libpostproc*' \) | head -1)"
-  [ -z "$gpl" ] || cv_die "GPL FFmpeg library in the engine: $gpl. Reinstall opencv from source without FFmpeg: PIP_NO_BINARY=opencv-python,opencv-python-headless CMAKE_ARGS=-DWITH_FFMPEG=OFF pip install --force-reinstall -r requirements_macos.txt"
+  [ -z "$gpl" ] || cv_die "GPL FFmpeg library in the engine: $gpl. Run setup/opencv_macos, which builds OpenCV from source without FFmpeg (./build_app and ./formvis install-desktop run it), then freeze again"
 fi
 if [ "$mode" = --onedir ]; then
   out="$FORMVIS_ROOT/src-tauri/engine"

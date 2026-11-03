@@ -2,6 +2,19 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The macOS desktop build compiles OpenCV without FFmpeg · _v1.98.8 (setup/opencv_macos; setup/install_desktop; setup/freeze_backend GPL guard message)
+
+- Why: `./build_app` on macOS stopped at the freeze with "GPL FFmpeg library in the engine: dist-engine/formvis-engine/_internal/cv2/.dylibs/libx264.164.dylib". The guard (1a8249b4, 1.96.7) assumed macOS builds install OpenCV from source, but only formcompiler did; `backend/oc_install` installs the PyPI wheel, and every macOS arm64 wheel checked (4.14.0.94 and 5.0.0.93) bundles libx264, libx265, librubberband, libvidstab and libpostproc. No wheel on PyPI avoids them, so the guard stopped every local build.
+- `setup/opencv_macos` is new and macOS only (it exits at once elsewhere). It finds the installed `cv2` folder, and if any of the five GPL libraries is in it, reinstalls the same `opencv-python-headless` version from source with `CMAKE_ARGS=-DWITH_FFMPEG=OFF` (an existing `CMAKE_ARGS` is kept after it), `--no-deps --force-reinstall`, then checks again and stops if a GPL part is still there. A cv2 already built without FFmpeg passes in well under a second. pip keeps the built wheel in its cache, so the compile happens once per OpenCV version.
+- `setup/install_desktop` runs it after the desktop requirements, so `./build_app` and `./formvis install-desktop` both repair an existing venv. `./formvis install` (dev mode) still takes the wheel: nothing is distributed from it.
+- Nothing in the engine reads video through OpenCV (no `VideoCapture` or `VideoWriter` in `backend/app`); video goes through the separate ffmpeg binary (`routers/video.py`, `app/ffmpeg_fetch.py`), so an OpenCV without FFmpeg loses no feature.
+- The freeze guard stays as the backstop; its message now names `setup/opencv_macos` in place of a hand-typed `pip` line that reinstalled every requirement.
+- Checked here: `bash -n` on the three scripts; with `uname -s` stubbed to Darwin, a fake cv2 carrying `libx264` and a stub pip, the script called `pip install --force-reinstall --no-deps --no-binary opencv-python-headless opencv-python-headless==5.0.0.93` with `CMAKE_ARGS=-DWITH_FFMPEG=OFF -DBUILD_opencv_dnn=OFF`, a clean cv2 skipped the build, and Linux exited 0. Not yet run on a Mac.
+
+```text
+  [ -z "$gpl" ] || cv_die "GPL FFmpeg library in the engine: $gpl. Reinstall opencv from source without FFmpeg: PIP_NO_BINARY=opencv-python,opencv-python-headless CMAKE_ARGS=-DWITH_FFMPEG=OFF pip install --force-reinstall -r requirements_macos.txt"
+```
+
 ## The README's line counts follow the code again · _v1.98.7 (README.md Stack line; tests/test_readme.py)
 
 - Why: `tests/test_readme.py` failed on main at 1.98.6: "Python: README says 21,800, the code has 22,512". The ffmpeg fetch (`app/ffmpeg_fetch.py`, `app/ffmpeg_record.py`) took the engine past the 3 percent band. The Stack line now carries the figures `python3 setup/line_counts.py` prints: about 166,800 lines of TypeScript, 2,400 of CSS, 22,500 of Python and 6,700 of Rust.

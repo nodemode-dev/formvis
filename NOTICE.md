@@ -829,7 +829,7 @@ Several wheels carry compiled libraries of their own. These ship inside the froz
 | Pillow 12.3.0 | zstd | BSD-3-Clause |
 | Pillow 12.3.0 | XZ Utils (liblzma) | 0BSD |
 | Pillow 12.3.0 | libxcb, libXau (Linux) | MIT |
-| opencv-python-headless 5.0.0.93 | FFmpeg (libavcodec 62.28, libavformat 62.12, libavutil, libswscale, libswresample), Linux and Windows wheels | LGPL-2.1-or-later. The macOS wheel carries GPL FFmpeg parts (libx264, libx265, rubberband, vidstab, postproc), so macOS builds install OpenCV from source without FFmpeg and `setup/freeze_backend` stops if any of those libraries reach the engine |
+| opencv-python-headless 5.0.0.93 | FFmpeg (libavcodec 62.28, libavformat 62.12, libavutil, libswscale, libswresample), Linux and Windows wheels | LGPL-2.1-or-later. The macOS wheel carries GPL FFmpeg parts (libx264, libx265, rubberband, vidstab, postproc), so macOS builds install OpenCV from source without FFmpeg (`setup/opencv_macos`, which `./build_app` and `./formvis install-desktop` run) and `setup/freeze_backend` stops if any of those libraries reach the engine |
 | opencv-python-headless 5.0.0.93 | libvpx | BSD-3-Clause |
 | opencv-python-headless 5.0.0.93 | libaom | BSD-2-Clause, with the Alliance for Open Media Patent License 1.0 |
 | opencv-python-headless 5.0.0.93 | libavif | BSD-2-Clause |
