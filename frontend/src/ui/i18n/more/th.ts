@@ -132,7 +132,7 @@ export const th: Record<string, string> = {
   'Alt-click a source on the plane first.': 'กด Alt แล้วคลิกแหล่งที่มาบนระนาบก่อน', 'Alt-click sets the background. Right-click removes.': 'กด Alt แล้วคลิกเพื่อตั้งพื้นหลัง คลิกขวาเพื่อลบ', 'Alternates': 'ตัวอักษรทางเลือก',
   'Amber': 'สีอำพัน', 'An address starts with http:// or https://, such as http://127.0.0.1:8188.': 'ที่อยู่ขึ้นต้นด้วย http:// หรือ https:// เช่น http://127.0.0.1:8188',
   'An address starts with http:// or https://, such as http://localhost:8000.': 'ที่อยู่ขึ้นต้นด้วย http:// หรือ https:// เช่น http://localhost:8000', 'Anchor': 'จุดยึด', 'Animated GIF': 'GIF เคลื่อนไหว',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0 ลิขสิทธิ์ 2026 nodemode-ai', 'Apply Image needs an open document.': 'การใช้ภาพต้องมีเอกสารที่เปิดอยู่',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0 ลิขสิทธิ์ 2026 NodeAgentc, Inc.', 'Apply Image needs an open document.': 'การใช้ภาพต้องมีเอกสารที่เปิดอยู่',
   'Apply this comp': 'ใช้คอมพ์นี้', 'Apply to All': 'ใช้กับทั้งหมด', 'Approve': 'อนุมัติ', 'Artboards': 'อาร์ตบอร์ด', 'Ask': 'ถาม', 'Ask Claude Code to edit the picture or the code': 'ให้ Claude Code แก้ไขรูปภาพหรือโค้ด',
   'Ask for a change, e.g. add a warm glow to the sky': 'ขอให้เปลี่ยนแปลง เช่น เพิ่มแสงอุ่นให้ท้องฟ้า', 'Ask the manual': 'ถามคู่มือ', 'Ask the manual, e.g. how do I send the selection to ComfyUI?': 'ถามคู่มือ เช่น ส่งส่วนที่เลือกไปยัง ComfyUI ได้อย่างไร',
   'Ask when opening': 'ถามเมื่อเปิด', 'Asking': 'กำลังถาม', 'Background Color': 'สีพื้นหลัง', 'Background Contents': 'เนื้อหาพื้นหลัง', 'Background color': 'สีพื้นหลัง', 'Bit depth': 'บิตเดปท์', 'Blank video layer added.': 'เพิ่มเลเยอร์วิดีโอเปล่าแล้ว',

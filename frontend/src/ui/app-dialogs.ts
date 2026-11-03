@@ -1528,7 +1528,8 @@ export class AboutDialog extends Dialog {
     this.body.appendChild(this.runtimeLine);
     this.body.appendChild(this.pluginLine);
     this.body.appendChild(el('<p class="cv-note">Source and releases: <a href="https://github.com/nodemode-ai/formvis" target="_blank" rel="noopener">github.com/nodemode-ai/formvis</a></p>'));
-    this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 nodemode-ai.</p>'));
+    this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 NodeAgentc, Inc.</p>'));
+    this.body.appendChild(el('<p class="cv-note">Licence: <a href="https://github.com/nodemode-dev/formvis/blob/main/LICENSE" target="_blank" rel="noopener">github.com/nodemode-dev/formvis/blob/main/LICENSE</a></p>'));
     this.body.appendChild(el('<p class="cv-note">Credits: formvis is built on open-source components; each one with its license is listed in NOTICE.md beside the app. Help > System Info has the graphics and monitor details.</p>'));
     this.body.appendChild(el('<details class="cv-about-notices"><summary>Licences and notices</summary><p class="cv-note">This product includes DNG technology under license by Adobe Systems Incorporated.</p></details>'));
     this.button('Close', 'primary', () => this.close());
