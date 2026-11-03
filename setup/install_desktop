@@ -4,6 +4,7 @@ source "$(dirname "$0")/lib.sh"
 cv_venv
 cd "$FORMVIS_ROOT/backend"
 if [ "$(cv_os)" = macos ]; then pip install -r requirements_desktop_macos.txt; else pip install -r requirements_desktop.txt; fi
+"$FORMVIS_ROOT/setup/opencv_macos"
 if ! command -v cargo >/dev/null 2>&1; then
   cv_say "Rust is not installed. Install it from https://rustup.rs then rerun ./formvis install-desktop"
   exit 1
