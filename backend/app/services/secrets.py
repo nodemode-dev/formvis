@@ -2,12 +2,14 @@
 Manager, the Secret Service on Linux) through keyring (MIT), or, where there is none, in a file readable only by the
 user, as before. A password store that fails leaves the key in the file: a key is never lost.
 
-The password store is reached only when the person saves or removes a key, or runs a feature that needs a key they
-saved (1.98.9). Opening the app and every status check answer from keys.json, which records which keys were saved
-there and their last four characters, never a key."""
+The password store is reached only when the person saves or removes a key, or runs a feature that needs a key
+(1.98.9). Opening the app and every status check answer from keys.json, which records which keys were saved there and
+their last four characters, never a key. A key found in a file is moved to the password store the first time a feature
+uses it, and the file copy removed."""
 
 import json
 import os
+import tempfile
 import threading
 
 from app.core import config
@@ -16,7 +18,7 @@ SERVICE = "formvis"
 
 #: Keys this session read from the password store or saved there, so a later status check need not ask again.
 _held: dict[str, str] = {}
-#: Names the password store had nothing for (or refused) this session, so a use does not ask again until a save.
+#: Names keys.json does not list that the password store had nothing for this session, so a use asks only once.
 _asked: set[str] = set()
 _lock = threading.RLock()
 
@@ -35,11 +37,28 @@ def _index() -> dict:
 
 def _index_write(d: dict) -> None:
     path = _index_path()
-    temp = path.with_suffix(".tmp")
-    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(d, f)
-    os.replace(temp, path)
+    fd, temp = tempfile.mkstemp(dir=path.parent, prefix=".keys-", suffix=".tmp")
+    try:
+        os.chmod(temp, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(d, f)
+        os.replace(temp, path)
+    except BaseException:
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        raise
+
+
+def _index_set(name: str, value: str) -> None:
+    _index_write({**_index(), name: {"last4": _last4(value)}})
+
+
+def _index_drop(name: str) -> None:
+    d = _index()
+    if name in d:
+        _index_write({k: v for k, v in d.items() if k != name})
 
 
 def _entry(name: str) -> dict | None:
@@ -69,25 +88,70 @@ def where() -> dict:
     return {"store": "system" if kr else "file", "backend": type(kr).__name__ if kr else "file readable only by you"}
 
 
-def get(name: str, file_read, file_clear) -> str | None:
-    """The key called `name`, for a feature about to use it. The password store is asked only for a key saved there
-    through `put`; a file copy stays in its file until the key is saved again. `file_clear` is kept for the callers."""
-    if _entry(name) is None or name in _asked:
-        return file_read()
-    if name in _held:
-        return _held[name]
-    kr = _store()
-    value = None
-    if kr:
-        try:
-            value = kr.get_password(SERVICE, name)
-        except Exception:
-            value = None
+def _ask(kr, name: str) -> tuple[str | None, bool]:
+    """The stored key, and whether the password store answered at all (False when it refused or failed)."""
+    try:
+        return kr.get_password(SERVICE, name) or None, True
+    except Exception:
+        return None, False
+
+
+def _keep(kr, name: str, value: str, file_clear) -> bool:
+    """Saves `value` in the password store, read back, then names it in keys.json; the file copy goes last."""
+    try:
+        kr.set_password(SERVICE, name, value)
+        if kr.get_password(SERVICE, name) != value:
+            return False
+        _index_set(name, value)
+        _held[name] = value
+        _asked.discard(name)
+        file_clear()
+        return True
+    except Exception:
+        return False
+
+
+def _ask_once(kr, name: str) -> str | None:
+    """A key an earlier version saved in the password store without a keys.json entry: asked once a session."""
+    if name in _asked:
+        return None
+    value, answered = _ask(kr, name)
     if value:
+        try:
+            _index_set(name, value)
+        except OSError:
+            pass
         _held[name] = value
         return value
-    _asked.add(name)
-    return file_read()
+    if answered:
+        _asked.add(name)
+    return None
+
+
+def get(name: str, file_read, file_clear) -> str | None:
+    """The key called `name`, for a feature about to use it: held this session, from the password store when keys.json
+    names it, from a file copy (moved to the password store on this first use), or a key an earlier version saved in
+    the password store."""
+    with _lock:
+        if name in _held:
+            return _held[name]
+        kr = _store()
+        if kr is None:
+            return file_read()
+        if _entry(name) is not None:
+            value, answered = _ask(kr, name)
+            if value:
+                _held[name] = value
+                return value
+            if not answered:
+                return file_read()
+            _index_drop(name)
+            _asked.add(name)
+        legacy = file_read()
+        if legacy:
+            _keep(kr, name, legacy, file_clear)
+            return legacy
+        return _ask_once(kr, name)
 
 
 def summary(name: str, file_read) -> tuple[bool, str, str | None]:
@@ -106,20 +170,10 @@ def put(name: str, value: str, file_write, file_clear) -> str:
     with _lock:
         _asked.discard(name)
         kr = _store()
-        if kr:
-            try:
-                kr.set_password(SERVICE, name, value)
-                if kr.get_password(SERVICE, name) == value:
-                    _index_write({**_index(), name: {"last4": _last4(value)}})
-                    _held[name] = value
-                    file_clear()
-                    return "system"
-            except Exception:
-                pass
+        if kr and _keep(kr, name, value, file_clear):
+            return "system"
         _held.pop(name, None)
-        d = _index()
-        if d.pop(name, None) is not None:
-            _index_write(d)
+        _index_drop(name)
         file_write(value)
         return "file"
 
@@ -134,9 +188,7 @@ def delete(name: str, file_clear) -> None:
                 kr.delete_password(SERVICE, name)
             except Exception:
                 pass   # it was not there
-        d = _index()
-        if d.pop(name, None) is not None:
-            _index_write(d)
+        _index_drop(name)
         _held.pop(name, None)
         _asked.discard(name)
         file_clear()
