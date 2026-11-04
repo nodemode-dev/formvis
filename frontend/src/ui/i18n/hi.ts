@@ -28,7 +28,7 @@ export const hi: Record<string, string> = {
   'Image Processor': 'इमेज प्रोसेसर', 'Contact Sheet II': 'कॉन्टैक्ट शीट II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'HDR में मर्ज करें', 'Load Files into Stack': 'फ़ाइलें स्टैक में लोड करें', 'Create Droplet': 'ड्रॉपलेट बनाएँ',
   'Script Events Manager': 'स्क्रिप्ट इवेंट प्रबंधक',
-  'Preferences': 'प्राथमिकताएँ', 'About formvis': 'formvis के बारे में',
+  'Preferences': 'प्राथमिकताएँ', 'About FormVis': 'FormVis के बारे में',
   'Undo': 'पूर्ववत करें', 'Redo': 'फिर से करें', 'Toggle Last State': 'अंतिम स्थिति बदलें', 'Fade': 'फ़ेड', 'Cut': 'काटें',
   'Copy': 'कॉपी करें', 'Copy Merged': 'मर्ज की गई कॉपी करें', 'Paste': 'चिपकाएँ', 'Paste in Place': 'उसी स्थान पर चिपकाएँ',
   'Paste Into': 'के अंदर चिपकाएँ', 'Paste Outside': 'बाहर चिपकाएँ', 'Clear': 'साफ़ करें', 'Search': 'खोजें',

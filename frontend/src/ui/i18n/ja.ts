@@ -29,7 +29,7 @@ export const ja: Record<string, string> = {
   'Image Processor': 'イメージプロセッサー', 'Contact Sheet II': 'コンタクトシート II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'HDRに統合', 'Load Files into Stack': 'ファイルをスタックに読み込み', 'Create Droplet': 'ドロップレットを作成',
   'Script Events Manager': 'スクリプトイベントマネージャー', 'Run ComfyUI Workflow': 'ComfyUIワークフローを実行',
-  'Preferences': '環境設定', 'About formvis': 'formvisについて',
+  'Preferences': '環境設定', 'About FormVis': 'FormVisについて',
   'Undo': '取り消し', 'Redo': 'やり直し', 'Toggle Last State': '最後の状態を切り替え', 'Fade': 'フェード', 'Cut': 'カット',
   'Copy': 'コピー', 'Copy Merged': '結合部分をコピー', 'Paste': 'ペースト', 'Paste in Place': '同じ位置にペースト',
   'Paste Into': '選択範囲内にペースト', 'Paste Outside': '選択範囲外にペースト', 'Clear': '消去', 'Search': '検索',

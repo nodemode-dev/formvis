@@ -5,7 +5,7 @@ LANG = "async (code) => { const m = await import('/src/ui/i18n.ts'); await m.set
 def test_help_github_opens_the_project_page_in_a_new_tab(page):
     calls = page.evaluate("""() => { const calls = []; const o = window.open; window.open = (...a) => { calls.push(a.slice(0, 3)); return null; };
       window.formvis.commands.run('help-github'); window.open = o; return calls; }""")
-    assert calls == [["https://github.com/nodemode-ai/formvis", "_blank", "noopener"]]
+    assert calls == [["https://github.com/nodemode-dev/formvis", "_blank", "noopener"]]
 
 
 def test_report_issue_shows_a_dialog_holding_the_system_report(page):

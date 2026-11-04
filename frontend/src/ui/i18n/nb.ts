@@ -28,7 +28,7 @@ export const nb: Record<string, string> = {
   'File Info': 'Filinformasjon', 'Print': 'Skriv ut', 'Print One Copy': 'Skriv ut én kopi', 'Batch': 'Batch',
   'Image Processor': 'Bildebehandler', 'Contact Sheet II': 'Kontaktark II', 'Photomerge': 'Photomerge', 'Merge to HDR': 'Slå sammen til HDR',
   'Load Files into Stack': 'Last filer inn i stabel', 'Create Droplet': 'Opprett droplet', 'Script Events Manager': 'Skripthendelsesbehandling',
-  'Run ComfyUI Workflow': 'Kjør ComfyUI-arbeidsflyt', 'Preferences': 'Innstillinger', 'About formvis': 'Om formvis',
+  'Run ComfyUI Workflow': 'Kjør ComfyUI-arbeidsflyt', 'Preferences': 'Innstillinger', 'About FormVis': 'Om FormVis',
   'Undo': 'Angre', 'Redo': 'Gjør om', 'Toggle Last State': 'Bytt til siste tilstand', 'Fade': 'Toning', 'Cut': 'Klipp ut',
   'Copy': 'Kopier', 'Copy Merged': 'Kopier sammenslått', 'Paste': 'Lim inn', 'Paste in Place': 'Lim inn på plass', 'Paste Into': 'Lim inn i',
   'Paste Outside': 'Lim inn utenfor', 'Clear': 'Tøm', 'Search': 'Søk', 'Find and Replace Text': 'Finn og erstatt tekst',

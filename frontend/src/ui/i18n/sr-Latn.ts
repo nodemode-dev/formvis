@@ -28,7 +28,7 @@ export const srLatn: Record<string, string> = {
   'File Info': 'Informacije o datoteci', 'Print': 'Štampaj', 'Print One Copy': 'Štampaj jednu kopiju', 'Batch': 'Grupna obrada',
   'Image Processor': 'Obrada slika', 'Contact Sheet II': 'Kontakt list II', 'Photomerge': 'Photomerge', 'Merge to HDR': 'Spoji u HDR',
   'Load Files into Stack': 'Učitaj datoteke u stek', 'Create Droplet': 'Napravi droplet', 'Script Events Manager': 'Upravljanje događajima skripti',
-  'Run ComfyUI Workflow': 'Pokreni ComfyUI tok rada', 'Preferences': 'Postavke', 'About formvis': 'O programu formvis',
+  'Run ComfyUI Workflow': 'Pokreni ComfyUI tok rada', 'Preferences': 'Postavke', 'About FormVis': 'O programu FormVis',
   'Undo': 'Poništi', 'Redo': 'Ponovi', 'Toggle Last State': 'Prebaci na poslednje stanje', 'Fade': 'Izbledi', 'Cut': 'Iseci',
   'Copy': 'Kopiraj', 'Copy Merged': 'Kopiraj spojeno', 'Paste': 'Nalepi', 'Paste in Place': 'Nalepi na istom mestu', 'Paste Into': 'Nalepi u izbor',
   'Paste Outside': 'Nalepi izvan izbora', 'Clear': 'Obriši', 'Search': 'Pretraži', 'Find and Replace Text': 'Pronađi i zameni tekst',

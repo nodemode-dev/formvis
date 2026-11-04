@@ -28,7 +28,7 @@ export const nl: Record<string, string> = {
   'File Info': 'Bestandsinfo', 'Print': 'Afdrukken', 'Print One Copy': 'Eén exemplaar afdrukken', 'Batch': 'Batch',
   'Image Processor': 'Afbeeldingsverwerker', 'Contact Sheet II': 'Contactvel II', 'Photomerge': 'Photomerge', 'Merge to HDR': 'Samenvoegen tot HDR',
   'Load Files into Stack': 'Bestanden in stapel laden', 'Create Droplet': 'Droplet maken', 'Script Events Manager': 'Scriptgebeurtenissenbeheer',
-  'Run ComfyUI Workflow': 'ComfyUI-workflow uitvoeren', 'Preferences': 'Voorkeuren', 'About formvis': 'Over formvis',
+  'Run ComfyUI Workflow': 'ComfyUI-workflow uitvoeren', 'Preferences': 'Voorkeuren', 'About FormVis': 'Over FormVis',
   'Undo': 'Ongedaan maken', 'Redo': 'Opnieuw', 'Toggle Last State': 'Laatste status omschakelen', 'Fade': 'Vervagen', 'Cut': 'Knippen',
   'Copy': 'Kopiëren', 'Copy Merged': 'Samengevoegd kopiëren', 'Paste': 'Plakken', 'Paste in Place': 'Op dezelfde plek plakken', 'Paste Into': 'Plakken in',
   'Paste Outside': 'Buiten plakken', 'Clear': 'Wissen', 'Search': 'Zoeken', 'Find and Replace Text': 'Tekst zoeken en vervangen',

@@ -29,7 +29,7 @@ export const hu: Record<string, string> = {
   'Image Processor': 'Képfeldolgozó', 'Contact Sheet II': 'Kontaktlap II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'Egyesítés HDR-be', 'Load Files into Stack': 'Fájlok betöltése halmazba', 'Create Droplet': 'Droplet létrehozása',
   'Script Events Manager': 'Szkriptesemény-kezelő', 'Run ComfyUI Workflow': 'ComfyUI munkafolyamat futtatása',
-  'Preferences': 'Beállítások', 'About formvis': 'A formvis névjegye',
+  'Preferences': 'Beállítások', 'About FormVis': 'A FormVis névjegye',
   'Undo': 'Visszavonás', 'Redo': 'Újra', 'Toggle Last State': 'Utolsó állapot váltása', 'Fade': 'Elhalványítás', 'Cut': 'Kivágás',
   'Copy': 'Másolás', 'Copy Merged': 'Egyesített másolása', 'Paste': 'Beillesztés', 'Paste in Place': 'Beillesztés a helyére',
   'Paste Into': 'Beillesztés belsejébe', 'Paste Outside': 'Beillesztés külsejébe', 'Clear': 'Törlés', 'Search': 'Keresés',

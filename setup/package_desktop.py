@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Packaging steps for the formvis desktop release, called by formcompiler (nodemode-ai/formcompiler).
+"""Packaging steps for the formvis desktop release, called by formcompiler (nodemode-dev/formcompiler).
 
 formvis builds nothing in its own repository. formcompiler checks out a compile_vX.Y.Z branch, runs the steps below
-in this order and drafts the release formvis-vX.Y.Z on its own release page. Steps run from the repository root.
+in this order and drafts the release vX.Y.Z on this repository's release page. Steps run from the repository root.
+
+Tauri names the bundles after productName in src-tauri/tauri.conf.json (FormVis since 1.99.1): FormVis.app,
+FormVis.app.tar.gz, FormVis_<version>_<arch>.AppImage and bundle/deb/FormVis_<version>_<debarch>/. The program inside
+keeps the Cargo package name (formvis, formvis.exe) because mainBinaryName is not set. Linux file names are
+case-sensitive, so every bundle lookup below takes its name from product_name(), and still finds the lower-case
+names of builds before the rename.
 
 Per target in MATRIX (each target is one runner):
   1. Linux only: apt-get install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev
@@ -27,17 +33,20 @@ Python 3.12 (x86 build on windows-x86), Node 22, stable Rust with rust_targets i
 
 Then once: riscv64 (needs frontend/dist: npm ci --prefix frontend; npm run build --prefix frontend), then collect every
 artifact into bundles/ and run, in this order:
-  feed --tag formvis-vX.Y.Z --base-url https://github.com/nodemode-ai/formcompiler/releases/download/formvis-vX.Y.Z/ --dir bundles
+  feed --tag vX.Y.Z --base-url https://github.com/nodemode-dev/formvis/releases/download/vX.Y.Z/ --dir bundles
   python3 setup/release_notes.py vX.Y.Z --out release-notes.md     (this script wants the v form, not formvis-vX.Y.Z)
   python3 setup/mcpb.py --out bundles
   sums --dir bundles
   draft release tag formvis-vX.Y.Z, body release-notes.md, files bundles/**/*
 
-AppImage update information. The old value was gh-releases-zsync|owner|repo|latest|formvis_*_ARCH.AppImage.zsync.
-Under formcompiler set LDAI_UPDATE_INFORMATION to the output of zsync-info --appimage ARCH, which is
-gh-releases-zsync|nodemode-ai|formcompiler|formvis-updates|formvis_*_ARCH.AppImage.zsync
-The tauri.conf.json updater endpoint is https://github.com/nodemode-ai/formcompiler/releases/download/formvis-updates/latest.json
-so formcompiler must also publish the newest latest.json, signatures and AppImage zsync files to the formvis-updates release.
+AppImage update information. formcompiler sets LDAI_UPDATE_INFORMATION to the output of zsync-info --appimage ARCH:
+gh-releases-zsync|nodemode-dev|formvis|latest|FormVis_*_ARCH.AppImage.zsync
+that is, the newest published release on this repository, where the AppImage and its .zsync sit side by side under
+the names the build gives them (formcompiler's registry keeps them: file_names "app"). A zsync|<url> value cannot be
+used: it names one fixed file, and every .zsync carries the version in its name and points at its AppImage beside it,
+while the download store's updates/ folder holds the .zsync files without the AppImages.
+The app's own updater does not use this: Tauri reads https://dl.formai.studio/formvis/updates/latest.json, the
+endpoint formcompiler writes into the build from FORMCOMPILER_PUBLIC_BASE (tauri.conf.json names the same address).
 """
 import argparse
 import datetime
@@ -77,13 +86,51 @@ FEED_TARGETS = {
     "windows-i686": "*x86-setup.exe",
 }
 
-ZSYNC_OWNER = "nodemode-ai"
-ZSYNC_REPO = "formcompiler"
-ZSYNC_TAG = "formvis-updates"
+ZSYNC_OWNER = "nodemode-dev"
+ZSYNC_REPO = "formvis"
+ZSYNC_TAG = "latest"
+LEGACY_PRODUCT = "formvis"
 
 
 def run(cmd, **kw):
     subprocess.run(cmd, check=True, **kw)
+
+
+def product_name(root=ROOT):
+    """The name Tauri gives the bundles: productName in tauri.conf.json."""
+    with open(os.path.join(root, "src-tauri", "tauri.conf.json"), encoding="utf-8") as f:
+        return json.load(f)["productName"]
+
+
+def product_names(root=ROOT):
+    """productName first, then the lower-case name the bundles had before the rename, without repeats."""
+    return list(dict.fromkeys([product_name(root), LEGACY_PRODUCT]))
+
+
+def find_entry(folder, names):
+    """The first of names present in folder, compared exactly (macOS and Windows disks ignore case; Linux does not)."""
+    try:
+        present = set(os.listdir(folder))
+    except OSError:
+        return None
+    for name in names:
+        if name in present:
+            return os.path.join(folder, name)
+    return None
+
+
+def macos_app(release_dir, root=ROOT):
+    folder = os.path.join(release_dir, "bundle", "macos")
+    return find_entry(folder, [n + ".app" for n in product_names(root)]) or os.path.join(folder, product_name(root) + ".app")
+
+
+def deb_data_dirs(debarch, base="src-tauri/target/release/bundle/deb", root=ROOT):
+    """The deb staging folders' data trees, productName first; glob is case-sensitive on Linux."""
+    for name in product_names(root):
+        found = sorted(glob.glob(os.path.join(base, f"{glob.escape(name)}_*_{debarch}", "data")))
+        if found:
+            return found
+    return []
 
 
 def cmd_config(args):
@@ -105,10 +152,11 @@ def cmd_config(args):
 
 def cmd_mac_archive(args):
     folder = os.path.join(args.release_dir, "bundle", "macos")
-    for name in ("formvis.app.tar.gz", "formvis.app.tar.gz.sig"):
-        src = os.path.join(folder, name)
-        if os.path.isfile(src):
-            os.replace(src, os.path.join(folder, name.replace("formvis", "formvis_" + args.arch, 1)))
+    names = product_names()
+    for suffix in (".app.tar.gz", ".app.tar.gz.sig"):
+        src = find_entry(folder, [n + suffix for n in names])
+        if src:
+            os.replace(src, os.path.join(folder, f"{LEGACY_PRODUCT}_{args.arch}{suffix}"))
     return 0
 
 
@@ -122,7 +170,7 @@ def cmd_notarize(args):
     if not identity:
         print("notarize: skipped, no APPLE_SIGNING_IDENTITY (an ad hoc build cannot be notarized)")
         return 0
-    run(["spctl", "-a", "-t", "exec", "-vv", os.path.join(args.release_dir, "bundle", "macos", "formvis.app")])
+    run(["spctl", "-a", "-t", "exec", "-vv", macos_app(args.release_dir)])
     for dmg in sorted(glob.glob(os.path.join(args.release_dir, "bundle", "dmg", "*.dmg"))):
         if quiet(["xcrun", "stapler", "validate", dmg]):
             print("notarize: already stapled: " + dmg)
@@ -193,7 +241,7 @@ def cmd_msix(args):
 
 
 def cmd_linux_tar(args):
-    data = sorted(glob.glob(f"src-tauri/target/release/bundle/deb/formvis_*_{args.debarch}/data"))
+    data = deb_data_dirs(args.debarch)
     if not data:
         print("linux-tar: no deb data folder for " + args.debarch, file=sys.stderr)
         return 1
@@ -202,8 +250,7 @@ def cmd_linux_tar(args):
 
 
 def cmd_portable_macos(args):
-    run(["ditto", "-c", "-k", "--keepParent", os.path.join(args.release_dir, "bundle", "macos", "formvis.app"),
-         f"formvis-portable-macos-{args.arch}.zip"])
+    run(["ditto", "-c", "-k", "--keepParent", macos_app(args.release_dir), f"formvis-portable-macos-{args.arch}.zip"])
     return 0
 
 
@@ -284,7 +331,7 @@ def cmd_sums(args):
 
 
 def cmd_zsync_info(args):
-    print(f"gh-releases-zsync|{ZSYNC_OWNER}|{ZSYNC_REPO}|{ZSYNC_TAG}|formvis_*_{args.appimage}.AppImage.zsync")
+    print(f"gh-releases-zsync|{ZSYNC_OWNER}|{ZSYNC_REPO}|{ZSYNC_TAG}|{product_name()}_*_{args.appimage}.AppImage.zsync")
     return 0
 
 

@@ -1521,13 +1521,13 @@ export class AboutDialog extends Dialog {
   private readonly pluginLine = el('<p class="cv-note"></p>');
 
   constructor() {
-    super('About formvis', 420);
-    this.body.appendChild(el(`<div class="cv-welcome-title">${brandMark(28)}formvis ${VERSION}</div>`));
+    super('About FormVis', 420);
+    this.body.appendChild(el(`<div class="cv-welcome-title">${brandMark(28)}FormVis ${VERSION}</div>`));
     this.body.appendChild(el('<p class="cv-note">A layered image editor for the web and the desktop, in the NodeMode design system.</p>'));
     this.body.appendChild(this.engineLine);
     this.body.appendChild(this.runtimeLine);
     this.body.appendChild(this.pluginLine);
-    this.body.appendChild(el('<p class="cv-note">Source and releases: <a href="https://github.com/nodemode-ai/formvis" target="_blank" rel="noopener">github.com/nodemode-ai/formvis</a></p>'));
+    this.body.appendChild(el('<p class="cv-note">Source: <a href="https://github.com/nodemode-dev/formvis" target="_blank" rel="noopener">github.com/nodemode-dev/formvis</a> · Downloads: <a href="https://formai.studio/formvis/download/" target="_blank" rel="noopener">formai.studio/formvis/download</a></p>'));
     this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 NodeAgentc, Inc.</p>'));
     this.body.appendChild(el('<p class="cv-note">Licence: <a href="https://github.com/nodemode-dev/formvis/blob/main/LICENSE" target="_blank" rel="noopener">github.com/nodemode-dev/formvis/blob/main/LICENSE</a></p>'));
     this.body.appendChild(el('<p class="cv-note">Credits: formvis is built on open-source components; each one with its license is listed in NOTICE.md beside the app. Help > System Info has the graphics and monitor details.</p>'));
@@ -1573,7 +1573,7 @@ export class ReportIssueDialog extends Dialog {
     this.body.append(el('<p class="cv-dialog-note">This report stays on your computer until you paste it. Read it, remove anything private, then copy it into the issue page.</p>'));
     this.field('What happened', this.what);
     this.field('Diagnostics', this.diag);
-    this.button('Open Issue Page', 'ghost', () => { window.open('https://github.com/nodemode-ai/formvis/issues/new', '_blank', 'noopener'); });
+    this.button('Open Issue Page', 'ghost', () => { window.open('https://github.com/nodemode-dev/formvis/issues/new', '_blank', 'noopener'); });
     this.button('Close', 'ghost', () => this.close());
     this.button('Copy Report', 'primary', () => {
       const text = `${this.what.value.trim() ? `${this.what.value.trim()}\n\n` : ''}${this.diag.value}`;

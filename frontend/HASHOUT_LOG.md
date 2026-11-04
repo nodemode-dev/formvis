@@ -2,6 +2,57 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The window says FormVis, and its links reach nodemode-dev and formai.studio · _v1.99.2 (src/ui/app-dialogs.ts AboutDialog, ReportIssueDialog; src/app.ts checkUpdates, about, help-github; src/ui/native-menu.ts app menu; src/ui/panels/connection-settings.ts update note; src/ui/i18n/*.ts 'About FormVis')
+
+- Why: the launch sweep (2026-11-04). productName is FormVis since 1.99.1, but the About box, the app menu and Help still said "formvis"; Help > formvis on GitHub, the About source line and Report an Issue opened nodemode-ai/formvis, which moved to nodemode-dev; and a portable copy that found an update opened the releases page of nodemode-ai/formcompiler, which is private.
+- The displayed name only: About dialog title and heading, the `about` and `help-github` labels, the macOS app menu title and its About item (name and text). Ids, storage keys, log text, the `formvis` command and the engine's own name keep the lower-case name.
+- The translation tables are keyed by the English label, so `'About formvis'` becomes `'About FormVis'` in every table, with the name in the value capitalised the same way. `formvis on GitHub` had no translations.
+- The About source line now reads Source (github.com/nodemode-dev/formvis) and Downloads (https://formai.studio/formvis/download/, the page the site serves for formvis). Report an Issue opens nodemode-dev/formvis/issues/new. A portable copy opens the download page, and the update note in Settings says so.
+- `e2e/test_cover_def_other_help_i18n.py` and `e2e/test_cover_mix_presets_about.py` follow the new URL and title; the generated `formvis-driving/references/commands.md` (both copies) carries the two new labels.
+- Verified: `npm ci`, `npm audit --audit-level=low` (0), `npm test` (48 files, 222 tests pass), `npm run build`, `npx tsc --noEmit -p .`; window smoke 2 passed; the two e2e files above pass against a local engine on 8190 and the dev build.
+
+```text
+      const text = `Version ${report.version ?? ''} is available. This portable copy does not update itself; the releases page is opening.`;
+      window.open('https://github.com/nodemode-ai/formcompiler/releases', '_blank', 'noopener');
+    { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
+    { id: 'help-github', label: 'formvis on GitHub', run: () => { window.open('https://github.com/nodemode-ai/formvis', '_blank', 'noopener'); } },
+    super('About formvis', 420);
+    this.body.appendChild(el(`<div class="cv-welcome-title">${brandMark(28)}formvis ${VERSION}</div>`));
+    this.body.appendChild(el('<p class="cv-note">Source and releases: <a href="https://github.com/nodemode-ai/formvis" target="_blank" rel="noopener">github.com/nodemode-ai/formvis</a></p>'));
+    this.button('Open Issue Page', 'ghost', () => { window.open('https://github.com/nodemode-ai/formvis/issues/new', '_blank', 'noopener'); });
+  'Preferences': 'التفضيلات', 'About formvis': 'حول formvis',
+  'Preferences': 'Předvolby', 'About formvis': 'O aplikaci formvis',
+  'Run ComfyUI Workflow': 'Kør ComfyUI-workflow', 'Preferences': 'Indstillinger', 'About formvis': 'Om formvis',
+  'Run ComfyUI Workflow': 'ComfyUI-Workflow ausführen', 'Preferences': 'Voreinstellungen', 'About formvis': 'Über formvis',
+  'Run ComfyUI Workflow': 'Εκτέλεση ροής εργασίας ComfyUI', 'Preferences': 'Προτιμήσεις', 'About formvis': 'Σχετικά με το formvis',
+  'Preferences': 'Preferencias', 'About formvis': 'Acerca de formvis',
+  'Run ComfyUI Workflow': 'Suorita ComfyUI-työnkulku', 'Preferences': 'Asetukset', 'About formvis': 'Tietoja: formvis',
+  'Run ComfyUI Workflow': 'Exécuter un workflow ComfyUI', 'Preferences': 'Préférences', 'About formvis': 'À propos de formvis',
+  'Preferences': 'प्राथमिकताएँ', 'About formvis': 'formvis के बारे में',
+  'Preferences': 'Beállítások', 'About formvis': 'A formvis névjegye',
+  'Preferences': 'Preferensi', 'About formvis': 'Tentang formvis',
+  'Preferences': 'Preferenze', 'About formvis': 'Informazioni su formvis',
+  'Preferences': '環境設定', 'About formvis': 'formvisについて',
+  'Preferences': '환경 설정', 'About formvis': 'formvis 정보',
+  'Run ComfyUI Workflow': 'Kjør ComfyUI-arbeidsflyt', 'Preferences': 'Innstillinger', 'About formvis': 'Om formvis',
+  'Run ComfyUI Workflow': 'ComfyUI-workflow uitvoeren', 'Preferences': 'Voorkeuren', 'About formvis': 'Over formvis',
+  'Preferences': 'Preferencje', 'About formvis': 'Informacje o formvis',
+  'Preferences': 'Preferências', 'About formvis': 'Sobre o formvis',
+  'Preferences': 'Установки', 'About formvis': 'О программе formvis',
+  'Run ComfyUI Workflow': 'Pokreni ComfyUI tok rada', 'Preferences': 'Postavke', 'About formvis': 'O programu formvis',
+  'Run ComfyUI Workflow': 'Kör ComfyUI-arbetsflöde', 'Preferences': 'Inställningar', 'About formvis': 'Om formvis',
+  'Preferences': 'ค่ากำหนด', 'About formvis': 'เกี่ยวกับ formvis',
+  'Preferences': 'Tercihler', 'About formvis': 'formvis Hakkında',
+  'Preferences': 'Параметри', 'About formvis': 'Про програму formvis',
+  'Preferences': 'Tùy chọn', 'About formvis': 'Giới thiệu formvis',
+  'Preferences': '首选项', 'About formvis': '关于 formvis',
+  'Preferences': '偏好設定', 'About formvis': '關於 formvis',
+      top.push(await api.Submenu.new({ text: 'formvis', items: [
+        await api.PredefinedMenuItem.new({ item: { About: { name: 'formvis', copyright: 'Copyright 2026 NodeAgentc, Inc. Apache-2.0', license: 'Apache-2.0' } }, text: t('About formvis') }),
+    setText(this.el.querySelector('.cv-note'), `This is formvis ${version}. The desktop app can look for a new version when it starts and asks before installing: Restart and update closes formvis once your documents are settled, and nothing is installed without your yes. Updates stay off in a build that carries no signing key (this one until the owner adds his): Check now then says so. A portable copy opens the releases page instead.`);
+export const VERSION = '1.99.1';
+```
+
 ## The About box names NodeAgentc, Inc. and links the licence · _v1.99.0 (src/ui/app-dialogs.ts AboutDialog; src/ui/native-menu.ts About; src/ui/i18n/more/*; src-tauri/tauri.conf.json bundle)
 
 - Why: the launch punch list (2026-11-03): the About of a downloaded app must say NodeAgentc, Inc., not nodemode-ai, and must list the licence.

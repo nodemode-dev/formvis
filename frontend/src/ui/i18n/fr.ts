@@ -28,7 +28,7 @@ export const fr: Record<string, string> = {
   'File Info': 'Informations sur le fichier', 'Print': 'Imprimer', 'Print One Copy': 'Imprimer une copie', 'Batch': 'Traitement par lot',
   'Image Processor': 'Processeur d\'images', 'Contact Sheet II': 'Planche contact II', 'Photomerge': 'Photomerge', 'Merge to HDR': 'Fusionner en HDR',
   'Load Files into Stack': 'Charger les fichiers dans une pile', 'Create Droplet': 'Créer un droplet', 'Script Events Manager': 'Gestionnaire d\'événements de script',
-  'Run ComfyUI Workflow': 'Exécuter un workflow ComfyUI', 'Preferences': 'Préférences', 'About formvis': 'À propos de formvis',
+  'Run ComfyUI Workflow': 'Exécuter un workflow ComfyUI', 'Preferences': 'Préférences', 'About FormVis': 'À propos de FormVis',
   'Undo': 'Annuler', 'Redo': 'Rétablir', 'Toggle Last State': 'Basculer le dernier état', 'Fade': 'Estompage', 'Cut': 'Couper',
   'Copy': 'Copier', 'Copy Merged': 'Copier avec fusion', 'Paste': 'Coller', 'Paste in Place': 'Coller sur place', 'Paste Into': 'Coller dedans',
   'Paste Outside': 'Coller à l\'extérieur', 'Clear': 'Effacer', 'Search': 'Rechercher', 'Find and Replace Text': 'Rechercher et remplacer le texte',

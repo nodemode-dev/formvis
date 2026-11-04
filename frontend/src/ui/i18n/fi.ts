@@ -28,7 +28,7 @@ export const fi: Record<string, string> = {
   'File Info': 'Tiedostotiedot', 'Print': 'Tulosta', 'Print One Copy': 'Tulosta yksi kopio', 'Batch': 'Eräajo',
   'Image Processor': 'Kuvankäsittelijä', 'Contact Sheet II': 'Kontaktiarkki II', 'Photomerge': 'Photomerge', 'Merge to HDR': 'Yhdistä HDR-kuvaksi',
   'Load Files into Stack': 'Lataa tiedostot pinoon', 'Create Droplet': 'Luo droplet', 'Script Events Manager': 'Komentosarjatapahtumien hallinta',
-  'Run ComfyUI Workflow': 'Suorita ComfyUI-työnkulku', 'Preferences': 'Asetukset', 'About formvis': 'Tietoja: formvis',
+  'Run ComfyUI Workflow': 'Suorita ComfyUI-työnkulku', 'Preferences': 'Asetukset', 'About FormVis': 'Tietoja: FormVis',
   'Undo': 'Kumoa', 'Redo': 'Tee uudelleen', 'Toggle Last State': 'Vaihda viimeiseen tilaan', 'Fade': 'Häivytä', 'Cut': 'Leikkaa',
   'Copy': 'Kopioi', 'Copy Merged': 'Kopioi yhdistettynä', 'Paste': 'Liitä', 'Paste in Place': 'Liitä paikalleen', 'Paste Into': 'Liitä sisään',
   'Paste Outside': 'Liitä ulkopuolelle', 'Clear': 'Tyhjennä', 'Search': 'Haku', 'Find and Replace Text': 'Etsi ja korvaa teksti',

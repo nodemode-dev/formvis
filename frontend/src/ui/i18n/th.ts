@@ -29,7 +29,7 @@ export const th: Record<string, string> = {
   'Image Processor': 'ตัวประมวลผลภาพ', 'Contact Sheet II': 'คอนแท็กต์ชีต II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'รวมเป็น HDR', 'Load Files into Stack': 'โหลดไฟล์เข้าสแต็ก', 'Create Droplet': 'สร้างดรอปเล็ต',
   'Script Events Manager': 'ตัวจัดการเหตุการณ์สคริปต์', 'Run ComfyUI Workflow': 'เรียกใช้เวิร์กโฟลว์ ComfyUI',
-  'Preferences': 'ค่ากำหนด', 'About formvis': 'เกี่ยวกับ formvis',
+  'Preferences': 'ค่ากำหนด', 'About FormVis': 'เกี่ยวกับ FormVis',
   'Undo': 'เลิกทำ', 'Redo': 'ทำซ้ำ', 'Toggle Last State': 'สลับสถานะล่าสุด', 'Fade': 'ทำให้จาง', 'Cut': 'ตัด',
   'Copy': 'คัดลอก', 'Copy Merged': 'คัดลอกแบบรวม', 'Paste': 'วาง', 'Paste in Place': 'วางตำแหน่งเดิม',
   'Paste Into': 'วางลงใน', 'Paste Outside': 'วางด้านนอก', 'Clear': 'ล้าง', 'Search': 'ค้นหา',

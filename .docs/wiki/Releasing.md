@@ -1,6 +1,6 @@
 # Releasing
 
-formvis builds nothing in its own repository. After the version bump lands on main, push a branch `compile_vX.Y.Z` cut from main's head. formcompiler (nodemode-ai/formcompiler) picks it up on its 8-hourly watch or a manual run, builds every target with `setup/package_desktop.py` (macOS, Linux with AppImage, deb and rpm, Windows with MSI and NSIS), and opens a draft release `formvis-vX.Y.Z` on its release page at https://github.com/nodemode-ai/formcompiler/releases for review. formcompiler holds the Apple and Windows signing identities and the updater key. The app reads updates from formcompiler's `formvis-updates` feed.
+formvis builds nothing in its own repository. After the version bump lands on main, push a branch `compile_vX.Y.Z` cut from main's head. formcompiler (nodemode-dev/formcompiler) picks it up on its 8-hourly watch or a manual run, builds every target with `setup/package_desktop.py` (macOS, Linux with AppImage, deb and rpm, Windows with MSI and NSIS), and opens a draft release `formvis-vX.Y.Z` on its release page at https://github.com/nodemode-dev/formcompiler/releases for review. formcompiler holds the Apple and Windows signing identities and the updater key. The app reads updates from formcompiler's `formvis-updates` feed.
 
 ## One-time setup: formcompiler secrets
 
@@ -40,7 +40,7 @@ Put the private key file's contents in `TAURI_SIGNING_PRIVATE_KEY` and paste the
 
 ## Running it by hand
 
-Run formcompiler's workflow manually and give it the branch. The `formvis-updates` release on formcompiler holds the newest `latest.json` that the app's updater endpoint (`https://github.com/nodemode-ai/formcompiler/releases/download/formvis-updates/latest.json`) reads. The AppImage update information is printed by `python3 setup/package_desktop.py zsync-info --appimage ARCH`. Nothing is published or tagged in the formvis repository.
+Run formcompiler's workflow manually and give it the branch. When a stable release is published, the publishing pipeline copies its `latest.json` and AppImage `.zsync` files to the download store, and the app's updater endpoint (`https://dl.formai.studio/formvis/updates/latest.json`, which formcompiler writes into the build) reads it there. The AppImage update information is printed by `python3 setup/package_desktop.py zsync-info --appimage ARCH`: the newest release on nodemode-dev/formvis, matching `FormVis_*_ARCH.AppImage.zsync`. Nothing is published or tagged in the formvis repository.
 
 Builds per run: macOS Apple silicon and Intel (separate DMGs; a universal DMG would need the PyInstaller engine built as one universal binary, which is not done), Linux x64 and arm64 (AppImage, deb, rpm, tar.gz), Windows x64 and arm64 (MSI, NSIS setup, portable zip, and the Store package when its variables exist). The Intel macOS, Linux arm64 and Windows arm64 jobs are marked experimental: if one fails the others still release. Windows x86 is not built: it needs a 32-bit Python and Rust target and every engine dependency in a 32-bit wheel, none of which is checked.
 

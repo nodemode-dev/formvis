@@ -29,7 +29,7 @@ export const tr: Record<string, string> = {
   'Image Processor': 'Görüntü İşlemcisi', 'Contact Sheet II': 'Kontak Sayfası II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'HDR’de Birleştir', 'Load Files into Stack': 'Dosyaları Yığına Yükle', 'Create Droplet': 'Droplet Oluştur',
   'Script Events Manager': 'Komut Dosyası Olayları Yöneticisi', 'Run ComfyUI Workflow': 'ComfyUI İş Akışını Çalıştır',
-  'Preferences': 'Tercihler', 'About formvis': 'formvis Hakkında',
+  'Preferences': 'Tercihler', 'About FormVis': 'FormVis Hakkında',
   'Undo': 'Geri Al', 'Redo': 'Yinele', 'Toggle Last State': 'Son Durumu Aç/Kapat', 'Fade': 'Soldur', 'Cut': 'Kes',
   'Copy': 'Kopyala', 'Copy Merged': 'Birleştirilmişi Kopyala', 'Paste': 'Yapıştır', 'Paste in Place': 'Yerine Yapıştır',
   'Paste Into': 'İçine Yapıştır', 'Paste Outside': 'Dışına Yapıştır', 'Clear': 'Temizle', 'Search': 'Ara',

@@ -6,15 +6,15 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
   <developer id="ai.nodemode">
-    <name>nodemode-ai</name>
+    <name>NodeAgentc, Inc.</name>
   </developer>
   <description>
-    <p>formvis is a layered image editor: layers, folders, masks, clipping, blend modes, selections, painting, filters, colour management and PSD, TIFF, EXR and OpenRaster files.</p>
+    <p>FormVis is a layered image editor: layers, folders, masks, clipping, blend modes, selections, painting, filters, colour management and PSD, TIFF, EXR and OpenRaster files.</p>
     <p>It runs its own local engine, and edits stay on this computer.</p>
   </description>
   <launchable type="desktop-id">ai.nodemode.formvis.desktop</launchable>
-  <url type="homepage">https://github.com/nodemode-ai/formvis</url>
-  <url type="bugtracker">https://github.com/nodemode-ai/formvis/issues</url>
+  <url type="homepage">https://formai.studio/formvis/</url>
+  <url type="bugtracker">https://github.com/nodemode-dev/formvis/issues</url>
   <categories>
     <category>Graphics</category>
     <category>2DGraphics</category>
