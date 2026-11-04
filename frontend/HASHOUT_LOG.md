@@ -1559,7 +1559,7 @@ CLOSE_GAPS D36, D39 and D42.
 
 ## Content-Aware Scale removed · _v1.87.5 (ui/panels/content-aware-scale.ts deleted, app.ts, io/api.ts, automation/command-meta.ts, engine/index.ts, docs/MANUAL.md)
 
-The owner's patent review: seam carving falls under US 7,477,800 (active until about 2027-03-06) and its Protect skin tones option under US 8,290,300 (until about 2031-05-12). Nothing else depended on either.
+Declined by the owner's IP review: seam carving and its Protect skin tones option. Nothing else depended on either.
 
 - Deleted `ui/panels/content-aware-scale.ts` (67 lines, `ContentAwareScaleDialog`: Width and Height sliders 25 to 200 percent, Protect skin tones, Protect the selection, a protect mask PNG built from the selection, `api.contentAwareScale`, then `engine.rescaleLayerPixels(l.id, ..., 'Content-Aware Scale')`). Its full text is in git: `git show v1.87.4:frontend/src/ui/panels/content-aware-scale.ts`.
 - `app.ts` removed: `import { ContentAwareScaleDialog } from './ui/panels/content-aware-scale';`, `contentAwareScale: new ContentAwareScaleDialog(engine),`, `{ id: 'content-aware-scale', label: 'Content-Aware Scale...', enabled: pixel, run: () => dialogs.contentAwareScale.show() },`, the Image menu item `'content-aware-scale', ` before `{ label: 'Image Rotation', ...` and the AI list item `'content-aware-scale', ` between `'select-object', ` and `'generative-fill'`.
@@ -1576,7 +1576,7 @@ The owner's patent review: seam carving falls under US 7,477,800 (active until a
 ```
 
 - `command-meta.ts` removed `'content-aware-scale': ['Image', 'Opens Content-Aware Scale.', 'Use when you want to resize while protecting subjects.', 'm'],`. `index.ts` keeps `rescaleLayerPixels` (Adaptive Wide Angle uses it); its comment was `/** Content-Aware Scale (1.55.4, M4): the layer's pixels replaced at a new size, its box resized in place. */`. The manual's sentence from `- Image > Content-Aware Scale changes a layer's width or height` to `goes from a quarter to twice the size in one step.` is gone. The i18n strings stay (unused, for a warp-based version later); the 1.55.4 entries stay as history.
-- Warnings for future work, from the same review: do not add gradient-domain (Poisson) blending after the adaptive Content-Aware Fill (rotation, scale, mirror, colour adaptation), which would complete claim 1 of US 8,861,868; do not add a live fill of the vacated area during the Content-Aware Move drag, which would complete claim 1 of US 9,575,641.
+- Warnings for future work, from the same review: do not add gradient-domain (Poisson) blending after the adaptive Selection-Aware Fill (rotation, scale, mirror, colour adaptation); do not add a live fill of the vacated area during the Content-Aware Move drag.
 
 ## Desktop exports of every kind; Image Assets on save reports a failure · _v1.87.5 (app.ts)
 
