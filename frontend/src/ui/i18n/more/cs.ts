@@ -822,7 +822,7 @@ export const cs: Record<string, string> = {
   'An address starts with http:// or https://, such as http://localhost:8000.': 'Adresa začíná http:// nebo https://, například http://localhost:8000.',
   'Anchor': 'Kotva',
   'Animated GIF': 'Animovaný GIF',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0. Copyright 2026 nodemode-ai.',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.',
   'Apply Image needs an open document.': 'Příkaz Použít obraz vyžaduje otevřený dokument.',
   'Apply this comp': 'Použít tuto kompozici',
   'Apply to All': 'Použít na vše',

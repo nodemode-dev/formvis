@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The About box names NodeAgentc, Inc. and links the licence · _v1.99.0 (src/ui/app-dialogs.ts AboutDialog; src/ui/native-menu.ts About; src/ui/i18n/more/*; src-tauri/tauri.conf.json bundle)
+
+- Why: the launch punch list (2026-11-03): the About of a downloaded app must say NodeAgentc, Inc., not nodemode-ai, and must list the licence.
+- The dialog's licence line reads "Apache License 2.0. Copyright 2026 NodeAgentc, Inc." and a new line under it links the LICENSE file on GitHub (`nodemode-dev/formvis/blob/main/LICENSE`) the way the Source line already links the repository. The 27 `more` tables that carried the old sentence as a key and a value have both renamed in place; the English text is unchanged apart from the owner's name, so the translations stay.
+- The macOS application menu's About item now passes `copyright` and `license` with its name; the panel showed only what Info.plist carried.
+- The bundle (`src-tauri/tauri.conf.json`) names the publisher, carries the SPDX id in its copyright line as formMCP and formskills already did, and sets `license` and `licenseFile` (`../LICENSE` from `src-tauri`); `src-tauri/Cargo.toml` `authors` is the company, which is the .deb's Maintainer. Tauri's default About metadata takes its authors from `bundle.publisher`, and tauri-build writes `CompanyName` from it into the Windows version resource.
+- Verified: `python3 -c "import json;json.load(open('src-tauri/tauri.conf.json'))"`, the em dash and emoji check from `.github/workflows/ci.yml`, and `python3 setup/line_counts.py --check` (counts in the pull request). No desktop build was run; the e2e About test (`e2e/test_cover_mix_presets_about.py`) still expects "Apache License 2.0", which the line keeps.
+
 ## The Help search test asks a question the manual still answers · _v1.98.7 (src/help/markdown.test.ts, "finds the sections most about a question")
 
 - Why: CI on main went red at 1.98.6 with "expected 'The workspace' to be 'The assistant and outside agents'". The test asked "How does Claude Desktop connect?", but the manual stopped naming Claude Desktop at 1.53.3 (1e4bb439), when the outside-agents item was rewritten around Claude Code, Codex and Cursor. Since then the question matched only "Claude" and "connect", and the agents section tied with The command line and won on order alone. The 1.98.6 ffmpeg wording in The workspace ("the desktop app downloads its own LGPL build") added a "desktop" there, made it a three-way tie, and The workspace comes first.

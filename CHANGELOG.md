@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.99.0 · 2026-11-03
+
+- The About box and the installers name NodeAgentc, Inc. as the publisher, with the licence (Apache-2.0) and a link to the LICENSE file. The bundle sets `publisher`, `copyright`, `license` and `licenseFile`, so the macOS About panel, the Windows file properties and installer, and the Linux packages say the same.
+
 ## 1.98.9 · 2026-11-03
 
 - formvis no longer asks for Keychain access when it opens. It reaches your system's password store (Keychain on a Mac) only when you save or remove a key, or run a feature that uses a key you saved; status checks, settings panels and the ComfyUI connection dot never do. A small `keys.json` in the data folder notes which keys you saved and their last four characters, never a key.
