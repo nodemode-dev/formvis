@@ -2,6 +2,49 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Keys move on first use again, 1.98.8 Keychain keys are found, keys.json through a unique temp file · _v1.98.9 (app/services/secrets.py get, _ask, _keep, _ask_once, _index_write, _index_set, _index_drop, put, delete; tests/conftest.py fresh_secrets; tests/test_secrets.py)
+
+- Why: the review of the change below found that `get` stopped moving plaintext keys into the password store, so a key in `generative.json` (falKey), `llm.json` (key and keys), `huggingface_token.txt` or `comfyui_auth.json` (secret) stayed in plain text for good; that keys saved in the Keychain by 1.98.8 or earlier showed as not set and failed every use; that a refused read put the name in `_asked`, so status kept saying "set" while every use in the session read nothing; and that `_index_write` used the fixed name `keys.tmp`, so two writers raced and a planted `keys.tmp` symlink sent the index to another file.
+- `get` order, under `_lock`: a key held this session; no password store at all, the file copy (unchanged fallback); a name `keys.json` lists, the password store; else the file copy, which `_keep` moves to the password store (write, read back, `keys.json` entry, then the file copy goes) and returns; else `_ask_once`, the 1.98.8 path. The first-use rule of the change below stands: only `get`, `put` and `delete` reach the store, and `summary` still never does. A use with no saved key at all asks the store once a session for the 1.98.8 item (a read of a missing item shows no prompt).
+- 1.98.8 path (`_ask_once`): for a name `keys.json` does not list and no file holds, one read a session; a key found is held and gets a `keys.json` entry (last four only, 0600), so later status checks show it without asking. An answered empty read goes in `_asked`; a refused or failed read does not.
+- Retry rule (chosen as the simplest that keeps status and use in step): `_ask` tells an answer from a refusal. A refusal (the person chose Deny, the store failed) is not remembered, so the next use asks again and Allow then works; status keeps saying "set", which is true. An answered empty read for a name `keys.json` lists means the item is gone: the entry is dropped (status says not set) and the name goes in `_asked`. `_asked` now holds only names with no entry and no key; `put` and `delete` clear it.
+- `_index_write`: `tempfile.mkstemp` in the data folder (prefix `.keys-`), chmod 0600 before writing, `os.replace`; on any failure the temp file is removed and the error raised. `_index_set` and `_index_drop` build a new dict rather than popping from the one read.
+- `put` reuses `_keep`; a failed keep drops the entry and writes the file, as before.
+- Holding `_lock` across a password-store read means a Keychain prompt blocks other saves and uses until answered; it also stops two first uses moving the same file key twice.
+- Not changed, for the owner: the plaintext fallback where no password store exists; `PUT /api/llm/rows/{id}` with a new `base_url` then chat, and the ComfyUI target routes, send a saved key to any server a local caller names; the ComfyUI 401 and 403 probe; Windows and Linux stores are readable by any process of the same user; pywin32-ctypes is not in NOTICE.md.
+- Tests: `tests/conftest.py` `fresh_secrets` (autouse) gives `secrets._held` and `_asked` fresh values for every test, so no key leaks between tests. `tests/test_secrets.py` uses the in-memory store with a call record and `refusals`: one migration test per plaintext file (moved, file copy gone, `keys.json` last four only), the 1.98.8 path, one read a session for a name with no key, zero store calls from every status endpoint before and after migration, a refused read retried, a vanished item no longer set, and a planted `keys.tmp` symlink and directory that no longer redirect or stop a save. All ten fail on the code below.
+
+```python
+def _index_write(d: dict) -> None:
+    path = _index_path()
+    temp = path.with_suffix(".tmp")
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(d, f)
+    os.replace(temp, path)
+
+
+def get(name: str, file_read, file_clear) -> str | None:
+    """The key called `name`, for a feature about to use it. The password store is asked only for a key saved there
+    through `put`; a file copy stays in its file until the key is saved again. `file_clear` is kept for the callers."""
+    if _entry(name) is None or name in _asked:
+        return file_read()
+    if name in _held:
+        return _held[name]
+    kr = _store()
+    value = None
+    if kr:
+        try:
+            value = kr.get_password(SERVICE, name)
+        except Exception:
+            value = None
+    if value:
+        _held[name] = value
+        return value
+    _asked.add(name)
+    return file_read()
+```
+
 ## The Keychain is reached only after Save, Remove, or a feature that uses a saved key · _v1.98.9 (app/services/secrets.py get, summary, put, delete, keys.json; status in generative, fal_run.listing, llm, model_manager token, comfyui_auth, providers.has_key; routers/comfyui.py status probe)
 
 - Why: the first local desktop build (ad hoc signed) asked for Keychain access the moment it opened, with no key entered and no explanation. Every status check read the key itself: `generative.status` (last four, refused flag), `fal_run.listing`, `llm.status` and each row's `_row_public`, the Hugging Face token state, `comfyui_auth.status`, and the generators catalogue's `ready`. The window calls them on open, and the title bar's ComfyUI dot polls `/api/comfyui/status` (sign-in headers included) every 30 seconds. `get` also moved a file key into the store on first read, an unprompted write. macOS ties a Keychain item to the signature of the program that made it, and an ad hoc engine has a new identity each build, so each read asked. To a person it looks like an app collecting data.

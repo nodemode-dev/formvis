@@ -131,7 +131,7 @@ export const hi: Record<string, string> = {
   'Alt-click sets the background. Right-click removes.': 'Alt-क्लिक पृष्ठभूमि तय करता है। राइट-क्लिक हटाता है।', 'Alternates': 'विकल्प', 'Amber': 'एम्बर',
   'An address starts with http:// or https://, such as http://127.0.0.1:8188.': 'पता http:// या https:// से शुरू होता है, जैसे http://127.0.0.1:8188।',
   'An address starts with http:// or https://, such as http://localhost:8000.': 'पता http:// या https:// से शुरू होता है, जैसे http://localhost:8000।', 'Anchor': 'एंकर', 'Animated GIF': 'एनिमेटेड GIF',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0. Copyright 2026 nodemode-ai.', 'Apply Image needs an open document.': 'छवि लागू करने के लिए एक खुला दस्तावेज़ चाहिए।', 'Apply this comp': 'यह कॉम्प लागू करें',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.', 'Apply Image needs an open document.': 'छवि लागू करने के लिए एक खुला दस्तावेज़ चाहिए।', 'Apply this comp': 'यह कॉम्प लागू करें',
   'Apply to All': 'सभी पर लागू करें', 'Approve': 'स्वीकृत करें', 'Artboards': 'आर्टबोर्ड', 'Ask': 'पूछें', 'Ask Claude Code to edit the picture or the code': 'Claude Code से तस्वीर या कोड संपादित करने को कहें',
   'Ask for a change, e.g. add a warm glow to the sky': 'बदलाव माँगें, जैसे आकाश में गर्म चमक जोड़ें', 'Ask the manual': 'मैनुअल से पूछें', 'Ask the manual, e.g. how do I send the selection to ComfyUI?': 'मैनुअल से पूछें, जैसे चयन को ComfyUI को कैसे भेजूँ?',
   'Ask when opening': 'खोलते समय पूछें', 'Asking': 'पूछ रहा है', 'Background Color': 'पृष्ठभूमि रंग', 'Background Contents': 'पृष्ठभूमि सामग्री', 'Background color': 'पृष्ठभूमि रंग', 'Bit depth': 'बिट डेप्थ',

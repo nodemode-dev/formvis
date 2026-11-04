@@ -822,7 +822,7 @@ export const ptBR: Record<string, string> = {
   'An address starts with http:// or https://, such as http://localhost:8000.': 'Um endereço começa com http:// ou https://, como http://localhost:8000.',
   'Anchor': 'Âncora',
   'Animated GIF': 'GIF animado',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0. Copyright 2026 nodemode-ai.',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.',
   'Apply Image needs an open document.': 'Aplicar imagem precisa de um documento aberto.',
   'Apply this comp': 'Aplicar esta composição',
   'Apply to All': 'Aplicar a todos',

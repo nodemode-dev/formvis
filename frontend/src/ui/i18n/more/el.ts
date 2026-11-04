@@ -822,7 +822,7 @@ export const el: Record<string, string> = {
   'An address starts with http:// or https://, such as http://localhost:8000.': 'Μια διεύθυνση αρχίζει με http:// ή https://, για παράδειγμα http://localhost:8000.',
   'Anchor': 'Άγκυρα',
   'Animated GIF': 'Κινούμενο GIF',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0. Copyright 2026 nodemode-ai.',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.',
   'Apply Image needs an open document.': 'Η εφαρμογή εικόνας χρειάζεται ένα ανοιχτό έγγραφο.',
   'Apply this comp': 'Εφαρμογή αυτής της σύνθεσης',
   'Apply to All': 'Εφαρμογή σε όλα',
