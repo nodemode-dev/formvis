@@ -5,13 +5,13 @@
 <h1 align="center">FormVis</h1>
 
 <p align="center">
-  <b>Image editing; the layered photo editor of the Form family.</b><br>
+  <b>Image editing; the layered photo editor of the FormAI family.</b><br>
   Layers, masks, blend modes, adjustment layers, layer styles and PSD files,<br>
   with local generation, on your own machine. No account, and agents can edit over MCP.
 </p>
 
 <p align="center">
-  <img alt="version 1.99.2" src="https://img.shields.io/badge/version-1.99.2-eef0f4?style=flat-square">
+  <img alt="version 1.99.3" src="https://img.shields.io/badge/version-1.99.3-eef0f4?style=flat-square">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Vite-3178c6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="Python" src="https://img.shields.io/badge/Python-FastAPI-3776ab?style=flat-square">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">

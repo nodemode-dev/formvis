@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.99.3 · 2026-11-04
+
+- The README tagline names the FormAI family, as in the public repository; formvis now holds everything that repository holds.
+
 ## 1.99.2 · 2026-11-04
 
 - The Linux release no longer stops after the rename to FormVis. Tauri names the Linux packages after the app (`FormVis_<version>_<arch>`), and the step that makes the Linux tar.gz still looked for the old lower-case folder, which Linux treats as a different name. Every packaging step now takes the name from the app's settings, and still finds the old one.
