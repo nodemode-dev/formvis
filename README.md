@@ -5,7 +5,7 @@
 <h1 align="center">FormVis</h1>
 
 <p align="center">
-  <b>Image editing; the layered photo editor of the Form family.</b><br>
+  <b>Image editing; the layered photo editor of the FormAI family.</b><br>
   Layers, masks, blend modes, adjustment layers, layer styles and PSD files,<br>
   with local generation, on your own machine. No account, and agents can edit over MCP.
 </p>
