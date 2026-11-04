@@ -409,7 +409,7 @@ Generated from the window's command catalogue (1666 commands) by `./formvis agen
 | --- | --- | --- | --- |
 | `copy-frame-trace` | Copy Frame Trace |  | Copies the traced frames as CSV: time, wait for the frame, draw time and whether the GPU or the CPU drew it. |
 | `frame-trace` | Frame Trace |  | Starts or stops timing every frame the canvas draws, from the moment it was asked for to the end of the draw, with a live line over the canvas; stopping reports the median, 90th percentile and worst. |
-| `help-github` | formvis on GitHub |  | Opens the formvis project page on GitHub in the browser. |
+| `help-github` | FormVis on GitHub |  | Opens the formvis project page on GitHub in the browser. |
 | `report-issue` | Report an Issue... |  | Opens a report to read and edit: the System Info text and this session's errors under a box for what happened, with Copy Report and a button that opens formvis's issue page. Nothing is sent. |
 | `simulate-gpu-loss` | Simulate GPU Device Loss |  | Acts as if the GPU device was lost, so drawing falls back to the CPU renderer for this session. |
 
@@ -1671,7 +1671,7 @@ Generated from the window's command catalogue (1666 commands) by `./formvis agen
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
-| `about` | About formvis |  | Opens the About dialog. |
+| `about` | About FormVis |  | Opens the About dialog. |
 | `action-stop` | Stop Recording |  | Stops recording an action. |
 | `actions` | Actions... |  | Opens the Actions panel to record and play steps. |
 | `agent.chat` | Chat with Claude |  | Shows the terminal dock on its Chat tab, a conversation with Claude about the open picture that works through formvis's tools, or hides the dock while that tab is showing. |

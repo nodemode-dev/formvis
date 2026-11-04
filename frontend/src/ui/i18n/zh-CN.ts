@@ -39,7 +39,7 @@ export const zhCN: Record<string, string> = {
   'Image Processor': '图像处理器', 'Contact Sheet II': '联系表 II', 'Photomerge': 'Photomerge',
   'Merge to HDR': '合并到 HDR', 'Load Files into Stack': '将文件载入堆栈', 'Create Droplet': '创建快捷批处理',
   'Script Events Manager': '脚本事件管理器', 'Run ComfyUI Workflow': '运行 ComfyUI 工作流',
-  'Preferences': '首选项', 'About formvis': '关于 formvis',
+  'Preferences': '首选项', 'About FormVis': '关于 FormVis',
   // Edit
   'Undo': '还原', 'Redo': '重做', 'Toggle Last State': '切换最终状态', 'Fade': '渐隐', 'Cut': '剪切',
   'Copy': '拷贝', 'Copy Merged': '合并拷贝', 'Paste': '粘贴', 'Paste in Place': '原位粘贴',

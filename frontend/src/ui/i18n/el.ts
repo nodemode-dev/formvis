@@ -28,7 +28,7 @@ export const el: Record<string, string> = {
   'File Info': 'Πληροφορίες αρχείου', 'Print': 'Εκτύπωση', 'Print One Copy': 'Εκτύπωση ενός αντιγράφου', 'Batch': 'Μαζική επεξεργασία',
   'Image Processor': 'Επεξεργαστής εικόνων', 'Contact Sheet II': 'Φύλλο επαφών II', 'Photomerge': 'Photomerge', 'Merge to HDR': 'Συγχώνευση σε HDR',
   'Load Files into Stack': 'Φόρτωση αρχείων σε στοίβα', 'Create Droplet': 'Δημιουργία droplet', 'Script Events Manager': 'Διαχείριση συμβάντων σεναρίων',
-  'Run ComfyUI Workflow': 'Εκτέλεση ροής εργασίας ComfyUI', 'Preferences': 'Προτιμήσεις', 'About formvis': 'Σχετικά με το formvis',
+  'Run ComfyUI Workflow': 'Εκτέλεση ροής εργασίας ComfyUI', 'Preferences': 'Προτιμήσεις', 'About FormVis': 'Σχετικά με το FormVis',
   'Undo': 'Αναίρεση', 'Redo': 'Επανάληψη', 'Toggle Last State': 'Εναλλαγή τελευταίας κατάστασης', 'Fade': 'Εξασθένηση', 'Cut': 'Αποκοπή',
   'Copy': 'Αντιγραφή', 'Copy Merged': 'Αντιγραφή συγχωνευμένων', 'Paste': 'Επικόλληση', 'Paste in Place': 'Επικόλληση στη θέση', 'Paste Into': 'Επικόλληση μέσα',
   'Paste Outside': 'Επικόλληση έξω', 'Clear': 'Εκκαθάριση', 'Search': 'Αναζήτηση', 'Find and Replace Text': 'Εύρεση και αντικατάσταση κειμένου',

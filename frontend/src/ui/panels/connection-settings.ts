@@ -494,7 +494,7 @@ export class UpdatesSection {
     const start = el<HTMLInputElement>('<input type="checkbox" aria-label="Check for updates when formvis starts">');
     bar.append(check);
     this.el.append(el('<p class="cv-note"></p>'), row('Check for updates when formvis starts', toggleOf(start)), bar, this.status);
-    setText(this.el.querySelector('.cv-note'), `This is formvis ${version}. The desktop app can look for a new version when it starts and asks before installing: Restart and update closes formvis once your documents are settled, and nothing is installed without your yes. Updates stay off in a build that carries no signing key (this one until the owner adds his): Check now then says so. A portable copy opens the releases page instead.`);
+    setText(this.el.querySelector('.cv-note'), `This is formvis ${version}. The desktop app can look for a new version when it starts and asks before installing: Restart and update closes formvis once your documents are settled, and nothing is installed without your yes. Updates stay off in a build that carries no signing key (this one until the owner adds his): Check now then says so. A portable copy opens the download page instead.`);
     start.checked = updateAtStart();
     start.addEventListener('change', () => { setUpdateAtStart(start.checked); setText(this.status, start.checked ? 'formvis will look for an update at each start of the desktop app.' : 'formvis will not look for updates by itself; Check now still works.'); });
     check.addEventListener('click', () => {

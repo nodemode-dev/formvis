@@ -28,7 +28,7 @@ export const da: Record<string, string> = {
   'File Info': 'Filoplysninger', 'Print': 'Udskriv', 'Print One Copy': 'Udskriv én kopi', 'Batch': 'Batch',
   'Image Processor': 'Billedbehandler', 'Contact Sheet II': 'Kontaktark II', 'Photomerge': 'Photomerge', 'Merge to HDR': 'Sammenflet til HDR',
   'Load Files into Stack': 'Indlæs filer i stak', 'Create Droplet': 'Opret droplet', 'Script Events Manager': 'Script-hændelsesstyring',
-  'Run ComfyUI Workflow': 'Kør ComfyUI-workflow', 'Preferences': 'Indstillinger', 'About formvis': 'Om formvis',
+  'Run ComfyUI Workflow': 'Kør ComfyUI-workflow', 'Preferences': 'Indstillinger', 'About FormVis': 'Om FormVis',
   'Undo': 'Fortryd', 'Redo': 'Annullér fortryd', 'Toggle Last State': 'Skift til sidste status', 'Fade': 'Udtone', 'Cut': 'Klip',
   'Copy': 'Kopiér', 'Copy Merged': 'Kopiér sammenflettet', 'Paste': 'Sæt ind', 'Paste in Place': 'Sæt ind på stedet', 'Paste Into': 'Sæt ind i',
   'Paste Outside': 'Sæt ind udenfor', 'Clear': 'Ryd', 'Search': 'Søg', 'Find and Replace Text': 'Søg efter og erstat tekst',

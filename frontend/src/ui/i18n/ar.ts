@@ -28,7 +28,7 @@ export const ar: Record<string, string> = {
   'Image Processor': 'معالج الصور', 'Contact Sheet II': 'ورقة اتصال II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'دمج إلى HDR', 'Load Files into Stack': 'تحميل الملفات في مكدس', 'Create Droplet': 'إنشاء قطرة',
   'Script Events Manager': 'مدير أحداث السكربت',
-  'Preferences': 'التفضيلات', 'About formvis': 'حول formvis',
+  'Preferences': 'التفضيلات', 'About FormVis': 'حول FormVis',
   'Undo': 'تراجع', 'Redo': 'إعادة', 'Toggle Last State': 'تبديل الحالة الأخيرة', 'Fade': 'تلاشي', 'Cut': 'قص',
   'Copy': 'نسخ', 'Copy Merged': 'نسخ المدموج', 'Paste': 'لصق', 'Paste in Place': 'لصق في المكان',
   'Paste Into': 'لصق داخل', 'Paste Outside': 'لصق خارج', 'Clear': 'مسح', 'Search': 'بحث',

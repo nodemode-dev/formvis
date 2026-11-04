@@ -3233,9 +3233,9 @@ export function startApp(): void {
     try { report = await checkForUpdate(); } catch (err) { const text = `Could not check for updates: ${message(err)}`; if (!quiet) toast(text, 'error'); return text; }
     if (report.status !== 'available') { if (!quiet) toast(report.message, report.status === 'failed' ? 'error' : 'info'); return report.message; }
     if ((await api.capabilities())?.switches?.portable) {
-      const text = `Version ${report.version ?? ''} is available. This portable copy does not update itself; the releases page is opening.`;
+      const text = `Version ${report.version ?? ''} is available. This portable copy does not update itself; the download page is opening.`;
       toast(text, 'info');
-      window.open('https://github.com/nodemode-ai/formcompiler/releases', '_blank', 'noopener');
+      window.open('https://formai.studio/formvis/download/', '_blank', 'noopener');
       return text;
     }
     const again = !!report.version && stored(SKIPPED_UPDATE_KEY) === report.version;
@@ -5147,7 +5147,7 @@ export function startApp(): void {
     { id: 'jobs-list', label: 'Jobs', checked: () => status.jobsOpen, run: () => status.toggleJobs() },
     { id: 'apply-edit', label: 'Apply Pending Edit', keys: ['Enter'], enabled: has, run: () => stage.toolKeydown(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', cancelable: true })) },
     { id: 'cancel-edit', label: 'Cancel Pending Edit', keys: ['Escape'], enabled: has, run: () => stage.toolKeydown(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', cancelable: true })) },
-    { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
+    { id: 'about', label: 'About FormVis', run: () => dialogs.about.show(caps) },
     {
       id: 'system-info', label: 'System Info...',
       params: { show: { type: 'boolean', description: 'Open the System Info window; true when left out. Either way the text is returned.' } },
@@ -5454,7 +5454,7 @@ export function startApp(): void {
     { id: 'copy-frame-trace', label: 'Copy Frame Trace', enabled: () => frameTrace.samples.length > 0, run: () => { void navigator.clipboard?.writeText(frameTrace.csv()).then(() => toast(`Copied ${frameTrace.samples.length} traced frames as CSV.`), () => toast('The clipboard is not available here.', 'error')); } },
     { id: 'tile-grid', label: 'Tile Grid', checked: () => engine.view.tileGrid, enabled: has, run: () => engine.setView({ tileGrid: !engine.view.tileGrid }) },
     { id: 'simulate-gpu-loss', label: 'Simulate GPU Device Loss', enabled: () => !!gpuDisplay, run: () => { const d = gpuDisplay; if (d?.onLost) { d.onLost(); toast('Simulated a lost GPU device; drawing fell back.', 'info'); } } },
-    { id: 'help-github', label: 'formvis on GitHub', run: () => { window.open('https://github.com/nodemode-ai/formvis', '_blank', 'noopener'); } },
+    { id: 'help-github', label: 'FormVis on GitHub', run: () => { window.open('https://github.com/nodemode-dev/formvis', '_blank', 'noopener'); } },
     {
       id: 'report-issue', label: 'Report an Issue...',
       run: async () => {

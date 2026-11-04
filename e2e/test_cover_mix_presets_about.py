@@ -84,7 +84,7 @@ def test_sc_ai_0348_about_dialog_shows_the_app_and_engine_versions_and_the_plugi
     page.evaluate("window.formvis.commands.run('about')")
     page.wait_for_selector(f"{DLG} .cv-welcome-title")
     text = page.locator(DLG).first.inner_text()
-    assert "About formvis" in text and f"Engine {caps[0]}" in text and f"Plugin folder: {caps[1].rstrip('/')}/plugins" in text
+    assert "About FormVis" in text and f"Engine {caps[0]}" in text and f"Plugin folder: {caps[1].rstrip('/')}/plugins" in text
     assert "Apache License 2.0" in text
     page.keyboard.press("Escape")
 

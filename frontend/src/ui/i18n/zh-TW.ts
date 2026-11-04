@@ -29,7 +29,7 @@ export const zhTW: Record<string, string> = {
   'Image Processor': '影像處理器', 'Contact Sheet II': '接觸印相表 II', 'Photomerge': 'Photomerge',
   'Merge to HDR': '合併為 HDR', 'Load Files into Stack': '將檔案載入堆疊', 'Create Droplet': '建立 Droplet',
   'Script Events Manager': '指令碼事件管理員', 'Run ComfyUI Workflow': '執行 ComfyUI 工作流程',
-  'Preferences': '偏好設定', 'About formvis': '關於 formvis',
+  'Preferences': '偏好設定', 'About FormVis': '關於 FormVis',
   'Undo': '還原', 'Redo': '重做', 'Toggle Last State': '切換最後狀態', 'Fade': '淡化', 'Cut': '剪下',
   'Copy': '拷貝', 'Copy Merged': '合併拷貝', 'Paste': '貼上', 'Paste in Place': '原位貼上',
   'Paste Into': '貼入', 'Paste Outside': '貼到外部', 'Clear': '清除', 'Search': '搜尋',

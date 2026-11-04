@@ -39,7 +39,7 @@ export const ko: Record<string, string> = {
   'Image Processor': '이미지 프로세서', 'Contact Sheet II': '접촉 인화지 II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'HDR로 병합', 'Load Files into Stack': '파일을 스택으로 로드', 'Create Droplet': '드롭렛 만들기',
   'Script Events Manager': '스크립트 이벤트 관리자', 'Run ComfyUI Workflow': 'ComfyUI 워크플로 실행',
-  'Preferences': '환경 설정', 'About formvis': 'formvis 정보',
+  'Preferences': '환경 설정', 'About FormVis': 'FormVis 정보',
   // Edit
   'Undo': '실행 취소', 'Redo': '다시 실행', 'Toggle Last State': '마지막 상태 전환', 'Fade': '페이드', 'Cut': '잘라내기',
   'Copy': '복사', 'Copy Merged': '병합 복사', 'Paste': '붙여넣기', 'Paste in Place': '제자리에 붙여넣기',

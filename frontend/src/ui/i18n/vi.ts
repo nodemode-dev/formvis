@@ -29,7 +29,7 @@ export const vi: Record<string, string> = {
   'Image Processor': 'Bộ xử lý ảnh', 'Contact Sheet II': 'Bản liên lạc II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'Gộp thành HDR', 'Load Files into Stack': 'Tải tệp vào chồng', 'Create Droplet': 'Tạo Droplet',
   'Script Events Manager': 'Trình quản lý sự kiện tập lệnh', 'Run ComfyUI Workflow': 'Chạy quy trình ComfyUI',
-  'Preferences': 'Tùy chọn', 'About formvis': 'Giới thiệu formvis',
+  'Preferences': 'Tùy chọn', 'About FormVis': 'Giới thiệu FormVis',
   'Undo': 'Hoàn tác', 'Redo': 'Làm lại', 'Toggle Last State': 'Chuyển đổi trạng thái cuối', 'Fade': 'Làm mờ dần', 'Cut': 'Cắt',
   'Copy': 'Sao chép', 'Copy Merged': 'Sao chép đã gộp', 'Paste': 'Dán', 'Paste in Place': 'Dán tại chỗ',
   'Paste Into': 'Dán vào trong', 'Paste Outside': 'Dán ra ngoài', 'Clear': 'Xóa', 'Search': 'Tìm kiếm',

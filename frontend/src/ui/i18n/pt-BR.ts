@@ -29,7 +29,7 @@ export const ptBR: Record<string, string> = {
   'Image Processor': 'Processador de imagens', 'Contact Sheet II': 'Folha de contatos II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'Mesclar para HDR', 'Load Files into Stack': 'Carregar arquivos em pilha', 'Create Droplet': 'Criar droplet',
   'Script Events Manager': 'Gerenciador de eventos de script', 'Run ComfyUI Workflow': 'Executar fluxo de trabalho do ComfyUI',
-  'Preferences': 'Preferências', 'About formvis': 'Sobre o formvis',
+  'Preferences': 'Preferências', 'About FormVis': 'Sobre o FormVis',
   'Undo': 'Desfazer', 'Redo': 'Refazer', 'Toggle Last State': 'Alternar último estado', 'Fade': 'Atenuar', 'Cut': 'Recortar',
   'Copy': 'Copiar', 'Copy Merged': 'Copiar mesclado', 'Paste': 'Colar', 'Paste in Place': 'Colar no local',
   'Paste Into': 'Colar dentro', 'Paste Outside': 'Colar fora', 'Clear': 'Limpar', 'Search': 'Pesquisar',

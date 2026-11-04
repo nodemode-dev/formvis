@@ -29,7 +29,7 @@ export const id: Record<string, string> = {
   'Image Processor': 'Prosesor Gambar', 'Contact Sheet II': 'Lembar Kontak II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'Gabung ke HDR', 'Load Files into Stack': 'Muat Berkas ke Tumpukan', 'Create Droplet': 'Buat Droplet',
   'Script Events Manager': 'Pengelola Peristiwa Skrip', 'Run ComfyUI Workflow': 'Jalankan Alur Kerja ComfyUI',
-  'Preferences': 'Preferensi', 'About formvis': 'Tentang formvis',
+  'Preferences': 'Preferensi', 'About FormVis': 'Tentang FormVis',
   'Undo': 'Urungkan', 'Redo': 'Ulangi', 'Toggle Last State': 'Alihkan Status Terakhir', 'Fade': 'Pudar', 'Cut': 'Potong',
   'Copy': 'Salin', 'Copy Merged': 'Salin Gabungan', 'Paste': 'Tempel', 'Paste in Place': 'Tempel di Posisi Sama',
   'Paste Into': 'Tempel ke Dalam', 'Paste Outside': 'Tempel ke Luar', 'Clear': 'Bersihkan', 'Search': 'Cari',

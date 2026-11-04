@@ -84,8 +84,8 @@ export class NativeMenus {
         return item;
       };
       const top = [];
-      top.push(await api.Submenu.new({ text: 'formvis', items: [
-        await api.PredefinedMenuItem.new({ item: { About: { name: 'formvis', copyright: 'Copyright 2026 NodeAgentc, Inc. Apache-2.0', license: 'Apache-2.0' } }, text: t('About formvis') }),
+      top.push(await api.Submenu.new({ text: 'FormVis', items: [
+        await api.PredefinedMenuItem.new({ item: { About: { name: 'FormVis', copyright: 'Copyright 2026 NodeAgentc, Inc. Apache-2.0', license: 'Apache-2.0' } }, text: t('About FormVis') }),
         await api.PredefinedMenuItem.new({ item: 'Separator' }),
         ...(this.commands.get('settings') ? [await make('settings')] : []),
         await api.PredefinedMenuItem.new({ item: 'Separator' }),

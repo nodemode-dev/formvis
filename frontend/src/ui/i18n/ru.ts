@@ -29,7 +29,7 @@ export const ru: Record<string, string> = {
   'Image Processor': 'Обработчик изображений', 'Contact Sheet II': 'Контрольный лист II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'Объединить в HDR', 'Load Files into Stack': 'Загрузить файлы в стопку', 'Create Droplet': 'Создать дроплет',
   'Script Events Manager': 'Диспетчер событий сценариев', 'Run ComfyUI Workflow': 'Запустить рабочий процесс ComfyUI',
-  'Preferences': 'Установки', 'About formvis': 'О программе formvis',
+  'Preferences': 'Установки', 'About FormVis': 'О программе FormVis',
   'Undo': 'Отменить', 'Redo': 'Повторить', 'Toggle Last State': 'Переключить последнее состояние', 'Fade': 'Ослабить', 'Cut': 'Вырезать',
   'Copy': 'Копировать', 'Copy Merged': 'Копировать совмещенные данные', 'Paste': 'Вставить', 'Paste in Place': 'Вставить на то же место',
   'Paste Into': 'Вставить в', 'Paste Outside': 'Вставить за пределы', 'Clear': 'Очистить', 'Search': 'Поиск',

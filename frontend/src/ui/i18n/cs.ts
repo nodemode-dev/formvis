@@ -29,7 +29,7 @@ export const cs: Record<string, string> = {
   'Image Processor': 'Zpracování obrázků', 'Contact Sheet II': 'Kontaktní list II', 'Photomerge': 'Photomerge',
   'Merge to HDR': 'Sloučit do HDR', 'Load Files into Stack': 'Načíst soubory do zásobníku', 'Create Droplet': 'Vytvořit droplet',
   'Script Events Manager': 'Správce událostí skriptů', 'Run ComfyUI Workflow': 'Spustit pracovní postup ComfyUI',
-  'Preferences': 'Předvolby', 'About formvis': 'O aplikaci formvis',
+  'Preferences': 'Předvolby', 'About FormVis': 'O aplikaci FormVis',
   'Undo': 'Zpět', 'Redo': 'Znovu', 'Toggle Last State': 'Přepnout poslední stav', 'Fade': 'Zeslabit', 'Cut': 'Vyjmout',
   'Copy': 'Kopírovat', 'Copy Merged': 'Kopírovat sloučené', 'Paste': 'Vložit', 'Paste in Place': 'Vložit na místo',
   'Paste Into': 'Vložit do', 'Paste Outside': 'Vložit vně', 'Clear': 'Vymazat', 'Search': 'Hledat',

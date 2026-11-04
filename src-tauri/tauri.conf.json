@@ -54,6 +54,9 @@
         "recommends": ["xdg-desktop-portal-gtk | xdg-desktop-portal", "fonts-dejavu-core"],
         "desktopTemplate": "../packaging/linux/formvis-deb.desktop",
         "files": { "/usr/share/formvis/libcheck": "../setup/libcheck", "/usr/bin/formvis-launch": "../packaging/linux/formvis-launch" }
+      },
+      "appimage": {
+        "files": { "/usr/bin/formvis-launch": "../packaging/linux/formvis-launch" }
       }
     },
     "windows": {
@@ -66,7 +69,7 @@
   "plugins": {
     "updater": {
       "pubkey": "",
-      "endpoints": ["https://github.com/nodemode-ai/formcompiler/releases/download/formvis-updates/latest.json"]
+      "endpoints": ["https://dl.formai.studio/formvis/updates/latest.json"]
     }
   }
 }
