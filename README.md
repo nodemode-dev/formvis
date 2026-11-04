@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="version 1.98.10" src="https://img.shields.io/badge/version-1.98.10-eef0f4?style=flat-square">
+  <img alt="version 1.99.1" src="https://img.shields.io/badge/version-1.99.1-eef0f4?style=flat-square">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Vite-3178c6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="Python" src="https://img.shields.io/badge/Python-FastAPI-3776ab?style=flat-square">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
@@ -28,9 +28,9 @@
 <br>
 
 <p align="center">
-  <img src="docs/images/formvis-hero.webp" alt="FormVis with a rainy city street at dusk open in the document form-city-fill-&-relight: the Relight panel with a red point light on the neon FORM CITY sign and a cool sun light, and the Relight layer above the photo in the layers panel" width="100%">
+  <img src="docs/images/formvis-hero.webp" alt="FormVis with a rainy city street at dusk open in the document form-city-fill-&-relight: the Relight panel with a soft cool key light from the upper right and a faint warm rim, the neon FORM CITY and FORM FORM signs still crisp red and readable, and the Relight layer above the photo in the layers panel" width="100%">
   <br>
-  <sub>Relight at work: two virtual lights placed on the photo, their controls in the Properties panel, and the Relight layer above the original.</sub>
+  <sub>Relight at work: a cool key and a warm rim placed on the photo, with the neon left untouched; their controls are in the Properties panel and the Relight layer sits above the original.</sub>
 </p>
 
 <p align="center">
