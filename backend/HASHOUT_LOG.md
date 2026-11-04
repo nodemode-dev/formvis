@@ -2,6 +2,44 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Packaging finds the FormVis bundles; update feed in the download store · _v1.99.2 (setup/package_desktop.py product_name, product_names, find_entry, macos_app, deb_data_dirs, cmd_mac_archive, cmd_notarize, cmd_linux_tar, cmd_portable_macos, cmd_zsync_info; src-tauri/tauri.conf.json plugins.updater.endpoints, bundle.linux.appimage.files; tests/test_package_desktop.py)
+
+- Why: 1.99.1 set productName to FormVis. tauri-bundler 2.9.4 (tauri-cli 2.11.4) names the bundles after productName: `bundle/deb/FormVis_<version>_<arch>/data` (debian.rs `package_base_name`), `FormVis_<version>_<arch>.AppImage` (linuxdeploy.rs `appimage_filename`), `FormVis.app` (macos/app.rs). The program inside keeps the Cargo package name (`formvis`, `formvis.exe`): tauri-cli renames it only when `mainBinaryName` is set (interface/rust/desktop.rs `rename_app`). `linux-tar` globbed `formvis_*_<debarch>/data`, which never matches on Linux, so every Linux release job would have stopped there; `zsync-info` printed a `formvis_*` pattern that matches no AppImage `.zsync`. On macOS the lower-case lookups worked only because the disk ignores case.
+- Every bundle lookup takes the name from tauri.conf.json `productName` and then the old lower-case name, compared exactly (`find_entry` lists the folder; `os.path.isfile` ignores case on macOS). `mac-archive` still writes `formvis_<arch>.app.tar.gz`, the name `FEED_TARGETS` and formcompiler's feed expect. The portable macOS zip now holds `FormVis.app`. Windows and MSIX keep `formvis.exe`, which is the binary's real name.
+- AppImage update information: `gh-releases-zsync|nodemode-dev|formvis|latest|FormVis_*_ARCH.AppImage.zsync`, the newest release on this repository, where the AppImage and its `.zsync` sit side by side under the build's names (formcompiler's registry sets `file_names` to `app`). The `zsync|<url>` form was not used: it names one fixed file, every `.zsync` carries its version in the name and points at its AppImage beside it, and the store's `updates/` folder holds the `.zsync` files without the AppImages. Dropping the information was the other option; an empty `LDAI_UPDATE_INFORMATION` from formcompiler's setup step is not something formvis controls. The app's own updater is Tauri's and does not use it.
+- `tauri.conf.json` names `https://dl.formai.studio/formvis/updates/latest.json`, the endpoint formcompiler already writes into its builds from `FORMCOMPILER_PUBLIC_BASE` (`scripts/tauri_config.py`), instead of the `formvis-updates` release on the private formcompiler.
+- The AppImage did not start: "Error: Error executing 'formvis-launch': No such file or directory". tauri-bundler writes the one desktop file from `deb.desktopTemplate` for the deb and the AppImage alike, and linuxdeploy's AppRun runs its `Exec=formvis-launch` from the AppDir's `usr/bin`, but only the deb's `files` carried that script. `bundle.linux.appimage.files` now puts `packaging/linux/formvis-launch` at `/usr/bin/formvis-launch` in the AppImage too. Inside the AppImage it finds `formvis` beside itself and no `libcheck` (the deb-only `/usr/share/formvis/libcheck` is absent), so it starts the program without the library check; the AppImage bundles its libraries, so that check would only mislead there. This was on main before the rename.
+- `tests/test_package_desktop.py` (12 tests) builds the deb staging tree and the macOS archive under both names, and checks that the AppImage carries the program its menu entry runs; seven fail on the 1.99.1 script on Linux (six on macOS, whose disk ignores case) and two on the 1.99.1 tauri.conf.json.
+- Verified: a real `tauri build --bundles deb,appimage` (tauri-cli 2.11.4, Rust 1.99.1, ubuntu:22.04 arm64 in Docker, stub frontend and engine) wrote `bundle/deb/FormVis_1.99.1_arm64/data` (usr/bin `formvis`, `formvis-engine`, `formvis-launch`) and `bundle/appimage/FormVis_1.99.1_aarch64.AppImage`. Against that tree the 1.99.1 `linux-tar --arch arm64 --debarch arm64` printed "no deb data folder for arm64" and exited 1; this one wrote `formvis-linux-arm64.tar.gz` with `usr/bin/formvis`. The old zsync pattern does not match `FormVis_1.99.1_aarch64.AppImage.zsync`, the new one does, and the AppImage's `.upd_info` section holds the new value. The first AppImage stopped with the Exec error above; rebuilt with `appimage.files` it reached the program (GTK init without a display, and under xvfb-run it ran). No `.zsync` was written there because the container has no zsyncmake. `pytest tests` with Python 3.12: 4 failed, 304 passed, 6 skipped; the 4 are the known macOS-only failures (data folder order, two disk stats, test_llm keyring) and fail the same on main.
+
+```text
+__version__ = "1.99.1"
+"""Packaging steps for the formvis desktop release, called by formcompiler (nodemode-ai/formcompiler).
+in this order and drafts the release formvis-vX.Y.Z on its own release page. Steps run from the repository root.
+  feed --tag formvis-vX.Y.Z --base-url https://github.com/nodemode-ai/formcompiler/releases/download/formvis-vX.Y.Z/ --dir bundles
+AppImage update information. The old value was gh-releases-zsync|owner|repo|latest|formvis_*_ARCH.AppImage.zsync.
+Under formcompiler set LDAI_UPDATE_INFORMATION to the output of zsync-info --appimage ARCH, which is
+gh-releases-zsync|nodemode-ai|formcompiler|formvis-updates|formvis_*_ARCH.AppImage.zsync
+The tauri.conf.json updater endpoint is https://github.com/nodemode-ai/formcompiler/releases/download/formvis-updates/latest.json
+so formcompiler must also publish the newest latest.json, signatures and AppImage zsync files to the formvis-updates release.
+ZSYNC_OWNER = "nodemode-ai"
+ZSYNC_REPO = "formcompiler"
+ZSYNC_TAG = "formvis-updates"
+    for name in ("formvis.app.tar.gz", "formvis.app.tar.gz.sig"):
+        src = os.path.join(folder, name)
+        if os.path.isfile(src):
+            os.replace(src, os.path.join(folder, name.replace("formvis", "formvis_" + args.arch, 1)))
+    run(["spctl", "-a", "-t", "exec", "-vv", os.path.join(args.release_dir, "bundle", "macos", "formvis.app")])
+    data = sorted(glob.glob(f"src-tauri/target/release/bundle/deb/formvis_*_{args.debarch}/data"))
+    run(["ditto", "-c", "-k", "--keepParent", os.path.join(args.release_dir, "bundle", "macos", "formvis.app"),
+         f"formvis-portable-macos-{args.arch}.zip"])
+    print(f"gh-releases-zsync|{ZSYNC_OWNER}|{ZSYNC_REPO}|{ZSYNC_TAG}|formvis_*_{args.appimage}.AppImage.zsync")
+version = "1.99.1"
+version = "1.99.1"
+ "version": "1.99.1",
+      "endpoints": ["https://github.com/nodemode-ai/formcompiler/releases/download/formvis-updates/latest.json"]
+```
+
 ## Keys move on first use again, 1.98.8 Keychain keys are found, keys.json through a unique temp file · _v1.98.9 (app/services/secrets.py get, _ask, _keep, _ask_once, _index_write, _index_set, _index_drop, put, delete; tests/conftest.py fresh_secrets; tests/test_secrets.py)
 
 - Why: the review of the change below found that `get` stopped moving plaintext keys into the password store, so a key in `generative.json` (falKey), `llm.json` (key and keys), `huggingface_token.txt` or `comfyui_auth.json` (secret) stayed in plain text for good; that keys saved in the Keychain by 1.98.8 or earlier showed as not set and failed every use; that a refused read put the name in `_asked`, so status kept saying "set" while every use in the session read nothing; and that `_index_write` used the fixed name `keys.tmp`, so two writers raced and a planted `keys.tmp` symlink sent the index to another file.

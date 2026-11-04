@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.99.2 · 2026-11-04
+
+- The Linux release no longer stops after the rename to FormVis. Tauri names the Linux packages after the app (`FormVis_<version>_<arch>`), and the step that makes the Linux tar.gz still looked for the old lower-case folder, which Linux treats as a different name. Every packaging step now takes the name from the app's settings, and still finds the old one.
+- The portable macOS zip holds FormVis.app.
+- The Linux AppImage now starts. Its menu entry runs the `formvis-launch` starter, which only the deb carried, so the AppImage stopped with "Error executing 'formvis-launch'"; the AppImage now carries it too.
+- The About box, the app menu and Help say FormVis. Help > FormVis on GitHub, the About box's source link and Report an Issue open the project at github.com/nodemode-dev/formvis; the About box also links the download page, formai.studio/formvis/download.
+- A portable copy that finds a new version opens the download page at formai.studio/formvis/download, instead of a release page the public cannot open.
+- The desktop app reads its updates from dl.formai.studio, and the AppImage's update information names the newest release on github.com/nodemode-dev/formvis.
+- The Linux software-centre listing names NodeAgentc, Inc. as the developer, formai.studio/formvis as the homepage and the nodemode-dev issue page for bugs.
+
 ## 1.99.1 · 2026-11-03
 
 - A rewritten README in the Form family layout, with screenshots in `docs/images`.
