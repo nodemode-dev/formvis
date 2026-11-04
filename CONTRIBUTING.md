@@ -55,7 +55,7 @@ run them after changes to the interface, the engine or the suite.
 - Keep each pull request to one change, with tests for what it adds or fixes.
 - Write commit subjects the way the history does, in Conventional Commits:
   `feat(frontend): ...`, `fix(backend): ...`, `docs(...)` (see
-  [.docs/BRANCHING.md](.docs/BRANCHING.md)). Leave the version alone; the maintainer
+  [.docs/BRANCHING.md](.docs/BRANCHING.md)). Leave the version alone; a maintainer
   bumps it when releasing.
 - Interface text goes through the translation tables, and every command needs its
   words: `./formvis counts --commands --check` fails while any command lacks them.
@@ -64,20 +64,35 @@ run them after changes to the interface, the engine or the suite.
   drift.
 - `./formvis counts --check` keeps the README's sizes honest, and fails on features
   the project has declined, on cloud providers other than fal and on the banned
-  sparkle icon. `CLAUDE.md` lists what is declined and why.
+  sparkle icon.
+- Some features were declined for patent risk and will not be added back:
+  Content-Aware Scale by seam carving and its skin-tone protection, Poisson blending
+  after Content-Aware Fill, a live fill of the vacated area during a Content-Aware
+  Move drag, a painted sampling area that limits where Selection-Aware Fill takes
+  patches from (it only weights them), and a face mesh behind Liquify's face tools.
 - Every new dependency, binary, model, font or data file gets a row in `NOTICE.md`
   before it is used.
 - Other vendors' product names appear only to name a file format or compatibility.
   Never copy vendor help text, icons, brushes, presets or profiles.
 
+## Maintainers
+
+FormVis is maintained by:
+
+- the [nodemode-dev](https://github.com/nodemode-dev) organisation on GitHub
+- [@nodemode-ai](https://github.com/nodemode-ai)
+- [@gbarnai](https://github.com/gbarnai)
+
+Reach them through issues and pull requests.
+
 ## How changes land
 
-Only the maintainer pushes to `main`. Everyone else forks the repository and opens a pull request into `main`. A pull request merges when all six checks pass on an up-to-date branch and the maintainer has approved it after its last push.
+Only a maintainer pushes to `main`. Everyone else forks the repository and opens a pull request into `main`. A pull request merges when all six checks pass on an up-to-date branch and a maintainer has approved it after its last push.
 
 ## Releases
 
-A release is a version, and only the maintainer makes one: after the version is bumped on
-`main`, the maintainer cuts a `compile_vX.Y.Z` branch, and formcompiler
+A release is a version, and only a maintainer makes one: after the version is bumped on
+`main`, a maintainer cuts a `compile_vX.Y.Z` branch, and formcompiler
 (`nodemode-dev/formcompiler`) builds every platform and publishes them together. No
 push from a contributor starts a release. See [.docs/BRANCHING.md](.docs/BRANCHING.md)
 and the Releasing page of the wiki.

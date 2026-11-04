@@ -13,6 +13,13 @@ def key_for(name: str) -> str | None:
     return secrets.get(name, lambda: None, lambda: None)
 
 
+def has_key(name: str) -> bool:
+    """Whether a key is kept for `name`, without the password store: a catalogue listing is not a use (1.98.9)."""
+    if os.environ.get(f"{name.upper()}_API_KEY") or os.environ.get(f"{name.upper()}_KEY"):
+        return True
+    return secrets.summary(name, lambda: None)[0]
+
+
 # The providers the generation catalogue names: fal, with formvis's own key (secrets "fal", or FAL_KEY) and its
 # address (FORMVIS_FAL_BASE, as formvis's fal service reads it).
 PROVIDERS = {"fal": {"label": "fal", "env": "FAL_KEY", "base_env": "FORMVIS_FAL_BASE", "base": "https://fal.run", "purpose": "generate"}}

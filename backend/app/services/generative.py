@@ -53,6 +53,16 @@ def _key() -> tuple[str | None, str | None]:
     return (value, "settings") if value else (None, None)
 
 
+def _key_state() -> tuple[str | None, str | None, str]:
+    """For status: the key only when it is at hand without the password store, where it came from, its last four."""
+    for name in ("FAL_KEY", "FAL_API_KEY"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value, "environment", value[-4:] if len(value) >= 8 else ""
+    has, last4, value = secrets.summary("fal", _file_key)
+    return value, "settings" if has else None, last4
+
+
 def _file_key() -> str | None:
     try:
         return str(json.loads(_settings_path().read_text()).get("falKey", "")).strip() or None
@@ -87,8 +97,8 @@ def _print(key: str) -> str:
 
 
 def status() -> dict:
-    key, source = _key()
-    return {"configured": source is not None, "source": source, "last4": key[-4:] if key and len(key) >= 8 else "", "refused": bool(key and _print(key) in _refused), "refusedAt": _refused.get(_print(key), 0) if key else 0, "store": secrets.where()["store"], "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL, "upscaleModel": UPSCALE_MODEL}
+    key, source, last4 = _key_state()
+    return {"configured": source is not None, "source": source, "last4": last4, "refused": bool(key and _print(key) in _refused), "refusedAt": _refused.get(_print(key), 0) if key else 0, "store": secrets.where()["store"], "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL, "upscaleModel": UPSCALE_MODEL}
 
 
 def save_key(key: str) -> dict:

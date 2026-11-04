@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from . import jobs
 from .media import ingest_path
 from .paths import DATA_DIR
-from .providers import PROVIDERS, base_for, key_for
+from .providers import PROVIDERS, base_for, has_key, key_for
 
 router = APIRouter(prefix="/api/generate", tags=["generate"])
 
@@ -89,7 +89,7 @@ def catalogue() -> list[dict]:
                 "providerLabel": PROVIDERS.get(provider, {}).get("label", provider),
                 "sizes": entry["sizes"],
                 "options": entry["options"],
-                "ready": bool(key_for(provider)),
+                "ready": has_key(provider),
             }
         )
     # Local models: the slots declared in models/local_models.json (image or

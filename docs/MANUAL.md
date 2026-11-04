@@ -389,7 +389,8 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   below). A workflow needs no fal key.
 - API keys (fal's, and the language model's) are kept in your system's password store: Keychain on a Mac,
   Credential Manager on Windows, the Secret Service on Linux. Where there is none, in a file only you can read.
-  Preferences > Plugins says which.
+  Preferences > Plugins says which. formvis reaches the password store only when you save or remove a key, or run a
+  feature that uses one you saved; opening the app never does.
 - Without fal or ComfyUI: download LaMa (Preferences > Plugins > Local models, about 208 MB) and Generative Fill and
   Expand work on any computer, with no prompt: LaMa fills from what surrounds the selection. It is chosen for you when
   fal has no key. docs/LOCAL.md lists everything that runs on this computer and what each needs.
