@@ -28,9 +28,9 @@
 <br>
 
 <p align="center">
-  <img src="docs/images/formvis-hero.webp" alt="FormVis with a sunrise meadow photo open: a texture layer in soft light blend and Hue/Saturation, Vibrance and Brightness/Contrast adjustment layers in the layers panel" width="100%">
+  <img src="docs/images/formvis-hero.webp" alt="FormVis with a rainy city street at dusk open in the document form-city-fill-&-relight: the Relight panel with a red point light on the neon FORM CITY sign and a cool sun light, and the Relight layer above the photo in the layers panel" width="100%">
   <br>
-  <sub>A CC0 photo open on the canvas, with a blended layer and three adjustment layers stacked above it.</sub>
+  <sub>Relight at work: two virtual lights placed on the photo, their controls in the Properties panel, and the Relight layer above the original.</sub>
 </p>
 
 <p align="center">
