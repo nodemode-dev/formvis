@@ -28,9 +28,9 @@
 <br>
 
 <p align="center">
-  <img src="docs/images/formvis-hero.webp" alt="FormVis with a rainy city street at dusk open in the document form-city-fill-&-relight: the Relight panel with a strong cool moonlit key from the upper right and a warm amber rim from the lower left, the buildings and wet street clearly relit while the neon FORM CITY and FORM FORM signs stay crisp red and readable, and the Relight layer with its mask above the photo in the layers panel" width="100%">
+  <img src="docs/images/formvis-hero.webp" alt="FormVis with a rainy city street at dusk open in the document form-city-fill-&-relight: zoomed out a little with empty pasteboard on both sides of the photo, the Neon Club Look picked in the Relight panel at low intensity, a soft magenta light at the lower left and a cyan light at the upper right giving the street a subtle blue and purple grade while the neon FORM CITY and FORM FORM signs stay crisp red and readable, and the Relight layer with its mask above the photo in the layers panel" width="100%">
   <br>
-  <sub>Relight at work: a cool moonlit key and a warm amber rim restage the street, while a mask on the Relight layer keeps the neon signs on the original pixels; the light controls are in the Properties panel.</sub>
+  <sub>Relight at work: the Neon Club Look, turned down low, lays a soft blue and purple grade over the street, while a mask on the Relight layer keeps the neon signs on the original pixels; the light controls are in the Properties panel.</sub>
 </p>
 
 <p align="center">
