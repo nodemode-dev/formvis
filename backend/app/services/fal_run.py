@@ -60,9 +60,9 @@ def find(model_id: str) -> dict | None:
 
 
 def listing() -> dict:
-    key, _ = generative._key()
+    _, source, _ = generative._key_state()
     keep = ("id", "label", "role", "row", "category", "pricing", "license", "inputs")
-    return {"ready": bool(key), "models": [{k: m.get(k) for k in keep} for m in models()]}
+    return {"ready": source is not None, "models": [{k: m.get(k) for k in keep} for m in models()]}
 
 
 def is_image_key(spec: dict) -> bool:

@@ -113,18 +113,24 @@ def _print(row_id: str, key: str | None) -> str | None:
     return f"{row_id}:{hashlib.sha256(key.encode()).hexdigest()}" if key else None
 
 
+def _row_state(row_id: str) -> tuple[bool, str, str | None]:
+    """For status: whether a row has a key and its last four, without the password store (1.98.9)."""
+    read, _, _ = _file_funcs(row_id)
+    return secrets.summary(_secret_name(row_id), read)
+
+
 def _row_public(r: dict) -> dict:
-    key = _row_key(r["id"])
+    has, last4, key = _row_state(r["id"])
     mark = _print(r["id"], key)
-    return {"id": r["id"], "name": r.get("name") or r["model"], "baseUrl": r["baseUrl"], "model": r["model"], "vision": bool(r.get("vision")), "hasKey": bool(key),
-            "last4": key[-4:] if key and len(key) >= 8 else "", "refusedAt": _refused.get(mark, 0) if mark else 0}
+    return {"id": r["id"], "name": r.get("name") or r["model"], "baseUrl": r["baseUrl"], "model": r["model"], "vision": bool(r.get("vision")), "hasKey": has,
+            "last4": last4, "refusedAt": _refused.get(mark, 0) if mark else 0}
 
 
 def status() -> dict:
     s = _settings()
     rows = _rows(s)
     act = _active(s)
-    return {"configured": bool(act), "baseUrl": act.get("baseUrl", ""), "model": act.get("model", ""), "vision": bool(act.get("vision")), "active": act.get("id", ""), "hasKey": bool(act and _row_key(act["id"])),
+    return {"configured": bool(act), "baseUrl": act.get("baseUrl", ""), "model": act.get("model", ""), "vision": bool(act.get("vision")), "active": act.get("id", ""), "hasKey": bool(act and _row_state(act["id"])[0]),
             "rows": [_row_public(r) for r in rows],
             "store": secrets.where()["store"]}
 

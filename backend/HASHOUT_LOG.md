@@ -2,6 +2,42 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Keychain is reached only after Save, Remove, or a feature that uses a saved key · _v1.98.9 (app/services/secrets.py get, summary, put, delete, keys.json; status in generative, fal_run.listing, llm, model_manager token, comfyui_auth, providers.has_key; routers/comfyui.py status probe)
+
+- Why: the first local desktop build (ad hoc signed) asked for Keychain access the moment it opened, with no key entered and no explanation. Every status check read the key itself: `generative.status` (last four, refused flag), `fal_run.listing`, `llm.status` and each row's `_row_public`, the Hugging Face token state, `comfyui_auth.status`, and the generators catalogue's `ready`. The window calls them on open, and the title bar's ComfyUI dot polls `/api/comfyui/status` (sign-in headers included) every 30 seconds. `get` also moved a file key into the store on first read, an unprompted write. macOS ties a Keychain item to the signature of the program that made it, and an ad hoc engine has a new identity each build, so each read asked. To a person it looks like an app collecting data.
+- The rule now: the password store is asked only when the person saves or removes a key, or runs a feature that needs a key they saved. `keys.json` in the data folder (0600) records which keys `put` saved to the store and their last four characters, never a key. `get` asks the store only for a name in it; otherwise it reads the file copy. `summary(name, file_read)` answers status checks from what this session already holds, the file copy, or `keys.json`, and never asks the store. `_held` keeps a key read or saved this session, so later checks and uses in that session do not ask again; `put` and `delete` update it.
+- File keys stay in their files until saved again (no migration on read). Keys saved in the Keychain by 1.98.8 or earlier are not in `keys.json`, so they show as not set until saved once more; the Keychain item stays until then, and the save overwrites it.
+- `delete` runs only when the person removes a key (Clear, Forget, removing a model row, None for ComfyUI sign-in) and always asks the store, so Remove also clears a key an earlier version saved there that `keys.json` does not name. Deleting an item that is not there shows nothing.
+- `put` writes `keys.json` before it clears the file copy, so a failed index write leaves the key in its file. `put` and `delete` hold one lock around the read, change and write of `keys.json`. A non-dict entry in `keys.json` counts as no entry. A name the store had nothing for (or refused) is not asked again in that session until it is saved (`_asked`).
+- The ComfyUI check counts a 401 or 403 as reachable only when a sign-in mode is set and its secret saved.
+- ComfyUI connection check: `headers(probe=True)` signs in only with a secret held this session or in the file. Unsigned, a 401 or 403 from a server that has a sign-in set up counts as reachable; jobs still sign in through `_secret()`.
+- `model_manager.download` checks the host before reading the Hugging Face token, so a mirror download never reaches the store.
+- `tests/test_secrets.py`: the one test that asserted the old move-on-read (`test_an_old_file_key_moves_to_the_store`) now asserts the file key stays put and the store is not asked (`test_an_old_file_key_stays_in_its_file_and_the_store_is_not_asked`). The other three pass unchanged.
+- Checked here: full backend suite (286 passed, 6 skipped for model downloads); a recording store over the real app: window-open endpoints (`/api/generative/status`, `/api/llm/status`, `/api/models/token`, `/api/comfyui/auth`, `/api/comfyui/status`, `/api/generate`, `/api/fal/models`) made 0 calls fresh, with 1.98.8 Keychain items present, after saves, and after a restart; three dot polls 0; saving four keys 8 (write and read-back each); a first use 1 read, a second 0; Remove 1 delete; `keys.json` mode 0600 with no secret in it. Also: Remove of a key saved by 1.98.8 deleted the item; 20 concurrent saves all reached `keys.json` with no stray temp file; a malformed `keys.json` left the status endpoints at 200; a saved name missing from the store was read once over five uses. An independent review of the diff found no path that reaches the store on opening or in a status check. Not yet run in a built Mac app.
+
+```python
+def get(name: str, file_read, file_clear) -> str | None:
+    """The key called `name`: from the password store, moving a file copy there first if there is one."""
+    kr = _store()
+    if not kr:
+        return file_read()
+    try:
+        value = kr.get_password(SERVICE, name)
+    except Exception:
+        value = None
+    if value:
+        return value
+    legacy = file_read()
+    if legacy:
+        try:
+            kr.set_password(SERVICE, name, legacy)
+            if kr.get_password(SERVICE, name) == legacy:
+                file_clear()   # moved, and read back before the file copy goes
+        except Exception:
+            pass
+    return legacy
+```
+
 ## The macOS desktop build compiles OpenCV without FFmpeg · _v1.98.8 (setup/opencv_macos; setup/install_desktop; setup/freeze_backend GPL guard message)
 
 - Why: `./build_app` on macOS stopped at the freeze with "GPL FFmpeg library in the engine: dist-engine/formvis-engine/_internal/cv2/.dylibs/libx264.164.dylib". The guard (1a8249b4, 1.96.7) assumed macOS builds install OpenCV from source, but only formcompiler did; `backend/oc_install` installs the PyPI wheel, and every macOS arm64 wheel checked (4.14.0.94 and 5.0.0.93) bundles libx264, libx265, librubberband, libvidstab and libpostproc. No wheel on PyPI avoids them, so the guard stopped every local build.

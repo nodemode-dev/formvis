@@ -69,7 +69,7 @@ def _secret() -> str | None:
 def status() -> dict:
     s = _settings()
     mode = s.get("mode") if s.get("mode") in MODES else "none"
-    return {"mode": mode, "user": s.get("user", ""), "header": s.get("header", ""), "hasSecret": bool(_secret()), "store": secrets.where()["store"]}
+    return {"mode": mode, "user": s.get("user", ""), "header": s.get("header", ""), "hasSecret": secrets.summary(NAME, _file_secret)[0], "store": secrets.where()["store"]}
 
 
 def save(mode: str, user: str = "", header: str = "", secret: str | None = None, forget_secret: bool = False) -> dict:
@@ -92,11 +92,17 @@ def save(mode: str, user: str = "", header: str = "", secret: str | None = None,
     return status()
 
 
-def headers() -> dict:
-    """The request headers that sign in to ComfyUI; empty when none is set up or the secret is missing."""
+def needs_sign_in() -> bool:
+    """A sign-in is set up and its secret saved, without asking the password store."""
+    return _settings().get("mode") in ("basic", "bearer", "header") and secrets.summary(NAME, _file_secret)[0]
+
+
+def headers(probe: bool = False) -> dict:
+    """The request headers that sign in to ComfyUI; empty when none is set up or the secret is missing. A connection
+    check (`probe`) uses the secret only when it is at hand without the password store (1.98.9)."""
     s = _settings()
     mode = s.get("mode")
-    value = _secret() if mode in ("basic", "bearer", "header") else None
+    value = (secrets.summary(NAME, _file_secret)[2] if probe else _secret()) if mode in ("basic", "bearer", "header") else None
     if not value:
         return {}
     if mode == "basic":
