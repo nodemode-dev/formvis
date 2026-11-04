@@ -822,7 +822,7 @@ export const hu: Record<string, string> = {
   'An address starts with http:// or https://, such as http://localhost:8000.': 'A cím http:// vagy https:// előtaggal kezdődik, például http://localhost:8000.',
   'Anchor': 'Horgony',
   'Animated GIF': 'Animált GIF',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0. Copyright 2026 nodemode-ai.',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.',
   'Apply Image needs an open document.': 'A Kép alkalmazása parancshoz nyitott dokumentum szükséges.',
   'Apply this comp': 'Kompozíció alkalmazása',
   'Apply to All': 'Alkalmazás az összesre',

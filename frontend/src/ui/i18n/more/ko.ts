@@ -132,7 +132,7 @@ export const ko: Record<string, string> = {
   'Alt-click a source on the plane first.': '먼저 평면의 소스를 Alt 키를 누른 채 클릭하십시오.', 'Alt-click sets the background. Right-click removes.': 'Alt 키를 누른 채 클릭하면 배경을 설정합니다. 오른쪽 클릭하면 제거합니다.', 'Alternates': '대체 문자',
   'Amber': '호박색', 'An address starts with http:// or https://, such as http://127.0.0.1:8188.': '주소는 http:// 또는 https://로 시작합니다. 예: http://127.0.0.1:8188.',
   'An address starts with http:// or https://, such as http://localhost:8000.': '주소는 http:// 또는 https://로 시작합니다. 예: http://localhost:8000.', 'Anchor': '기준점', 'Animated GIF': '애니메이션 GIF',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0. Copyright 2026 nodemode-ai.', 'Apply Image needs an open document.': '이미지 적용에는 열려 있는 문서가 필요합니다.',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.', 'Apply Image needs an open document.': '이미지 적용에는 열려 있는 문서가 필요합니다.',
   'Apply this comp': '이 컴프 적용', 'Apply to All': '모두에 적용', 'Approve': '승인', 'Artboards': '아트보드', 'Ask': '확인', 'Ask Claude Code to edit the picture or the code': 'Claude Code에게 사진이나 코드 편집 요청',
   'Ask for a change, e.g. add a warm glow to the sky': '변경을 요청하십시오. 예: 하늘에 따뜻한 빛 추가', 'Ask the manual': '설명서에 질문', 'Ask the manual, e.g. how do I send the selection to ComfyUI?': '설명서에 질문하십시오. 예: 선택 영역을 ComfyUI로 보내려면?',
   'Ask when opening': '열 때 확인', 'Asking': '확인 중', 'Background Color': '배경색', 'Background Contents': '배경 내용', 'Background color': '배경색', 'Bit depth': '비트 심도', 'Blank video layer added.': '빈 비디오 레이어를 추가했습니다.',

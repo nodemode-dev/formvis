@@ -822,7 +822,7 @@ export const srLatn: Record<string, string> = {
   'An address starts with http:// or https://, such as http://localhost:8000.': 'Adresa počinje sa http:// ili https://, na primer http://localhost:8000.',
   'Anchor': 'Sidro',
   'Animated GIF': 'Animirani GIF',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0. Copyright 2026 nodemode-ai.',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.',
   'Apply Image needs an open document.': 'Primeni sliku zahteva otvoren dokument.',
   'Apply this comp': 'Primeni ovu kompoziciju',
   'Apply to All': 'Primeni na sve',

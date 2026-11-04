@@ -7,6 +7,14 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 
+@pytest.fixture(autouse=True)
+def fresh_secrets(monkeypatch):
+    from app.services import secrets
+
+    monkeypatch.setattr(secrets, "_held", {})
+    monkeypatch.setattr(secrets, "_asked", set())
+
+
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("FORMVIS_DATA_DIR", str(tmp_path))

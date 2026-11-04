@@ -132,7 +132,7 @@ export const zhTW: Record<string, string> = {
   'Alt-click a source on the plane first.': '請先按住 Alt 鍵並按一下平面上的來源。', 'Alt-click sets the background. Right-click removes.': '按住 Alt 鍵並按一下可設定背景。按右鍵可移除。', 'Alternates': '替代字',
   'Amber': '琥珀色', 'An address starts with http:// or https://, such as http://127.0.0.1:8188.': '位址以 http:// 或 https:// 開頭，例如 http://127.0.0.1:8188。',
   'An address starts with http:// or https://, such as http://localhost:8000.': '位址以 http:// 或 https:// 開頭，例如 http://localhost:8000。', 'Anchor': '錨點', 'Animated GIF': '動畫 GIF',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0。版權所有 2026 nodemode-ai。', 'Apply Image needs an open document.': '套用影像需要一個已開啟的文件。',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0。版權所有 2026 NodeAgentc, Inc.', 'Apply Image needs an open document.': '套用影像需要一個已開啟的文件。',
   'Apply this comp': '套用此複合', 'Apply to All': '全部套用', 'Approve': '核准', 'Artboards': '工作區域', 'Ask': '詢問', 'Ask Claude Code to edit the picture or the code': '請 Claude Code 編輯圖片或程式碼',
   'Ask for a change, e.g. add a warm glow to the sky': '提出修改要求，例如為天空加入暖色光暈', 'Ask the manual': '詢問手冊', 'Ask the manual, e.g. how do I send the selection to ComfyUI?': '詢問手冊，例如如何將選取範圍傳送到 ComfyUI？',
   'Ask when opening': '開啟時詢問', 'Asking': '詢問中', 'Background Color': '背景色', 'Background Contents': '背景內容', 'Background color': '背景色', 'Bit depth': '位元深度', 'Blank video layer added.': '已加入空白視訊圖層。',

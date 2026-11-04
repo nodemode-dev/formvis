@@ -132,7 +132,7 @@ export const ja: Record<string, string> = {
   'Alt-click a source on the plane first.': '先に平面上のソースを Alt キーを押しながらクリックしてください。', 'Alt-click sets the background. Right-click removes.': 'Alt キーを押しながらクリックで背景を設定。右クリックで削除。', 'Alternates': '代替字形',
   'Amber': 'アンバー', 'An address starts with http:// or https://, such as http://127.0.0.1:8188.': 'アドレスは http:// または https:// で始まります (例: http://127.0.0.1:8188)。',
   'An address starts with http:// or https://, such as http://localhost:8000.': 'アドレスは http:// または https:// で始まります (例: http://localhost:8000)。', 'Anchor': 'アンカー', 'Animated GIF': 'アニメーション GIF',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0。Copyright 2026 nodemode-ai。', 'Apply Image needs an open document.': '画像を適用するには、開いているドキュメントが必要です。',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0。Copyright 2026 NodeAgentc, Inc.', 'Apply Image needs an open document.': '画像を適用するには、開いているドキュメントが必要です。',
   'Apply this comp': 'このカンプを適用', 'Apply to All': 'すべてに適用', 'Approve': '承認', 'Artboards': 'アートボード', 'Ask': '確認', 'Ask Claude Code to edit the picture or the code': 'Claude Code に画像またはコードの編集を依頼',
   'Ask for a change, e.g. add a warm glow to the sky': '変更を依頼します (例: 空に暖かい光を加える)', 'Ask the manual': 'マニュアルに質問', 'Ask the manual, e.g. how do I send the selection to ComfyUI?': 'マニュアルに質問します (例: 選択範囲を ComfyUI に送るには?)',
   'Ask when opening': '開くときに確認', 'Asking': '確認中', 'Background Color': '背景色', 'Background Contents': '背景のコンテンツ', 'Background color': '背景色', 'Bit depth': 'ビット深度', 'Blank video layer added.': '空のビデオレイヤーを追加しました。',

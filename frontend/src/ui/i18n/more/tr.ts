@@ -822,7 +822,7 @@ export const tr: Record<string, string> = {
   'An address starts with http:// or https://, such as http://localhost:8000.': 'Adres http:// veya https:// ile başlar, örneğin http://localhost:8000.',
   'Anchor': 'Çapa',
   'Animated GIF': 'Animasyonlu GIF',
-  'Apache License 2.0. Copyright 2026 nodemode-ai.': 'Apache License 2.0. Copyright 2026 nodemode-ai.',
+  'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.': 'Apache License 2.0. Copyright 2026 NodeAgentc, Inc.',
   'Apply Image needs an open document.': 'Görüntü Uygula için açık bir belge gerekir.',
   'Apply this comp': 'Bu kompozisyonu uygula',
   'Apply to All': 'Tümüne Uygula',
