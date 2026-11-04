@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Version=1.5
-Name=formvis
+Name=FormVis
 GenericName=Layered image editor
 Comment=Layered image editor with masks, blend modes, painting and PSD support
 Exec=formvis %F

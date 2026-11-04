@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>ai.nodemode.formvis</id>
-  <name>formvis</name>
+  <name>FormVis</name>
   <summary>Layered image editor</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
