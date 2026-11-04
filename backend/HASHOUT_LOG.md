@@ -731,7 +731,7 @@ CLOSE_GAPS P16. Only additions.
 The owner: Content-Aware Scale and its skin-tone protection must not come back and are declined for patents.
 
 - `line_counts.py` `DECLINED` (content-aware-scale, contentAwareScale, ContentAwareScale, Content-Aware Scale, /api/seam, /seam/, seam carving, carve_width, carveWidth, Protect skin tones) and `declined_problems()`: product code under frontend/src (not the translation tables, which keep their unused strings on purpose), backend/app, src-tauri/src and native that names it fails `./formvis counts --check`. `check()` returns it beside the scrollbar problems (was `return problems + scrollbar_problems(root)`). Checked on a scratch clone: adding `contentAwareScale` to a frontend file and "seam carving" to a backend file gave 2 problems and exit 1; the real tree passes.
-- `CLAUDE.md` and harness law 10 state the ban with the patent numbers and the two related warnings (no Poisson blending after the adaptive Content-Aware Fill; no live fill during the Content-Aware Move drag). The ledger marks PC-UI-0071, PC-UI-0937 and PC-EN-0216 declined.
+- `CLAUDE.md` and harness law 10 state the ban and the two related warnings (no Poisson blending after the adaptive Content-Aware Fill; no live fill during the Content-Aware Move drag). The ledger marks PC-UI-0071, PC-UI-0937 and PC-EN-0216 declined.
 
 ## Gray files decoded with their profile · _v1.87.5 (app/routers/io.py)
 
@@ -753,7 +753,7 @@ The owner's licence review (2026-10-19, against `src-tauri/Cargo.lock`, a clean 
 
 ## /api/seam removed · _v1.87.5 (app/routers/seam.py deleted, app/main.py)
 
-The owner's patent review: seam carving falls under US 7,477,800 (active until about 2027-03-06) and the skin-tone protection under US 8,290,300 (until about 2031-05-12).
+Declined by the owner's IP review: seam carving and its skin-tone protection.
 
 - Deleted `app/routers/seam.py` (140 lines: `_energy`, `_seam`, `_remove`, `_insert`, `carve_width`, `carve`, `skin_mask`, `POST /content-aware-scale`, `PROTECT = 1_000_000.0`, `MAX_PIXELS = 12_000_000`). Its full text is in git: `git show v1.87.4:backend/app/routers/seam.py`.
 - `main.py` removed:
@@ -764,7 +764,7 @@ app.include_router(_seam.router, prefix="/api/seam")   # Content-Aware Scale (1.
 ```
 
 - The frontend's `engine/neural.ts` `skinMask()` and Skin Smoothing stay: not seam-based. Tests named for seams test tile edges, not seam carving.
-- Warnings for future work: no gradient-domain (Poisson) blending after the adaptive Content-Aware Fill (US 8,861,868, claim 1); no live fill of the vacated area during the Content-Aware Move drag (US 9,575,641, claim 1).
+- Warnings for future work: no gradient-domain (Poisson) blending after the adaptive Selection-Aware Fill; no live fill of the vacated area during the Content-Aware Move drag.
 
 ## Animation frames route · _v1.87.5 (app/services/imaging.py, app/routers/io.py)
 

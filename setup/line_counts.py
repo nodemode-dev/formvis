@@ -76,8 +76,8 @@ def check(root: Path = ROOT) -> list[str]:
     return problems + scrollbar_problems(root) + declined_problems(root)
 
 
-# Declined for patents (the owner's review, 1.87.5): Content-Aware Scale by seam carving (US 7,477,800) and its skin-tone
-# protection (US 8,290,300). These words in product code mean the feature is coming back; the translation tables keep
+# Declined by the owner's IP review (1.87.5): Content-Aware Scale by seam carving and its skin-tone
+# protection. These words in product code mean the feature is coming back; the translation tables keep
 # their unused strings on purpose, and the frontend's Skin Smoothing (engine/neural.ts skinMask) is a separate feature.
 DECLINED = re.compile(r"content-aware-scale|contentAwareScale|ContentAwareScale|Content-Aware Scale|/api/seam|/seam/|"
                       r"seam[ _-]?carv|carve_width|carveWidth|Protect skin tones", re.I)
