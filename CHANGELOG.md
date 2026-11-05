@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.99.6 · 2026-11-05
+
+- The Intel Mac build of FormVis still stopped while installing its Python libraries, with "No matching distribution found for rawpy==0.25.1". 1.99.4 taught setup to use Python 3.13 or 3.12 on Intel Macs, but the backend installer (`backend/oc_install`, which `./formvis install` runs) picked its Python on its own and still made the engine's environment with Python 3.14, for which those library versions do not exist. The installer now uses the same choice as the rest of setup, and if an Intel Mac already has an environment made with Python 3.14 it is made again with 3.13 or 3.12. Apple Silicon Macs, Windows and Linux are unchanged.
+
 ## 1.99.5 · 2026-11-05
 
 - The Apple Silicon Mac app can be notarized by Apple. The first signed build was rejected because two copies of Python's library inside the app had signatures that only hold inside Python.framework: Tauri copies the engine folder one file at a time, which turns PyInstaller's links into plain copies and drops linked folders. The engine folder now leaves `setup/freeze_backend` with no links and no framework (Python's library is `_internal/Python`, the file the engine loads), so the app carries exactly what was signed. Windows, Linux and unsigned Mac builds run as before.
