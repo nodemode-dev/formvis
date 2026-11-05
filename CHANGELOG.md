@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.99.4 · 2026-11-05
+
+- FormVis installs and runs on Intel Macs again. Two of its libraries stopped making Intel Mac versions (onnxruntime after 1.23.2, which runs the local AI tools, and rawpy after 0.25.1, which opens camera RAW files), so on an Intel Mac the app now installs those two versions, and setup uses Python 3.13 or 3.12 there, since those versions do not exist for Python 3.14. Apple Silicon Macs, Windows and Linux are unchanged.
+
 ## 1.99.3 · 2026-11-04
 
 - The README tagline names the FormAI family, as in the public repository; formvis now holds everything that repository holds.

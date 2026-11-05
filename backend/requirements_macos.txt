@@ -3,14 +3,18 @@ uvicorn[standard]
 python-multipart
 pillow
 pillow-heif
-rawpy
+# rawpy 0.25.1 is the last release with an Intel Mac build; Apple Silicon takes the newest
+rawpy==0.25.1; platform_machine == "x86_64"
+rawpy; platform_machine != "x86_64"
 numpy
 opencv-python-headless
 # Added to requirements.txt over time and missing here until 1.62.1 (the owner's Mac had no httpx, so the engine,
 # which imports local generation at start, could not start); tests/test_requirements.py now keeps the two in step.
 httpx
 keyring
-onnxruntime
+# onnxruntime 1.23.2 is the last release with an Intel Mac build; Apple Silicon takes the newest
+onnxruntime==1.23.2; platform_machine == "x86_64"
+onnxruntime; platform_machine != "x86_64"
 onnx
 psd-tools
 tifffile

@@ -1,2 +1,4 @@
 rembg
-onnxruntime
+# onnxruntime 1.23.2 is the last release with an Intel Mac build; Apple Silicon takes the newest
+onnxruntime==1.23.2; platform_machine == "x86_64"
+onnxruntime; platform_machine != "x86_64"
