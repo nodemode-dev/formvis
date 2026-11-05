@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.99.6
+
+```text
+  "version": "1.99.5",
+  "version": "1.99.5",
+      "version": "1.99.5",
+export const VERSION = '1.99.5';
+```
+
+## Version only · _v1.99.5
+
+```text
+  "version": "1.99.4",
+  "version": "1.99.4",
+      "version": "1.99.4",
+export const VERSION = '1.99.4';
+```
+
 ## The window says FormVis, and its links reach nodemode-dev and formai.studio · _v1.99.2 (src/ui/app-dialogs.ts AboutDialog, ReportIssueDialog; src/app.ts checkUpdates, about, help-github; src/ui/native-menu.ts app menu; src/ui/panels/connection-settings.ts update note; src/ui/i18n/*.ts 'About FormVis')
 
 - Why: the launch sweep (2026-11-04). productName is FormVis since 1.99.1, but the About box, the app menu and Help still said "formvis"; Help > formvis on GitHub, the About source line and Report an Issue opened nodemode-ai/formvis, which moved to nodemode-dev; and a portable copy that found an update opened the releases page of nodemode-ai/formcompiler, which is private.

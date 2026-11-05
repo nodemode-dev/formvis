@@ -19,8 +19,32 @@ sign_engine() {
     codesign --force --timestamp --options runtime --entitlements "$ent" --sign "$APPLE_SIGNING_IDENTITY" "$f"
     signed=$((signed + 1))
   done
-  for f in "${files[@]}"; do codesign --verify "$f" || cv_die "engine file failed its signature check: $f"; done
+  for f in "${files[@]}"; do codesign --verify --strict "$f" || cv_die "engine file failed its signature check: $f"; done
   cv_say "engine signed: ${#files[@]} Mach-O files, $signed signed here, $kept already signed by PyInstaller"
+}
+flatten_engine() {
+  # Tauri copies resources one file at a time: a linked file arrives as a plain copy and a linked folder is left out.
+  # PyInstaller links _internal/Python and Python.framework/Python to the framework's library, and a copy of a framework
+  # library keeps a signature bound to that framework, so Apple rejects both copies ("The signature of the binary is
+  # invalid"). The engine therefore leaves here with no links and no .framework, exactly as Tauri will ship it.
+  local dir="$1" fw="$1/_internal/Python.framework" lib="$1/_internal/Python" link f
+  if [ -d "$fw" ]; then
+    [ -f "$fw/Python" ] || cv_die "Python.framework has no Python library: $fw"
+    rm -f "$lib"
+    cp "$fw/Python" "$lib"
+    rm -rf "$fw"
+    codesign --force --sign - "$lib"
+  fi
+  while IFS= read -r link; do
+    cp -RL "$link" "$link.flat" && rm -f "$link" && mv "$link.flat" "$link"
+  done < <(find "$dir" -type l)
+  [ -z "$(find "$dir" -type l | head -1)" ] || cv_die "engine still holds symbolic links after flattening: $dir"
+  f="$(find "$dir" -name '*.framework' | head -1)"
+  [ -z "$f" ] || cv_die "engine holds a .framework that cannot ship as Tauri resources: $f"
+  while IFS= read -r f; do
+    [ "$f" = "$lib" ] && continue
+    if file -b "$f" | grep -q 'Mach-O' && otool -L "$f" | grep -q 'Python.framework'; then cv_die "$f links Python.framework, which the engine no longer ships"; fi
+  done < <(find "$dir" -type f)
 }
 cv_venv
 python -c "import PyInstaller" 2>/dev/null || cv_die "PyInstaller missing, run ./formvis install-desktop"
@@ -57,6 +81,7 @@ if [ "$mode" = --onedir ]; then
   out="$FORMVIS_ROOT/src-tauri/engine"
   rm -rf "$out"
   cp -R dist-engine/formvis-engine "$out"
+  flatten_engine "$out"
   [ -z "${APPLE_SIGNING_IDENTITY:-}" ] || sign_engine "$out"
   "$out/formvis-engine" --selfcheck
   cv_say "engine folder ready: $out"
