@@ -4,7 +4,7 @@ python-multipart
 pillow
 pillow-heif
 # rawpy 0.25.1 is the last release with an Intel Mac build; Apple Silicon takes the newest
-rawpy==0.25.1; platform_machine == "x86_64"
+rawpy==0.25.1; platform_machine == "x86_64" and python_version < "3.14"
 rawpy; platform_machine != "x86_64"
 numpy
 opencv-python-headless
