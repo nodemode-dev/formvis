@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The backend installer takes its Python from cv_python, so Intel Macs get 3.13 or 3.12 · _v1.99.6 (backend/oc_install; setup/lib.sh cv_python_ok, cv_python)
+
+- Why: formcompiler's Intel Mac build of 1.99.4 (run 42119387492, macos-x64) still made `backend/venv` with Python 3.14 and stopped on `rawpy==0.25.1`. 1.99.4 put the Intel Mac ceiling (3.13) in `cv_python`, but `backend/oc_install`, which `./formvis install` reaches through `setup/install_all`, had its own loop (`python3.14 python3.13 python3.12 python3 python`, accepting any 3.12 or newer) and took python3.14 from Homebrew. The formcompiler pip cache holds only pip's `wheels` folder, not a venv, and it missed on that run, so the venv was new.
+- `setup/lib.sh`: the version test moved out of `cv_python` into `cv_python_ok EXE` (3.12 or newer; 3.12 to 3.13 when `uname -s` is Darwin and `uname -m` is x86_64). `cv_python` walks the same list and calls it.
+- `backend/oc_install` sources `../setup/lib.sh` and creates the venv with `cv_python`. An existing venv whose `bin/python` (or `Scripts/python`) fails `cv_python_ok` is removed and made again; on every machine but an Intel Mac that only happens for a venv older than 3.12. `backend/oc_install.bat` is unchanged (Windows).
+- Tests: `backend/tests/test_setup_python_pick.py` fakes `uname` and python3.14, 3.13 and 3.12 on PATH and runs the real `cv_python` and `oc_install`; four of its nine fail on 1.99.4's scripts.
+
 ## Packaging finds the FormVis bundles; update feed in the download store · _v1.99.2 (setup/package_desktop.py product_name, product_names, find_entry, macos_app, deb_data_dirs, cmd_mac_archive, cmd_notarize, cmd_linux_tar, cmd_portable_macos, cmd_zsync_info; src-tauri/tauri.conf.json plugins.updater.endpoints, bundle.linux.appimage.files; tests/test_package_desktop.py)
 
 - Why: 1.99.1 set productName to FormVis. tauri-bundler 2.9.4 (tauri-cli 2.11.4) names the bundles after productName: `bundle/deb/FormVis_<version>_<arch>/data` (debian.rs `package_base_name`), `FormVis_<version>_<arch>.AppImage` (linuxdeploy.rs `appimage_filename`), `FormVis.app` (macos/app.rs). The program inside keeps the Cargo package name (`formvis`, `formvis.exe`): tauri-cli renames it only when `mainBinaryName` is set (interface/rust/desktop.rs `rename_app`). `linux-tar` globbed `formvis_*_<debarch>/data`, which never matches on Linux, so every Linux release job would have stopped there; `zsync-info` printed a `formvis_*` pattern that matches no AppImage `.zsync`. On macOS the lower-case lookups worked only because the disk ignores case.

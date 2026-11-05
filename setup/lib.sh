@@ -11,11 +11,17 @@ cv_os() {
     *) echo unknown ;;
   esac
 }
-cv_python() {
-  local c top=99
+# cv_python_ok EXE: EXE is a Python formvis supports here (3.12 or newer; 3.12 to 3.13 on Intel Macs, where
+# onnxruntime and rawpy publish no wheels for 3.14).
+cv_python_ok() {
+  local top=99
   if [ "$(cv_os)" = macos ] && [ "$(uname -m)" = x86_64 ]; then top=13; fi
+  "$1" -c "import sys; raise SystemExit(0 if (3, 12) <= sys.version_info[:2] <= (3, $top) else 1)" 2>/dev/null
+}
+cv_python() {
+  local c
   for c in python3.14 python3.13 python3.12 python3 python; do
-    if command -v "$c" >/dev/null 2>&1 && "$c" -c "import sys; raise SystemExit(0 if (3, 12) <= sys.version_info[:2] <= (3, $top) else 1)" 2>/dev/null; then
+    if command -v "$c" >/dev/null 2>&1 && cv_python_ok "$c"; then
       echo "$c"
       return 0
     fi
