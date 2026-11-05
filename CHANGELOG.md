@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.99.7 · 2026-11-05
+
+- No change to the app. A test added in 1.99.6, which checks which Python the install picks, failed on the Linux build service because it found the machine's own Python before the test's stand-ins, so 1.99.6 could not be released. The test now hides the machine's Pythons. This release carries 1.99.6's Intel Mac install fix.
+
 ## 1.99.6 · 2026-11-05
 
 - The Intel Mac build of FormVis still stopped while installing its Python libraries, with "No matching distribution found for rawpy==0.25.1". 1.99.4 taught setup to use Python 3.13 or 3.12 on Intel Macs, but the backend installer (`backend/oc_install`, which `./formvis install` runs) picked its Python on its own and still made the engine's environment with Python 3.14, for which those library versions do not exist. The installer now uses the same choice as the rest of setup, and if an Intel Mac already has an environment made with Python 3.14 it is made again with 3.13 or 3.12. Apple Silicon Macs, Windows and Linux are unchanged.

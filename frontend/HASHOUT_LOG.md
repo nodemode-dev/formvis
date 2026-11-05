@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.99.7
+
+```text
+  "version": "1.99.6",
+  "version": "1.99.6",
+      "version": "1.99.6",
+export const VERSION = '1.99.6';
+```
+
 ## Version only · _v1.99.6
 
 ```text
