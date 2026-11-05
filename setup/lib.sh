@@ -12,9 +12,10 @@ cv_os() {
   esac
 }
 cv_python() {
-  local c
+  local c top=99
+  if [ "$(cv_os)" = macos ] && [ "$(uname -m)" = x86_64 ]; then top=13; fi
   for c in python3.14 python3.13 python3.12 python3 python; do
-    if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
+    if command -v "$c" >/dev/null 2>&1 && "$c" -c "import sys; raise SystemExit(0 if (3, 12) <= sys.version_info[:2] <= (3, $top) else 1)" 2>/dev/null; then
       echo "$c"
       return 0
     fi
