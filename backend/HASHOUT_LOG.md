@@ -2,6 +2,11 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Python-choice tests hide the runner's own Pythons · _v1.99.7 (backend/tests/test_setup_python_pick.py fake_bin)
+
+- Why: 1.99.6's CI `test` job failed on main (082bddcf) in `test_an_intel_mac_with_only_python_3_14_is_told_why`. Ubuntu has `/usr/bin/python3` and `python3.12`; with PATH `<fakes>:/usr/bin:/bin` and only a fake python3.14, `cv_python` found the real 3.12, made a real venv and pip stopped on the missing `requirements.txt`. On macOS `/usr/bin/python3` is 3.9, so it passed here.
+- `fake_bin` now writes stubs that exit 1 for `python3`, `python` and every `python3.10` to `python3.15` the test did not ask for. Checked in `python:3.12-slim` (Linux): 9 passed.
+
 ## The backend installer takes its Python from cv_python, so Intel Macs get 3.13 or 3.12 · _v1.99.6 (backend/oc_install; setup/lib.sh cv_python_ok, cv_python)
 
 - Why: formcompiler's Intel Mac build of 1.99.4 (run 42119387492, macos-x64) still made `backend/venv` with Python 3.14 and stopped on `rawpy==0.25.1`. 1.99.4 put the Intel Mac ceiling (3.13) in `cv_python`, but `backend/oc_install`, which `./formvis install` reaches through `setup/install_all`, had its own loop (`python3.14 python3.13 python3.12 python3 python`, accepting any 3.12 or newer) and took python3.14 from Homebrew. The formcompiler pip cache holds only pip's `wheels` folder, not a venv, and it missed on that run, so the venv was new.
