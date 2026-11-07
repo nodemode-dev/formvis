@@ -1,0 +1,7 @@
+.dz-links { position: fixed; top: 0; height: var(--cv-titlebar-h, 40px); left: max(620px, calc(50% + 80px)); z-index: var(--z-chrome); display: flex; align-items: center; gap: var(--space-3); font-size: var(--fs-11); color: var(--text-muted); white-space: nowrap; }
+.dz-links a { color: var(--text-muted); text-decoration: none; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm, 4px); }
+.dz-links a:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+.dz-links a[aria-current="page"] { color: var(--accent-color); }
+.dz-links a:focus-visible { outline: 1px solid var(--accent-color); outline-offset: 1px; }
+html[data-demo] .dz-links { visibility: hidden; }
+@media (max-width: 1119px) { .dz-links { display: none; } }
