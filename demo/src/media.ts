@@ -1,21 +1,15 @@
-import { makeCanvas } from './model';
-
 export interface Pack { img: string; mask?: string; w?: number; h?: number }
 
 declare global {
   interface Window { FV_MEDIA?: Record<string, Pack> }
 }
 
-export interface TrayPhoto { pack: string; thumb: string; title: string; author: string; place: string }
-
-export const TRAY: TrayPhoto[] = [
-  { pack: 'tray-lake', thumb: 'tray-lake', title: 'Oeschinensee Lake Hike', author: 'Nanda Gopal Lakshman', place: 'Kandersteg, Switzerland' },
-  { pack: 'tray-night', thumb: 'tray-night', title: 'Mountain Range against the Starry Sky', author: 'Uzair Ansari', place: 'Pakistan' },
-  { pack: 'tray-larch', thumb: 'tray-larch', title: 'Autumn Larches', author: 'Alex Moliski', place: 'North Cascades, USA' },
-  { pack: 'tray-surf', thumb: 'tray-surf', title: 'Ocean Waves Crashing on Rocks', author: 'Eduardo Ocampo', place: 'Coast' },
-  { pack: 'tray-dunes', thumb: 'tray-dunes', title: 'Serene Desert Dunes at Sunrise', author: 'Stephen Leonardi', place: 'Desert' },
-  { pack: 'tray-glacier', thumb: 'tray-glacier', title: 'Snowy Mountain', author: 'Sergei A', place: 'Glacier' },
-];
+function makeCanvas(w: number, h: number): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w));
+  c.height = Math.max(1, Math.round(h));
+  return c;
+}
 
 const pending = new Map<string, Promise<Pack>>();
 

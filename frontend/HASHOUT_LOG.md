@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The demo bundles the real window · _v2.0.0 (vite.demo.config.ts)
+
+- Why: the owner saw the purpose-built demo window and said its interface was not formvis's. The demo build now takes `frontend/index.html` as its page (root is `frontend/`, `base ./`, output `demo/`) and `demo/src/main.ts` as its entry, which loads the demo shims, then the application's own `src/main.ts`, then the session builder.
+- `formvis-demo-page` (a `transform` of `frontend/index.html`, not `transformIndexHtml`, which runs after Vite has already read the entry script) swaps the entry script, drops the icon and font preload links that point at `/`, sets `data-demo="building"` on the root with a rule that keeps `#app` hidden until the session is built, and adds a CSS-only "Starting formvis" line and bar for that time. No element is added or removed to show or hide it.
+- `formvis-demo-inline-workers` rewrites the five `new Worker(new URL('./x.ts', import.meta.url), { type: 'module' })` sites in the engine to the `?worker&inline` Blob form at transform time, so the repo's source is untouched and no worker file has to be fetched from `file://`. `worker.plugins` repeats the wasm shim inside the worker bundles; without it each worker carried the eleven `.wasm` kernels, which `file://` cannot fetch.
+- `define: { 'import.meta.env.DEV': 'true' }` makes `app.ts` publish `window.formvis.engine`, `commands` and `catalogue` (its two `import.meta.env.DEV` lines are the only uses); the session builder drives the real engine through them.
+- Removed from the demo tree: the hand-built window (`ui.ts`, `compose.ts`, `model.ts`, `dom.ts`, `filters.ts`, `io.ts`, `adjust-defs.ts`, `text.ts`, `poster.ts`, `sample.ts`, `demo.css`, its `index.html`) and the six tray thumbnails; nothing of the application's own code changed.
+
 ## Version only · _v2.0.0
 
 ```text

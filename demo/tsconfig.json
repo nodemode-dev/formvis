@@ -8,5 +8,5 @@
       "@fontsource/*": ["../frontend/node_modules/@fontsource/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../frontend/src/opentype-js.d.ts"]
 }
