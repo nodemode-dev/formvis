@@ -113,6 +113,10 @@ The window, the command line and the MCP server call the same command catalogue,
 
 All FormVis builds are compiled and released from [FormCompiler](https://github.com/nodemode-dev/formcompiler); this repo holds the source.
 
+## Demo
+
+[`demo/index.html`](demo/index.html) is an offline demo that opens from `file://` or any static server: layers with blend modes, adjustment layers, filters, a histogram, brush tools, and your own PNG, JPEG, WebP, TIFF or layered PSD in and out, with no install and no network. See [`demo/README.md`](demo/README.md).
+
 ## Run it from source
 
 Prefer it in your browser, or want to contribute? Run the web UI straight from this repo.
