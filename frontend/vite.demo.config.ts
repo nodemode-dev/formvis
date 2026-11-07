@@ -40,6 +40,24 @@ const demoPage = (): Plugin => ({
   },
 });
 
+const symbol = (cp: number) => (cp >= 0x2600 && cp <= 0x27bf) || (cp >= 0x1f000 && cp <= 0x1faff);
+const unit = (n: number) => `\\u${n.toString(16).toUpperCase().padStart(4, '0')}`;
+const escapeSymbols = (): Plugin => ({
+  name: 'formvis-demo-escape-symbols',
+  enforce: 'post',
+  generateBundle(_options, bundle) {
+    for (const file of Object.values(bundle)) {
+      if (file.type !== 'chunk') continue;
+      let out = '';
+      for (const ch of file.code) {
+        const cp = ch.codePointAt(0) ?? 0;
+        out += !symbol(cp) ? ch : cp > 0xffff ? unit(0xd800 + ((cp - 0x10000) >> 10)) + unit(0xdc00 + ((cp - 0x10000) & 0x3ff)) : unit(cp);
+      }
+      file.code = out;
+    }
+  },
+});
+
 const classicScript = (): Plugin => ({
   name: 'formvis-demo-classic-script',
   enforce: 'post',
@@ -58,7 +76,7 @@ export default defineConfig({
   define: { 'import.meta.env.DEV': 'true' },
   worker: { format: 'iife', plugins: () => [useShim()] },
   resolve: { alias: { 'ag-psd': fileURLToPath(new URL('./node_modules/ag-psd', import.meta.url)), '@fontsource': fileURLToPath(new URL('./node_modules/@fontsource', import.meta.url)) } },
-  plugins: [useShim(), inlineWorkers(), demoPage(), classicScript()],
+  plugins: [useShim(), inlineWorkers(), demoPage(), classicScript(), escapeSymbols()],
   server: { host: false, port: DEMO_PORT, strictPort: true, fs: { allow: ['..', '../demo'] } },
   preview: { host: false, port: DEMO_PORT + 1, strictPort: true },
   build: {

@@ -52,6 +52,24 @@ const windowPage = () => ({
   },
 });
 
+const symbol = (cp) => (cp >= 0x2600 && cp <= 0x27bf) || (cp >= 0x1f000 && cp <= 0x1faff);
+const unit = (n) => `\\u${n.toString(16).toUpperCase().padStart(4, '0')}`;
+const escapeSymbols = () => ({
+  name: 'formvis-demo-escape-symbols',
+  enforce: 'post',
+  generateBundle(_options, bundle) {
+    for (const file of Object.values(bundle)) {
+      if (file.type !== 'chunk') continue;
+      let out = '';
+      for (const ch of file.code) {
+        const cp = ch.codePointAt(0) ?? 0;
+        out += !symbol(cp) ? ch : cp > 0xffff ? unit(0xd800 + ((cp - 0x10000) >> 10)) + unit(0xdc00 + ((cp - 0x10000) & 0x3ff)) : unit(cp);
+      }
+      file.code = out;
+    }
+  },
+});
+
 const classicScript = () => ({
   name: 'formvis-design-classic-script',
   enforce: 'post',
@@ -75,7 +93,7 @@ export default {
       '@fontsource': `${FRONTEND}/node_modules/@fontsource`,
     },
   },
-  plugins: [useShim(), inlineWorkers(), windowPage(), classicScript()],
+  plugins: [useShim(), inlineWorkers(), windowPage(), classicScript(), escapeSymbols()],
   server: { host: false, port: 5291, strictPort: true, fs: { allow: ['../..'] } },
   build: {
     outDir: here('.'),
