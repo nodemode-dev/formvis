@@ -143,6 +143,7 @@ async function dawn(e: Engine): Promise<string> {
   stroke(e, [[760, 560], [820, 585], [900, 600]], { lift: 0.3 });
   e.setBrushMode('paint');
 
+  adjust(e, 'levels', 'Levels', levelsRange(4, 1.05, 250));
   adjust(e, 'photoFilter', 'Warm grade', params('photoFilter', { color: { r: 255, g: 150, b: 64 }, density: 14 }), 0.85);
   await type(e, 'DAWN OVER THE RANGE', [84, 978], 64, '#fff6ea', 5);
   await type(e, 'FIRST LIGHT  /  05:41  /  4,200 M', [88, 1018], 20, '#f4d3a6', 5, 400, 'JetBrains Mono');
@@ -186,7 +187,7 @@ async function photos(e: Engine): Promise<void> {
 }
 
 export async function openSession(): Promise<void> {
-  const { engine: e, catalogue } = await ready();
+  const { engine: e } = await ready();
   const root = document.documentElement;
   try {
     const first = await dawn(e);
@@ -199,9 +200,7 @@ export async function openSession(): Promise<void> {
     const painted = e.current?.doc.layers.find((l) => l.name === 'Painted light');
     if (painted) e.selectLayer(painted.id);
     e.setColors(rgb('#ffb86b'), rgb('#ffffff'));
-    await catalogue.runCommand('new-adj-levels');
     await wait(400);
-    if (painted) e.selectLayer(painted.id);
     e.fit();
   } finally {
     await frame();

@@ -2,6 +2,10 @@
 
 Living log for the offline browser demo. Entries are anchored by file and symbol.
 
+## No dialog over the painting · _v2.0.2 (demo/src/session.ts, main.ts)
+
+- Why: the owner wants the first screen to read as a photo editing and painting canvas, and the Levels Layer dialog hid half the painting. The Levels layer is now added with `addAdjustmentLayer` and a levels range (black 4, gamma 1.05, white 250) between Painted light and Warm grade, with no dialog; Painted light is selected, the Brush is active and the Brushes panel shows. `shim/spots.ts` (the dialog's remembered position) and the catalogue call are removed, so the 2.0.1 entry below about the open dialog and its position is superseded. Re-verified from `file://`: 0 console messages, 0 non-local requests, the frame log hidden until one change to visible, a drag paints and Ctrl+Z restores the picture.
+
 ## The real window and a painting session · _v2.0.1 (demo/src/main.ts, session.ts, shim/api.ts, shim/spots.ts, media.ts)
 
 - Why: the owner, on the 13 opening screens: the demo's interface was not the app's, and it read as a PDF preview, not a photo editor and painting canvas. The demo is now the application's own window (`app.ts` and every module it loads), with no re-creation of any panel, menu or dialog; the hand-built window below is gone, and its removal is the reason the 2.0.0 entries that follow describe code that no longer exists (masks, text and the tray were redone with the engine's own layers, below).
