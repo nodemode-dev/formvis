@@ -115,7 +115,7 @@ All FormVis builds are compiled and released from [FormCompiler](https://github.
 
 ## Demo
 
-[`demo/index.html`](demo/index.html) is an offline demo that opens from `file://` or any static server: layers with blend modes, adjustment layers, filters, a histogram, brush tools, and your own PNG, JPEG, WebP, TIFF or layered PSD in and out, with no install and no network. See [`demo/README.md`](demo/README.md).
+[`demo/index.html`](demo/index.html) is an offline demo that opens from `file://` or any static server and runs the real FormVis window, its menus, tool rail, panels and dialogs: a painting and photo-editing session with the Brush and its dynamics, layers with blend modes and masks, adjustment layers, filters, type, and your own PNG, JPEG, WebP, TIFF or layered PSD in and out, with no install and no network. See [`demo/README.md`](demo/README.md).
 
 ## Run it from source
 
