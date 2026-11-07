@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v2.1.0
+
+```text
+  "version": "2.0.3",
+  "version": "2.0.3",
+      "version": "2.0.3",
+export const VERSION = '2.0.3';
+```
+
+The Form extensions host (entry below). The demo bundles embed `VERSION`, so all three were rebuilt in the same commit.
+
 ## Form extensions: the Extension Contract host, API 1 · _v2.1.0 (formext/host-bridge.ts new, formext/extensions.ts new, ui/extensions-panel.ts new, ui/panels/extension-consent.ts new, styles/extensions.css new, index.html, app.ts, ui/dock.ts, ui/panels/plugins-dialog.ts, automation/agent-bridge.ts, automation/command-meta.ts)
 
 - Why: the Form apps load one kind of extension, installed by FormPortal and made with form.ext (the kit's CONTRACT.md). formvis's own plugin kinds (single files, folders in sealed workers, WebAssembly filters) stay as they were; the contract host sits beside them.

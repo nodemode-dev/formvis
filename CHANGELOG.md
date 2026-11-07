@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.1.0 · 2026-11-07
+
+- Form extensions (the Form Extension Contract, API 1). FormVis loads the extensions FormPortal installs and the ones form.ext runs in development, beside its own plugins. A new Extensions menu lists each extension's commands, then Extensions Panel, Reload Extensions and Manage in FormPortal; Window > Extensions shows one row per extension with its version, source, permissions and state, or why it was refused.
+- Each extension runs in a sandboxed frame with no access to the window. The first time a version opens, FormVis asks once what it may do (read and change the open document, open or save files you choose); Not Now asks again next time. Its panels open in the dock or as FormVis dialogs, its commands run from the menu, the palette or an agent, and its changes to the picture are one step in History, so one Undo takes them back.
+- Agents: the MCP tools `extensions_list` and `extension_command`, and `./formvis cli extensions list` and `run`. `docs/EXTENSIONS.md` describes what an extension can read and do in FormVis.
+- No extension ships with the app. The first one, Halftone Separations, is installed from FormPortal.
+
 ## 2.0.3 · 2026-11-07
 
 - Two more offline browser demos of the real FormVis window, each on a different part of the app, beside the painting demo. `demos/retouch` opens on a retouched portrait made through the engine (Spot Healing, Clone Stamp, Selection-Aware Fill, Color Range and Select and Mask, a blur and a vibrance layer behind layer masks made from a saved selection) with a snapshot for the before and after split, and a second photograph with a chain selected for Remove. `demos/design` opens on Lantern Night, a three-artboard social and event kit with live type, shape layers, layer styles, smart objects with Smart Filters and the Filter Gallery, and Export As to PNG, JPEG, WebP, TIFF, PDF and a layered PSD.
