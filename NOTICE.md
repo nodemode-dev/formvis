@@ -14,6 +14,7 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | Test documents lf_gauss10.af, shp_arrow.af, exposure.af (schist fixtures) | MIT, Copyright (c) 2026 Infrawrench LLC | `e2e/fixtures/af/` |
 | Test documents raster_test.afdesign, layer_test.afdesign, layer_mode.afdesign (AFDesignLoad) | MIT, Copyright (c) 2015 Nick Beeuwsaert | `e2e/fixtures/af/` |
 | Test document poster.af (filex-media-thumbs) | MIT, Copyright (c) 2026 BRF Tech | `e2e/fixtures/af/` |
+| Demo photographs (eleven photos by Pexels photographers, listed with their sources in the credits file) | Pexels License | `demo/assets/media/`, credited in `demo/CREDITS.md` |
 
 ## Adobe DNG patent licence
 
