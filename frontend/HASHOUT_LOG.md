@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v2.0.0
+
+```text
+  "version": "1.99.7",
+  "version": "1.99.7",
+      "version": "1.99.7",
+export const VERSION = '1.99.7';
+```
+
+The demo media pass releases as 2.0.0 (the owner's call). The demo bundle embeds `VERSION`, so it was rebuilt in the same commit.
+
 ## Version only · _v1.99.7
 
 ```text
