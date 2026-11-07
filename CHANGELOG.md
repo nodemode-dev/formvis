@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.0.2 · 2026-11-07
+
+- The offline browser demo opens on the painting itself: the Levels Layer dialog that covered half of it on load is gone. The Levels layer stays in the stack between "Painted light" and the grade, "Painted light" is selected, the Brush is active and the Brushes panel shows; double-click the Levels layer or use Image > Adjustments to open the dialog.
+- The app itself is unchanged.
+
 ## 2.0.1 · 2026-11-07
 
 - The offline browser demo in `demo/` is now the real FormVis window, not a look-alike: the menu bar, document tabs, tool-options bar, tool rail, Properties column, the Navigator, Swatches, Layers and Brushes dock, the floating task bar, the status bar and every dialog are the application's own code, bundled for `file://` with in-page answers where the desktop engine would reply.

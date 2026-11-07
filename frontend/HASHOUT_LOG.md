@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v2.0.2
+
+```text
+  "version": "2.0.1",
+  "version": "2.0.1",
+      "version": "2.0.1",
+export const VERSION = '2.0.1';
+```
+
+The demo opens with no dialog over the painting (entry in demo/HASHOUT_LOG.md). The demo bundle embeds `VERSION`, so it was rebuilt in the same commit.
+
 ## Version only · _v2.0.1
 
 ```text
