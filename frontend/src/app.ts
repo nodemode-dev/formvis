@@ -73,6 +73,9 @@ import { StylesPanel } from './ui/styles-panel';
 import { createPresetPanels } from './ui/preset-panels';
 import { createMorePanels } from './ui/more-panels';
 import { createActionsPanel } from './ui/actions-panel';
+import { createExtensionsPanel } from './ui/extensions-panel';
+import { FormExtensions } from './formext/extensions';
+import { ExtensionConsentDialog } from './ui/panels/extension-consent';
 import { ModifierKeysPanel } from './ui/modifier-keys';
 import { MeasurementLogPanel } from './ui/measurement-log';
 import { StopDialog } from './ui/panels/stop-dialog';
@@ -649,6 +652,7 @@ export function startApp(): void {
   const actionsPanel = createActionsPanel(q(root, '.cv-layers'));
   new ModifierKeysPanel(q(root, '.cv-layers'));   // Window > Modifier Keys (DEV_PLAN 35.3 part c)
   new MeasurementLogPanel(q(root, '.cv-layers'), engine, (blob, name) => deliver(blob, name));   // Window > Measurement Log
+  const extensionsPanel = createExtensionsPanel(q(root, '.cv-layers'));   // Window > Extensions (Form Extension Contract, 2.1.0)
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
   // arrangement, filled when the tabs' homes are restored.
   const CUSTOM = 'formvis.customGroups';
@@ -3617,6 +3621,7 @@ export function startApp(): void {
     ui: new UiControl({ engine, commands, menus: () => menus, capture: () => stage.capture(), docPoint: (x, y) => stage.docPoint(x, y) }),
     selectPoints: (inside, outside, mode) => selectByPoints(engine, inside, outside, mode),
     plugins: async () => [...(await pluginHost.list()), ...(await folderPlugins.list()).map((f) => ({ ...f, kind: 'folder' }))],
+    extensions: { list: async () => { await formExt.refresh(false); return formExt.summary(); }, run: (id, command, args) => formExt.run(id, command, args) },
     log: () => [...errorLog.entries, ...engine.failures],
     status: (note, seconds) => status.setAgentNote(note, seconds),
   });
@@ -3687,6 +3692,43 @@ export function startApp(): void {
   });
   const pluginsDialog = new PluginsDialog(pluginHost, folderPlugins, (title, text, ok) => confirmAction(title, text, ok));
   pluginsDialog.openFolder = () => { commands.run('open-plugins-folder'); };
+  // Form extensions (the Extension Contract, API 1, 2.1.0): FormPortal's and form.ext's, beside the plugin kinds above.
+  const extensionConsent = new ExtensionConsentDialog();
+  const formExt = new FormExtensions({
+    engine, commands, agents, catalogue, version: VERSION,
+    notify: (t, kind) => toast(t, kind), consent: (ext) => extensionConsent.ask(ext),
+    overlay: () => document.getElementById('overlay-root') ?? document.body,
+    saveBlob: async (blob, name) => {
+      const picker = 'showSaveFilePicker' in window && !navigator.webdriver && window.isSecureContext && window === window.top;
+      if (!(caps?.desktop && hasPanels()) && !picker) { const named = await promptName('Save to Downloads', name, 'Save'); if (!named) return false; name = named; }
+      return deliverFile(blob, name);
+    },
+    openUrl: (url) => { void fetch('/api/extensions/portal', { method: 'POST' }).then((r) => { if (!r.ok) toast(`Open FormPortal and choose Extensions (${url}).`); }, () => toast(`Open FormPortal and choose Extensions (${url}).`)); },
+    dock: {
+      add: (id, label) => {
+        if (document.querySelector(`section.cv-${id}`)) return null;
+        const sec = el(`<section class="cv-preset-panel cv-${id}" aria-label="${label.replace(/[<>&"]/g, '')}"><div class="cv-panel-head"><span class="cv-comps-title">${icon('pfPlugins', 14)}<span></span></span><span></span></div><div class="cv-ext-panel-body"></div></section>`);
+        setText(q(sec, '.cv-comps-title span'), label);
+        q(root, '.cv-layers').appendChild(sec);
+        registerPanel({ id, label, selector: `section.cv-${id}` });
+        commands.add({ id: `panel-${id}`, label, group: 'Window', description: `Shows or hides the ${label} extension panel.`, when: `Use when you want the ${label} panel in view.`, checked: () => dock.isShown(id), run: () => dock.toggle(id) });
+        dock.insertPanel(id, 'dock', 99);
+        dock.refresh();
+        return q(sec, '.cv-ext-panel-body');
+      },
+      show: (id) => { if (!dock.isShown(id)) dock.toggle(id); },
+      setLabel: (id, label) => { const s = document.querySelector(`section.cv-${id} .cv-comps-title span`); if (s) setText(s, label); },
+      remove: (id) => { document.querySelector(`section.cv-${id}`)?.remove(); commands.remove(`panel-${id}`); dock.removePanel(id); unregisterPanel(id); dock.refresh(); },
+    },
+  });
+  extensionsPanel.bind(formExt, (id) => { commands.run(id); });
+  commands.add(
+    { id: 'extensions-panel', label: 'Extensions Panel', run: () => { if (!dock.isShown('extensions')) dock.toggle('extensions'); } },
+    { id: 'extensions-reload', label: 'Reload Extensions', run: () => { void formExt.refresh(true).then((n) => toast(`Extensions reloaded: ${n} ready.`)); } },
+    { id: 'extensions-manage', label: 'Manage in FormPortal', run: () => formExt.manage() },
+  );
+  pluginsDialog.showExtensions = () => commands.run('extensions-panel');
+  formExt.start();
   const largePicture = new LargePictureDialog(engine);
   const tiffPages = new TiffPagesDialog(engine);
   const svgImport = new SvgImportDialog();
@@ -6074,6 +6116,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'guides-from-shape-centre', 'edit-selected-guides', 'clear-guides', 'clear-artboard-guides'] }, 'snap', { label: 'Snap To', items: ['snap-all', '-', 'snap-guides', 'snap-grid', 'snap-layers', 'snap-bounds', 'snap-slices', 'snap-selection'] }, { label: 'Show', items: ['show-all-extras', 'show-no-extras', '-', 'show-selection-edges', 'selection-display-tint', 'show-layer-edges', 'show-artboard-guides', 'show-target-path','show-smart-guides', 'show-comfy-dot', 'show-notes', 'show-counts', 'show-brush-preview', 'show-mesh', 'show-edit-pins', '-', 'show-extras-options', '-', 'toggle-show-slices', 'toggle-auto-slices', 'lock-slices', 'layer-based-slice', 'slices-from-guides', 'slice-options', 'divide-slice', 'delete-slice', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'os-full-screen', 'toggle-panels', 'rail-columns', 'interface-rtl', 'next-favourite-theme', 'interface-zoom-in', 'interface-zoom-out', 'interface-zoom-reset', 'custom-title-bar', 'menus-in-window', { label: 'Pasteboard', items: ['pasteboard-default', 'pasteboard-black', 'pasteboard-dark', 'pasteboard-mid', 'pasteboard-light'] }] },
     { label: 'Plugins', items: () => { const ids = [...pluginHost.commandIds(), ...folderPlugins.commandIds()]; return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
+    { label: 'Extensions', items: () => formExt.menuItems() },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-3up-v', 'arrange-3up-h', 'arrange-4up', 'arrange-6up', 'arrange-tile-v', 'arrange-tile-h', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.chat', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-options', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', 'panel-float', 'panel-dock', 'panel-activate', 'panel-group', 'panel-close-group', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', 'notices', 'jobs-list', '-', { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }, 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window', 'developer-tools'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];

@@ -23,6 +23,16 @@ def _origin_key(value: str) -> tuple[str, str, int | None] | None:
     return parts.scheme.lower(), parts.hostname.lower(), port
 
 
+EXTENSION_FILES = "/api/extensions/files/"
+
+
+def _extension_file(scope, headers: dict[str, str]) -> bool:
+    """A sandboxed extension frame has an opaque origin (Origin: null, sec-fetch-site cross-site), so reads of an
+    extension's own files are let through on a loopback host; they hold only the package's public files."""
+    return (scope["type"] == "http" and scope.get("method") in ("GET", "HEAD") and str(scope.get("path", "")).startswith(EXTENSION_FILES)
+            and _host_of(headers.get("host", "")) in LOOPBACK)
+
+
 class LocalGuard:
     def __init__(self, app, origins: list[str]) -> None:
         self.app = app
@@ -48,7 +58,7 @@ class LocalGuard:
             await self.app(scope, receive, send)
             return
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
-        if self._permitted(headers):
+        if self._permitted(headers) or _extension_file(scope, headers):
             await self.app(scope, receive, send)
             return
         if scope["type"] == "websocket":

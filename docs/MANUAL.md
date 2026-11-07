@@ -747,6 +747,25 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   and the rest); `await formvis.getPixels()` gives the active layer at the document's size as `{ width, height, data }`;
   `await formvis.putPixels(image, 'replace')` puts pixels back into that layer, or with `'new-layer'` into a new one.
 
+## Extensions
+
+- Extensions are add-ons that FormPortal installs (from the catalogue or from a .formpkg file) and form.ext runs while
+  you make one. They are separate from the plugins above, and the same kind of extension works in every Form app.
+- The Extensions menu lists every command extensions add (Name: Title), then Extensions Panel, Reload Extensions and
+  Manage in FormPortal. The command palette finds the same commands.
+- Window > Extensions (or Extensions > Extensions Panel) shows each extension: its version, where it came from
+  (Catalogue, File or Development), what it may do, and whether it is Ready, Needs Permission or Refused, with the
+  reason. Open opens its panel in the dock or as a dialog; a development extension also shows its folder.
+- The first time a version of an extension runs, formvis asks once and lists what it asks for: read and change the open
+  document, open files you choose, save files where you choose. Allow is remembered for that version; Not Now leaves it
+  closed and formvis asks again next time (Allow... in the panel asks without opening it). A new version, or one that
+  asks for more, asks again.
+- An extension runs in a sealed frame: it reaches the document only through formvis's own commands, every change it
+  makes is one undoable step named by the extension, and it cannot reach the internet or your files unless you pick
+  them. Commands that undo cannot reverse (overwriting files, closing without saving) are refused to extensions.
+- formvis notices a newly installed extension within two seconds while its window is in front; Reload Extensions reads
+  every extension again at once. Developers: `docs/EXTENSIONS.md` in the repository describes what an extension can call.
+
 ## Interface languages
 
 - Preferences > Language chooses the interface language from 30: English (the default), Spanish, Mexican Spanish,

@@ -16,7 +16,7 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - History: `undo`, `redo`
 - Files without the window, and jobs: `file_info`, `improve_prompt`, `convert_file`, `jobs_list`, `jobs_cancel`
 - The window itself: `ui_inspect`, `ui_state`, `ui_screenshot`, `ui_menu_list`, `ui_menu_invoke`, `ui_set`, `ui_dialog`, `ui_pointer`, `ui_key`, `ui_window`, `control_call`, `file_roots`
-- Other: `close_document`, `ping`, `list_plugins`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `command_job`, `select_mask`, `list_settings`, `list_fonts`, `set_settings`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`, `list_recipes`, `set_active_layer`, `select_color`, `select_shape`, `select_range`, `sample_mean_color`, `align_layers`, `group_layers`, `set_group`, `set_mask`, `set_text`, `list_history`, `take_snapshot`, `restore_snapshot`, `delete_snapshot`, `extend_canvas`, `export_layer`, `read_log`, `list_brush_tips`, `set_brush`, `add_filter`, `set_filter`, `apply_preset`, `depth_from_layer`, `select_by_depth`, `match_edges`, `realism_pass`, `compare`, `set_status`, `ailabel_add`, `ailabel_remove`, `ailabel_info`, `film_looks`, `film_apply_look`, `film_add_point`, `film_copy_points`, `film_paste_points`, `glb_place`, `glb_edit`, `glb_info`
+- Other: `close_document`, `ping`, `list_plugins`, `extensions_list`, `extension_command`, `select_feather`, `select_grow`, `select_point`, `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`, `command_job`, `select_mask`, `list_settings`, `list_fonts`, `set_settings`, `boxes_list`, `boxes_add`, `boxes_set`, `boxes_remove`, `boxes_from_selection`, `boxes_clear`, `sample_box`, `frequency_separation`, `sample_depth`, `depth_edit`, `set_crop`, `export_mask`, `list_recipes`, `set_active_layer`, `select_color`, `select_shape`, `select_range`, `sample_mean_color`, `align_layers`, `group_layers`, `set_group`, `set_mask`, `set_text`, `list_history`, `take_snapshot`, `restore_snapshot`, `delete_snapshot`, `extend_canvas`, `export_layer`, `read_log`, `list_brush_tips`, `set_brush`, `add_filter`, `set_filter`, `apply_preset`, `depth_from_layer`, `select_by_depth`, `match_edges`, `realism_pass`, `compare`, `set_status`, `ailabel_add`, `ailabel_remove`, `ailabel_info`, `film_looks`, `film_apply_look`, `film_add_point`, `film_copy_points`, `film_paste_points`, `glb_place`, `glb_edit`, `glb_info`
 
 ## get_document
 
@@ -273,6 +273,22 @@ Lists the plugins in the plugins folder: file name, size, whether it is on, whet
 - no parameters
 
 Note: read-only.
+
+## extensions_list
+
+Lists the extensions FormPortal installed and form.ext runs for formvis (Form Extension Contract, API 1): id, name, version, source (catalogue, sideload, development), state (ready, needs-permission, refused with the reason), permissions and the commands each contributes. Use when you need to know which Form extensions are installed or in development and what commands they add.
+
+- no parameters
+
+Note: read-only.
+
+## extension_command
+
+Runs a command an extension contributes (ids from extensions_list), with the same consent as the Extensions menu: the first run of a version asks the person in the formvis window, and a refusal fails. Waits for the extension to finish: a headless command stops after 120 seconds without a pending request, and the call waits at most 10 minutes. Use when an installed Form extension has a command that does what the person asked.
+
+- `id`: string; required; The extension id.
+- `command`: string; required; The command id within the extension.
+- `args`: object; Arguments passed to the extension with the command.
 
 ## resize_image
 

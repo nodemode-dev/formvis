@@ -10,10 +10,14 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | `paintbrush` icon from Remix Icon | Apache-2.0 | `frontend/src/ui/icons.ts` |
 | `hand` icon (cursor-hand) from Remix Icon | Apache-2.0 | `frontend/src/ui/icons.ts` |
 | Tauri sidecar shell template (tauri-compiler-skill) | MIT | `src-tauri/src/main.rs` |
+| Form Extension Contract kit, Apache-2.0, nodemode (host bridge and resolver, vendored unchanged) | Apache-2.0 | `frontend/src/formext/host-bridge.ts`, `backend/app/services/formext_host.py` |
 | .af, .afphoto, .afdesign and .afpub reading (container, object graph, tiles), the read direction of schist's crates/codec-affinity ported to TypeScript | MIT, Copyright (c) 2026 Infrawrench LLC | `frontend/src/io/af-read.ts` |
 | Test documents lf_gauss10.af, shp_arrow.af, exposure.af (schist fixtures) | MIT, Copyright (c) 2026 Infrawrench LLC | `e2e/fixtures/af/` |
 | Test documents raster_test.afdesign, layer_test.afdesign, layer_mode.afdesign (AFDesignLoad) | MIT, Copyright (c) 2015 Nick Beeuwsaert | `e2e/fixtures/af/` |
 | Test document poster.af (filex-media-thumbs) | MIT, Copyright (c) 2026 BRF Tech | `e2e/fixtures/af/` |
+| Demo photographs (eleven photos by Pexels photographers, listed with their sources in the credits file) | Pexels License | `demo/assets/media/`, credited in `demo/CREDITS.md` |
+| Retouch demo photographs (two golden retriever photos by Pexels photographers) | Pexels License | `demos/retouch/assets/media/`, credited in `demos/retouch/CREDITS.md` |
+| Design demo photographs (three lantern and light photos by Pexels photographers) and its type families (Bebas Neue, Playfair Display, Montserrat, the app's own copies) | Pexels License; SIL OFL 1.1 | `demos/design/assets/media/` and `demos/design/fonts/`, credited in `demos/design/CREDITS.md` |
 
 ## Adobe DNG patent licence
 

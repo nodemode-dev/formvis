@@ -8,6 +8,7 @@
 - [Colour](Colour)
 - [Terminal](Terminal)
 - [Agents](Agents)
+- [Extensions](Extensions)
 - [UI Shell](UI-Shell)
 - [Languages](Languages)
 - [Engine Service](Engine-Service)

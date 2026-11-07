@@ -85,7 +85,7 @@ def _catalogue() -> list[dict] | None:
         rows = json.loads(CATALOGUE.read_text(encoding="utf-8")).get("commands", [])
     except (OSError, ValueError):
         return None
-    rows = [c for c in rows if not str(c.get("id", "")).startswith(("plugin.", "recent-")) and c.get("kind") != "plugin"]
+    rows = [c for c in rows if not str(c.get("id", "")).startswith(("plugin.", "recent-", "ext.", "panel-ext-")) and c.get("kind") != "plugin"]
     for c in rows:
         if c["id"] in ("undo", "redo", "hide-all-effects") or c["id"].startswith("toggle-"):
             c["label"] = c["id"].replace("-", " ").title()

@@ -2,6 +2,21 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Form extensions: list, stamp, files and the portal link · _v2.1.0 (app/services/formext_host.py new, app/routers/extensions.py new, app/main.py, app/core/local_guard.py, app/routers/mcp.py; setup/cli.py, formvis)
+
+- Why: the Form Extension Contract, API 1. `app/services/formext_host.py` is the kit's resolver copied unchanged (Apache-2.0, NOTICE row): FormPortal's root, `enabled.json` and `dev.json` under `extensions/formvis/`, manifest checks with the kit's refusal messages, `file_for` and `headers_for`.
+- `app/routers/extensions.py`: `GET /api/extensions` (the rows with `base` `/api/extensions/files/{id}/{version}/`, the root and `stamp`; `?reload=1` resolves again), `GET /api/extensions/stamp` (the two files' times, what the window polls every 2 s), `GET|HEAD /api/extensions/files/{id}/{version}/{path}` (404 with no detail for anything `file_for` refuses: outside the folder, a symlink, a type not in the list, a refused or unknown extension or version), `POST /api/extensions/portal` (opens `formai://extensions?product=formvis` with the system opener; 501 when there is none). The resolved list is cached by the root and the stamp.
+- Isolation: the window is COOP same-origin and COEP credentialless (`IsolateWindow`, which skips `/api`), and a framed document under COEP must send COEP itself, so every extension file answer adds `Cross-Origin-Embedder-Policy: credentialless` to the kit's headers (CSP for HTML, nosniff, no-store, CORP cross-origin, ACAO *). The 404s carry the kit's headers too.
+- `LocalGuard`: the frame is sandboxed without same-origin, so its requests come with `Origin: null` or `sec-fetch-site: cross-site` and were refused; `_extension_file` lets GET and HEAD under `/api/extensions/files/` through on a loopback host only. Everything else under `/api/extensions` keeps the guard.
+- MCP: `extensions_list` and `extension_command` (the window answers them, with its consent). CLI: `./formvis cli extensions [list] | run <id> <command> key=value ...`. The tool's words say a headless command stops after 120 s with no pending request (the kit's idle clock) and the call waits at most 10 minutes (`_ask(..., 600)`).
+- `setup/agents.py` `_catalogue` leaves out `ext.*` and `panel-ext-*` ids, so a window that has extensions installed when `agents sync` reads its catalogue does not write them into `commands.md` and `command-map.md` (extensions are never part of the app).
+- Replaced, quoted exactly:
+  - `setup/agents.py`: `    rows = [c for c in rows if not str(c.get("id", "")).startswith(("plugin.", "recent-")) and c.get("kind") != "plugin"]`
+  - `mcp.py` `extension_command`: `... and a refusal fails. Waits for the extension to finish, at most 120 seconds.",`
+  - `local_guard.py`: `        if self._permitted(headers):`
+  - `setup/cli.py`: `            "jobs": jobs_cmd, "serve": serve_cmd, "version": version_cmd, **{n: offline(n) for n in ("stack", "contact", "fit", "photomerge", "hdr")}}`
+  - `formvis`: `  cli list|describe|run|process|batch|droplet|info|convert|jobs|serve|version  the command catalogue of the open window: list [text], describe <id>, run <id> key=value ...; process <files|folder> --action NAME (file in, file out); droplet <action> (a script to drop files onto); info <file> and convert <in> <out> need only the engine; jobs list|cancel; serve (JSON lines on stdin and stdout); each takes --help`
+
 ## The Python-choice tests hide the runner's own Pythons · _v1.99.7 (backend/tests/test_setup_python_pick.py fake_bin)
 
 - Why: 1.99.6's CI `test` job failed on main (082bddcf) in `test_an_intel_mac_with_only_python_3_14_is_told_why`. Ubuntu has `/usr/bin/python3` and `python3.12`; with PATH `<fakes>:/usr/bin:/bin` and only a fake python3.14, `cv_python` found the real 3.12, made a real venv and pip stopped on the missing `requirements.txt`. On macOS `/usr/bin/python3` is 3.9, so it passed here.

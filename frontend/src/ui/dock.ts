@@ -30,6 +30,7 @@ export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'comfyui', label: 'ComfyUI', selector: 'section.cv-comfyui' },
   { id: 'actions', label: 'Actions', selector: 'section.cv-actions-panel' },
   { id: 'develop', label: 'Camera Raw', selector: 'section.cv-develop-dock' },
+  { id: 'extensions', label: 'Extensions', selector: 'section.cv-extensions' },
 ];
 /** The side column's panel groups (Phase 21), movable like the dock's: any panel may live in either column. */
 export const SIDE_PANELS: readonly DockPanel[] = [
@@ -51,7 +52,7 @@ const FLOATS_KEY = 'formvis.dock.floats';
 /** A header drag's target when the pointer is past both columns: the panel floats there. */
 const FLOAT = -2;
 /** The Essentials default: Navigator, Swatches and Layers shown; Timeline and History in Window. */
-const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference', 'comfyui', 'actions', 'develop'], side: [...DEFAULT_SIDE] };
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['generate', 'timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram', 'clone-source', 'reference', 'comfyui', 'actions', 'develop', 'extensions'], side: [...DEFAULT_SIDE] };
 
 function cleanFloats(f: unknown): Record<string, { x: number; y: number; w: number; h: number }> {
   const out: Record<string, { x: number; y: number; w: number; h: number }> = {};

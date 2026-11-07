@@ -20,6 +20,10 @@ Every tool in the formvis MCP catalogue (`TOOLS` in `backend/app/routers/mcp.py`
 
 The server also offers one prompt, `edit_strategy`: the ten-step decision tree for these tools.
 
+## Extensions
+
+Form extensions (installed by FormPortal, or run from a folder by form.ext) add commands of their own. `extensions_list` gives each one's id, version, source, state (`ready`, `needs-permission`, `refused` with the reason) and its commands; `extension_command` with `id`, `command` and optional `args` runs one and waits up to 120 seconds for its result. The first run of an extension version asks the person in the formvis window; while they have not allowed it, the call fails, so say so and let them choose. Its changes are undo steps like any other. From a terminal: `./formvis cli extensions list` and `./formvis cli extensions run [id] [command] key=value`. What extensions themselves may call is in `docs/EXTENSIONS.md`.
+
 ## Keeping this in step
 
 When a tool is added, renamed or removed in `mcp.py`, update the matching sub-skill's table and this file in the same change (see `formvis-harness`, sub-skill `agent-bridge`). The generated `tools.md` follows by itself after `./formvis agents sync`. Compare names with:

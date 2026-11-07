@@ -47,6 +47,7 @@ Longer reference material that the sub-skills point to sits in `references/`:
 | IO and project files | `frontend/src/io/` |
 | Agent bridge (window side) | `frontend/src/automation/agent-bridge.ts` |
 | Plugins | `frontend/src/plugins/host.ts` |
+| Form extensions (Extension Contract API 1; the kit files are vendored unchanged) | `frontend/src/formext/`, `frontend/src/ui/extensions-panel.ts`, `backend/app/routers/extensions.py`, `docs/EXTENSIONS.md` |
 | NodeMode host link | `frontend/src/host.ts` |
 | Engine service | `backend/app/` (`routers/`, `services/`, `localgen/`) |
 | Native renderer | `native/formvis-render/` |

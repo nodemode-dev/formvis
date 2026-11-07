@@ -4,6 +4,39 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.1.0 · 2026-11-07
+
+- Form extensions (the Form Extension Contract, API 1). FormVis loads the extensions FormPortal installs and the ones form.ext runs in development, beside its own plugins. A new Extensions menu lists each extension's commands, then Extensions Panel, Reload Extensions and Manage in FormPortal; Window > Extensions shows one row per extension with its version, source, permissions and state, or why it was refused.
+- Each extension runs in a sandboxed frame with no access to the window. The first time a version opens, FormVis asks once what it may do (read and change the open document, open or save files you choose); Not Now asks again next time. Its panels open in the dock or as FormVis dialogs, its commands run from the menu, the palette or an agent, and its changes to the picture are one step in History, so one Undo takes them back.
+- Agents: the MCP tools `extensions_list` and `extension_command`, and `./formvis cli extensions list` and `run`. `docs/EXTENSIONS.md` describes what an extension can read and do in FormVis.
+- No extension ships with the app. The first one, Halftone Separations, is installed from FormPortal.
+
+## 2.0.3 · 2026-11-07
+
+- Two more offline browser demos of the real FormVis window, each on a different part of the app, beside the painting demo. `demos/retouch` opens on a retouched portrait made through the engine (Spot Healing, Clone Stamp, Selection-Aware Fill, Color Range and Select and Mask, a blur and a vibrance layer behind layer masks made from a saved selection) with a snapshot for the before and after split, and a second photograph with a chain selected for Remove. `demos/design` opens on Lantern Night, a three-artboard social and event kit with live type, shape layers, layer styles, smart objects with Smart Filters and the Filter Gallery, and Export As to PNG, JPEG, WebP, TIFF, PDF and a layered PSD.
+- A small row in the title bar links the three demos. The photographs are Pexels and are credited in each demo's `CREDITS.md` and in `NOTICE.md`.
+- The three demo bundles were rebuilt for the new version. The app itself is unchanged.
+
+## 2.0.2 · 2026-11-07
+
+- The offline browser demo opens on the painting itself: the Levels Layer dialog that covered half of it on load is gone. The Levels layer stays in the stack between "Painted light" and the grade, "Painted light" is selected, the Brush is active and the Brushes panel shows; double-click the Levels layer or use Image > Adjustments to open the dialog.
+- The app itself is unchanged.
+
+## 2.0.1 · 2026-11-07
+
+- The offline browser demo in `demo/` is now the real FormVis window, not a look-alike: the menu bar, document tabs, tool-options bar, tool rail, Properties column, the Navigator, Swatches, Layers and Brushes dock, the floating task bar, the status bar and every dialog are the application's own code, bundled for `file://` with in-page answers where the desktop engine would reply.
+- The demo opens on a photo-editing and painting session, "dawn-over-the-range": a landscape Pexels photograph at Fit zoom, the Brush active with its real options bar and Brushes panel, and a layer stack of Curves, a masked "Valley mist", a Dodge and Burn layer, brush-painted "Painted light" at Screen, a Levels layer, a Photo Filter grade and type. The strokes were made through the engine's brush with a pressure taper, and Undo and Redo step through them. The Levels Layer dialog is open on load.
+- "Above the Clouds" is the second document tab, and the five other credited photographs open as further tabs; the old Photos tab and its previews are gone with the hand-built window.
+- The page stays hidden, with a CSS-only start line, until both documents are built, then shows once.
+- The app itself is unchanged.
+
+## 2.0.0 · 2026-11-07
+
+- The offline browser demo in `demo/` opens on real work. It starts on "Above the Clouds", a finished 1080 by 1350 poster built from five Pexels photographs: a sunset sky replaces the sky of a misty mountain photograph through a layer mask, a hot-air balloon is cut out of its background through a second mask, a flock of birds is blended with Multiply, a mist layer is blended with Screen through a gradient mask, four adjustment layers grade the picture and four text layers set the title, so the Layers panel reads like a finished project. A new Photos tab beside Properties holds six more photographs to open as a document or place as a layer. Every photograph is credited in `demo/CREDITS.md` and listed in `NOTICE.md`.
+- The demo gains layer masks (add, hide-all, invert, delete, and painting on the mask with the Brush and Eraser) and text layers with font, weight, size, tracking and colour.
+- Fixed in the demo: the Undo and Redo buttons in the title bar stayed disabled after a brush stroke.
+- The app itself is unchanged.
+
 ## 1.99.7 · 2026-11-05
 
 - No change to the app. A test added in 1.99.6, which checks which Python the install picks, failed on the Linux build service because it found the machine's own Python before the test's stand-ins, so 1.99.6 could not be released. The test now hides the machine's Pythons. This release carries 1.99.6's Intel Mac install fix.

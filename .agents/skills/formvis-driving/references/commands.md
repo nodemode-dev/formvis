@@ -1,10 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (1666 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (1670 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 108
+- Extensions: 3
 - File: 102
 - Filter: 142
 - Generate: 6
@@ -18,7 +19,7 @@ Generated from the window's command catalogue (1666 commands) by `./formvis agen
 - Tools: 53
 - Type: 66
 - View: 102
-- Window: 151
+- Window: 152
 
 ## Edit
 
@@ -132,6 +133,14 @@ Generated from the window's command catalogue (1666 commands) by `./formvis agen
 | `warp-split-cross` | Split Warp Crosswise |  | Adds a row and a column to the Warp grid at the document point x, y (else where the pointer last was, else the middle of the largest cell). (changes the picture) |
 | `warp-split-h` | Split Warp Horizontally |  | Adds a row to the Warp grid at the document point x, y (else where the pointer last was, else the middle of the largest cell), leaving the picture unchanged. (changes the picture) |
 | `warp-split-v` | Split Warp Vertically |  | Adds a column to the Warp grid at the document point x, y (else where the pointer last was, else the middle of the largest cell), leaving the picture unchanged. (changes the picture) |
+
+## Extensions
+
+| Id | Name | Keys | Does |
+| --- | --- | --- | --- |
+| `extensions-manage` | Manage in FormPortal |  | Opens FormPortal at formvis's extensions, where extensions are found, installed, turned off and removed. |
+| `extensions-panel` | Extensions Panel |  | Shows the Extensions panel in the dock, opening it if it is hidden. |
+| `extensions-reload` | Reload Extensions |  | Reads the installed and development extensions again, with every manifest; only the extensions that changed are reloaded. |
 
 ## File
 
@@ -1740,6 +1749,7 @@ Generated from the window's command catalogue (1666 commands) by `./formvis agen
 | `panel-comfyui` | ComfyUI |  | Shows or hides the ComfyUI panel, ComfyUI's own page inside the window, with a Save graph bar that keeps the graph ComfyUI ran last as a recipe (new, or replacing one) and reports the nodes and models ComfyUI lacks. |
 | `panel-develop` | Camera Raw |  | Opens or closes Camera Raw (the Develop filter) as a dock panel that tears off and docks back like the other panels, with its controls kept as they are. |
 | `panel-dock` | Dock Panel |  | Returns a floating panel to its place in its column; params panel. |
+| `panel-extensions` | Extensions |  | Shows or hides the Extensions panel: every Form extension FormPortal installed or form.ext runs here, with its version, source, permissions and state, and Open for its panels. |
 | `panel-float` | Float Panel |  | Lifts a panel out of its column into a window of its own that can be moved and resized; params panel (group id or tab id), x, y, w, h. Where it stands is remembered. |
 | `panel-generate` | Generate |  | Shows or hides the Generate panel. |
 | `panel-gradients` | Gradients |  | Shows or hides the Gradients panel. |

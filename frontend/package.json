@@ -1,7 +1,7 @@
 {
   "name": "formvis",
   "private": true,
-  "version": "1.99.7",
+  "version": "2.1.0",
   "description": "formvis · layered image editor in the NodeMode style",
   "license": "Apache-2.0",
   "type": "module",
@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "demo": "vite build --config vite.demo.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "tauri": "tauri"

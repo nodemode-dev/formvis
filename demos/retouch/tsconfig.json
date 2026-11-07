@@ -1,0 +1,12 @@
+{
+  "extends": "../../frontend/tsconfig.json",
+  "compilerOptions": {
+    "typeRoots": ["../../frontend/node_modules/@types", "../../frontend/node_modules"],
+    "types": ["vite/client"],
+    "paths": {
+      "ag-psd": ["../../frontend/node_modules/ag-psd"],
+      "@fontsource/*": ["../../frontend/node_modules/@fontsource/*"]
+    }
+  },
+  "include": ["src", "../../frontend/src/opentype-js.d.ts"]
+}

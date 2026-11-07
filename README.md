@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="version 1.99.7" src="https://img.shields.io/badge/version-1.99.7-eef0f4?style=flat-square">
+  <img alt="version 2.1.0" src="https://img.shields.io/badge/version-2.1.0-eef0f4?style=flat-square">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Vite-3178c6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="Python" src="https://img.shields.io/badge/Python-FastAPI-3776ab?style=flat-square">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
@@ -95,6 +95,10 @@ The window, the command line and the MCP server call the same command catalogue,
 
 `.mcp.json`, `.codex/config.toml` and `.cursor/mcp.json` are already wired in this repo. See [`AGENTS.md`](AGENTS.md).
 
+## Extensions
+
+formvis hosts Form extensions (the Form Extension Contract, API 1): FormPortal installs them, form.ext makes them, and they appear in the Extensions menu, the Extensions panel and the command palette, each in a sandboxed frame that reaches the document only through formvis's own commands, one undo step per change. Agents reach them through `extensions_list` and `extension_command` or `./formvis cli extensions`. What an extension can call is in [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md).
+
 ## Under the hood
 
 - **Engine:** a FastAPI service for decoding, colour, PSD and the local models on ONNX Runtime.
@@ -112,6 +116,13 @@ The window, the command line and the MCP server call the same command catalogue,
 | Linux | [Download FormVis for Linux](https://formai.studio/get/formvis/linux) | [FormVis releases on FormCompiler](https://github.com/nodemode-dev/formcompiler/releases?q=formvis-v&expanded=true) |
 
 All FormVis builds are compiled and released from [FormCompiler](https://github.com/nodemode-dev/formcompiler); this repo holds the source.
+
+## Demo
+
+[`demo/index.html`](demo/index.html) is an offline demo that opens from `file://` or any static server and runs the real FormVis window, its menus, tool rail, panels and dialogs: a painting and photo-editing session with the Brush and its dynamics, layers with blend modes and masks, adjustment layers, filters, type, and your own PNG, JPEG, WebP, TIFF or layered PSD in and out, with no install and no network. See [`demo/README.md`](demo/README.md). Two more demos of the same window, each on a different part of the app, link to each other and to it from a small row in the title bar:
+
+- [`demos/retouch/index.html`](demos/retouch/index.html): selections and retouching on a portrait, with Spot Healing, Clone Stamp, Selection-Aware Fill, Color Range, Select and Mask, masks from a saved selection and a before and after split. See [`demos/retouch/README.md`](demos/retouch/README.md).
+- [`demos/design/index.html`](demos/design/index.html): type and design, a three-artboard event kit with live type, shapes, layer styles, Smart Filters and the Filter Gallery, and Export As to several formats and a layered PSD. See [`demos/design/README.md`](demos/design/README.md).
 
 ## Run it from source
 
