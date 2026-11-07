@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.0.1 · 2026-11-07
+
+- The offline browser demo in `demo/` is now the real FormVis window, not a look-alike: the menu bar, document tabs, tool-options bar, tool rail, Properties column, the Navigator, Swatches, Layers and Brushes dock, the floating task bar, the status bar and every dialog are the application's own code, bundled for `file://` with in-page answers where the desktop engine would reply.
+- The demo opens on a photo-editing and painting session, "dawn-over-the-range": a landscape Pexels photograph at Fit zoom, the Brush active with its real options bar and Brushes panel, and a layer stack of Curves, a masked "Valley mist", a Dodge and Burn layer, brush-painted "Painted light" at Screen, a Levels layer, a Photo Filter grade and type. The strokes were made through the engine's brush with a pressure taper, and Undo and Redo step through them. The Levels Layer dialog is open on load.
+- "Above the Clouds" is the second document tab, and the five other credited photographs open as further tabs; the old Photos tab and its previews are gone with the hand-built window.
+- The page stays hidden, with a CSS-only start line, until both documents are built, then shows once.
+- The app itself is unchanged.
+
 ## 2.0.0 · 2026-11-07
 
 - The offline browser demo in `demo/` opens on real work. It starts on "Above the Clouds", a finished 1080 by 1350 poster built from five Pexels photographs: a sunset sky replaces the sky of a misty mountain photograph through a layer mask, a hot-air balloon is cut out of its background through a second mask, a flock of birds is blended with Multiply, a mist layer is blended with Screen through a gradient mask, four adjustment layers grade the picture and four text layers set the title, so the Layers panel reads like a finished project. A new Photos tab beside Properties holds six more photographs to open as a document or place as a layer. Every photograph is credited in `demo/CREDITS.md` and listed in `NOTICE.md`.

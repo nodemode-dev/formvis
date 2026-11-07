@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v2.0.1
+
+```text
+  "version": "2.0.0",
+  "version": "2.0.0",
+      "version": "2.0.0",
+export const VERSION = '2.0.0';
+```
+
+The demo shows the real window (2.0.1, the entry below). The demo bundle embeds `VERSION` and the demo's start-up shim reports it as the engine version, so it was rebuilt in the same commit.
+
 ## The demo bundles the real window · _v2.0.0 (vite.demo.config.ts)
 
 - Why: the owner saw the purpose-built demo window and said its interface was not formvis's. The demo build now takes `frontend/index.html` as its page (root is `frontend/`, `base ./`, output `demo/`) and `demo/src/main.ts` as its entry, which loads the demo shims, then the application's own `src/main.ts`, then the session builder.
