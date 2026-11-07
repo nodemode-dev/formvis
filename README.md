@@ -95,6 +95,10 @@ The window, the command line and the MCP server call the same command catalogue,
 
 `.mcp.json`, `.codex/config.toml` and `.cursor/mcp.json` are already wired in this repo. See [`AGENTS.md`](AGENTS.md).
 
+## Extensions
+
+formvis hosts Form extensions (the Form Extension Contract, API 1): FormPortal installs them, form.ext makes them, and they appear in the Extensions menu, the Extensions panel and the command palette, each in a sandboxed frame that reaches the document only through formvis's own commands, one undo step per change. Agents reach them through `extensions_list` and `extension_command` or `./formvis cli extensions`. What an extension can call is in [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md).
+
 ## Under the hood
 
 - **Engine:** a FastAPI service for decoding, colour, PSD and the local models on ONNX Runtime.
