@@ -115,7 +115,10 @@ All FormVis builds are compiled and released from [FormCompiler](https://github.
 
 ## Demo
 
-[`demo/index.html`](demo/index.html) is an offline demo that opens from `file://` or any static server and runs the real FormVis window, its menus, tool rail, panels and dialogs: a painting and photo-editing session with the Brush and its dynamics, layers with blend modes and masks, adjustment layers, filters, type, and your own PNG, JPEG, WebP, TIFF or layered PSD in and out, with no install and no network. See [`demo/README.md`](demo/README.md).
+[`demo/index.html`](demo/index.html) is an offline demo that opens from `file://` or any static server and runs the real FormVis window, its menus, tool rail, panels and dialogs: a painting and photo-editing session with the Brush and its dynamics, layers with blend modes and masks, adjustment layers, filters, type, and your own PNG, JPEG, WebP, TIFF or layered PSD in and out, with no install and no network. See [`demo/README.md`](demo/README.md). Two more demos of the same window, each on a different part of the app, link to each other and to it from a small row in the title bar:
+
+- [`demos/retouch/index.html`](demos/retouch/index.html): selections and retouching on a portrait, with Spot Healing, Clone Stamp, Selection-Aware Fill, Color Range, Select and Mask, masks from a saved selection and a before and after split. See [`demos/retouch/README.md`](demos/retouch/README.md).
+- [`demos/design/index.html`](demos/design/index.html): type and design, a three-artboard event kit with live type, shapes, layer styles, Smart Filters and the Filter Gallery, and Export As to several formats and a layered PSD. See [`demos/design/README.md`](demos/design/README.md).
 
 ## Run it from source
 
