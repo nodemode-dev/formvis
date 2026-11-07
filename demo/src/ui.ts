@@ -6,11 +6,15 @@ import { histogram } from '../../frontend/src/engine/filters';
 import { VERSION } from '../../frontend/src/version';
 import { ADJUST_DEFS, adjustDef, defaults } from './adjust-defs';
 import { compose, detached, flatImage } from './compose';
-import { controls, esc, h, q, setText } from './dom';
+import type { ParamSpec } from '../../frontend/src/engine/adjust-params';
+import { controls, esc, h, hex, q, rgb, setText } from './dom';
 import { FILTERS, applyPixelOp } from './filters';
 import { FORMAT_INFO, MAX_SIDE, download, encode, openFile, placeFile, type ExportFormat } from './io';
-import { adjustLayer, cloneCanvas, makeCanvas, pixelLayer, touch, type Doc, type Layer, type PixelLayer, Store } from './model';
+import { TRAY, loadPack, packImage, type TrayPhoto } from './media';
+import { adjustLayer, cloneCanvas, makeCanvas, maskCanvas, pixelLayer, touch, touchMask, type Doc, type Layer, type PixelLayer, Store } from './model';
+import { POSTER_NAME, placeholderDoc, posterDoc } from './poster';
 import { blankDoc, sampleDoc } from './sample';
+import { TEXT_FAMILIES, defaultText, ensureFont, renderText, type TextSpec } from './text';
 
 type ToolId = 'move' | 'brush' | 'eraser' | 'eyedropper' | 'hand' | 'zoom';
 interface ToolDef { id: ToolId; icon: string; label: string; key: string }
@@ -24,6 +28,7 @@ const TOOLS: ToolDef[] = [
 ];
 
 interface MenuItem { label: string; key?: string; run?: () => void; disabled?: () => boolean; heading?: boolean; sep?: boolean }
+interface LayerRow { el: HTMLElement; thumb: HTMLCanvasElement; mthumb: HTMLCanvasElement; rev: number; mrev: number }
 
 const SHELL = `
 <div class="cv-app" id="dv-app">
@@ -41,14 +46,15 @@ const SHELL = `
     <nav class="cv-rail"><div class="cv-rail-tools" id="dv-tools"></div></nav>
     <div class="cv-stage-col">
       <div class="cv-stage" id="dv-stage">
-        <div class="dv-view" id="dv-view"><div class="dv-sheet" id="dv-sheet"><canvas class="dv-canvas" id="dv-canvas"></canvas></div></div>
+        <div class="dv-view" id="dv-view"><div class="dv-sheet" id="dv-sheet"><canvas class="dv-canvas" id="dv-canvas"></canvas><div class="dv-loading" id="dv-loading" aria-live="polite"><span class="dv-spinner"></span><span>Opening the poster</span></div></div></div>
         <div class="cv-pills"><span class="cv-pill">Drop an image or PSD to open it. Shift-drop places it as a layer.</span></div>
       </div>
     </div>
     <aside class="cv-props-col" id="dv-props">
       <section class="cv-group">
-        <div class="cv-group-head"><div class="cv-group-tabs"><button class="cv-group-tab is-active" type="button">Properties</button></div></div>
+        <div class="cv-group-head"><div class="cv-group-tabs" id="dv-props-tabs"><button class="cv-group-tab is-active" type="button" data-pane="dv-props-body">Properties</button><button class="cv-group-tab" type="button" data-pane="dv-tray">Photos</button></div></div>
         <div class="cv-group-body" id="dv-props-body"></div>
+        <div class="cv-group-body dv-tray" id="dv-tray" hidden></div>
       </section>
     </aside>
     <div class="cv-resizer is-inert"></div>
@@ -87,6 +93,7 @@ export function start(): void {
   const fg = { value: '#f97316' };
   const brush = { size: 36, hardness: 70, opacity: 100 };
   let tool: ToolId = 'brush';
+  let maskTarget = false;
 
   function toast(text: string): void {
     const root = document.getElementById('toast-root')!;
@@ -197,15 +204,15 @@ export function start(): void {
   histChannel.addEventListener('change', drawHistogram);
 
   /* layers panel ---------------------------------------------------- */
-  const rows = new Map<string, { el: HTMLElement; thumb: HTMLCanvasElement; rev: number; draw: string }>();
+  const rows = new Map<string, LayerRow>();
   const rowsEl = q(app, '#dv-rows');
   const blendSel = q<HTMLSelectElement>(app, '#dv-blend');
   const opacity = q<HTMLInputElement>(app, '#dv-opacity');
   blendSel.innerHTML = LAYER_BLEND_MODES.map((m) => `<option value="${m.id}">${m.label}</option>`).join('');
 
-  function makeRow(l: Layer): { el: HTMLElement; thumb: HTMLCanvasElement; rev: number; draw: string } {
-    const el = h(`<div class="cv-layer" role="option" data-id="${l.id}"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><span></span><canvas class="cv-layer-thumb" width="30" height="30"></canvas><span class="cv-layer-kind">${icon(ICON_FOR_ADJUST, 16)}</span><span class="cv-layer-name"></span></div>`);
-    return { el, thumb: q<HTMLCanvasElement>(el, '.cv-layer-thumb'), rev: -1, draw: '' };
+  function makeRow(l: Layer): LayerRow {
+    const el = h(`<div class="cv-layer" role="option" data-id="${l.id}"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><span></span><canvas class="cv-layer-thumb" width="30" height="30"></canvas><span class="cv-layer-kind">${icon(l.kind === 'adjust' ? ICON_FOR_ADJUST : 'tType', 16)}</span><span class="cv-layer-masks"><canvas class="cv-layer-mask" width="30" height="30"></canvas></span><span class="cv-layer-name"></span></div>`);
+    return { el, thumb: q<HTMLCanvasElement>(el, '.cv-layer-thumb'), mthumb: q<HTMLCanvasElement>(el, '.cv-layer-mask'), rev: -1, mrev: -1 };
   }
 
   function syncRows(): void {
@@ -221,6 +228,11 @@ export function start(): void {
       r.el.classList.toggle('is-selected', store.doc.active === l.id);
       r.el.classList.toggle('is-hidden', !l.visible);
       r.el.classList.toggle('is-adjust', l.kind === 'adjust');
+      r.el.classList.toggle('is-text', l.kind === 'pixel' && l.text !== null);
+      r.el.classList.toggle('has-mask', l.kind === 'pixel' && l.mask !== null);
+      const onMask = l.kind === 'pixel' && l.mask !== null && store.doc.active === l.id && maskTarget;
+      r.el.classList.toggle('is-mask-target', onMask);
+      r.el.classList.toggle('is-pixel-target', l.kind === 'pixel' && store.doc.active === l.id && !onMask);
       setText(q(r.el, '.cv-layer-name'), l.name);
     }
     syncLayerProps();
@@ -230,12 +242,27 @@ export function start(): void {
   function updateThumbs(): void {
     for (const l of store.doc.layers) {
       const r = rows.get(l.id);
-      if (!r || l.kind !== 'pixel' || r.rev === l.rev) continue;
-      r.rev = l.rev;
-      const g = r.thumb.getContext('2d')!;
-      g.clearRect(0, 0, 30, 30);
-      const s = Math.min(30 / l.canvas.width, 30 / l.canvas.height), tw = l.canvas.width * s, th = l.canvas.height * s;
-      g.drawImage(l.canvas, (30 - tw) / 2, (30 - th) / 2, tw, th);
+      if (!r || l.kind !== 'pixel') continue;
+      if (r.rev !== l.rev) {
+        r.rev = l.rev;
+        const g = r.thumb.getContext('2d')!;
+        g.clearRect(0, 0, 30, 30);
+        const s = Math.min(30 / l.canvas.width, 30 / l.canvas.height), tw = l.canvas.width * s, th = l.canvas.height * s;
+        g.drawImage(l.canvas, (30 - tw) / 2, (30 - th) / 2, tw, th);
+      }
+      if (l.mask && r.mrev !== l.mrev) {
+        r.mrev = l.mrev;
+        const g = r.mthumb.getContext('2d')!;
+        const s = Math.min(30 / l.mask.width, 30 / l.mask.height), tw = l.mask.width * s, th = l.mask.height * s;
+        const shape = makeCanvas(30, 30), sg = shape.getContext('2d')!;
+        sg.drawImage(l.mask, (30 - tw) / 2, (30 - th) / 2, tw, th);
+        sg.globalCompositeOperation = 'source-in';
+        sg.fillStyle = '#fff';
+        sg.fillRect(0, 0, 30, 30);
+        g.fillStyle = '#000';
+        g.fillRect(0, 0, 30, 30);
+        g.drawImage(shape, 0, 0);
+      }
     }
   }
 
@@ -284,7 +311,9 @@ export function start(): void {
       requestRender();
       return;
     }
+    maskTarget = l.kind === 'pixel' && l.mask !== null && (e.target as HTMLElement).closest('.cv-layer-masks') !== null;
     store.setActive(l.id);
+    syncRows();
   });
 
   const dropLine = q(app, '#dv-drop-line');
@@ -355,6 +384,10 @@ export function start(): void {
     if (!l) return;
     store.checkpoint();
     const copy: Layer = l.kind === 'pixel' ? { ...pixelLayer(`${l.name} copy`, cloneCanvas(l.canvas), l.x, l.y) } : { ...adjustLayer(`${l.name} copy`, l.def, structuredClone(l.values)) };
+    if (l.kind === 'pixel' && copy.kind === 'pixel') {
+      copy.mask = l.mask ? cloneCanvas(l.mask) : null;
+      copy.text = l.text ? { ...l.text } : null;
+    }
     copy.opacity = l.opacity;
     copy.blend = l.blend;
     copy.visible = l.visible;
@@ -392,9 +425,55 @@ export function start(): void {
     below.blend = 'normal';
     below.opacity = 1;
     below.visible = true;
+    below.mask = null;
+    below.text = null;
     touch(below);
     store.remove(l.id);
     store.setActive(below.id);
+    requestRender();
+  }
+  function addMask(reveal: boolean): void {
+    const l = store.active;
+    if (!l || l.kind !== 'pixel') { toast('Select a pixel layer to give it a mask.'); return; }
+    if (l.mask) { toast('This layer already has a mask.'); return; }
+    store.checkpoint();
+    l.mask = maskCanvas(l.canvas.width, l.canvas.height, reveal);
+    touchMask(l);
+    maskTarget = true;
+    store.emit('structure');
+    say(reveal ? 'Added a reveal-all mask. Paint with the Eraser to hide, the Brush to reveal.' : 'Added a hide-all mask. Paint with the Brush to reveal.');
+    requestRender();
+  }
+  function deleteMask(): void {
+    const l = store.active;
+    if (!l || l.kind !== 'pixel' || !l.mask) { toast('The active layer has no mask.'); return; }
+    store.checkpoint();
+    l.mask = null;
+    maskTarget = false;
+    store.emit('structure');
+    requestRender();
+  }
+  function invertMask(): void {
+    const l = store.active;
+    if (!l || l.kind !== 'pixel' || !l.mask) { toast('The active layer has no mask.'); return; }
+    store.checkpoint();
+    const inv = maskCanvas(l.mask.width, l.mask.height, true), g = inv.getContext('2d')!;
+    g.globalCompositeOperation = 'destination-out';
+    g.drawImage(l.mask, 0, 0);
+    l.mask = inv;
+    touchMask(l);
+    requestRender();
+  }
+  function newTextLayer(): void {
+    store.checkpoint();
+    const spec = defaultText();
+    const l = pixelLayer('Text', makeCanvas(store.doc.w, store.doc.h));
+    l.text = spec;
+    spec.x = Math.round(store.doc.w * 0.08);
+    spec.y = Math.round(store.doc.h * 0.1);
+    spec.size = Math.max(16, Math.round(store.doc.w * 0.08));
+    void ensureFont(spec).then(() => { renderText(spec, l.canvas); touch(l); requestRender(); });
+    store.add(l);
     requestRender();
   }
   function flatten(): void {
@@ -434,15 +513,25 @@ export function start(): void {
       if (l.kind !== 'pixel') continue;
       const cw = l.canvas.width, ch = l.canvas.height;
       const swap = kind === 'cw' || kind === 'ccw';
-      const out = makeCanvas(swap ? ch : cw, swap ? cw : ch), g = out.getContext('2d')!;
       let nx = l.x, ny = l.y;
-      if (kind === 'flipH') { g.translate(cw, 0); g.scale(-1, 1); nx = W - (l.x + cw); }
-      else if (kind === 'flipV') { g.translate(0, ch); g.scale(1, -1); ny = H - (l.y + ch); }
-      else if (kind === 'cw') { g.translate(ch, 0); g.rotate(Math.PI / 2); nx = H - (l.y + ch); ny = l.x; }
-      else if (kind === 'ccw') { g.translate(0, cw); g.rotate(-Math.PI / 2); nx = l.y; ny = W - (l.x + cw); }
-      else { g.translate(cw, ch); g.rotate(Math.PI); nx = W - (l.x + cw); ny = H - (l.y + ch); }
-      g.drawImage(l.canvas, 0, 0);
-      l.canvas = out;
+      if (kind === 'flipH') nx = W - (l.x + cw);
+      else if (kind === 'flipV') ny = H - (l.y + ch);
+      else if (kind === 'cw') { nx = H - (l.y + ch); ny = l.x; }
+      else if (kind === 'ccw') { nx = l.y; ny = W - (l.x + cw); }
+      else { nx = W - (l.x + cw); ny = H - (l.y + ch); }
+      const turn = (src: HTMLCanvasElement): HTMLCanvasElement => {
+        const out = makeCanvas(swap ? ch : cw, swap ? cw : ch), g = out.getContext('2d')!;
+        if (kind === 'flipH') { g.translate(cw, 0); g.scale(-1, 1); }
+        else if (kind === 'flipV') { g.translate(0, ch); g.scale(1, -1); }
+        else if (kind === 'cw') { g.translate(ch, 0); g.rotate(Math.PI / 2); }
+        else if (kind === 'ccw') { g.translate(0, cw); g.rotate(-Math.PI / 2); }
+        else { g.translate(cw, ch); g.rotate(Math.PI); }
+        g.drawImage(src, 0, 0);
+        return out;
+      };
+      l.canvas = turn(l.canvas);
+      if (l.mask) { l.mask = turn(l.mask); touchMask(l); }
+      l.text = null;
       l.x = nx;
       l.y = ny;
       touch(l);
@@ -457,10 +546,15 @@ export function start(): void {
     const d = store.doc, sx = nw / d.w, sy = nh / d.h;
     for (const l of d.layers) {
       if (l.kind !== 'pixel') continue;
-      const out = makeCanvas(l.canvas.width * sx, l.canvas.height * sy), g = out.getContext('2d')!;
-      g.imageSmoothingQuality = 'high';
-      g.drawImage(l.canvas, 0, 0, out.width, out.height);
-      l.canvas = out;
+      const scaled = (src: HTMLCanvasElement): HTMLCanvasElement => {
+        const out = makeCanvas(src.width * sx, src.height * sy), g = out.getContext('2d')!;
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(src, 0, 0, out.width, out.height);
+        return out;
+      };
+      l.canvas = scaled(l.canvas);
+      if (l.mask) { l.mask = scaled(l.mask); touchMask(l); }
+      l.text = null;
       l.x = Math.round(l.x * sx);
       l.y = Math.round(l.y * sy);
       touch(l);
@@ -475,9 +569,49 @@ export function start(): void {
   /* properties panel ------------------------------------------------ */
   const propsBody = q(app, '#dv-props-body');
   let propsFor = '';
+  function repaintText(l: PixelLayer, spec: TextSpec): void {
+    renderText(spec, l.canvas);
+    touch(l);
+    requestRender();
+  }
+  function textControls(l: PixelLayer, spec: TextSpec): HTMLElement {
+    const root = h('<div class="dv-controls"></div>');
+    const area = h(`<label class="cv-field dv-field-top"><span>Text</span><textarea class="cv-input dv-textarea" rows="3" aria-label="Text"></textarea></label>`);
+    const ta = q<HTMLTextAreaElement>(area, 'textarea');
+    ta.value = spec.text;
+    ta.addEventListener('input', () => { arm(); spec.text = ta.value; repaintText(l, spec); });
+    ta.addEventListener('change', disarm);
+    root.appendChild(area);
+    const values: Record<string, unknown> = { family: spec.family, weight: String(spec.weight), size: spec.size, tracking: spec.tracking, color: rgb(spec.color) };
+    const specs = [
+      { key: 'family', label: 'Font', kind: 'select', options: TEXT_FAMILIES.map((f) => [f, f]), def: spec.family },
+      { key: 'weight', label: 'Weight', kind: 'select', options: [['400', 'Regular'], ['600', 'Semibold']], def: String(spec.weight) },
+      { key: 'size', label: 'Size', kind: 'range', min: 8, max: 400, step: 1, def: spec.size },
+      { key: 'tracking', label: 'Tracking', kind: 'range', min: -10, max: 40, step: 0.5, def: spec.tracking },
+      { key: 'color', label: 'Colour', kind: 'color', def: rgb(spec.color) },
+    ] as unknown as ParamSpec[];
+    const c = controls(specs, values, (k, v) => {
+      if (k === 'family') spec.family = String(v);
+      else if (k === 'weight') spec.weight = Number(v);
+      else if (k === 'size') spec.size = Number(v);
+      else if (k === 'tracking') spec.tracking = Number(v);
+      else spec.color = hex(v as { r: number; g: number; b: number });
+      if (k === 'family' || k === 'weight') void ensureFont(spec).then(() => repaintText(l, spec));
+      else repaintText(l, spec);
+    }, arm);
+    c.root.addEventListener('change', disarm);
+    root.appendChild(c.root);
+    return root;
+  }
+  function maskActions(l: PixelLayer): HTMLElement {
+    const row = h('<div class="dv-actions"></div>');
+    if (!l.mask) row.append(button('Add mask', 'ghost', () => addMask(true)), button('Hide-all mask', 'ghost', () => addMask(false)));
+    else row.append(button('Invert mask', 'ghost', invertMask), button('Delete mask', 'ghost', deleteMask));
+    return row;
+  }
   function syncProps(): void {
     const l = store.active;
-    const key = l ? `${l.id}:${l.kind === 'adjust' ? l.def : 'p'}` : '';
+    const key = l ? `${l.id}:${l.kind === 'adjust' ? l.def : `p${l.mask ? 'm' : ''}${l.text ? 't' : ''}`}` : '';
     if (key === propsFor) { refreshProps(); return; }
     propsFor = key;
     const next = h('<div class="dv-props-inner"></div>');
@@ -502,9 +636,11 @@ export function start(): void {
           next.appendChild(reset);
         }
       } else {
-        next.appendChild(h(`<div class="dv-kind">${icon('image', 14)}<span>Pixel layer</span></div>`));
-        next.appendChild(h(`<dl class="dv-facts"><dt>Size</dt><dd>${l.canvas.width} x ${l.canvas.height} px</dd><dt>Offset</dt><dd class="dv-offset">${l.x}, ${l.y}</dd></dl>`));
-        next.appendChild(h('<p class="dv-note">Paint with the Brush, move with the Move tool, or run a filter from the Filter menu.</p>'));
+        next.appendChild(h(`<div class="dv-kind">${icon(l.text ? 'tType' : 'image', 14)}<span>${l.text ? 'Text layer' : 'Pixel layer'}</span></div>`));
+        if (l.text) next.appendChild(textControls(l, l.text));
+        next.appendChild(h(`<dl class="dv-facts"><dt>Size</dt><dd>${l.canvas.width} x ${l.canvas.height} px</dd><dt>Offset</dt><dd class="dv-offset">${l.x}, ${l.y}</dd><dt>Mask</dt><dd>${l.mask ? 'Yes' : 'None'}</dd></dl>`));
+        next.appendChild(maskActions(l));
+        next.appendChild(h(`<p class="dv-note">${l.mask ? 'Click the mask thumbnail to paint on it: the Brush reveals, the Eraser hides.' : 'Paint with the Brush, move with the Move tool, or run a filter from the Filter menu.'}</p>`));
       }
     }
     propsBody.replaceChildren(next);
@@ -572,13 +708,16 @@ export function start(): void {
     return tip;
   }
   function dab(l: PixelLayer, x: number, y: number, erase: boolean): void {
-    const g = l.canvas.getContext('2d')!;
+    const g = (maskTarget && l.mask ? l.mask : l.canvas).getContext('2d')!;
     const t = erase ? eraseTip() : brushTip();
     g.globalAlpha = brush.opacity / 100;
     g.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
     g.drawImage(t, x - l.x - t.width / 2, y - l.y - t.height / 2);
     g.globalAlpha = 1;
     g.globalCompositeOperation = 'source-over';
+  }
+  function touchTarget(l: PixelLayer): void {
+    if (maskTarget && l.mask) touchMask(l); else touch(l);
   }
   let eTip: HTMLCanvasElement | null = null, eKey = '';
   function eraseTip(): HTMLCanvasElement {
@@ -654,7 +793,7 @@ export function start(): void {
       const erase = tool === 'eraser';
       let last = toDoc(e);
       dab(l, last.x, last.y, erase);
-      touch(l);
+      touchTarget(l);
       requestRender();
       const mv = (ev: PointerEvent): void => {
         const events = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
@@ -664,7 +803,7 @@ export function start(): void {
           for (let s = step; s <= dist; s += step) dab(l, last.x + (dx * s) / dist, last.y + (dy * s) / dist, erase);
           if (dist >= step) last = { x: last.x + (dx / dist) * Math.floor(dist / step) * step, y: last.y + (dy / dist) * Math.floor(dist / step) * step };
         }
-        touch(l);
+        touchTarget(l);
         requestRender();
       };
       const end = (): void => { viewEl.removeEventListener('pointermove', mv); viewEl.removeEventListener('pointerup', end); };
@@ -679,7 +818,8 @@ export function start(): void {
     file: { label: 'File', items: () => [
       { label: 'Open image or PSD...', key: 'Ctrl+O', run: () => pickFile(false) },
       { label: 'Place image as layer...', run: () => pickFile(true) },
-      { label: 'Sample: Harbour at dusk', run: () => { store.load(sampleDoc(), true); afterLoad('Loaded the sample document.'); } },
+      { label: 'Sample: Above the Clouds poster', run: () => { void openPoster(true); } },
+      { label: 'Sample: Harbour at dusk (generated)', run: () => { store.load(sampleDoc(), true); afterLoad('Loaded the generated sample document.'); } },
       { label: 'New blank document...', run: () => newDocDialog() },
       { sep: true, label: '' },
       { label: 'Export...', key: 'Ctrl+E', run: () => exportDialog() },
@@ -707,6 +847,12 @@ export function start(): void {
       { label: 'Delete layer', run: deleteLayer },
       { label: 'Merge down', run: mergeDown },
       { label: 'Flatten image', run: flatten },
+      { sep: true, label: '' },
+      { label: 'New text layer', run: newTextLayer },
+      { label: 'Add layer mask', run: () => addMask(true) },
+      { label: 'Add hide-all mask', run: () => addMask(false) },
+      { label: 'Invert mask', run: invertMask },
+      { label: 'Delete mask', run: deleteMask },
       { sep: true, label: '' },
       { label: 'Move up', run: () => shift(1) },
       { label: 'Move down', run: () => shift(-1) },
@@ -864,7 +1010,7 @@ export function start(): void {
     d.body.append(
       h(`<div class="cv-welcome-title">${brandMark(28)}FormVis ${VERSION}</div>`),
       h('<p class="dv-note">A browser demo of the FormVis layered image editor. The blend modes, adjustment kernels, filters and histogram are the application\'s own engine modules, run here without the Python engine. PSD files are read and written with ag-psd. Nothing leaves this page.</p>'),
-      h('<p class="dv-note">The desktop app adds selections, masks, paths, type, layer styles, smart objects, local generation and the MCP server. The sample picture is generated by code in this page.</p>'),
+      h('<p class="dv-note">The desktop app adds selections, paths, layer styles, smart objects, local generation and the MCP server. The demo has layer masks and simple text layers of its own. The poster is made from photos by Pexels photographers; each photo is credited in demo/CREDITS.md.</p>'),
     );
     d.foot.append(button('Close', 'primary', d.close));
   }
@@ -926,6 +1072,69 @@ export function start(): void {
     requestRender();
     say(note);
   }
+  async function openPoster(keepHistory: boolean): Promise<void> {
+    sheet.classList.add('is-loading');
+    try {
+      const doc = await posterDoc();
+      store.load(doc, keepHistory);
+      afterLoad(`Opened ${POSTER_NAME}: five photos, three masks, four adjustment layers and four text layers.`);
+    } catch (err) {
+      toast(`The poster media did not load (${(err as Error).message}). Showing the generated sample instead.`);
+      store.load(sampleDoc(), keepHistory);
+      afterLoad('Loaded the generated sample document.');
+    } finally {
+      sheet.classList.remove('is-loading');
+    }
+  }
+
+  /* photo tray ------------------------------------------------------ */
+  const tray = q(app, '#dv-tray');
+  tray.appendChild(h('<p class="dv-note">Six more photos from Pexels. Open one as its own document, or place it on the poster as a layer.</p>'));
+  const grid = h('<div class="dv-photos"></div>');
+  for (const p of TRAY) {
+    const card = h(`<article class="dv-photo"><img class="dv-photo-img" src="./assets/media/thumbs/${p.thumb}.jpg" alt="${esc(p.title)}" decoding="async"><div class="dv-photo-meta"><span class="dv-photo-title">${esc(p.title)}</span><span class="dv-photo-by">${esc(p.author)}</span></div><div class="dv-photo-actions"><button class="cv-btn cv-btn-ghost" type="button" data-act="open">Open</button><button class="cv-btn cv-btn-ghost" type="button" data-act="place">Place</button></div></article>`);
+    card.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-act]');
+      if (b) void takeTray(p, b.dataset.act === 'place', card);
+    });
+    grid.appendChild(card);
+  }
+  tray.appendChild(grid);
+  async function takeTray(p: TrayPhoto, asLayer: boolean, card: HTMLElement): Promise<void> {
+    card.classList.add('is-busy');
+    try {
+      const canvas = await packImage(await loadPack(p.pack));
+      if (asLayer) {
+        const s = Math.min(1, store.doc.w / canvas.width, store.doc.h / canvas.height);
+        const placed = makeCanvas(canvas.width * s, canvas.height * s), g = placed.getContext('2d')!;
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(canvas, 0, 0, placed.width, placed.height);
+        const l = pixelLayer(p.title, placed, Math.round((store.doc.w - placed.width) / 2), Math.round((store.doc.h - placed.height) / 2));
+        store.checkpoint();
+        store.add(l);
+        requestRender();
+        say(`Placed ${p.title} as a layer.`);
+      } else {
+        const l = pixelLayer('Background', canvas);
+        store.load({ name: p.title, w: canvas.width, h: canvas.height, layers: [l], active: l.id }, true);
+        afterLoad(`Opened ${p.title} at ${canvas.width} by ${canvas.height}.`);
+      }
+    } catch (err) {
+      toast(`Could not open ${p.title}: ${(err as Error).message}`);
+    } finally {
+      card.classList.remove('is-busy');
+    }
+  }
+  const trayTabs = q(app, '#dv-props-tabs');
+  trayTabs.addEventListener('click', (e) => {
+    const tab = (e.target as HTMLElement).closest<HTMLElement>('.cv-group-tab');
+    if (!tab) return;
+    for (const t of trayTabs.querySelectorAll<HTMLElement>('.cv-group-tab')) {
+      t.classList.toggle('is-active', t === tab);
+      q(app, `#${t.dataset.pane}`).hidden = t !== tab;
+    }
+  });
+
   const picker = h<HTMLInputElement>('<input type="file" accept="image/*,.psd,.tif,.tiff" multiple hidden>');
   document.body.appendChild(picker);
   let pickAsLayer = false;
@@ -1003,11 +1212,13 @@ export function start(): void {
     requestRender();
   });
 
-  store.load(sampleDoc(), false);
-  setTool('brush');
+  store.load(placeholderDoc(), false);
+  setTool('move');
   syncRows();
   syncProps();
   fit();
   requestRender();
+  sheet.classList.add('is-loading');
   document.body.classList.add('app-ready');
+  void openPoster(false);
 }

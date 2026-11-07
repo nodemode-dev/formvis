@@ -1,14 +1,19 @@
 import type { BlendMode } from '../../frontend/src/engine/types';
+import type { TextSpec } from './text';
 
 export interface LayerBase { id: string; name: string; visible: boolean; opacity: number; blend: BlendMode }
-export interface PixelLayer extends LayerBase { kind: 'pixel'; canvas: HTMLCanvasElement; x: number; y: number; rev: number; frozen: { rev: number; canvas: HTMLCanvasElement } | null }
+type Frozen = { rev: number; canvas: HTMLCanvasElement } | null;
+export interface PixelLayer extends LayerBase {
+  kind: 'pixel'; canvas: HTMLCanvasElement; x: number; y: number; rev: number; frozen: Frozen;
+  mask: HTMLCanvasElement | null; mrev: number; mfrozen: Frozen; text: TextSpec | null;
+}
 export type Values = Record<string, unknown>;
 export interface AdjustLayer extends LayerBase { kind: 'adjust'; def: string; values: Values; rev: number }
 export type Layer = PixelLayer | AdjustLayer;
 
 export interface Doc { name: string; w: number; h: number; layers: Layer[]; active: string | null }
 
-type SnapLayer = { kind: 'pixel'; base: LayerBase; x: number; y: number; canvas: HTMLCanvasElement } | { kind: 'adjust'; base: LayerBase; def: string; values: Values };
+type SnapLayer = { kind: 'pixel'; base: LayerBase; x: number; y: number; canvas: HTMLCanvasElement; mask: HTMLCanvasElement | null; text: TextSpec | null } |{ kind: 'adjust'; base: LayerBase; def: string; values: Values };
 interface Snapshot { name: string; w: number; h: number; active: string | null; layers: SnapLayer[] }
 
 let counter = 0;
@@ -28,7 +33,17 @@ export function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
 }
 
 export function pixelLayer(name: string, canvas: HTMLCanvasElement, x = 0, y = 0): PixelLayer {
-  return { kind: 'pixel', id: newId(), name, visible: true, opacity: 1, blend: 'normal', canvas, x, y, rev: 0, frozen: null };
+  return { kind: 'pixel', id: newId(), name, visible: true, opacity: 1, blend: 'normal', canvas, x, y, rev: 0, frozen: null, mask: null, mrev: 0, mfrozen: null, text: null };
+}
+
+export function maskCanvas(w: number, h: number, reveal: boolean): HTMLCanvasElement {
+  const c = makeCanvas(w, h);
+  if (reveal) {
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, c.width, c.height);
+  }
+  return c;
 }
 
 export function adjustLayer(name: string, def: string, values: Values): AdjustLayer {
@@ -36,8 +51,9 @@ export function adjustLayer(name: string, def: string, values: Values): AdjustLa
 }
 
 export const touch = (l: Layer): void => { l.rev++; };
+export const touchMask = (l: PixelLayer): void => { l.mrev++; };
 
-export type Change = 'pixels' | 'structure' | 'active' | 'doc';
+export type Change = 'pixels' | 'structure' | 'active' | 'doc' | 'history';
 
 export class Store {
   doc: Doc = { name: 'Untitled', w: 1, h: 1, layers: [], active: null };
@@ -58,7 +74,8 @@ export class Store {
       const base: LayerBase = { id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend };
       if (l.kind === 'adjust') return { kind: 'adjust', base, def: l.def, values: structuredClone(l.values) };
       if (!l.frozen || l.frozen.rev !== l.rev) l.frozen = { rev: l.rev, canvas: cloneCanvas(l.canvas) };
-      return { kind: 'pixel', base, x: l.x, y: l.y, canvas: l.frozen.canvas };
+      if (l.mask && (!l.mfrozen || l.mfrozen.rev !== l.mrev)) l.mfrozen = { rev: l.mrev, canvas: cloneCanvas(l.mask) };
+      return { kind: 'pixel', base, x: l.x, y: l.y, canvas: l.frozen.canvas, mask: l.mask ? l.mfrozen!.canvas : null, text: l.text ? { ...l.text } : null };
     });
     return { name: this.doc.name, w: this.doc.w, h: this.doc.h, active: this.doc.active, layers };
   }
@@ -70,7 +87,7 @@ export class Store {
     this.doc.active = s.active;
     this.doc.layers = s.layers.map((sl): Layer => {
       if (sl.kind === 'adjust') return { kind: 'adjust', ...sl.base, def: sl.def, values: structuredClone(sl.values), rev: 0 };
-      return { kind: 'pixel', ...sl.base, canvas: cloneCanvas(sl.canvas), x: sl.x, y: sl.y, rev: 0, frozen: { rev: 0, canvas: sl.canvas } };
+      return { kind: 'pixel', ...sl.base, canvas: cloneCanvas(sl.canvas), x: sl.x, y: sl.y, rev: 0, frozen: { rev: 0, canvas: sl.canvas }, mask: sl.mask ? cloneCanvas(sl.mask) : null, mrev: 0, mfrozen: sl.mask ? { rev: 0, canvas: sl.mask } : null, text: sl.text ? { ...sl.text } : null };
     });
   }
 
@@ -79,6 +96,7 @@ export class Store {
     if (this.undoStack.length > 24) this.undoStack.shift();
     this.redoStack = [];
     this.dirty = true;
+    this.emit('history');
   }
 
   dropLast(): void {

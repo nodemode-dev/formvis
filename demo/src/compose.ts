@@ -2,7 +2,7 @@ import { blendPixels } from '../../frontend/src/engine/blend';
 import { canvasBlend, compositeOp } from '../../frontend/src/engine/types';
 import type { Kernel, KernelContext } from '../../frontend/src/engine/kernels';
 import { adjustDef } from './adjust-defs';
-import { makeCanvas, type AdjustLayer, type Doc } from './model';
+import { makeCanvas, type AdjustLayer, type Doc, type PixelLayer } from './model';
 
 const kernels = new WeakMap<AdjustLayer, { key: string; kernel: Kernel }>();
 
@@ -19,6 +19,22 @@ function kernelOf(l: AdjustLayer): Kernel | null {
 
 let flat = makeCanvas(1, 1);
 let scratch = makeCanvas(1, 1);
+const cut = makeCanvas(1, 1);
+
+export function bakeMask(l: PixelLayer, into: HTMLCanvasElement = cut): HTMLCanvasElement {
+  if (into.width !== l.canvas.width) into.width = l.canvas.width;
+  if (into.height !== l.canvas.height) into.height = l.canvas.height;
+  const g = into.getContext('2d')!;
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(0, 0, into.width, into.height);
+  g.drawImage(l.canvas, 0, 0);
+  if (l.mask) {
+    g.globalCompositeOperation = 'destination-in';
+    g.drawImage(l.mask, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+  }
+  return into;
+}
 
 function fit(c: HTMLCanvasElement, w: number, h: number): void {
   if (c.width !== w) c.width = w;
@@ -39,15 +55,16 @@ export function compose(doc: Doc, upTo = doc.layers.length): HTMLCanvasElement {
     const l = doc.layers[i];
     if (!l.visible) continue;
     if (l.kind === 'pixel') {
+      const source = l.mask ? bakeMask(l) : l.canvas;
       if (canvasBlend(l.blend)) {
         ctx.globalAlpha = l.opacity;
         ctx.globalCompositeOperation = compositeOp(l.blend);
-        ctx.drawImage(l.canvas, l.x, l.y);
+        ctx.drawImage(source, l.x, l.y);
         ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = 'source-over';
       } else {
         sctx.clearRect(0, 0, w, h);
-        sctx.drawImage(l.canvas, l.x, l.y);
+        sctx.drawImage(source, l.x, l.y);
         const src = sctx.getImageData(0, 0, w, h);
         const dst = ctx.getImageData(0, 0, w, h);
         blendPixels(dst.data, src.data, l.blend, l.opacity, (p) => [p % w, (p / w) | 0]);

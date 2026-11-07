@@ -90,3 +90,27 @@
 .cv-dialog-body .cv-slider-ctl { display: grid; grid-template-columns: minmax(0, 1fr) 72px; }
 .cv-dialog-body output { color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
 .cv-dialog-body .cv-field.cv-slider output { align-self: center; }
+
+.dv-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: var(--space-2); background: var(--bg-primary); color: var(--text-secondary); font-size: 14px; opacity: 0; pointer-events: none; transition: opacity 180ms ease-out; z-index: var(--z-raised); }
+.dv-sheet.is-loading .dv-loading { opacity: 1; }
+.dv-spinner { width: 18px; height: 18px; border: 2px solid var(--border-light); border-top-color: var(--accent-color); border-radius: 50%; animation: dv-spin 800ms linear infinite; }
+@keyframes dv-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .dv-spinner { animation: none; } }
+
+.cv-layer.is-text .cv-layer-thumb { display: none; }
+.cv-layer.is-text .cv-layer-kind { display: inline-flex; }
+.dv-field-top { align-items: start; }
+.dv-textarea { resize: vertical; min-height: 56px; font: inherit; }
+.dv-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.dv-tray { display: grid; gap: var(--space-3); align-content: start; }
+.dv-tray[hidden] { display: none; }
+.dv-photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.dv-photo { display: grid; gap: var(--space-1); min-width: 0; padding: var(--space-1); border: 1px solid var(--line-1); border-radius: 8px; background: var(--surface-2); }
+.dv-photo-img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--radius-sm); background: var(--bg-tertiary); }
+.dv-photo-meta { display: grid; min-width: 0; padding: 0 var(--space-1); }
+.dv-photo-title, .dv-photo-by { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-11); }
+.dv-photo-title { color: var(--text-primary); }
+.dv-photo-by { color: var(--text-muted); }
+.dv-photo-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-1); }
+.dv-photo.is-busy .dv-photo-actions { opacity: 0.5; pointer-events: none; }

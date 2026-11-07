@@ -1,7 +1,7 @@
 import { readPsd, writePsd, type Layer as PsdLayer, type Psd } from 'ag-psd';
 import { decodeTiffInBrowser } from '../../frontend/src/io/tiff-browser';
 import { LAYER_BLEND_MODES, type BlendMode } from '../../frontend/src/engine/types';
-import { detached } from './compose';
+import { bakeMask, detached } from './compose';
 import { makeCanvas, pixelLayer, type Doc, type PixelLayer } from './model';
 
 export const MAX_SIDE = 3200;
@@ -81,7 +81,7 @@ export async function encode(doc: Doc, format: ExportFormat, quality: number): P
     const children: PsdLayer[] = kept.map((l) => ({
       name: l.name, left: l.x, top: l.y, opacity: l.opacity, hidden: !l.visible,
       blendMode: (EXTRA.has(l.blend) ? 'normal' : l.blend.replace(/-/g, ' ')) as PsdLayer['blendMode'],
-      canvas: l.canvas,
+      canvas: l.mask ? bakeMask(l, makeCanvas(l.canvas.width, l.canvas.height)) : l.canvas,
     }));
     const psd: Psd = { width: doc.w, height: doc.h, canvas: flat, children };
     const bytes = writePsd(psd, { generateThumbnail: false, compress: true });
