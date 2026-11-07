@@ -37,6 +37,8 @@ export interface AgentDeps {
   viewCapture?(): Surface | null;
   selectPoints?(inside: Array<[number, number]>, outside: Array<[number, number]>, mode: 'replace' | 'add' | 'subtract' | 'intersect'): Promise<string | null>;
   plugins?(): Promise<Array<Record<string, unknown>>>;
+  // Form extensions (extensions_list, extension_command): the list, and a contributed command run with the window's consent.
+  extensions?: { list(): Promise<Array<Record<string, unknown>>>; run(id: string, command: string, args: unknown): Promise<unknown> };
   // The window's error log, for read_log.
   log?(): Array<{ at: number; what: string; message: string }>;
   // The window's own controls: state, screenshots, menus, dialogs, synthetic input (ui_state and the other ui_ tools).
@@ -295,6 +297,18 @@ export class AgentBridge {
         if (!this.deps.plugins) return fail('Plugins are not available here.');
         const plugins = await this.deps.plugins();
         return text(plugins.length ? JSON.stringify(plugins) : 'No plugins are installed: the person adds .js files in Preferences > Plugins.', { plugins });
+      }
+      if (name === 'extensions_list' || name === 'extension_command') {
+        const x = this.deps.extensions;
+        if (!x) return fail('Form extensions are not available in this window.');
+        if (name === 'extensions_list') {
+          const extensions = await x.list();
+          return text(extensions.length ? `${extensions.length} extension${extensions.length === 1 ? '' : 's'}: ${extensions.map((r) => `${String(r.id)} ${String(r.version)} ${String(r.state)}`).join(', ')}.` : 'No extensions are installed: FormPortal installs them, form.ext runs one in development.', { extensions });
+        }
+        try {
+          const result = await x.run(str('id'), str('command'), a.args && typeof a.args === 'object' ? a.args : {});
+          return text(`Ran ${str('command')} from ${str('id')}.`, { result: result ?? null });
+        } catch (err) { return fail(`${str('id')} ${str('command')} did not run: ${err instanceof Error ? err.message : String(err)}`); }
       }
       if (name === 'list_recipes') {
         const falOn = (async () => (await api.generativeStatus())?.configured === true)().catch(() => false);
@@ -1373,6 +1387,13 @@ export class AgentBridge {
       }
     } catch (err) {
       return fail(err instanceof Error ? err.message : String(err));
-    } finally { this.deps.note(`An agent used ${name}.`); }
+    } finally { if (!this.silent) this.deps.note(`An agent used ${name}.`); }
+  }
+
+  private silent = 0;
+  /** One tool call made for a Form extension: the same as `run`, without the "An agent used" notice. */
+  async runFor(name: string, a: Record<string, unknown>): Promise<McpResult> {
+    this.silent++;
+    try { return await this.run(name, a); } finally { this.silent--; }
   }
 }

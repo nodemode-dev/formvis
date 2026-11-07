@@ -15,6 +15,8 @@ export class PluginsDialog extends Dialog {
   private readonly folders = el('<div class="cv-plugins-list"></div>');
   /** Set by the app: shows the plugins folder in the system file manager. */
   openFolder: () => void = () => {};
+  /** Set by the app: shows Window > Extensions, where FormPortal's and form.ext's extensions are listed. */
+  showExtensions: () => void = () => {};
 
   constructor(private readonly host: PluginHost, private readonly modules: FolderPlugins, private readonly confirm: (title: string, text: string, ok: string) => Promise<boolean>) {
     super('Plugins', 440);
@@ -28,6 +30,7 @@ export class PluginsDialog extends Dialog {
     this.host.onChange = () => { if (this.isOpen) void this.refresh(); };
     this.modules.onChange = () => { if (this.isOpen) void this.refresh(); };
     this.body.append(el('<p class="cv-note">A single .js file runs in a sandbox: it can change the open document through formvis\'s tools, each change undoable, and anything that costs money still asks you; it cannot see your keys or your files. A plugin folder (plugin.json and an ES module) runs inside formvis with the permissions it lists, which you approve when you turn it on. Commands are in the Plugins menu.</p>'), this.list, this.empty, this.folders, add, reload, open, this.file, this.note);
+    this.button('Extensions Panel', 'ghost', () => { this.close(); this.showExtensions(); });
     this.button('Close', 'ghost', () => this.close());
   }
 
