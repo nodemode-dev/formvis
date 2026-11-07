@@ -7,7 +7,7 @@ An offline demo of the FormVis layered image editor that runs in a browser with 
 - Double-click `demo/index.html` (it works from `file://`), or
 - serve the folder with any static server, for example `python3 -m http.server --directory demo 8000`.
 
-Every script, style, font and the sample picture is local to this folder.
+Every script, style, font and photograph is local to this folder.
 
 ## What it shows
 
@@ -21,15 +21,17 @@ The picture work is done by the application's engine modules, bundled from `fron
 - Filters on the active pixel layer with live preview (`filters.ts`): Gaussian Blur, Motion Blur, Unsharp Mask, Add Noise; plus Desaturate, Equalize and Invert.
 - Image menu: flip, rotate 90 or 180, image size with proportions.
 - Brush, Eraser, Move, Eyedropper, Hand and Zoom tools, with Space to pan and the wheel to zoom.
-- Undo and redo of every edit.
+- Layer masks (add reveal-all or hide-all, invert, delete; click the mask thumbnail and paint with the Brush to reveal or the Eraser to hide) and text layers (Layer > New text layer; font, weight, size, tracking and colour in Properties).
+- A Photos tab beside Properties with six more photographs to open as a document or place as a layer.
+- Undo and redo of every edit, with the title-bar buttons enabled as soon as there is something to undo.
 - Open or drop your own PNG, JPEG, WebP, GIF, BMP, AVIF, TIFF or layered PSD (layers, blend modes, opacity and visibility are kept). Shift-drop, or File > Place, adds an image as a layer.
 - Export PNG, JPEG, WebP or a layered PSD, with the encoded size shown before saving.
 
-With no file the demo opens a procedurally generated document, "Harbour at dusk", made of nine pixel layers (several with blend modes) and two adjustment layers. It is drawn by code in `src/sample.ts`; no third-party media is included.
+With no file the demo opens "Above the Clouds", a finished 1080 by 1350 poster: a sunset sky replacing the original sky of a misty mountain photograph (a layer mask), a hot-air balloon cut out of its background (a second mask), a flock of birds blended with Multiply, a mist layer blended with Screen through a gradient mask, four adjustment layers that grade the whole picture, and four text layers. Pexels photographs, credited in `CREDITS.md`, ship as JavaScript data packs in `assets/media/` that the page loads on demand; while they decode the canvas shows a loading state at the final size. File > Sample also offers the generated "Harbour at dusk" document (`src/sample.ts`), which is also what opens if a media pack cannot be loaded.
 
 ## Not in the demo
 
-Selections, masks, paths, type, layer styles, smart objects, the Python engine, local models, camera RAW, GPU drawing and the MCP server belong to the desktop and engine build. The WebAssembly kernels are replaced by their TypeScript twins (`src/shim/wasm-kernels.ts`) because `file://` cannot fetch `.wasm`; results are the same bytes.
+Selections, paths, vector type tools, layer styles, smart objects, the Python engine, local models, camera RAW, GPU drawing and the MCP server belong to the desktop and engine build. The WebAssembly kernels are replaced by their TypeScript twins (`src/shim/wasm-kernels.ts`) because `file://` cannot fetch `.wasm`; results are the same bytes.
 
 ## Rebuild
 
@@ -45,4 +47,4 @@ npm run demo
 
 ## Licences
 
-The bundle contains the app's own code, Inter and JetBrains Mono (OFL 1.1, via @fontsource), ag-psd (MIT) and utif2 (MIT). All three are already in `frontend/package-lock.json` and `NOTICE.md`.
+The bundle contains the app's own code, Inter and JetBrains Mono (OFL 1.1, via @fontsource), ag-psd (MIT) and utif2 (MIT). All three are already in `frontend/package-lock.json` and `NOTICE.md`. The photographs are under the Pexels License and are credited one by one in `CREDITS.md`. PSD export bakes each mask into its layer's pixels.
