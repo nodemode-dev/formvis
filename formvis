@@ -29,7 +29,7 @@ usage: ./formvis [command] [options]
   verify-local [--small]  run Krea 2 and FLUX.2 [klein] once here (licences and downloads asked first); writes bench-results/
   mcp [--attach] [--headless] [--root DIR] [--where]  formvis over MCP's stdio transport, for Claude Desktop and other MCP clients (--attach: never start the engine; --headless: a window with no screen; --root: files confined to DIR; --where: print the launcher's address)
   headless [--url URL]  a window with no screen (Playwright's Chromium) so document commands, the CLI and MCP run without a visible window; stays until Ctrl-C
-  cli list|describe|run|process|batch|droplet|info|convert|jobs|serve|version  the command catalogue of the open window: list [text], describe <id>, run <id> key=value ...; process <files|folder> --action NAME (file in, file out); droplet <action> (a script to drop files onto); info <file> and convert <in> <out> need only the engine; jobs list|cancel; serve (JSON lines on stdin and stdout); each takes --help
+  cli list|describe|run|process|batch|droplet|info|convert|jobs|extensions|serve|version  the command catalogue of the open window: list [text], describe <id>, run <id> key=value ...; process <files|folder> --action NAME (file in, file out); droplet <action> (a script to drop files onto); info <file> and convert <in> <out> need only the engine; jobs list|cancel; serve (JSON lines on stdin and stdout); each takes --help
   version             the version and build (also --version)
   agents install|sync  set up Claude Code, Codex and Cursor for editing in plain language (install), or refresh every skill and its generated references (sync [--check])
   clean [--all]       remove build output (--all also venv and node_modules)

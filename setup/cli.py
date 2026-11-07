@@ -17,6 +17,7 @@
                         layers and goes through a window (add --headless). The files you name are yours to replace: --overwrite needs no
                         approval in a window for a flat picture
   ./formvis cli jobs [list [--active]] | cancel <id> | cancel --all   the engine's background jobs
+  ./formvis cli extensions [list] | run <id> <command> [key=value ...]   the Form extensions and their commands
   ./formvis cli serve [--root DIR] [--token TEXT]   a JSON-lines session on stdin and stdout: {"id":1,"method":"command.run","params":{...}}
   ./formvis cli version   the version, build and the engine's address
 
@@ -51,6 +52,7 @@ HELP = {
                "  --options takes the writer's choices as JSON, for example tga {\"bits\":24,\"rle\":true}, dpx {\"bits\":10,\"transfer\":\"log\"}. A .psd .psb .ora or .fvd file in or out keeps its layers and needs a window (--headless).\n"
                "  A layered input to tga or dpx writes the flattened picture with those choices; a .tif out with --options '{\"layers\":true}' writes a TIFF that carries the layers.",
     "jobs": "jobs [list [--active]] | cancel <id> | cancel --all\n  The engine's background jobs (local generation, upscaling) and agent calls now running.",
+    "extensions": "extensions [list] | run <id> <command> [key=value ...]\n  The Form extensions FormPortal installed and form.ext runs here, and a command one contributes (asked once in the window).",
     "serve": "serve [--root DIR] [--token TEXT] [--auth-seconds N] [--headless]\n  A JSON-lines session: one request per line on stdin, one answer per line on stdout. Request {\"id\":1,\"method\":\"...\",\"params\":{}};\n"
              "  answer {\"id\":1,\"ok\":true,\"result\":...} or {\"id\":1,\"ok\":false,\"error\":\"...\"}. Methods: ping, version, commands.list, command.describe,\n"
              "  command.run, batch {commands, stopOnError}, doc.list, doc.new, doc.open, doc.place, doc.save, doc.export, doc.inspect, doc.close, doc.exportLayers,\n"
@@ -644,6 +646,33 @@ def jobs_cmd(args: list[str]) -> int:
     return 2
 
 
+def extensions_cmd(args: list[str]) -> int:
+    sub = args[0] if args else "list"
+    if sub == "list":
+        ok, said, data = tool("extensions_list", {})
+        if not ok:
+            print(said, file=sys.stderr)
+            return 1
+        rows = data.get("extensions", [])
+        for r in rows:
+            reason = f"  ({r['reason']})" if r.get("reason") else ""
+            cmds = ", ".join(c["id"] for c in r.get("commands", []))
+            print(f"{r['id']}  {r['version']}  {r['source']}  {r['state']}{reason}" + (f"\n  commands: {cmds}" if cmds else ""))
+        print(f"\n{len(rows)} extension{'' if len(rows) == 1 else 's'}")
+        return 0
+    if sub == "run":
+        if len(args) < 3:
+            print("Give the extension id and its command: ./formvis cli extensions run <id> <command> [key=value ...]", file=sys.stderr)
+            return 2
+        ok, said, data = tool("extension_command", {"id": args[1], "command": args[2], "args": pairs(args[3:])})
+        print(said, file=sys.stderr if not ok else sys.stdout)
+        if ok and data.get("result") is not None:
+            print(json.dumps(data["result"]))
+        return 0 if ok else 1
+    print(f"{sub}: extensions takes list or run.", file=sys.stderr)
+    return 2
+
+
 def version_cmd(_args: list[str]) -> int:
     import platform
     import re
@@ -869,7 +898,7 @@ def offline(name: str):
 
 
 COMMANDS = {"list": list_cmd, "describe": describe_cmd, "run": run_cmd, "process": process_cmd, "batch": process_cmd, "droplet": droplet_cmd, "info": info_cmd, "convert": convert_cmd,
-            "jobs": jobs_cmd, "serve": serve_cmd, "version": version_cmd, **{n: offline(n) for n in ("stack", "contact", "fit", "photomerge", "hdr")}}
+            "jobs": jobs_cmd, "extensions": extensions_cmd, "serve": serve_cmd, "version": version_cmd, **{n: offline(n) for n in ("stack", "contact", "fit", "photomerge", "hdr")}}
 
 
 def main(argv: list[str]) -> int:

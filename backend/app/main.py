@@ -110,6 +110,8 @@ app.include_router(_commands.router)
 from app.routers import agents as _agents_router  # noqa: E402  (Window > Agent Connect, DEV_PLAN 28.4)
 app.include_router(_agents_router.router)
 app.include_router(plugins.router)   # plugins (1.52.6); its prefix is its own
+from app.routers import extensions as _extensions  # noqa: E402  (Form Extension Contract API 1, 2.1.0)
+app.include_router(_extensions.router)
 app.include_router(large.router)   # pictures larger than formvis edits in one piece (1.52.7)
 from app.routers import native as _native  # noqa: E402  (the native renderer's status, DEV_PLAN 28.6)
 app.include_router(_native.router)

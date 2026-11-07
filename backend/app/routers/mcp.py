@@ -140,6 +140,9 @@ TOOLS = [
           {"id": {"type": "string", "description": "A document id from get_document's documents."}}, destructive=True),
     _tool("ping", "Reports in one call whether formvis is there: its version, whether the window is open and connected, whether outside agents are allowed, and the open documents (id, name, size). Never opens the window and never asks the person anything.", {}, read=True, idempotent=True),
     _tool("list_plugins", "Lists the plugins in the plugins folder: file name, size, whether it is on, whether it is running, its name and the commands it registered (run one with run_command id plugin:[file]:[command]).", {}, read=True, idempotent=True),
+    _tool("extensions_list", "Lists the extensions FormPortal installed and form.ext runs for formvis (Form Extension Contract, API 1): id, name, version, source (catalogue, sideload, development), state (ready, needs-permission, refused with the reason), permissions and the commands each contributes.", {}, read=True, idempotent=True),
+    _tool("extension_command", "Runs a command an extension contributes (ids from extensions_list), with the same consent as the Extensions menu: the first run of a version asks the person in the formvis window, and a refusal fails. Waits for the extension to finish: a headless command stops after 120 seconds without a pending request, and the call waits at most 10 minutes.",
+          {"id": {"type": "string", "description": "The extension id."}, "command": {"type": "string", "description": "The command id within the extension."}, "args": {"type": "object", "description": "Arguments passed to the extension with the command."}}, ["id", "command"]),
     # The document's size and shape.
     _tool("resize_image", "Resamples the whole document. Give width and height in pixels, or one of them (the other follows the shape), or percent (100 keeps the size), or long_side (the longer side in pixels, the shape kept).",
           {"width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
@@ -442,6 +445,8 @@ USE_WHEN = {
     "close_document": "an open document is finished with and its tab should go.",
     "ping": "you want to know whether formvis is running, connected and allowed before the first edit.",
     "list_plugins": "you need to know which plugins are installed and what commands they add.",
+    "extensions_list": "you need to know which Form extensions are installed or in development and what commands they add.",
+    "extension_command": "an installed Form extension has a command that does what the person asked.",
     "apply_filter": "a blur, sharpen, noise or other filter should change the active layer.",
     "set_adjustment": "an adjustment layer made earlier needs different settings.",
     "color_match": "a pasted layer should match the colours around or beneath it.",
