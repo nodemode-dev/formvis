@@ -1,0 +1,11 @@
+{
+ "lanterns": {
+  "img": "lanterns.jpg"
+ },
+ "tree": {
+  "img": "tree.jpg"
+ },
+ "bokeh": {
+  "img": "bokeh.jpg"
+ }
+}

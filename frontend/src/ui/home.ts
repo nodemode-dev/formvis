@@ -2,6 +2,7 @@ import type { Engine } from '../engine';
 import { el, setClass, setHidden, setText } from './dom';
 import { HomeFiles } from './home-files';
 import { icon } from './icons';
+import { DEMOS, demoCover } from '../demos';
 
 /** The Home screen: New and Open, and the files browser (Recent, Projects, Outputs as thumbnails or a list; 1.87.1),
  *  shown over the canvas at launch while no document is open (Preferences > General, "Show Home screen at launch")
@@ -17,6 +18,8 @@ export interface HomeDeps {
   openPath: (path: string) => void;
   removeRecent: (name: string) => void;
   run: (command: string) => void;
+  /** Opens a demo of frontend/src/demos by id (Start's Demos cards). */
+  openDemo: (id: string) => void;
 }
 
 export class HomeScreen {
@@ -27,6 +30,7 @@ export class HomeScreen {
   private forced = false;
   private lastCount = 0;
   private hadDocument = false;
+  private building: string | null = null;
   private back!: HTMLElement;
 
   /** Home (1.87.3): a navigation column (Start, Recent, Projects, Outputs with counts; Create; Preferences and Help at
@@ -38,6 +42,7 @@ export class HomeScreen {
     const cmdItem = (cmd: string, ic: string, label: string): string => `<button class="cv-home-nav-item" type="button" data-cmd="${cmd}">${icon(ic, 16)}<span>${label}</span></button>`;
     const key = (k: string): string => `<kbd class="cv-key">${mod}</kbd><kbd class="cv-key">${k}</kbd>`;
     const formats = ['FVD', 'PSD', 'PSB', 'TIFF', 'PNG', 'JPEG', 'WEBP', 'HEIC', 'EXR', 'HDR', 'ORA', 'RAW'].map((f) => `<span class="cv-home-format">${f}</span>`).join('');
+    const demos = DEMOS.map((d) => `<button class="cv-home-demo" type="button" data-demo-open="${d.id}" aria-busy="false"><span class="cv-home-demo-pic"><img src="${demoCover(d)}" alt="" width="320" height="180" decoding="async" draggable="false"></span><span class="cv-home-demo-title">${d.title}</span><span>${d.blurb}</span></button>`).join('');
     const sizes = PRESETS.map((p, i) => `<button class="cv-home-size" type="button" data-size="${i}"><span class="cv-home-size-box"><span style="aspect-ratio: ${p.w} / ${p.h}"></span></span><span class="cv-home-size-name">${p.name}</span><span class="cv-home-size-meta">${p.w} x ${p.h} px${p.ppi !== 72 ? ` · ${p.ppi} ppi` : ''}</span></button>`).join('');
     this.root.innerHTML = `<nav class="cv-home-nav" aria-label="Home">
       <div class="cv-home-brand">formvis <span>by nodemode.ai</span></div>
@@ -62,6 +67,7 @@ export class HomeScreen {
             <button class="cv-home-action is-ghost" type="button" data-cmd="generate-image">${icon('generate', 16)}<span class="cv-home-label">Generate an image</span></button>
           </div>
         </div>
+        <section class="cv-home-section" data-home-section="demos"><div class="cv-home-section-head"><h2 class="cv-home-section-title">Demos</h2><span class="cv-home-note">Each opens as new, unsaved documents. Nothing of yours is changed.</span></div><div class="cv-home-demos">${demos}</div></section>
         <section class="cv-home-section"><div class="cv-home-section-head"><h2 class="cv-home-section-title">Recent</h2><button class="cv-btn cv-btn-ghost" type="button" data-v="recent">See all</button></div><div class="cv-home-slot" data-slot="start"></div></section>
         <section class="cv-home-section"><div class="cv-home-section-head"><h2 class="cv-home-section-title">New document</h2><button class="cv-btn cv-btn-ghost" type="button" data-cmd="new">More sizes...</button></div><div class="cv-home-sizes">${sizes}</div></section>
       </div>
@@ -83,6 +89,8 @@ export class HomeScreen {
       const v =(t.closest('[data-v]') as HTMLElement | null)?.dataset.v as Page | undefined;
       if (v) { this.show(v); return; }
       if (t.closest('[data-cmd]')) return;   // the window's own button[data-cmd] handler runs the command
+      const demo = (t.closest('[data-demo-open]') as HTMLElement | null)?.dataset.demoOpen;
+      if (demo) { this.d.openDemo(demo); return; }
       const size = (t.closest('[data-size]') as HTMLElement | null)?.dataset.size;
       const p = size !== undefined ? PRESETS[Number(size)] : undefined;
       if (p) this.d.engine.newDocument(p.w, p.h, p.name, 'white', p.ppi);
@@ -110,6 +118,22 @@ export class HomeScreen {
 
   get isShown(): boolean { return !this.root.hidden; }
 
+  /** While a demo builds, Home stays over the canvas at Start with that demo's card marked busy, so its documents
+   *  appear once, complete; `null` releases it and Home closes as for any opened document. */
+  holdForDemo(id: string | null): void {
+    this.building = id;
+    for (const n of Array.from(this.root.querySelectorAll<HTMLElement>('[data-demo-open]'))) n.setAttribute('aria-busy', String(n.dataset.demoOpen === id));
+    if (id) {
+      if (this.page !== 'start') { this.page = 'start'; this.paint(); }
+      this.forced = true;
+      this.sync();
+      this.root.querySelector('[data-home-section="demos"]')?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    this.forced = false;
+    this.sync();
+  }
+
   /** The Home button: shows the Home screen over whatever is open, at `page` when given. */
   show(page?: Page): void {
     if (page && page !== this.page) { this.page = page; this.paint(); if (!this.root.hidden) this.fill(); }
@@ -124,7 +148,7 @@ export class HomeScreen {
     if (n > this.lastCount) this.forced = false;
     this.lastCount = n;
     if (n > 0) this.hadDocument = true;
-    const on = this.forced || (n === 0 && (this.hadDocument ? this.d.afterClose() : this.d.autoShow()));
+    const on = this.forced || this.building !== null || (n === 0 && (this.hadDocument ? this.d.afterClose() : this.d.autoShow()));
     if (on && this.root.hidden) { this.paint(); this.fill(); }
     setHidden(this.root, !on);
     setHidden(this.back, n === 0);

@@ -82,8 +82,8 @@ async function load(l: Lang): Promise<void> {
   for (const code of [LANG_PARENT[l], l]) {
     if (!code || tables.has(code) || code === 'en') continue;
     const more = MORE[code], extra = EXTRA[code];
-    const [a, b, c] = await Promise.all([LOADERS[code](), more ? more() : Promise.resolve({}), extra ? extra() : Promise.resolve({})]);
-    tables.set(code, { ...c, ...b, ...a });   // the first part wins where parts share a key
+    const [a, b, c, d] = await Promise.all([LOADERS[code](), more ? more() : Promise.resolve({}), extra ? extra() : Promise.resolve({}), import('./i18n/demos').then((m) => m.demoTable(code))]);
+    tables.set(code, { ...d, ...c, ...b, ...a });   // the first part wins where parts share a key
   }
 }
 

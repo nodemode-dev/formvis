@@ -4,6 +4,8 @@ Every picture comes from Pexels. Each source page was opened and read before the
 
 The photographs ship as JavaScript data packs in `assets/media/` (so the page opens from `file://` and the engine can read the pixels). Originals were downloaded with curl from images.pexels.com and re-encoded with Pillow; nothing was upscaled.
 
+The app opens this demo from Home > Demos and Help > Demos. Its copy of the same three photographs is in `frontend/public/demos/design/`, the packs' bytes written out unchanged by `scripts/demo-media.py`, so the credits below cover them too; the type families are the app's own copies in `frontend/public/fonts/`.
+
 | File in the demo | Title | Photographer | Source page | Licence as stated on the page | What was changed |
 | --- | --- | --- | --- | --- | --- |
 | `assets/media/lanterns.js` | Lighted Paper Lanterns in Various Colors Hanging in the Dark | Vladimir Sladek | https://www.pexels.com/photo/lighted-paper-lanterns-in-various-colors-hanging-in-the-dark-10059347/ | Free, Pexels License | Scaled from 6016 by 4016 px to 1500 by 1001 px, JPEG quality 86; placed in the document at 1160 px wide as a smart object |

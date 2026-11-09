@@ -15,9 +15,9 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | Test documents lf_gauss10.af, shp_arrow.af, exposure.af (schist fixtures) | MIT, Copyright (c) 2026 Infrawrench LLC | `e2e/fixtures/af/` |
 | Test documents raster_test.afdesign, layer_test.afdesign, layer_mode.afdesign (AFDesignLoad) | MIT, Copyright (c) 2015 Nick Beeuwsaert | `e2e/fixtures/af/` |
 | Test document poster.af (filex-media-thumbs) | MIT, Copyright (c) 2026 BRF Tech | `e2e/fixtures/af/` |
-| Demo photographs (eleven photos by Pexels photographers, listed with their sources in the credits file) | Pexels License | `demo/assets/media/`, credited in `demo/CREDITS.md` |
-| Retouch demo photographs (two golden retriever photos by Pexels photographers) | Pexels License | `demos/retouch/assets/media/`, credited in `demos/retouch/CREDITS.md` |
-| Design demo photographs (three lantern and light photos by Pexels photographers) and its type families (Bebas Neue, Playfair Display, Montserrat, the app's own copies) | Pexels License; SIL OFL 1.1 | `demos/design/assets/media/` and `demos/design/fonts/`, credited in `demos/design/CREDITS.md` |
+| Demo photographs (eleven photos by Pexels photographers, listed with their sources in the credits file) | Pexels License | `demo/assets/media/`, and in the app (Home > Demos) at `frontend/public/demos/paint/`, the same bytes written by `scripts/demo-media.py`; credited in `demo/CREDITS.md` |
+| Retouch demo photographs (two golden retriever photos by Pexels photographers) | Pexels License | `demos/retouch/assets/media/`, and in the app at `frontend/public/demos/retouch/`; credited in `demos/retouch/CREDITS.md` |
+| Design demo photographs (three lantern and light photos by Pexels photographers) and its type families (Bebas Neue, Playfair Display, Montserrat, the app's own copies) | Pexels License; SIL OFL 1.1 | `demos/design/assets/media/` and `demos/design/fonts/`, and in the app at `frontend/public/demos/design/` (the type families are the app's own `frontend/public/fonts/`); credited in `demos/design/CREDITS.md` |
 
 ## Adobe DNG patent licence
 

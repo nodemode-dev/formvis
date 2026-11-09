@@ -1,14 +1,9 @@
+import { decodeUrl, greyToAlpha, type DemoMedia } from '../../frontend/src/demos/media';
+
 export interface Pack { img: string; mask?: string; w?: number; h?: number }
 
 declare global {
   interface Window { FV_MEDIA?: Record<string, Pack> }
-}
-
-function makeCanvas(w: number, h: number): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(w));
-  c.height = Math.max(1, Math.round(h));
-  return c;
 }
 
 const pending = new Map<string, Promise<Pack>>();
@@ -33,23 +28,14 @@ export function loadPack(name: string): Promise<Pack> {
   return p;
 }
 
-async function decode(uri: string): Promise<HTMLCanvasElement> {
-  const img = new Image();
-  img.src = uri;
-  await img.decode();
-  const c = makeCanvas(img.naturalWidth, img.naturalHeight);
-  c.getContext('2d')!.drawImage(img, 0, 0);
-  return c;
-}
-
-export const packImage = (pack: Pack): Promise<HTMLCanvasElement> => decode(pack.img);
+export const packImage = (pack: Pack): Promise<HTMLCanvasElement> => decodeUrl(pack.img);
 
 export async function packMask(pack: Pack): Promise<HTMLCanvasElement | null> {
-  if (!pack.mask) return null;
-  const c = await decode(pack.mask);
-  const g = c.getContext('2d', { willReadFrequently: true })!;
-  const data = g.getImageData(0, 0, c.width, c.height), d = data.data;
-  for (let i = 0; i < d.length; i += 4) { d[i + 3] = d[i]; d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; }
-  g.putImageData(data, 0, 0);
-  return c;
+  return pack.mask ? greyToAlpha(await decodeUrl(pack.mask)) : null;
 }
+
+/** The demo pages' photographs: the data packs in ./assets/media, which open from file://. */
+export const packMedia: DemoMedia = {
+  image: async (name) => packImage(await loadPack(name)),
+  mask: async (name) => packMask(await loadPack(name)),
+};

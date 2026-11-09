@@ -253,6 +253,7 @@ import { ChannelsPanel } from './ui/channels';
 import { NativeMenus, wantsNativeMenus, menusInWindow, MENUS_IN_WINDOW_KEY } from './ui/native-menu';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
+import { DEMOS, buildDemo } from './demos';
 import { ALL_PANELS, Dock, registerPanel, unregisterPanel } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, createDevelopDock, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
@@ -890,7 +891,30 @@ export function startApp(): void {
     engine, autoShow: () => loadPrefs().autoShowHome, afterClose: () => loadPrefs().homeOnLastClose, recent: () => recent,
     openRecent: (name) => { void openLibrary(name); }, run: (c) => { commands.run(c); },
     openPath: (path) => { void openPaths([path]); }, removeRecent: (name) => keepRecent(recent.filter((n) => n !== name)),
+    openDemo: (id) => { void openDemo(id); },
   });
+  // Home > Demos, Help > Demos and the demo-* commands: a demo of frontend/src/demos built as new documents while Home
+  // holds the window, so nothing open is replaced and the documents appear complete.
+  let demoOpening: string | null = null;
+  const openDemo = async (id: string): Promise<boolean> => {
+    if (!DEMOS.some((d) => d.id === id)) return false;
+    if (demoOpening) { toast('A demo is still opening.', 'info'); return false; }
+    demoOpening = id;
+    home.holdForDemo(id);
+    toast('Opening the demo...', 'info');
+    try {
+      await buildDemo(id, engine);
+      toast('The demo is open. Save it to keep your changes.', 'info');
+      return true;
+    } catch (err) {
+      console.error('demo', id, message(err));
+      toast('The demo could not open.', 'error');
+      return false;
+    } finally {
+      demoOpening = null;
+      home.holdForDemo(null);
+    }
+  };
   const brand = q(root, '.cv-brand');
   brand.setAttribute('role', 'button');
   brand.setAttribute('tabindex', '0');
@@ -4028,6 +4052,8 @@ export function startApp(): void {
     { id: 'agent.chat', label: 'Chat with Claude', checked: () => termDock.isShowing('chat'), run: () => void termDock.toggleKind('chat') },
     { id: 'help', label: 'formvis Help', keys: ['F1'], run: () => help.show() },   // 1.52.3
     { id: 'whats-new', label: 'What\'s New...', run: () => whatsNew.show() },
+    ...DEMOS.map((d) => ({ id: `demo-${d.id}`, label: d.title, enabled: () => demoOpening === null, run: () => openDemo(d.id) })),
+    { id: 'demo-open', label: 'Open a Demo', params: { id: { type: 'string', enum: DEMOS.map((d) => d.id), description: 'The demo: paint, retouch or design.', required: true } }, enabled: () => demoOpening === null, run: (a) => openDemo(String(a?.id ?? '')) },
     { id: 'pref-home-launch', label: 'Show Home Screen at Launch', checked: () => loadPrefs().autoShowHome, run: () => { updatePrefs({ autoShowHome: !loadPrefs().autoShowHome }); home.sync(); } },
     { id: 'pref-home-last-close', label: 'Show Home Screen When the Last Document Closes', checked: () => loadPrefs().homeOnLastClose, run: () => { updatePrefs({ homeOnLastClose: !loadPrefs().homeOnLastClose }); home.sync(); } },
     { id: 'pref-whats-new-auto', label: 'Show What\'s New Once After an Update', checked: () => loadPrefs().whatsNewAuto, run: () => { updatePrefs({ whatsNewAuto: !loadPrefs().whatsNewAuto }); } },
@@ -6134,7 +6160,7 @@ export function startApp(): void {
     { label: 'Plugins', items: () => { const ids = [...pluginHost.commandIds(), ...folderPlugins.commandIds()]; return ['manage-plugins', 'reload-plugins', 'open-plugins-folder', ...(ids.length && loadPrefs().showExtPanels ? ['-', ...ids] : [])]; } },
     { label: 'Extensions', items: () => formExt.menuItems() },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', 'arrange-cascade', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-3up-v', 'arrange-3up-h', 'arrange-4up', 'arrange-6up', 'arrange-tile-v', 'arrange-tile-h', 'arrange-tile', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.chat', 'agent.connect.open', 'agent.connect.copy-claude-code', 'agent.connect.copy-claude-desktop', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', { label: 'Brush Size', items: ['brush-size-up', 'brush-size-down', 'brush-harder', 'brush-softer'] }, { label: 'Brush Presets', items: ['save-brush-preset', 'rename-brush-preset', 'delete-brush-preset', 'move-brush-preset', 'rename-brush-group', '-', 'set-brush', 'get-brush'] }, 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-channels', 'panel-color', 'panel-tools', 'panel-options', 'panel-properties-col', 'merge-columns', 'toggle-dock-panels', '-', 'panel-float', 'panel-dock', 'panel-activate', 'panel-group', 'panel-close-group', '-', { label: 'Workspace', items: ['workspace-pixelart', '-', 'new-workspace', 'delete-workspace'] }, 'reset-panels', '-', 'next-document', 'previous-document', 'notices', 'jobs-list', '-', { label: 'Theme', items: Object.keys(THEMES).map((tid) => `theme-${tid}`) }, 'theme-sync-system', 'next-appearance', 'interface-darken', 'interface-lighten', '-', 'reload-window', 'developer-tools'] },
-    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
+    { label: 'Help', items: ['help', 'whats-new', { label: 'Demos', items: DEMOS.map((d) => `demo-${d.id}`) }, '-','shortcuts', 'console-log', 'copy-error-log', 'copy-engine-log', 'benchmark', 'record-performance', 'frame-trace', 'copy-frame-trace', 'tile-grid', 'simulate-gpu-loss', '-', 'help-github', 'report-issue', '-', 'check-for-updates', 'system-info', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
   // The desktop app on macOS puts these menus in the system menu bar, as the target's (Phase 21); the in-window bar then hides.
