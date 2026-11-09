@@ -97,33 +97,53 @@ export class Dock {
   /** The side column (its panels move to and from the dock), set by the app. */
   constructor(private readonly dock: HTMLElement, private readonly side: HTMLElement | null = null) {
     dock.appendChild(this.marker);
-    for (const p of ALL_PANELS) {
-      // Every header shows where to grab: the dock's own non-group panels (Timeline, History) get the groups' grip.
-      const sec = document.querySelector<HTMLElement>(p.selector), hd = sec?.querySelector<HTMLElement>(':scope > .cv-panel-head');
-      if (hd && !hd.querySelector('.cv-group-grip')) hd.prepend(el(`<span class="cv-group-grip" title="Drag to move the group" aria-hidden="true">${icon('grip', 14)}</span>`));
-      const section = this.section(p.id), head = section?.querySelector<HTMLElement>('.cv-panel-head');
-      if (!head) continue;
-      head.classList.add('cv-dock-grip');
-      head.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0 || this.locked || (e.target as HTMLElement).closest('[data-cmd]')) return;
-        // A tab in any panel group drags itself onto another group's header (PanelGroup); the grip and the bare header move the group.
-        if (section?.classList.contains('cv-group') && (e.target as HTMLElement).closest('.cv-group-tab')) return;
-        if (this.floats[p.id]) return;   // a floating panel moves by its own bar
-        // The pointer is captured only once the drag moves (move), so a plain click still reaches a tab in the header.
-        this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1, col: 'dock', x: e.clientX, y: e.clientY };
-        // Movement is followed on the whole document until release: a quick flick leaves the header at once.
-        document.addEventListener('pointermove', this.docMove, true);
-      });
-      head.addEventListener('pointermove', (e) => this.move(e));
-      head.addEventListener('pointerup', () => this.drop());
-      head.addEventListener('pointercancel', () => { this.drag = null; setHidden(this.marker, true); });
-      // A drag ends with a click on the header; it must not also fold or unfold the panel.
-      head.addEventListener('click', (e) => { if (this.suppressClick) { e.stopPropagation(); e.preventDefault(); this.suppressClick = false; } }, true);
-    }
+    for (const p of ALL_PANELS) this.wire(p);
     // A release anywhere ends a drag begun on a header (released off the header, it used to stay armed).
     window.addEventListener('pointerup', () => { if (this.drag) this.drop(); });
     window.addEventListener('resize', () => { if (this.frames.size) this.syncFloats(); });
     this.apply();
+  }
+
+  /** Headers already given the grip and the drag (once each, whenever the panel was registered). */
+  private readonly wired = new WeakSet<HTMLElement>();
+
+  /** Gives a panel's header the grip and the drag that moves it. The constructor does this for the panels that exist at
+   *  start; apply() does it for any registered later (Form extension panels, groups made by detaching or tearing off a
+   *  tab), which used to stay without a grip and could not be moved. */
+  private wire(p: DockPanel): void {
+    const section = this.section(p.id), head = section?.querySelector<HTMLElement>('.cv-panel-head');
+    if (!section || !head || this.wired.has(head)) return;
+    this.wired.add(head);
+    // Every header shows where to grab: the dock's own non-group panels (Timeline, History) get the groups' grip.
+    const own = section.querySelector<HTMLElement>(':scope > .cv-panel-head');
+    if (own && !own.querySelector('.cv-group-grip')) own.prepend(el(`<span class="cv-group-grip" title="Drag to move the group" aria-hidden="true">${icon('grip', 14)}</span>`));
+    head.classList.add('cv-dock-grip');
+    head.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || this.locked || (e.target as HTMLElement).closest('[data-cmd]')) return;
+      // A tab in any panel group drags itself onto another group's header (PanelGroup); the grip and the bare header move the group.
+      if (section.classList.contains('cv-group') && (e.target as HTMLElement).closest('.cv-group-tab')) return;
+      if (this.floats[p.id]) return;   // a floating panel moves by its own bar
+      // The pointer is captured only once the drag moves (move), so a plain click still reaches a tab in the header.
+      this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1, col: 'dock', x: e.clientX, y: e.clientY };
+      // Movement is followed on the whole document until release: a quick flick leaves the header at once.
+      document.addEventListener('pointermove', this.docMove, true);
+    });
+    head.addEventListener('pointermove', (e) => this.move(e));
+    head.addEventListener('pointerup', () => this.drop());
+    head.addEventListener('pointercancel', () => { this.drag = null; setHidden(this.marker, true); });
+    // A drag ends with a click on the header; it must not also fold or unfold the panel.
+    head.addEventListener('click', (e) => { if (this.suppressClick) { e.stopPropagation(); e.preventDefault(); this.suppressClick = false; } }, true);
+  }
+
+  /** Whether a panel already has a place in either column (kept from an earlier session or a drag). */
+  isPlaced(id: string): boolean { return this.state.order.includes(id) || this.state.side.includes(id); }
+
+  /** Places a panel right after another in the dock (after its last shown panel when that one is absent), unless it
+   *  already has a place. */
+  placeAfter(id: string, after: string): void {
+    if (this.isPlaced(id)) return;
+    const shown = this.dockIds().filter((x) => this.present(x)), i = shown.indexOf(after);
+    this.insertPanel(id, 'dock', i >= 0 ? i + 1 : shown.length);
   }
 
   isShown(id: string): boolean { return !this.state.hidden.includes(id); }
@@ -353,6 +373,8 @@ export class Dock {
 
   private apply(): void {
     this.closeFly();
+    // Panels registered after start (extension panels, detached groups) get their header's grip and drag here, once.
+    for (const p of ALL_PANELS) this.wire(p);
     // Each panel in its column, in order; moved only when the order differs, never rebuilt.
     const want = this.dockIds().map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
     const current = Array.from(this.dock.children).filter((c) => want.includes(c as HTMLElement));
@@ -506,7 +528,10 @@ export class Dock {
     if (this.marker.parentElement !== this.dock) this.dock.appendChild(this.marker);
     if (d?.moving && d.target === FLOAT) { this.float(d.id, { x: d.x - 40, y: d.y - 12 }); return; }
     if (!d || !d.moving || d.target < 0) return;
+    // The click that follows this release (same task) must not fold the panel; released off the header, no click comes,
+    // and the flag used to stay set and swallow the next real click on that header (Minimize after a drag did nothing).
     this.suppressClick = true;
+    setTimeout(() => { this.suppressClick = false; }, 0);
     // Into the column it was dropped in, before the panel it was dropped above (or at the end).
     const list = d.col === 'side' ? this.state.side : this.dockIds();
     const shown = list.filter((id) => this.present(id));

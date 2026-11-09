@@ -2,6 +2,62 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Form extension dock panels are panel groups · _unreleased, branch fix/extension-dock-panels (app.ts, ui/dock.ts, ui/panel-group.ts, styles/extensions.css; e2e/test_extension_dock_panel.py new)
+
+- Why: in 2.1.0 a contributed dock panel was a bare `section.cv-preset-panel` appended to `.cv-layers` after the `Dock` existed. The dock wires a header's grip and drag only in its constructor, so the panel had no grip, could not be dragged or floated, was always placed last (`insertPanel(id, 'dock', 99)`), and its title sat in the plain grid header without the group styles (it wrapped and was clipped in the 2.1.0 desktop app with Grid Overlay from form.ext). Its frame body also had a fixed `min-height: 240px`.
+- `app.ts`: the extension dock adapter is now `extDock` (typed `ExtensionsDeps['dock']`) and builds a `PanelGroup` (`cv-ext-group`) with one tab `<id>-tab` holding the `.cv-ext-panel-body` the frame mounts in, as `onDetach` and `onTearOff` make groups. It is placed after the Extensions panel the first time (`dock.placeAfter`), keeps any place it was dragged to (the dock's saved order), and goes back to a group its tab was dragged into (`PanelGroup.restoreHome`). `show` opens the group that holds the tab; `setLabel` renames the tab (`PanelGroup.renameTab`); `remove` drops the tab wherever it is (`PanelGroup.dropTab`), then the group, the Window command and the dock entry. `extDock` is on `window.formvis` in the dev build for the e2e test.
+- `ui/dock.ts`: the constructor's per-panel loop is `wire(p)`, run once per header (a `WeakSet`) from the constructor and from `apply()`, so panels registered later (extension panels, and groups made by detaching or tearing off a tab) get the grip and the drag. New `isPlaced` and `placeAfter`. `drop()` clears `suppressClick` after the release's task: a drag released off its header left it set, and the next real click on that header (Minimize) was swallowed.
+- `ui/panel-group.ts`: new statics `restoreHome`, `renameTab`, `dropTab` (calls `onMoved`, so an emptied detached group goes).
+- `styles/extensions.css`: the body has no minimum height (the frame's own height, 240 px until `ui.resize`, sets the group's); the group body has no padding; a group sized by a splitter scrolls its body (as Generate).
+- Known: moving the group (drag, float, or its tab into another group) re-inserts the iframe, which reloads it; the extension says `host.hello` again and the bridge answers. The bridge (kit file) is unchanged.
+- Verified: `tsc --noEmit`; vitest 48 files, 222 tests; e2e `test_extension_dock_panel.py` (new), `test_dock.py`, `test_docking.py`, `test_dock_resize.py`, `test_dock_collapse.py` and the panel and workspace e2e files pass in headless Chrome; four layers-panel e2e tests (`test_cover_more_layers_panel.py` x3, `test_layers_group.py` x1) fail the same on the base commit 9d69d28 and are not touched by this change.
+- Replaced, quoted exactly:
+
+```ts
+import { FormExtensions } from './formext/extensions';
+    dock: {
+      add: (id, label) => {
+        if (document.querySelector(`section.cv-${id}`)) return null;
+        const sec = el(`<section class="cv-preset-panel cv-${id}" aria-label="${label.replace(/[<>&"]/g, '')}"><div class="cv-panel-head"><span class="cv-comps-title">${icon('pfPlugins', 14)}<span></span></span><span></span></div><div class="cv-ext-panel-body"></div></section>`);
+        setText(q(sec, '.cv-comps-title span'), label);
+        q(root, '.cv-layers').appendChild(sec);
+        registerPanel({ id, label, selector: `section.cv-${id}` });
+        commands.add({ id: `panel-${id}`, label, group: 'Window', description: `Shows or hides the ${label} extension panel.`, when: `Use when you want the ${label} panel in view.`, checked: () => dock.isShown(id), run: () => dock.toggle(id) });
+        dock.insertPanel(id, 'dock', 99);
+        dock.refresh();
+        return q(sec, '.cv-ext-panel-body');
+      },
+      show: (id) => { if (!dock.isShown(id)) dock.toggle(id); },
+      setLabel: (id, label) => { const s = document.querySelector(`section.cv-${id} .cv-comps-title span`); if (s) setText(s, label); },
+      remove: (id) => { document.querySelector(`section.cv-${id}`)?.remove(); commands.remove(`panel-${id}`); dock.removePanel(id); unregisterPanel(id); dock.refresh(); },
+    },
+  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { engine, commands, actions, agents, animation: dialogs.animation, colour: colourView, workers: { bandStats: bandPoolStats, bandsShared, compositeStats, setComposite: setCompositeOnWorkers, compositeOnWorkers, poolSize: bandPoolSize } });
+.cv-ext-panel-body { display: block; min-height: 240px; }
+    for (const p of ALL_PANELS) {
+      // Every header shows where to grab: the dock's own non-group panels (Timeline, History) get the groups' grip.
+      const sec = document.querySelector<HTMLElement>(p.selector), hd = sec?.querySelector<HTMLElement>(':scope > .cv-panel-head');
+      if (hd && !hd.querySelector('.cv-group-grip')) hd.prepend(el(`<span class="cv-group-grip" title="Drag to move the group" aria-hidden="true">${icon('grip', 14)}</span>`));
+      const section = this.section(p.id), head = section?.querySelector<HTMLElement>('.cv-panel-head');
+      if (!head) continue;
+      head.classList.add('cv-dock-grip');
+      head.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || this.locked || (e.target as HTMLElement).closest('[data-cmd]')) return;
+        // A tab in any panel group drags itself onto another group's header (PanelGroup); the grip and the bare header move the group.
+        if (section?.classList.contains('cv-group') && (e.target as HTMLElement).closest('.cv-group-tab')) return;
+        if (this.floats[p.id]) return;   // a floating panel moves by its own bar
+        // The pointer is captured only once the drag moves (move), so a plain click still reaches a tab in the header.
+        this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1, col: 'dock', x: e.clientX, y: e.clientY };
+        // Movement is followed on the whole document until release: a quick flick leaves the header at once.
+        document.addEventListener('pointermove', this.docMove, true);
+      });
+      head.addEventListener('pointermove', (e) => this.move(e));
+      head.addEventListener('pointerup', () => this.drop());
+      head.addEventListener('pointercancel', () => { this.drag = null; setHidden(this.marker, true); });
+      // A drag ends with a click on the header; it must not also fold or unfold the panel.
+      head.addEventListener('click', (e) => { if (this.suppressClick) { e.stopPropagation(); e.preventDefault(); this.suppressClick = false; } }, true);
+    }
+```
+
 ## Version only · _v2.1.0
 
 ```text
