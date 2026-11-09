@@ -2,7 +2,7 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
-## Form extension dock panels are panel groups · _unreleased, branch fix/extension-dock-panels (app.ts, ui/dock.ts, ui/panel-group.ts, styles/extensions.css; e2e/test_extension_dock_panel.py new)
+## Form extension dock panels are panel groups · v2.1.1 (app.ts, ui/dock.ts, ui/panel-group.ts, styles/extensions.css; e2e/test_extension_dock_panel.py new)
 
 - Why: in 2.1.0 a contributed dock panel was a bare `section.cv-preset-panel` appended to `.cv-layers` after the `Dock` existed. The dock wires a header's grip and drag only in its constructor, so the panel had no grip, could not be dragged or floated, was always placed last (`insertPanel(id, 'dock', 99)`), and its title sat in the plain grid header without the group styles (it wrapped and was clipped in the 2.1.0 desktop app with Grid Overlay from form.ext). Its frame body also had a fixed `min-height: 240px`.
 - `app.ts`: the extension dock adapter is now `extDock` (typed `ExtensionsDeps['dock']`) and builds a `PanelGroup` (`cv-ext-group`) with one tab `<id>-tab` holding the `.cv-ext-panel-body` the frame mounts in, as `onDetach` and `onTearOff` make groups. It is placed after the Extensions panel the first time (`dock.placeAfter`), keeps any place it was dragged to (the dock's saved order), and goes back to a group its tab was dragged into (`PanelGroup.restoreHome`). `show` opens the group that holds the tab; `setLabel` renames the tab (`PanelGroup.renameTab`); `remove` drops the tab wherever it is (`PanelGroup.dropTab`), then the group, the Window command and the dock entry. `extDock` is on `window.formvis` in the dev build for the e2e test.
