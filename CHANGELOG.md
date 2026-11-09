@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.2.0 · 2026-11-09
+
+- The three demos open inside FormVis. Home > Start has a Demos section with a card for each (Painting and photo editing, Selections and retouching, Type and design), and Help > Demos lists the same three. Each builds the same documents as its browser demo, through the app's own engine, as new unsaved documents beside whatever is open: nothing of yours is replaced and nothing is saved over. Home stays in front with the card marked while the demo builds, then closes on the finished documents. Save keeps your changes as any new document.
+- The demos' photographs ship inside the app (about 3.5 MB), credited in each demo's `CREDITS.md` and in `NOTICE.md`.
+- Agents and the command palette: `demo-paint`, `demo-retouch`, `demo-design`, and `demo-open` with `id`.
+- The new words are translated in every interface language.
+- The three browser demos now build from the same demo code as the app, and their bundles were rebuilt for the new version.
+
 ## 2.1.1 · 2026-11-09
 
 - An extension's panel is a real panel, like Layers. It has a grip and its name on one line as a tab, drags and floats by its header, sizes with the splitters, docks as a tab in another group and stays where it was put. It opens beside the Extensions panel the first time. In 2.1.0 it had no grip, always went to the bottom of the dock, wrapped its name onto two lines and was fixed at 240 px tall.

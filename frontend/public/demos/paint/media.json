@@ -1,0 +1,38 @@
+{
+ "tray-night": {
+  "img": "tray-night.jpg"
+ },
+ "mist": {
+  "img": "mist.jpg",
+  "mask": "mist-mask.png"
+ },
+ "sky": {
+  "img": "sky.jpg"
+ },
+ "mountains": {
+  "img": "mountains.jpg",
+  "mask": "mountains-mask.png"
+ },
+ "birds": {
+  "img": "birds.jpg"
+ },
+ "balloon": {
+  "img": "balloon.jpg",
+  "mask": "balloon-mask.png"
+ },
+ "tray-lake": {
+  "img": "tray-lake.jpg"
+ },
+ "tray-larch": {
+  "img": "tray-larch.jpg"
+ },
+ "tray-surf": {
+  "img": "tray-surf.jpg"
+ },
+ "tray-dunes": {
+  "img": "tray-dunes.jpg"
+ },
+ "tray-glacier": {
+  "img": "tray-glacier.jpg"
+ }
+}

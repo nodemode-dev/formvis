@@ -4,6 +4,8 @@ Both pictures come from Pexels. Each source page was opened and read before the 
 
 The photographs ship as JavaScript data packs in `assets/media/` (so the page opens from `file://` and the engine can read the pixels). Originals were downloaded with curl from images.pexels.com and re-encoded with Pillow; nothing was upscaled.
 
+The app opens this demo from Home > Demos and Help > Demos. Its copy of the same two photographs is in `frontend/public/demos/retouch/`, the packs' bytes written out unchanged by `scripts/demo-media.py`, so the credits below cover them too.
+
 | File in the demo | Title | Photographer | Source page | Licence as stated on the page | What was changed |
 | --- | --- | --- | --- | --- | --- |
 | `assets/media/golden-portrait.js` | Golden Retriever Portrait in Natural Light | Masood Aslami | https://www.pexels.com/photo/golden-retriever-portrait-in-natural-light-30810888/ | Free, Pexels License | Scaled from 6401 by 4267 px to 1600 by 1067 px, re-encoded as JPEG |

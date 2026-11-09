@@ -6,6 +6,8 @@ Nothing else in the demo is third-party media. The fonts (Inter, JetBrains Mono)
 
 The photos ship as JavaScript data packs in `demo/assets/media/` (so the page opens from `file://` and the pixels can be read). Originals were downloaded with curl from images.pexels.com and re-encoded with Pillow; nothing was upscaled.
 
+The app opens this demo from Home > Demos and Help > Demos. Its copy of the same eleven photographs and three masks is in `frontend/public/demos/paint/`: the packs' bytes written out unchanged as `.jpg` and `.png` files by `scripts/demo-media.py`, so the credits below cover them too.
+
 ## The poster "Above the Clouds"
 
 | File in the demo | Title | Photographer | Source page | Licence as stated on the page | What was changed |
