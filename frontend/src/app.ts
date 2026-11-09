@@ -74,7 +74,7 @@ import { createPresetPanels } from './ui/preset-panels';
 import { createMorePanels } from './ui/more-panels';
 import { createActionsPanel } from './ui/actions-panel';
 import { createExtensionsPanel } from './ui/extensions-panel';
-import { FormExtensions } from './formext/extensions';
+import { FormExtensions, type ExtensionsDeps } from './formext/extensions';
 import { ExtensionConsentDialog } from './ui/panels/extension-consent';
 import { ModifierKeysPanel } from './ui/modifier-keys';
 import { MeasurementLogPanel } from './ui/measurement-log';
@@ -3694,6 +3694,37 @@ export function startApp(): void {
   pluginsDialog.openFolder = () => { commands.run('open-plugins-folder'); };
   // Form extensions (the Extension Contract, API 1, 2.1.0): FormPortal's and form.ext's, beside the plugin kinds above.
   const extensionConsent = new ExtensionConsentDialog();
+  // An extension's dock panel is a panel group like the app's own (its name as the tab, the grip, the panel menu's
+  // place, Minimize): it moves and floats by its header, sizes by the splitters, and its tab can join another group.
+  // In 2.1.0 it was a bare section the dock never wired: no grip, not movable, always last, its title squeezed.
+  const extDock: ExtensionsDeps['dock'] = {
+    add: (id, label) => {
+      if (PanelGroup.all.has(id) || document.querySelector(`section.cv-${id}`)) return null;
+      const tab = `${id}-tab`, body = el('<div class="cv-ext-panel-body"></div>');
+      const group = new PanelGroup(q(root, '.cv-layers'), id, [{ id: tab, label, body }], label.replace(/[<>&"]/g, ''));
+      group.root.classList.add('cv-ext-group');
+      registerPanel({ id, label, selector: `section.cv-${id}` });
+      commands.add({ id: `panel-${id}`, label, group: 'Window', description: `Shows or hides the ${label} extension panel.`, when: `Use when you want the ${label} panel in view.`, checked: () => dock.isShown(id), run: () => dock.toggle(id) });
+      // Placed beside the Extensions panel the first time; after that wherever it was dragged.
+      dock.placeAfter(id, 'extensions');
+      PanelGroup.restoreHome(tab);
+      dock.refresh();
+      return body;
+    },
+    show: (id) => {
+      // Its tab may live in another group (dragged there): that group opens on it.
+      const host = PanelGroup.ofTab(`${id}-tab`);
+      if (host && host.id !== id) { host.setMinimised(false); host.show(`${id}-tab`); return; }
+      if (!dock.isShown(id)) dock.toggle(id);
+      PanelGroup.all.get(id)?.setMinimised(false);
+    },
+    setLabel: (id, label) => PanelGroup.renameTab(`${id}-tab`, label),
+    remove: (id) => {
+      PanelGroup.dropTab(`${id}-tab`);
+      PanelGroup.all.get(id)?.remove();
+      commands.remove(`panel-${id}`); dock.removePanel(id); unregisterPanel(id); dock.refresh();
+    },
+  };
   const formExt = new FormExtensions({
     engine, commands, agents, catalogue, version: VERSION,
     notify: (t, kind) => toast(t, kind), consent: (ext) => extensionConsent.ask(ext),
@@ -3704,22 +3735,7 @@ export function startApp(): void {
       return deliverFile(blob, name);
     },
     openUrl: (url) => { void fetch('/api/extensions/portal', { method: 'POST' }).then((r) => { if (!r.ok) toast(`Open FormPortal and choose Extensions (${url}).`); }, () => toast(`Open FormPortal and choose Extensions (${url}).`)); },
-    dock: {
-      add: (id, label) => {
-        if (document.querySelector(`section.cv-${id}`)) return null;
-        const sec = el(`<section class="cv-preset-panel cv-${id}" aria-label="${label.replace(/[<>&"]/g, '')}"><div class="cv-panel-head"><span class="cv-comps-title">${icon('pfPlugins', 14)}<span></span></span><span></span></div><div class="cv-ext-panel-body"></div></section>`);
-        setText(q(sec, '.cv-comps-title span'), label);
-        q(root, '.cv-layers').appendChild(sec);
-        registerPanel({ id, label, selector: `section.cv-${id}` });
-        commands.add({ id: `panel-${id}`, label, group: 'Window', description: `Shows or hides the ${label} extension panel.`, when: `Use when you want the ${label} panel in view.`, checked: () => dock.isShown(id), run: () => dock.toggle(id) });
-        dock.insertPanel(id, 'dock', 99);
-        dock.refresh();
-        return q(sec, '.cv-ext-panel-body');
-      },
-      show: (id) => { if (!dock.isShown(id)) dock.toggle(id); },
-      setLabel: (id, label) => { const s = document.querySelector(`section.cv-${id} .cv-comps-title span`); if (s) setText(s, label); },
-      remove: (id) => { document.querySelector(`section.cv-${id}`)?.remove(); commands.remove(`panel-${id}`); dock.removePanel(id); unregisterPanel(id); dock.refresh(); },
-    },
+    dock: extDock,
   });
   extensionsPanel.bind(formExt, (id) => { commands.run(id); });
   commands.add(
@@ -6505,7 +6521,7 @@ export function startApp(): void {
     applyRelight: (content) => relight.apply(content),
   });
   (window as unknown as { formvis: unknown }).formvis = { catalogue };
-  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { engine, commands, actions, agents, animation: dialogs.animation, colour: colourView, workers: { bandStats: bandPoolStats, bandsShared, compositeStats, setComposite: setCompositeOnWorkers, compositeOnWorkers, poolSize: bandPoolSize } });
+  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { engine, commands, actions, agents, extDock, animation: dialogs.animation, colour: colourView, workers: { bandStats: bandPoolStats, bandsShared, compositeStats, setComposite: setCompositeOnWorkers, compositeOnWorkers, poolSize: bandPoolSize } });
 
   // Session restore (1.52.4): every open document is kept on this device (a copy per document, rewritten when it
   // changes, is saved, or moves library entry) with the tab order and the active tab, and reopens at the next start.

@@ -216,6 +216,39 @@ export class PanelGroup {
       if (to && from && from !== to) PanelGroup.moveTab(tid, from, to);
     }
   }
+  /** A tab that arrives after start (a Form extension's panel) goes to the group it was last moved to, when that group
+   *  exists and has room; otherwise it stays where it was made. */
+  static restoreHome(tid: string): void {
+    let homes: Record<string, string> = {};
+    try { homes = JSON.parse(localStorage.getItem(HOMES) ?? '{}') as Record<string, string>; } catch { return; }
+    const to = homes[tid] ? PanelGroup.all.get(homes[tid]) : undefined, from = PanelGroup.ofTab(tid);
+    if (to && from && from !== to) PanelGroup.moveTab(tid, from, to);
+  }
+
+  /** Renames a tab in place, in whichever group holds it (only the text changes). */
+  static renameTab(tid: string, label: string): void {
+    const g = PanelGroup.ofTab(tid), v = g?.tabs.get(tid);
+    if (!g || !v || v.label === label) return;
+    v.label = label;
+    setText(v.btn, t(label));
+    v.btn.title = t(label);
+    requestAnimationFrame(() => g.fitTabs());
+  }
+
+  /** Takes a tab and its page out of whichever group holds it (a Form extension's panel closing). The group shows its
+   *  first remaining tab, or hides when none is left. */
+  static dropTab(tid: string): void {
+    const g = PanelGroup.ofTab(tid), v = g?.tabs.get(tid);
+    if (!g || !v) return;
+    v.btn.remove();
+    v.body.remove();
+    g.tabs.delete(tid);
+    if (g.tabs.size === 0) { g.active = ''; g.root.classList.add('is-empty'); }
+    else if (g.active === tid) g.show(g.tabs.keys().next().value as string);
+    requestAnimationFrame(() => g.fitTabs());
+    PanelGroup.onMoved?.();   // an emptied group made by detaching goes, and the columns re-lay out
+  }
+
   /** Window > Reset Panels: each group on its first tab and open. */
   static resetStates(): void {
     try { localStorage.removeItem(KEY); } catch { /* nothing kept */ }

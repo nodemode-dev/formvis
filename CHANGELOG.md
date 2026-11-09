@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.1.1 · 2026-11-09
+
+- An extension's panel is a real panel, like Layers. It has a grip and its name on one line as a tab, drags and floats by its header, sizes with the splitters, docks as a tab in another group and stays where it was put. It opens beside the Extensions panel the first time. In 2.1.0 it had no grip, always went to the bottom of the dock, wrapped its name onto two lines and was fixed at 240 px tall.
+- A panel released after a drag off its header no longer swallows the next click on that header, such as Minimize. This affected every panel.
+- The three demo bundles were rebuilt for the new version.
+
 ## 2.1.0 · 2026-11-07
 
 - Form extensions (the Form Extension Contract, API 1). FormVis loads the extensions FormPortal installs and the ones form.ext runs in development, beside its own plugins. A new Extensions menu lists each extension's commands, then Extensions Panel, Reload Extensions and Manage in FormPortal; Window > Extensions shows one row per extension with its version, source, permissions and state, or why it was refused.

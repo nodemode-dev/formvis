@@ -15,6 +15,10 @@
 .cv-ext-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .cv-extensions .cv-ref-note.cv-ext-empty { opacity: 1; color: var(--text-secondary); }
 .cv-ext-consent-list { margin: 0 0 var(--space-2); padding-left: 18px; display: grid; gap: 2px; }
-.cv-ext-panel-body { display: block; min-height: 240px; }
+.cv-ext-panel-body { display: block; }
+/* An extension's dock panel is a panel group (app.ts, dock.add): its page fills the body edge to edge, the frame's own
+   height (240 px until the extension asks with ui.resize) sets the group's, and a group sized by a splitter scrolls. */
+.cv-ext-group > .cv-group-body { padding: 0; }
+.cv-layers > .cv-ext-group.is-sized > .cv-group-body:not([hidden]) { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .cv-ext-panel-body .formext-frame, .cv-ext-dialog-body .formext-frame { display: block; width: 100%; height: 240px; border: 0; background: var(--bg-secondary); }
 .cv-ext-dialog-body .formext-frame { height: 320px; }
