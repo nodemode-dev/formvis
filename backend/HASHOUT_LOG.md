@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v2.3.0
+
+No engine code changed in 2.3.0: the paint-tool and Layers panel changes are all in the window (`frontend/HASHOUT_LOG.md`). 2.1.1 and 2.2.0 changed no engine code either and left no entry here. Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "2.2.0"
+version = "2.2.0"
+version = "2.2.0"
+ "version": "2.2.0",
+```
+
 ## Form extensions: list, stamp, files and the portal link · _v2.1.0 (app/services/formext_host.py new, app/routers/extensions.py new, app/main.py, app/core/local_guard.py, app/routers/mcp.py; setup/cli.py, formvis)
 
 - Why: the Form Extension Contract, API 1. `app/services/formext_host.py` is the kit's resolver copied unchanged (Apache-2.0, NOTICE row): FormPortal's root, `enabled.json` and `dev.json` under `extensions/formvis/`, manifest checks with the kit's refusal messages, `file_for` and `headers_for`.

@@ -117,6 +117,10 @@ ask it questions.
   Layers panel; Select Linked Layers selects all of a link. Layer > Lock Layers (Ctrl+/) locks the transparency, the
   pixels, the position or all of every selected layer at once, or of every layer in a folder (Lock All Layers in
   Group); a lock in the Layers panel marks each locked layer.
+- In the Layers panel, drag a layer, a folder or several selected layers onto the buttons at the bottom: New Folder
+  groups them, Duplicate copies them whole, and Delete removes them without the question the button asks (Undo brings
+  them back; a drag from a mask thumbnail onto Delete deletes the mask). The button lights while a drag is over it,
+  and Esc cancels a drag.
 - Edit > Transform Layer (Alt+Ctrl+T) shows the Move tool's handles. Edit > Transform's Scale and Rotate make every
   handle scale, or every handle and the space outside the box turn, until Enter or Escape; Skew, Distort and
   Perspective pull the corners and the middles of the sides (a side slides along itself in Skew, a
@@ -172,6 +176,10 @@ ask it questions.
 
 ## Painting and retouching
 
+- The brushes, the Paint Bucket, the Gradient and the retouching tools work on the layer you are on. A layer that was
+  moved, scaled or turned grows to take paint anywhere on the canvas, keeping its own pixels where they were; with a
+  folder chosen they work on the top visible pixel layer inside it. A tool that works only on pixels, used while the
+  layer's mask is targeted, targets the pixels and says so. Painting a mask or a hidden layer is said once per layer.
 - The Mixer Brush (B) paints with wet paint: Wet sets how much color it picks up from the canvas, Mix how much of
   that it lays with the loaded color, Load how far the loaded color lasts along a stroke. Alt-click loads the
   brush from the canvas; with Wet and Mix at 0 it paints like the Brush.

@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.3.0 · 2026-11-10
+
+- The brushes, the Paint Bucket, the Gradient and the retouching tools work on the layer you are on, with no need to make a new layer first. A layer that was scaled, turned or flipped (an image dropped in larger than the canvas is scaled to fit, for one) used to take paint only inside its own box, and a click or stroke outside it did nothing; it now grows to take paint anywhere on the canvas, keeping its pixels, its size on screen and its transform. A layer whose mask has a box of its own grows the same way.
+- The Paint Bucket with a folder chosen fills by the colours of the top visible pixel layer inside it, as the brushes already paint there. Before, it read the folder as empty and filled the whole of that layer.
+- A retouching tool (Clone Stamp, Healing Brush, Dodge, Burn, Sponge, History Brush and the others), the Patch tool, the Background Eraser and the move that fills where the selection was, used while the layer's mask is targeted, now target the layer's pixels and say so, instead of refusing.
+- Painting a layer's mask, or a hidden layer, is said once per layer, so a stroke that changes nothing you can see explains itself.
+- Layers panel: drag a layer, a folder or several selected layers onto the New Folder, Duplicate or Delete button at the bottom of the panel to group, copy or delete them. The button lights while a drag is over it. Delete by drag asks nothing (Undo brings the layers back); a drag from a mask thumbnail onto Delete deletes the mask.
+- Layers panel drags: Esc cancels a drag; a press released outside the panel no longer leaves a drag behind that starts on the next move; a scroll during a drag clears the drop line instead of dropping on the row that was under the pointer before; a folder no longer shows a drop line over its own layers; a Ctrl-click (Cmd on a Mac) that takes a layer out of the selection no longer drags it; a drag that springs to another document's tab and comes back to its own drops nowhere and shows its own document again; and a click on another layer while a name is being edited keeps the name and does what the click asked.
+- Option-drag (Alt-drag) of a folder in the Layers panel copies the folder with everything in it. Before, it copied nothing.
+- Opening a demo from Home or Help takes the "Opening the demo..." notice away when the demo is open or could not open.
+
 ## 2.2.0 · 2026-11-09
 
 - The three demos open inside FormVis. Home > Start has a Demos section with a card for each (Painting and photo editing, Selections and retouching, Type and design), and Help > Demos lists the same three. Each builds the same documents as its browser demo, through the app's own engine, as new unsaved documents beside whatever is open: nothing of yours is replaced and nothing is saved over. Home stays in front with the card marked while the demo builds, then closes on the finished documents. Save keeps your changes as any new document.
