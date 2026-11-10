@@ -120,7 +120,8 @@ ask it questions.
 - In the Layers panel, drag a layer, a folder or several selected layers onto the buttons at the bottom: New Folder
   groups them, Duplicate copies them whole, and Delete removes them without the question the button asks (Undo brings
   them back; a drag from a mask thumbnail onto Delete deletes the mask). The button lights while a drag is over it,
-  and Esc cancels a drag.
+  and Esc cancels a drag. Shift-click selects the layers listed between the last plain or Ctrl-click (Cmd on a Mac) and
+  the one clicked; layers the panel's filters hide are left out.
 - Edit > Transform Layer (Alt+Ctrl+T) shows the Move tool's handles. Edit > Transform's Scale and Rotate make every
   handle scale, or every handle and the space outside the box turn, until Enter or Escape; Skew, Distort and
   Perspective pull the corners and the middles of the sides (a side slides along itself in Skew, a
@@ -178,8 +179,10 @@ ask it questions.
 
 - The brushes, the Paint Bucket, the Gradient and the retouching tools work on the layer you are on. A layer that was
   moved, scaled or turned grows to take paint anywhere on the canvas, keeping its own pixels where they were; with a
-  folder chosen they work on the top visible pixel layer inside it. A tool that works only on pixels, used while the
-  layer's mask is targeted, targets the pixels and says so. Painting a mask or a hidden layer is said once per layer.
+  folder chosen they work on the top visible pixel layer inside it. A tool that works only on pixels (Smudge and Liquify
+  among them), used while the layer's mask is targeted, targets the pixels and says so. Painting a mask or a hidden
+  layer is said once per layer. On a type, shape, fill or smart object layer a tool asks to rasterize it first; after
+  Rasterize, a Paint Bucket, Red Eye or Magic Eraser click is carried out without clicking again.
 - The Mixer Brush (B) paints with wet paint: Wet sets how much color it picks up from the canvas, Mix how much of
   that it lays with the loaded color, Load how far the loaded color lasts along a stroke. Alt-click loads the
   brush from the canvas; with Wet and Mix at 0 it paints like the Brush.

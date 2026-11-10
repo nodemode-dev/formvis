@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v2.3.1
+
+No engine code changed in 2.3.1: the changes are in the window (`frontend/HASHOUT_LOG.md`). Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "2.3.0"
+version = "2.3.0"
+version = "2.3.0"
+ "version": "2.3.0",
+```
+
 ## Version only · _v2.3.0
 
 No engine code changed in 2.3.0: the paint-tool and Layers panel changes are all in the window (`frontend/HASHOUT_LOG.md`). 2.1.1 and 2.2.0 changed no engine code either and left no entry here. Removed version lines, the desktop shell's quoted too:

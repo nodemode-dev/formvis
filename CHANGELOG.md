@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.3.1 · 2026-11-10
+
+- Smudge and Liquify, used while a layer's mask is targeted, now work on the layer's pixels and say so, as the other pixel-only tools do since 2.3.0.
+- After you answer Rasterize to the question a type, shape, fill or smart object layer asks, the Paint Bucket, Red Eye or Magic Eraser click that asked is carried out; before, you had to click again.
+- Layers panel: Shift-click selects only the layers the panel lists, so layers hidden by the Kind, name, mode, attribute or colour filters, or by Isolate Layers, are left out. A second Shift-click ranges from the layer you last clicked or Ctrl-clicked (Cmd on a Mac), not from the end of the previous range.
+- Layers panel: the drop line during a drag no longer counts as a layout shift; it moves without moving anything in the page's layout.
+- Demos: opening a demo puts your brush, its dynamics and tip, the brush mode, Clone Stamp and healing sampling and the clone source back as they were when it is open. The demo's tool and colours stay, so you can try it on the demo straight away, and the retouching demo keeps Spot Healing's Sample All Layers for its layered portrait. A demo that fails part way closes the documents it had opened and shows your document again.
+- Home: the demos' cover photographs load the first time Home shows, not at every start. Back to Canvas and Esc wait while a demo builds, instead of seeming to do nothing. Choosing a demo while Home shows another page refreshes Start's Recent list.
+- Extensions: an extension's panel keeps its place in the dock, and its tab the group it was moved into, when the extension is reloaded or closed, and after a restart.
+
 ## 2.3.0 · 2026-11-10
 
 - The brushes, the Paint Bucket, the Gradient and the retouching tools work on the layer you are on, with no need to make a new layer first. A layer that was scaled, turned or flipped (an image dropped in larger than the canvas is scaled to fit, for one) used to take paint only inside its own box, and a click or stroke outside it did nothing; it now grows to take paint anywhere on the canvas, keeping its pixels, its size on screen and its transform. A layer whose mask has a box of its own grows the same way.

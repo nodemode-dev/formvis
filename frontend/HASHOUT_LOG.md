@@ -2,6 +2,56 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Smudge and the rasterize question, Shift-click ranges, the drop line, demos that leave your tools, extension panels that keep their place · v2.3.1 (engine/index.ts, engine/transform-entry.ts, engine/layer-structure.ts, ui/layers.ts, styles/panels.css, app.ts, ui/home.ts, ui/dock.ts, ui/panel-group.ts; docs/MANUAL.md)
+
+- Why: the 2.3.0 known items and the review findings, taken up by the owner's "proceed". Six read-only traces (range selection, the drop-line shift, demo state, extension panel place, Smudge and the rasterize retry, Home during a demo build) came before any edit.
+- `engine/transform-entry.ts` `EntryHost.pixelsOnly` (new member, built in `index.ts` `entryHost` from the engine's `pixelsOnly`): `beginWarp` refuses only when the active layer has a mask, the mask is targeted, and `pixelsOnly` says no (adjustment, fill, smart, vector). Before, any `maskTarget` refused, with or without a mask.
+- `engine/index.ts` `paintable(l, allowTiled, retry?)`: after OK to `askRasterize` and `rasterizeLayer()`, `retry` runs (passed on through the folder hand-over). `redEye` and `magicErase` pass themselves with their arguments. `paintBucket` now asks at its start, before the sample and the region search, when the target is a type, smart, shape or fill layer's pixels (not with Quick Mask, an alpha channel targeted, or the mask targeted), and passes itself; the old route asked from `regionEdit` after the search and dropped the click. Strokes keep no retry: the pointer is gone by the time the question is answered.
+- `engine/layer-structure.ts` `selectLayer(host, id, how, among?)`: `anchors`, a WeakMap from project to the last plain or Ctrl-added layer. A range starts there while that layer is still selected and listed, else at the active layer, and runs over `among` (the rows in display order) or, with none, the full `hierarchy` as before. The range keeps the anchor. `index.ts` passes `among` through; `ui/layers.ts` Shift-click passes `this.rows` children's ids, which are the filtered, isolated and collapsed rows the panel shows. No other caller uses `range`.
+- `ui/layers.ts` `showDrop` and `styles/panels.css` `.cv-drop-line`: the line sits at `top: 0` and moves by `transform: translateY(...)` with `will-change: transform`. Moving it by `top` recorded one layout-shift entry per row drag (about 0.00005, no sources, the line hidden again when the entry was built); an override test showed the line alone caused it. Measured after: 0 over row drags and footer drags.
+- `app.ts` `openDemo`: snapshots `brush`, `brushDynamics`, `brushShape`, `brushMode`, `retouch`, `cloneSource`, `cloneSlots`, `tool`, `fg`, `bg` and the open project ids. In `finally` it puts back the brush (with `tip`, which `setBrush` takes only when named), dynamics, shape, mode, retouch settings (keeping the demo's `spotSampleAll` when the build finished, since the retouching demo ends on Spot Healing over a layered portrait), the clone source and slots; on a failed build also the tool and colours. The catch closes each project the build opened (`closeProject`, no prompt; it refuses while a stroke or engine task runs) and switches back to the person's document.
+- `ui/home.ts`: covers carry `data-src`; `covers()` swaps them in once with `swapMedia` (decoded off-screen, one write, failures leave the reserved 16:9 box) on the first `sync()` that shows Home. Back to Canvas is disabled while `building` (attribute only, no layout change) and Esc waits too. `holdForDemo` calls `fill()` when it switches a shown Home to Start.
+- `ui/dock.ts` `removePanel(id, forget = true)`: `forget` false only applies the layout, so the order, column, hidden and float entries stay; `extDock.remove` passes false. `load()` keeps saved `ext-` ids that are not registered yet (extension panels register after the dock is built), so the place survives a restart; layout code skips ids with no section. `ui/panel-group.ts` `saveHomes` starts from the stored map and keeps the entries of absent `ext-` tabs; built-in tabs are rebuilt from the groups as before.
+- Known, not changed: a demo build still awaits frames while menus and tabs work, so switching documents mid-build sends later steps to the wrong document; the arrange (workspace) code still drops floats and hidden entries of absent extension panels.
+- Verified: `tsc --noEmit`; vitest 48 files, 222 tests; scratch Playwright runs outside the tree at 4x CPU throttle: Shift-click with the Kind filter on (hidden adjustment left out), anchor kept, range from a New Layer; Smudge on a targeted mask; bucket on a type layer, Rasterize, the click carried out; covers not fetched with Home hidden at launch, all three loaded on first show; Back disabled during the design demo; the retouching demo restores brush 33 / 0.4 / 0.8 and Clone and Heal sampling, keeps Spot Healing and its Sample All; a simulated failure inside the painting demo closes its documents and keeps brush and mode; an extension panel's saved place kept on remove, after a reload, and its tab home kept through a tab save; layout shift 0 over row and footer drags; the drop line at the row edges; 26 of 26, no page errors. e2e on a stable dev server: see the release commit's body.
+- Replaced, quoted exactly:
+
+```text
+      commands.remove(`panel-${id}`); dock.removePanel(id); unregisterPanel(id); dock.refresh();
+  selectLayer(id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void { LS.selectLayer(this.structHost, id, how); }
+  private paintable(l: Layer | null, allowTiled = false): l is Layer {   // allowTiled: the plain stroke (1.62.5)
+      if (p && inner) { this.focus(p, inner.id); return this.paintable(inner, allowTiled); }
+        void this.askRasterize(l.name, kind).then((ok) => { this.asking = false; if (ok && this.current?.activeLayer?.id === id) this.rasterizeLayer(); });
+    if (!p || !this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return; }
+    if (!p0 || !this.paintable(l0) || !l0?.raster) { this.notice('Select a pixel layer first.'); return; }
+export function selectLayer(host: StructHost, id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void {
+    const act = p.activeLayer;
+    if (act) {
+      const rows = hierarchy(p.doc, true, p.collapsed).map((r) => r.layer.id);
+      const a = rows.indexOf(act.id);
+      const b = rows.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        const span = rows.slice(Math.min(a, b), Math.max(a, b) + 1);
+        p.selectedIds = new Set([...span, id]);
+      }
+  if (p.activeLayer && p.maskTarget) {
+    const side = Array.isArray(r.side) ? r.side.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT_SIDE];
+    const order = Array.isArray(r.order) ? r.order.filter((id): id is string => ids.includes(id as string) && !side.includes(id as string)) : [];
+  removePanel(id: string): void { if (this.floats[id]) { delete this.floats[id]; this.saveFloats(); } this.state = { ...this.state, side: this.state.side.filter((x) => x !== id), order: this.state.order.filter((x) => x !== id), hidden: this.state.hidden.filter((x) => x !== id) }; this.save(); }
+import { el, setClass, setHidden, setText } from './dom';
+    const demos = DEMOS.map((d) => `<button class="cv-home-demo" type="button" data-demo-open="${d.id}" aria-busy="false"><span class="cv-home-demo-pic"><img src="${demoCover(d)}" alt="" width="320" height="180" decoding="async" draggable="false"></span><span class="cv-home-demo-title">${d.title}</span><span>${d.blurb}</span></button>`).join('');
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.forced && d.engine.projects.length) { this.forced = false; this.sync(); } });
+      if (this.page !== 'start') { this.page = 'start'; this.paint(); }
+      else if (e.shiftKey && !t.closest('.cv-layer-mask, .cv-layer-vmask')) this.engine.selectLayer(id, 'range');
+    const homes: Record<string, string> = {};
+    line.style.top = `${top}px`;
+.cv-drop-line { position: absolute; left: var(--space-2); right: var(--space-2); height: 2px; border-radius: var(--radius-pill); background: var(--accent-color); pointer-events: none; visibility: hidden; z-index: var(--z-raised); }
+export const VERSION = '2.3.0';
+  "version": "2.3.0",
+  "version": "2.3.0",
+      "version": "2.3.0",
+```
+
 ## Paint tools work on the layer they are on; layers drop onto the Layers footer · v2.3.0 (engine/paint-ops.ts, engine/index.ts, engine/layer-structure.ts, ui/layers.ts, styles/panels.css, app.ts; docs/MANUAL.md)
 
 - Why: the owner's report, "paint buckets brushes etc. only really work when you open up a new layer ... every function should just work on any layer the user is on", and "drag and drop a layer or group or multiple-selected layers over the bottom group/delete/duplicate buttons ... should do what the buttons do".
