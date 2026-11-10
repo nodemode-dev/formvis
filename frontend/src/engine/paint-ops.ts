@@ -305,21 +305,47 @@ export function growLayer(p: Project, layer: Layer, want: Rect): Raster {
     return nr;
   }
   const t = layer.transform;
-  if (!isAxisAligned(t, r.width, r.height) || t.rotation !== 0 || t.w !== r.width || t.h !== r.height) return r;
+  if (!isAxisAligned(t, r.width, r.height) || t.rotation !== 0 || t.w !== r.width || t.h !== r.height) return growPlaced(p, layer, r, need);
   const box: Rect = { x: t.x, y: t.y, w: t.w, h: t.h };
   const u = unionRect(box, need);
   if (u.x === box.x && u.y === box.y && u.w === box.w && u.h === box.h) return r;
   if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return r;
   const m = layer.mask;
   const mr = m ? m.raster : null;
-  if (m && mr && (m.placement !== null || mr.width !== r.width || mr.height !== r.height)) return r;
+  if (m && mr && m.placement === null && (mr.width !== r.width || mr.height !== r.height)) return r;
   const ox = t.flipX ? u.x + u.w - (box.x + box.w) : box.x - u.x;
   const oy = t.flipY ? u.y + u.h - (box.y + box.h) : box.y - u.y;
   const nr = new Raster(u.w, u.h);
   nr.ctx.drawImage(r.canvas, ox, oy);
   nr.touch();
   const patch: Partial<Layer> = { raster: nr, transform: { ...t, x: u.x, y: u.y, w: u.w, h: u.h } };
-  if (m && mr) {
+  if (m && mr && m.placement === null) {
+    const nm = Raster.filled(u.w, u.h, '#ffffff');
+    nm.ctx.clearRect(ox, oy, mr.width, mr.height);
+    nm.ctx.drawImage(mr.canvas, ox, oy);
+    nm.touch();
+    patch.mask = { ...m, raster: nm };
+  }
+  p.updateLayer(layer.id, patch);
+  return nr;
+}
+
+function growPlaced(p: Project, layer: Layer, r: Raster, need: Rect): Raster {
+  const t = layer.transform, m = layer.mask, mr = m?.raster ?? null, tied = !!m && !!mr && m.placement === null;
+  if (tied && mr && (mr.width !== r.width || mr.height !== r.height)) return r;
+  const at = placement(t, r.width, r.height), back = invert(at);
+  if (!back || !(t.w > 0) || !(t.h > 0)) return r;
+  const snap = (v: number): number => (Math.abs(v - Math.round(v)) < 1e-6 ? Math.round(v) : v);
+  const seen = boundsOf([[need.x, need.y], [need.x + need.w, need.y], [need.x, need.y + need.h], [need.x + need.w, need.y + need.h]].map(([x, y]) => { const q = applyMat(back, x, y); return { x: snap(q.x), y: snap(q.y) }; }));
+  const u = integral(unionRect({ x: 0, y: 0, w: r.width, h: r.height }, seen));
+  if (u.x === 0 && u.y === 0 && u.w === r.width && u.h === r.height) return r;
+  if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return r;
+  const ox = -u.x, oy = -u.y, w = u.w * (t.w / r.width), h = u.h * (t.h / r.height), c = applyMat(at, u.w / 2 - ox, u.h / 2 - oy);
+  const nr = new Raster(u.w, u.h);
+  nr.ctx.drawImage(r.canvas, ox, oy);
+  nr.touch();
+  const patch: Partial<Layer> = { raster: nr, transform: { ...t, x: c.x - w / 2, y: c.y - h / 2, w, h } };
+  if (tied && m && mr) {
     const nm = Raster.filled(u.w, u.h, '#ffffff');
     nm.ctx.clearRect(ox, oy, mr.width, mr.height);
     nm.ctx.drawImage(mr.canvas, ox, oy);

@@ -5165,8 +5165,24 @@ export class Engine {
     const la = p.layer(l0.id) as Layer, target: Target = la.adjustment || (p.maskTarget && la.mask) ? 'mask' : 'pixels';
     const raster = target === 'mask' ? this.ensureMask(p, la, at) : this.ensurePixels(p, la);
     const l = p.layer(l0.id) as Layer;
+    this.hintTarget(p, l, target);
     const t = target === 'mask' ? (l.mask?.placement ?? l.transform) : l.transform;
     return { layer: l, target, raster, local: placement(t, raster.width, raster.height) };
+  }
+
+  private readonly hinted = new Set<string>();
+  private hintTarget(p: Project, l: Layer, target: Target): void {
+    const hidden = !this.shownInDoc(p, l), key = `${p.id}:${l.id}:${hidden ? 'hidden' : target}`;
+    if ((!hidden && (target !== 'mask' || l.adjustment || l.fillContent)) || this.hinted.has(key)) return;
+    this.hinted.add(key);
+    this.notice(hidden ? `"${l.name}" is hidden, so changes to it show when it is turned on again.` : `Working on the mask of "${l.name}": white shows the layer and black hides it. Click the layer thumbnail to work on its pixels.`);
+  }
+
+  private pixelsOnly(p: Project, what: string): boolean {
+    const l = p.activeLayer;
+    if (!l || l.adjustment || l.fillContent || l.smart || l.vector) return false;
+    if (p.maskTarget && l.mask) { this.setMaskTarget(false); this.notice(`${what} works on layer pixels, so the pixels of "${l.name}" are targeted now.`); }
+    return true;
   }
 
   /** opts (1.49.5, the owner's tool list): aliased paints hard pixel-exact dabs (the Pencil); autoErase paints the
@@ -5651,6 +5667,7 @@ export class Engine {
     this.settle();
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return false; }
     if (this.smartLocked(p)) return false;
+    this.pixelsOnly(p, 'The Background Eraser');
     const pick = this.target(p);
     if (!pick || pick.target !== 'pixels') { this.notice('The Background Eraser works on a layer\'s pixels, not its mask.'); return false; }
     p.history.begin('Background Eraser', p.snapshot());
@@ -6307,6 +6324,7 @@ export class Engine {
     let surface: Surface;
     if (this.bucket.sampleAll) surface = renderDoc(this.work, p.doc);
     else {
+      if (!this.quickMask && p.activeLayer?.isGroup && !this.paintable(p.activeLayer)) return;
       const l = p.activeLayer;
       if (!l) { this.notice('Select a layer first.'); return; }
       if (l.tiled && (W * H > CANVAS_PIXELS || W > CANVAS_SIDE || H > CANVAS_SIDE)) { this.notice('The Paint Bucket works on a layer kept in tiles while the picture fits one canvas (268 megapixels); a larger one comes in a later release.'); return; }
@@ -10455,7 +10473,7 @@ export class Engine {
     const l0 = p.activeLayer;
     if (this.smartLocked(p)) return false;
     const onMask = !!p.maskTarget && !!l0.mask;
-    if (onMask && kind !== 'blur') { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
+    if (onMask && kind !== 'blur' && !this.pixelsOnly(p, 'This tool')) { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
     let texture: { surface: Surface; dx: number; dy: number } | null = null;
     if (kind === 'clone' || kind === 'healBrush') {
       // Source: Pattern (the Healing Brush) heals from the chosen pattern tiled over the document; no source to set.
@@ -10707,7 +10725,7 @@ export class Engine {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Make a selection, then choose Use Pattern.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
-    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask && !this.pixelsOnly(p0, 'Patch')) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
     this.edit('Patch', () => {
       this.regionEdit('Patch', ({ raster, target, rect }) => {
         if (target !== 'pixels') return;
@@ -10736,7 +10754,7 @@ export class Engine {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Make a selection, then drag it onto the area to copy from.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
-    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask && !this.pixelsOnly(p0, 'Patch')) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
     const opts = this.retouch, dest = opts.patchFrom === 'destination';
     this.edit('Patch', (pp) => {
       const sel = pp.selection as SelectionMask;
@@ -11536,7 +11554,7 @@ export class Engine {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Make a selection, then drag it where it should go.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
-    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Content-Aware Move works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask && !this.pixelsOnly(p0, 'This tool')) { this.notice('Content-Aware Move works on layer pixels. Click the layer thumbnail to target them.'); return; }
     const sel0 = p0.selection;
     this.regionEdit('Content-Aware Move', ({ raster }) => {
       const p = this.current as Project, l = p.activeLayer as Layer, W = raster.width, H = raster.height;
