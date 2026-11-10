@@ -2,6 +2,7 @@ import { Raster, type Engine } from '../engine';
 import { defaultAdjustmentData } from '../engine/adjust';
 import { paramValues, type ParamKind } from '../engine/adjust-params';
 import { allBrushPresets } from '../engine/brush-dynamics';
+import { ensureBundledFont } from '../engine/bundled-fonts';
 import type { AdjustmentKind, BlendMode, RGB, TextSpec } from '../engine/types';
 import type { DemoMedia } from './media';
 
@@ -85,6 +86,7 @@ function brush(e: Engine, id: string, colour: string, patch: { diameter?: number
 }
 
 async function type(e: Engine, content: string, at: Pt, size: number, colour: string, tracking: number, weight = 600, family = 'Inter'): Promise<void> {
+  await ensureBundledFont(family, weight >= 700);
   const spec: TextSpec = { ...e.textSettings, content, family, size, color: rgb(colour), align: 'left', bold: weight >= 700, weight, italic: false, tracking, lineHeight: 1.08, box: null };
   await e.createTextLayer({ x: at[0], y: at[1] }, spec);
 }

@@ -206,7 +206,8 @@ export class FormExtensions {
     }
     const body = this.deps.dock.add(key, title);
     if (!body) throw new HostError(ERR.UNAVAILABLE, `${title} could not be placed in the dock`);
-    const frame = await this.host.open(r, body, { onResize: resize });
+    let frame: Frame | null;
+    try { frame = await this.host.open(r, body, { onResize: resize }); } catch (e) { this.deps.dock.remove(key); throw e; }
     if (!frame) { this.deps.dock.remove(key); throw new HostError(ERR.PERMISSION, `${r.name} was not allowed to open`); }
     this.open.set(key, { frame, key });
     this.deps.dock.show(key);

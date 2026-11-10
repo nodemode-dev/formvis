@@ -348,7 +348,7 @@ export class Dock {
     strip.appendChild(expand);
     const ICONS: Record<string, string> = { navigator: 'panelNav', swatches: 'swatchGrid', layers: 'layers', timeline: 'film', history: 'history', generate: 'generate' };
     for (const id of this.dockIds().filter((x) => this.present(x))) {
-      const s = this.section(id), label = DOCK_PANELS.find((p) => p.id === id)?.label ?? id;
+      const s = this.section(id), label = (ALL_PANELS.find((p) => p.id === id)?.label ?? id).replace(/[<>&"]/g, '');
       if (!s) continue;
       const b = el<HTMLButtonElement>(`<button class="cv-strip-btn" type="button" title="${label}" aria-label="${label}">${icon(ICONS[id] ?? 'panelProps', 18)}</button>`);
       b.dataset.group = id;

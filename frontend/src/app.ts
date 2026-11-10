@@ -903,11 +903,11 @@ export function startApp(): void {
     demoOpening = id;
     home.holdForDemo(id);
     const opening = toast('Opening the demo...', 'info');
-    const had = new Set(engine.projects.map((pr) => pr.id)), was = engine.current?.id ?? null;
+    const made = new Set<string>(), was = engine.current?.id ?? null;
     const kept = { brush: { ...engine.brush }, dynamics: structuredClone(engine.brushDynamics), shape: structuredClone(engine.brushShape), mode: engine.brushMode, retouch: { ...engine.retouch }, clone: engine.cloneSource ? { ...engine.cloneSource } : null, slots: engine.cloneSlots.map((s) => (s ? { ...s } : null)), tool: engine.tool, fg: { ...engine.fg }, bg: { ...engine.bg } };
     let built = false;
     try {
-      await buildDemo(id, engine);
+      await buildDemo(id, engine, made);
       built = true;
       opening();
       toast('The demo is open. Save it to keep your changes.', 'info');
@@ -915,7 +915,10 @@ export function startApp(): void {
     } catch (err) {
       console.error('demo', id, message(err));
       opening();
-      for (const pr of [...engine.projects]) if (!had.has(pr.id)) engine.closeProject(pr.id);
+      for (let i = 0; i < 40 && engine.projects.some((pr) => made.has(pr.id)); i++) {
+        for (const pr of [...engine.projects]) if (made.has(pr.id)) engine.closeProject(pr.id);
+        if (engine.projects.some((pr) => made.has(pr.id))) await new Promise((r) => setTimeout(r, 50));
+      }
       if (was && engine.current?.id !== was && engine.projects.some((pr) => pr.id === was)) engine.switchTo(was);
       toast('The demo could not open.', 'error');
       return false;
@@ -3755,11 +3758,18 @@ export function startApp(): void {
     show: (id) => {
       // Its tab may live in another group (dragged there): that group opens on it.
       const host = PanelGroup.ofTab(`${id}-tab`);
-      if (host && host.id !== id) { host.setMinimised(false); host.show(`${id}-tab`); return; }
-      if (!dock.isShown(id)) dock.toggle(id);
+      if (host && host.id !== id) { const hd = dockIdOfGroup(host.id) ?? host.id; dock.activate(hd); host.setMinimised(false); host.show(`${id}-tab`); return; }
+      dock.activate(id);
       PanelGroup.all.get(id)?.setMinimised(false);
     },
-    setLabel: (id, label) => PanelGroup.renameTab(`${id}-tab`, label),
+    setLabel: (id, label) => {
+      PanelGroup.renameTab(`${id}-tab`, label);
+      PanelGroup.all.get(id)?.root.setAttribute('aria-label', label.replace(/[<>&"]/g, ''));
+      const p = ALL_PANELS.find((x) => x.id === id);
+      if (p) p.label = label;
+      commands.relabel(`panel-${id}`, label, { description: `Shows or hides the ${label} extension panel.`, when: `Use when you want the ${label} panel in view.` });
+      dock.refresh();
+    },
     remove: (id) => {
       PanelGroup.dropTab(`${id}-tab`);
       PanelGroup.all.get(id)?.remove();
