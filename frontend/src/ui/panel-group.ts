@@ -204,7 +204,11 @@ export class PanelGroup {
 
   /** Where each tab lives, remembered; restored once every group exists. */
   static saveHomes(): void {
-    const homes: Record<string, string> = {};
+    let homes: Record<string, string> = {};
+    try { const was = JSON.parse(localStorage.getItem(HOMES) ?? '{}') as Record<string, string>; if (was && typeof was === 'object') homes = was; } catch { homes = {}; }
+    const present = new Set<string>();
+    for (const g of PanelGroup.all.values()) for (const tid of g.tabs.keys()) present.add(tid);
+    for (const tid of Object.keys(homes)) if (present.has(tid) || !tid.startsWith('ext-')) delete homes[tid];
     for (const [gid, g] of PanelGroup.all) for (const tid of g.tabs.keys()) homes[tid] = gid;
     try { localStorage.setItem(HOMES, JSON.stringify(homes)); } catch { /* this session only */ }
   }

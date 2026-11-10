@@ -69,9 +69,10 @@ function load(): DockState {
   try {
     const r = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<DockState>;
     const ids = ALL_PANELS.map((p) => p.id), dockIds = DOCK_PANELS.map((p) => p.id);
+    const kept = (id: unknown): id is string => typeof id === 'string' && (ids.includes(id) || id.startsWith('ext-'));
     // The side column's panels as saved (a saved arrangement from before panels could move has none: the default).
-    const side = Array.isArray(r.side) ? r.side.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT_SIDE];
-    const order = Array.isArray(r.order) ? r.order.filter((id): id is string => ids.includes(id as string) && !side.includes(id as string)) : [];
+    const side = Array.isArray(r.side) ? r.side.filter(kept) : [...DEFAULT_SIDE];
+    const order = Array.isArray(r.order) ? r.order.filter((id): id is string => kept(id) && !side.includes(id)) : [];
     // A panel missing from both takes its default column and place, not the end.
     for (const id of ids) if (!order.includes(id) && !side.includes(id)) {
       if (DEFAULT_SIDE.includes(id) && !Array.isArray(r.side)) side.push(id);
@@ -513,7 +514,7 @@ export class Dock {
     this.state = { ...this.state, side, order };
     this.save();
   }
-  removePanel(id: string): void { if (this.floats[id]) { delete this.floats[id]; this.saveFloats(); } this.state = { ...this.state, side: this.state.side.filter((x) => x !== id), order: this.state.order.filter((x) => x !== id), hidden: this.state.hidden.filter((x) => x !== id) }; this.save(); }
+  removePanel(id: string, forget = true): void { if (!forget) { this.apply(); return; } if (this.floats[id]) { delete this.floats[id]; this.saveFloats(); } this.state = { ...this.state, side: this.state.side.filter((x) => x !== id), order: this.state.order.filter((x) => x !== id), hidden: this.state.hidden.filter((x) => x !== id) }; this.save(); }
 
   private readonly docMove = (e: PointerEvent): void => { if (this.drag) this.move(e); else document.removeEventListener('pointermove', this.docMove, true); };
 

@@ -903,17 +903,31 @@ export function startApp(): void {
     demoOpening = id;
     home.holdForDemo(id);
     const opening = toast('Opening the demo...', 'info');
+    const had = new Set(engine.projects.map((pr) => pr.id)), was = engine.current?.id ?? null;
+    const kept = { brush: { ...engine.brush }, dynamics: structuredClone(engine.brushDynamics), shape: structuredClone(engine.brushShape), mode: engine.brushMode, retouch: { ...engine.retouch }, clone: engine.cloneSource ? { ...engine.cloneSource } : null, slots: engine.cloneSlots.map((s) => (s ? { ...s } : null)), tool: engine.tool, fg: { ...engine.fg }, bg: { ...engine.bg } };
+    let built = false;
     try {
       await buildDemo(id, engine);
+      built = true;
       opening();
       toast('The demo is open. Save it to keep your changes.', 'info');
       return true;
     } catch (err) {
       console.error('demo', id, message(err));
       opening();
+      for (const pr of [...engine.projects]) if (!had.has(pr.id)) engine.closeProject(pr.id);
+      if (was && engine.current?.id !== was && engine.projects.some((pr) => pr.id === was)) engine.switchTo(was);
       toast('The demo could not open.', 'error');
       return false;
     } finally {
+      engine.brushDynamics = kept.dynamics;
+      engine.brushShape = kept.shape;
+      engine.setBrush({ ...kept.brush, tip: kept.brush.tip ?? null });
+      engine.setBrushMode(kept.mode);
+      Object.assign(engine.retouch, kept.retouch, built ? { spotSampleAll: engine.retouch.spotSampleAll } : {});
+      engine.cloneSource = kept.clone;
+      engine.cloneSlots = kept.slots;
+      if (!built) { engine.setTool(kept.tool); engine.setColors(kept.fg, kept.bg); }
       demoOpening = null;
       home.holdForDemo(null);
     }
@@ -3749,7 +3763,7 @@ export function startApp(): void {
     remove: (id) => {
       PanelGroup.dropTab(`${id}-tab`);
       PanelGroup.all.get(id)?.remove();
-      commands.remove(`panel-${id}`); dock.removePanel(id); unregisterPanel(id); dock.refresh();
+      commands.remove(`panel-${id}`); dock.removePanel(id, false); unregisterPanel(id); dock.refresh();
     },
   };
   const formExt = new FormExtensions({

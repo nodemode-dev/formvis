@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import { el, setClass, setHidden, setText } from './dom';
+import { el, setClass, setDisabled, setHidden, setText, swapMedia } from './dom';
 import { HomeFiles } from './home-files';
 import { icon } from './icons';
 import { DEMOS, demoCover } from '../demos';
@@ -42,7 +42,7 @@ export class HomeScreen {
     const cmdItem = (cmd: string, ic: string, label: string): string => `<button class="cv-home-nav-item" type="button" data-cmd="${cmd}">${icon(ic, 16)}<span>${label}</span></button>`;
     const key = (k: string): string => `<kbd class="cv-key">${mod}</kbd><kbd class="cv-key">${k}</kbd>`;
     const formats = ['FVD', 'PSD', 'PSB', 'TIFF', 'PNG', 'JPEG', 'WEBP', 'HEIC', 'EXR', 'HDR', 'ORA', 'RAW'].map((f) => `<span class="cv-home-format">${f}</span>`).join('');
-    const demos = DEMOS.map((d) => `<button class="cv-home-demo" type="button" data-demo-open="${d.id}" aria-busy="false"><span class="cv-home-demo-pic"><img src="${demoCover(d)}" alt="" width="320" height="180" decoding="async" draggable="false"></span><span class="cv-home-demo-title">${d.title}</span><span>${d.blurb}</span></button>`).join('');
+    const demos = DEMOS.map((d) => `<button class="cv-home-demo" type="button" data-demo-open="${d.id}" aria-busy="false"><span class="cv-home-demo-pic"><img data-src="${demoCover(d)}" alt="" width="320" height="180" decoding="async" draggable="false"></span><span class="cv-home-demo-title">${d.title}</span><span>${d.blurb}</span></button>`).join('');
     const sizes = PRESETS.map((p, i) => `<button class="cv-home-size" type="button" data-size="${i}"><span class="cv-home-size-box"><span style="aspect-ratio: ${p.w} / ${p.h}"></span></span><span class="cv-home-size-name">${p.name}</span><span class="cv-home-size-meta">${p.w} x ${p.h} px${p.ppi !== 72 ? ` · ${p.ppi} ppi` : ''}</span></button>`).join('');
     this.root.innerHTML = `<nav class="cv-home-nav" aria-label="Home">
       <div class="cv-home-brand">formvis <span>by nodemode.ai</span></div>
@@ -97,7 +97,7 @@ export class HomeScreen {
     });
     host.appendChild(this.root);
     d.engine.on('projects', () => this.sync());
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.forced && d.engine.projects.length) { this.forced = false; this.sync(); } });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.forced && this.building === null && d.engine.projects.length) { this.forced = false; this.sync(); } });
     this.paint();
     this.sync();
   }
@@ -124,7 +124,7 @@ export class HomeScreen {
     this.building = id;
     for (const n of Array.from(this.root.querySelectorAll<HTMLElement>('[data-demo-open]'))) n.setAttribute('aria-busy', String(n.dataset.demoOpen === id));
     if (id) {
-      if (this.page !== 'start') { this.page = 'start'; this.paint(); }
+      if (this.page !== 'start') { this.page = 'start'; this.paint(); if (!this.root.hidden) this.fill(); }
       this.forced = true;
       this.sync();
       this.root.querySelector('[data-home-section="demos"]')?.scrollIntoView({ block: 'nearest' });
@@ -150,8 +150,17 @@ export class HomeScreen {
     if (n > 0) this.hadDocument = true;
     const on = this.forced || this.building !== null || (n === 0 && (this.hadDocument ? this.d.afterClose() : this.d.autoShow()));
     if (on && this.root.hidden) { this.paint(); this.fill(); }
+    if (on) this.covers();
     setHidden(this.root, !on);
     setHidden(this.back, n === 0);
+    setDisabled(this.back as HTMLButtonElement, this.building !== null);
+  }
+
+  private coversAsked = false;
+  private covers(): void {
+    if (this.coversAsked) return;
+    this.coversAsked = true;
+    for (const img of Array.from(this.root.querySelectorAll<HTMLImageElement>('.cv-home-demo-pic img[data-src]'))) void swapMedia(img, img.dataset.src ?? '').catch(() => undefined);
   }
 }
 
