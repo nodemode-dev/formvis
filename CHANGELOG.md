@@ -4,6 +4,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.3.2 · 2026-11-10
+
+- Demos build only into their own documents. Switching to one of your documents while a demo is still being built no longer lets the rest of the demo land in yours: each step goes back to the demo's document first. Closing the demo's document while it builds stops the demo, closes what it had opened and puts your tools back.
+- Choosing a workspace keeps each extension panel where it was in the dock, open or closed, and keeps a closed one hidden. Before, a workspace dropped them all back to their first place. Reset Workspace still puts everything back to the start.
+
 ## 2.3.1 · 2026-11-10
 
 - Smudge and Liquify, used while a layer's mask is targeted, now work on the layer's pixels and say so, as the other pixel-only tools do since 2.3.0.

@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v2.3.2
+
+No engine code changed in 2.3.2: the changes are in the window (`frontend/HASHOUT_LOG.md`). Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "2.3.1"
+version = "2.3.1"
+version = "2.3.1"
+ "version": "2.3.1",
+```
+
 ## Version only · _v2.3.1
 
 No engine code changed in 2.3.1: the changes are in the window (`frontend/HASHOUT_LOG.md`). Removed version lines, the desktop shell's quoted too:

@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A demo builds only into its own documents; workspaces keep extension panels · v2.3.2 (demos/index.ts, ui/dock.ts)
+
+- Why: the two items 2.3.1 left open, on the owner's "proceed - fix the still open".
+- `demos/index.ts` `pinned(e)` (new), used by `buildDemo`: a Proxy over the engine. `known` holds the project ids open when the build starts; after every method call (and when a returned promise settles) `adopt()` takes any new project id as `mine`; the builder's own `switchTo(id)` sets `mine`. Before any property read or method call, `pin()` switches back to `mine` when the current document is another one, and throws when `mine` was closed, which rejects the build so `openDemo`'s catch closes the rest and restores the tools. Getters are read with the engine as receiver and methods are applied to the engine, so `this` inside the engine is never the Proxy. Writes go straight through. Before the first document exists `mine` is null and nothing is pinned (the builders only load media then). A document the person creates mid-build (Ctrl+N during an await) would be taken as the demo's; accepted, since Home is held over the canvas while a demo builds.
+- `ui/dock.ts` `arrange` (workspace choice): after the workspace's dock order, each `ext-` id of the previous order is put back after the nearest earlier id that is still in the order (or first), so consecutive extension panels keep their sequence; `side` keeps the previous `ext-` ids after the default side panels; `hidden` keeps the previous `ext-` ids. Built-in panels follow the workspace as before. `reset()` (Reset Workspace) is unchanged and forgets extension panels too. Floats were already kept (`kept` skips only dock and side panels).
+- Verified: `tsc --noEmit`; vitest 48 files, 222 tests; scratch Playwright at 4x CPU throttle: the retouching demo built while a 15 ms timer kept switching to the person's document (person's document unchanged, demo documents and layer lists identical to an undisturbed build); the demo's portrait closed mid-build (build stopped with "The demo could not open.", demo documents closed, person's document unchanged); two probe extension panels, one open and one closed and hidden, through the Pixel Art workspace (both after Extensions, the open one shown, the closed one hidden); the 2.3.0 and 2.3.1 scratch checks again (27 of 27, 7 of 7 for demos and Home). e2e on a stable dev server: test_cover_set3_view_workspaces, test_cover_set2_arrange_tiles, test_cover_set4_prefs_toggles, test_preferences_sections, test_demos_in_app, test_home_screen, test_extension_dock_panel, test_dock, test_docking, test_dock_collapse, test_dock_layers, test_panel_menus, test_no_flash, test_no_layout_shift pass.
+- Replaced, quoted exactly:
+
+```text
+  return d ? d.build(e, shippedMedia(d.id)) : null;
+    this.state = { order: o, hidden: [...hidden, ...extra].filter((id) => ALL_PANELS.some((p) => p.id === id)), side: [...DEFAULT_SIDE] };
+export const VERSION = '2.3.1';
+  "version": "2.3.1",
+  "version": "2.3.1",
+      "version": "2.3.1",
+```
+
 ## Smudge and the rasterize question, Shift-click ranges, the drop line, demos that leave your tools, extension panels that keep their place · v2.3.1 (engine/index.ts, engine/transform-entry.ts, engine/layer-structure.ts, ui/layers.ts, styles/panels.css, app.ts, ui/home.ts, ui/dock.ts, ui/panel-group.ts; docs/MANUAL.md)
 
 - Why: the 2.3.0 known items and the review findings, taken up by the owner's "proceed". Six read-only traces (range selection, the drop-line shift, demo state, extension panel place, Smudge and the rasterize retry, Home during a demo build) came before any edit.
