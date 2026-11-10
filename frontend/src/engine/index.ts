@@ -3765,7 +3765,7 @@ export class Engine {
     };
   }
 
-  selectLayer(id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void { LS.selectLayer(this.structHost, id, how); }
+  selectLayer(id: ID, how: 'replace' | 'toggle' | 'range' = 'replace', among?: readonly ID[]): void { LS.selectLayer(this.structHost, id, how, among); }
 
   /** Select > All Layers (Alt+Ctrl+A), or with `all` false Deselect Layers; not history steps. */
   selectAllLayers(all = true): void {
@@ -5094,13 +5094,13 @@ export class Engine {
     return null;
   }
 
-  private paintable(l: Layer | null, allowTiled = false): l is Layer {   // allowTiled: the plain stroke (1.62.5)
+  private paintable(l: Layer | null, allowTiled = false, retry?: () => void): l is Layer {   // allowTiled: the plain stroke (1.62.5)
     if (!l) return false;
     if (l.isGroup) {
       // A folder chosen in Layers (1.96.3, the owner: its warning was a nuisance): the work goes to the topmost visible
       // pixel layer inside it, which becomes the current layer; only a folder with none says so.
       const p = this.current, inner = p && l.id === p.activeId ? this.topPaintableIn(p, l) : null;
-      if (p && inner) { this.focus(p, inner.id); return this.paintable(inner, allowTiled); }
+      if (p && inner) { this.focus(p, inner.id); return this.paintable(inner, allowTiled, retry); }
       this.notice(`"${l.name}" has no visible pixel layer to work on.`); this.lockedAt = performance.now(); return false;
     }
     // A layer past 268 MP, kept in tiles (1.62.3): painting it had given it a full-size canvas the browser cannot make.
@@ -5113,7 +5113,7 @@ export class Engine {
       if (!this.asking && this.askRasterize) {
         this.asking = true;
         const id = l.id;
-        void this.askRasterize(l.name, kind).then((ok) => { this.asking = false; if (ok && this.current?.activeLayer?.id === id) this.rasterizeLayer(); });
+        void this.askRasterize(l.name, kind).then((ok) => { this.asking = false; if (ok && this.current?.activeLayer?.id === id) { this.rasterizeLayer(); retry?.(); } });
       }
       return false;
     }
@@ -5754,7 +5754,7 @@ export class Engine {
    *  selection left as it was; one step. */
   magicErase(pt: Pt, settings: { tolerance: number; contiguous: boolean; sampleAll: boolean; antialias?: boolean; opacity?: number }): Promise<void> | void {
     const p = this.current;
-    if (!p || !this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return; }
+    if (!p || !this.paintable(p.activeLayer, false, () => void this.magicErase(pt, settings))) { this.notice('Select a pixel layer to erase.'); return; }
     const before = p.selection, wand = this.wand;
     const { opacity = 1, ...found } = settings;
     this.wand = { ...wand, ...found };
@@ -6321,6 +6321,8 @@ export class Engine {
     const x = Math.floor(pt.x), y = Math.floor(pt.y);
     if (x < 0 || y < 0 || x >= W || y >= H) return;
     if (!this.quickMask && p.selection && p.selection.valueAt(x, y) <= 0) { this.notice('Click inside the selection to fill; the Paint Bucket fills only there.'); return; }
+    const al = p.activeLayer;
+    if (!this.quickMask && !this.alphaTargeted() && al && !(p.maskTarget && al.mask) && (liveText(al) || al.smart || al.vector || al.shape || al.fillContent) && !this.paintable(al, false, () => this.paintBucket(pt))) return;
     let surface: Surface;
     if (this.bucket.sampleAll) surface = renderDoc(this.work, p.doc);
     else {
@@ -10092,6 +10094,7 @@ export class Engine {
       busy: !!this.stroke,
       settle: (keep) => this.settle(keep),
       notice: (m) => this.notice(m),
+      pixelsOnly: (p, what) => this.pixelsOnly(p, what),
       emit: (what) => this.emit(what, null),
       refresh: () => this.refresh(),
       edit: (label, fn) => this.edit(label, fn),
@@ -11667,7 +11670,7 @@ export class Engine {
    *  neutral by Darken Amount. One step; nothing red near the click leaves the image as it was. */
   redEye(pt: Pt, pupil = 50, darken = 50): void {
     const p0 = this.current, l0 = p0?.activeLayer ?? null;
-    if (!p0 || !this.paintable(l0) || !l0?.raster) { this.notice('Select a pixel layer first.'); return; }
+    if (!p0 || !this.paintable(l0, false, () => this.redEye(pt, pupil, darken)) || !l0?.raster) { this.notice('Select a pixel layer first.'); return; }
     // Found first, so a click with nothing red near it records no step.
     if (!this.redEyeArea(l0.raster, l0.transform, pt, pupil)) { this.notice('No red pupil near the click: click the red part of the eye.'); return; }
     this.regionEdit('Red Eye', ({ raster }) => {

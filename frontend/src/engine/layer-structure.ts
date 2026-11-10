@@ -58,7 +58,9 @@ function sameStructure(a: readonly Layer[], b: readonly Layer[]): boolean {
   return a.every((l, i) => l.id === b[i].id && l.parentId === b[i].parentId && l.clipId === b[i].clipId);
 }
 
-export function selectLayer(host: StructHost, id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void {
+const anchors = new WeakMap<object, ID>();
+
+export function selectLayer(host: StructHost, id: ID, how: 'replace' | 'toggle' | 'range' = 'replace', among?: readonly ID[]): void {
   const p = host.current;
   if (!p || host.busy || !p.layer(id)) return;
   host.settle();
@@ -70,23 +72,23 @@ export function selectLayer(host: StructHost, id: ID, how: 'replace' | 'toggle' 
     } else {
       sel.add(id);
       p.activeId = id;
+      anchors.set(p, id);
     }
     p.selectedIds = sel;
   } else if (how === 'range') {
-    const act = p.activeLayer;
-    if (act) {
-      const rows = hierarchy(p.doc, true, p.collapsed).map((r) => r.layer.id);
-      const a = rows.indexOf(act.id);
-      const b = rows.indexOf(id);
-      if (a >= 0 && b >= 0) {
-        const span = rows.slice(Math.min(a, b), Math.max(a, b) + 1);
-        p.selectedIds = new Set([...span, id]);
-      }
+    const rows = among ?? hierarchy(p.doc, true, p.collapsed).map((r) => r.layer.id);
+    const from = anchors.get(p), act = p.activeLayer;
+    const a = from && p.selectedIds.has(from) && rows.includes(from) ? rows.indexOf(from) : act ? rows.indexOf(act.id) : -1;
+    const b = rows.indexOf(id);
+    if (a >= 0 && b >= 0) {
+      const span = rows.slice(Math.min(a, b), Math.max(a, b) + 1);
+      p.selectedIds = new Set([...span, id]);
     }
     p.activeId = id;
   } else {
     p.selectedIds = new Set([id]);
     p.activeId = id;
+    anchors.set(p, id);
     const layer = p.layer(id);
     if (layer) for (const a of ancestors(byId(p.doc), layer)) p.collapsed.delete(a.id);
   }

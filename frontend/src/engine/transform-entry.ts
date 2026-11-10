@@ -30,6 +30,7 @@ export interface EntryHost {
   readonly busy: boolean;
   settle(keepFloating?: boolean): void;
   notice(message: string): void;
+  pixelsOnly(p: Project, what: string): boolean;
   emit(what: 'render' | 'options' | 'overlay'): void;
   refresh(): void;
   edit(label: string, fn: (p: Project) => boolean | void): void;
@@ -401,7 +402,7 @@ export function beginWarp(host: EntryHost, mode: 'smudge' | 'liquify', pt: Pt): 
   if (!p || host.busy) return null;
   host.settle();
   const noLayer = 'Select a layer with pixels first.';
-  if (p.activeLayer && p.maskTarget) {
+  if (p.activeLayer?.mask && p.maskTarget && !host.pixelsOnly(p, 'Smudge and Liquify')) {
     host.notice('Smudge and Liquify work on layer pixels. Click the layer thumbnail to target them.');
     return null;
   }

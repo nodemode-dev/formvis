@@ -102,7 +102,7 @@
 .cv-layer.is-clipped .cv-layer-clip { display: inline-flex; }
 .cv-layer-rename { width: 100%; height: var(--ctl-sm); padding: 0 var(--space-1); border: 1px solid var(--accent-color); border-radius: var(--radius-xs); background: var(--bg-input); color: var(--text-primary); font-size: var(--fs-12); }
 .cv-layer-rename:focus { outline: none; }
-.cv-drop-line { position: absolute; left: var(--space-2); right: var(--space-2); height: 2px; border-radius: var(--radius-pill); background: var(--accent-color); pointer-events: none; visibility: hidden; z-index: var(--z-raised); }
+.cv-drop-line { position: absolute; top: 0; left: var(--space-2); right: var(--space-2); will-change: transform; height: 2px; border-radius: var(--radius-pill); background: var(--accent-color); pointer-events: none; visibility: hidden; z-index: var(--z-raised); }
 .cv-drop-line.is-shown { visibility: visible; }
 .cv-drop-line.is-inside { height: var(--cv-row-h); background: var(--accent-tint-strong); border: 1px solid var(--accent-color); }
 .cv-layers-empty { padding: var(--space-6) var(--space-4); color: var(--text-muted); font-size: var(--fs-11); text-align: center; }

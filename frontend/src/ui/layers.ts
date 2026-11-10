@@ -689,7 +689,7 @@ export class LayersPanel {
     const row = this.rowOf(target.id);
     if (!row) { setClass(line, 'is-shown', false); return; }
     const top = target.where === 'above' ? row.offsetTop - 1 : target.where === 'below' ? row.offsetTop + row.offsetHeight - 1 : row.offsetTop;
-    line.style.top = `${top}px`;
+    line.style.transform = `translateY(${top}px)`;
     setClass(line, 'is-inside', target.where === 'inside');
     setClass(line, 'is-shown', true);
   }
@@ -759,7 +759,7 @@ export class LayersPanel {
       }
       const wasSelected = p.selectedIds.has(id);
       if (mod) this.engine.selectLayer(id, 'toggle');
-      else if (e.shiftKey && !t.closest('.cv-layer-mask, .cv-layer-vmask')) this.engine.selectLayer(id, 'range');
+      else if (e.shiftKey && !t.closest('.cv-layer-mask, .cv-layer-vmask')) this.engine.selectLayer(id, 'range', Array.from(this.rows.children, (r) => (r as HTMLElement).dataset.id as ID));
       else if (!wasSelected) this.engine.selectLayer(id);
       else if (p.activeId !== id) { p.activeId = id; this.engine.emit('active', null); }
       if (mod && !p.selectedIds.has(id)) return;
