@@ -1,6 +1,6 @@
 [package]
 name = "formvis"
-version = "2.3.0"
+version = "2.3.1"
 description = "formvis desktop shell"
 authors = ["NodeAgentc, Inc."]
 license = "Apache-2.0"
