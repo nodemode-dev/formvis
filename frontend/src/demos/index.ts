@@ -26,5 +26,32 @@ export const demoCover = (d: DemoDef): string => `${import.meta.env.BASE_URL}dem
 
 export function buildDemo(id: string, e: Engine): Promise<void> | null {
   const d = DEMOS.find((x) => x.id === id);
-  return d ? d.build(e, shippedMedia(d.id)) : null;
+  return d ? d.build(pinned(e), shippedMedia(d.id)) : null;
+}
+
+function pinned(e: Engine): Engine {
+  const known = new Set(e.projects.map((p) => p.id));
+  let mine: string | null = null;
+  const pin = (): void => {
+    if (!mine || e.current?.id === mine) return;
+    if (!e.projects.some((p) => p.id === mine)) throw new Error('the demo document was closed while it was being built');
+    e.switchTo(mine);
+  };
+  const adopt = (): void => { for (const p of e.projects) if (!known.has(p.id)) { known.add(p.id); mine = p.id; } };
+  return new Proxy(e, {
+    get(t, k) {
+      if (k === 'switchTo') return (id: string): void => { mine = id; t.switchTo(id); };
+      if (k === 'projects') return t.projects;
+      pin();
+      const v = Reflect.get(t, k, t) as unknown;
+      if (typeof v !== 'function') return v;
+      return (...a: unknown[]): unknown => {
+        pin();
+        const out = (v as (...x: unknown[]) => unknown).apply(t, a);
+        adopt();
+        return out instanceof Promise ? out.then((r: unknown) => { adopt(); return r; }) : out;
+      };
+    },
+    set(t, k, v) { return Reflect.set(t, k, v, t); },
+  });
 }
