@@ -316,18 +316,27 @@ export function moveLayers(
 
     if (duplicate) {
       const links = new Map<ID, ID>();
-      const copies = moving
-        .filter((m) => !m.isGroup)
-        .map((m) => {
-          const c = cloneLayer(m, { name: `${m.name} copy`.slice(0, NAME_MAX), parentId: dest });
-          if (m.link) c.link = renewLinks(links, m);
+      let head: ID | null = null;
+      const copies = moving.flatMap((m) => {
+        const set = subtree(layers, m.id), originals = layers.filter((l) => set.has(l.id)), remap = new Map<ID, ID>();
+        const made = originals.map((o) => {
+          const c = cloneLayer(o, o.id === m.id ? { name: `${m.name} copy`.slice(0, NAME_MAX), parentId: dest } : {});
+          if (o.link) c.link = renewLinks(links, o);
+          remap.set(o.id, c.id);
+          if (o.id === m.id) head = c.id;
           return c;
         });
-      if (!copies.length) return false;
+        return made.map((c, i) => {
+          const o = originals[i];
+          if (o.id === m.id) return c;
+          return { ...c, parentId: o.parentId ? remap.get(o.parentId) ?? c.parentId : c.parentId, clipId: o.clipId && remap.has(o.clipId) ? remap.get(o.clipId) as ID : c.clipId };
+        });
+      });
+      if (!copies.length || !head) return false;
       const pos = slot(layers);
       if (where === 'inside') p.collapsed.delete(target.id);
       p.setLayers(normalizeClips([...layers.slice(0, pos), ...copies, ...layers.slice(pos)]));
-      host.focus(p, copies[copies.length - 1].id);
+      host.focus(p, head);
       return;
     }
 

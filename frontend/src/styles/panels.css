@@ -85,7 +85,7 @@
 .cv-fx-eye .cv-eye-off, .cv-fxrow.is-off .cv-fx-eye .cv-eye-on { display: none; }
 .cv-fxrow.is-off .cv-fx-eye .cv-eye-off { display: inline-flex; }
 .cv-layer.is-fx-target { border-color: var(--accent-color); }
-.cv-panel-foot .is-fx-trash { color: var(--text-primary); background: var(--bg-hover); outline: 1px solid var(--accent-color); }
+.cv-panel-foot .is-fx-trash, .cv-panel-foot .is-layer-drop { color: var(--text-primary); background: var(--bg-hover); outline: 1px solid var(--accent-color); }
 .cv-layer-eye { grid-column: 1; }
 .cv-layer-indent { grid-column: 2; }
 .cv-layer-disclose { grid-column: 3; }

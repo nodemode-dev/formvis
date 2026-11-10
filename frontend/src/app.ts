@@ -636,6 +636,7 @@ export function startApp(): void {
   const swatches = new SwatchesPanel(q(root, '.cv-layers'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
   layers.docPoint = (x, y) => stage.docPoint(x, y);
+  layers.deleteSelected = () => void deleteLayersWithChoice();
   new PathsPanel(q(root, '.cv-layers'), engine);
   layers.adoptPaths(q(root, '.cv-paths'));
   layers.adoptChannels(new ChannelsPanel(engine, q(root, '.cv-stage'), (id) => commands.run('channel-options', { channel: id })));   // the Channels tab (Phase 21)
@@ -901,13 +902,15 @@ export function startApp(): void {
     if (demoOpening) { toast('A demo is still opening.', 'info'); return false; }
     demoOpening = id;
     home.holdForDemo(id);
-    toast('Opening the demo...', 'info');
+    const opening = toast('Opening the demo...', 'info');
     try {
       await buildDemo(id, engine);
+      opening();
       toast('The demo is open. Save it to keep your changes.', 'info');
       return true;
     } catch (err) {
       console.error('demo', id, message(err));
+      opening();
       toast('The demo could not open.', 'error');
       return false;
     } finally {
