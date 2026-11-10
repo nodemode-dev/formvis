@@ -2,6 +2,67 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Every item left open, fixed: masks, float export, hints, Layers pointers, extension panels, demo builds · v2.3.3 (engine/paint-ops.ts, engine/compose-float.ts, engine/index.ts, ui/layers.ts, app.ts, ui/commands.ts, ui/dock.ts, formext/extensions.ts, demos/index.ts, demos/paint.ts)
+
+- Why: the owner's "investigate/test/fix all of the errors/bugs ... fix ALL of them in this turn". Six agents investigated and runtime-tested the open items in isolated copies (git archive of HEAD, own Vite ports) and fixed the real ones there; every edit was then landed by hand on this tree. Six fresh-context reviewers read the landed diff; their confirmed defects and the suspicions worth closing were landed too.
+- Refuted, no product change: painting video and relight layers (both are raster layers; the paint shows, video paint is stored per frame); the History Brush on a layer newer than its source (it refuses with a notice, not silently); `e2e/test_cover_auto_mcp_layers.py` (11 passed with the engine up; the earlier timeout was the dev server on a port the engine's LocalGuard does not allow, `window_origins()` in backend/app/core/config.py takes only 5190 and 5191).
+- `engine/paint-ops.ts`: in `growLayer` and `growPlaced`, a tied mask (`placement === null`) whose raster size differs from the layer's (`apart`) is given `placement: { ...t }`, the box it is drawn in now, and the layer grows; the mask raster is not touched. Linked or not: `toggleMaskLink` already freezes an unlinked mask with its own box, so a tied unlinked mask was an odd state. `growMask` hands a placement that is not one-to-one to `padPlacedMask` (new), which pads the mask raster in its own pixels, white (revealing), and recomputes the placement as `growPlaced` does for layers.
+- `engine/index.ts` `reachMask`: after `growLayer`, a mask that now has a placement is grown by `growMask` in the same stroke. `followMask`: a linked mask with its own box whose rotation equals the layer's (mod 360) is carried through a size, rotation or flip change: centre by `boxChange(t, next)`, size by the layer's scale change, rotation to the layer's, flips toggled with the layer's.
+- `engine/compose-float.ts` `maskCoverage` and `coverageOf`: `apart` (own placement, adjustment layer, or a folder's mask) fills white outside and black inside the mask's box before drawing it, as the renderer's `cover()` does for `covers: false`; the mask drawn is `shapedMask(m) ?? m.raster` (density, feather); `imageSmoothingEnabled` follows `sampling`; vector masks (`vectorCoverage`, alpha read by `alphaCoverage`, new) of the layer and its folders and artboard rectangles of its folders multiply in, as `vectorOf` and `folderMasks` do on screen.
+- `engine/index.ts` hints: `target(p, at, hint = false)`; only `beginStroke`, the Background Eraser and `beginRetouchStroke` pass true, and `paintBucket` calls `hintTarget` itself before its region search; filters, Fill, Clear, gradients, warps and read-only samples stay silent. `hintTarget` adds a Relight case and records a key only when `notice()` would emit (not while `quiet` or within the lock window); `closeProject` drops the closed document's keys. `pixelsOnly` returns false for `shape` and live type layers too. The History Brush's state-source refusal names the remedy.
+- `ui/layers.ts`: a pointerdown is ignored while a started drag, effect drag or swipe belongs to another pointer (`'started' in g ? g.started : true`; an unstarted press of another pointer type does not block); `render()` re-places the drop line on a started drag's target (`showDrop(d.target)`); a pointermove with no buttons ends a swipe; the pan ends when `!(e.buttons & 4)`; window blur ends both.
+- `formext/extensions.ts` `openPanel`: a throwing `host.open` removes the dock group before rethrowing. `app.ts` `extDock.show`: a host group is activated by its dock id (`dockIdOfGroup`), which shows it and opens a collapsed column; the own-group case uses `dock.activate` too. `extDock.setLabel`: the tab, the group's aria-label, the registry label and the command (`commands.relabel`, new, with description and when-words) take the new name, then `dock.refresh()`. `ui/dock.ts` strip buttons read labels from `ALL_PANELS` (escaped), so extension panels show by name.
+- `demos/index.ts` `pinned(e, made)`: projects that appear during a builder's own synchronous call are the demo's (`made`, and `mine` the latest); an async call adopts nothing, so a document the person makes during an await is never taken. `pin()` and the `switchTo` wrapper throw when the switch did not happen (`switchTo` refuses during a stroke), so the build stops instead of writing elsewhere. `app.ts` `openDemo` closes only `made` projects, retrying for about 2 s while the engine is busy. `demos/paint.ts` `type()` awaits `ensureBundledFont` first, as `design.ts` does, so `createTextLayer` reads the current document without a font load in between.
+- Known, not changed: `sampleOriginal` (pixel-move) still creates a tied mask's raster through `target()` without a history step (visually identical, pre-existing); a stale `ext-` id stays in the saved dock order after an extension is gone (kept on purpose so its place survives a reinstall).
+- Verified: `tsc --noEmit`; vitest 48 files, 222 tests; backend pytest 316 passed, 9 skipped (models, macOS), 1 environment failure in an archive copy without `.git`; scratch Playwright at 4x CPU throttle on this tree: the 2.3.0 set (27), the 2.3.1 set (18), the 2.3.2 set (8), the 2.3.3 sets (11 and 9): odd-size tied mask, linked placed mask through a numeric resize, float parity outside a placed mask, Ctrl+N during a demo, failed demo with the person's new documents, Relight notice, hidden host group shown, rename everywhere, Fill silent and brush once on a hidden layer; MCP e2e files 11 and 5 passed with the engine up. The full e2e suite in four shards: see the release commit.
+- Replaced, quoted exactly:
+
+```text
+    const had = new Set(engine.projects.map((pr) => pr.id)), was = engine.current?.id ?? null;
+      await buildDemo(id, engine);
+      for (const pr of [...engine.projects]) if (!had.has(pr.id)) engine.closeProject(pr.id);
+      if (host && host.id !== id) { host.setMinimised(false); host.show(`${id}-tab`); return; }
+      if (!dock.isShown(id)) dock.toggle(id);
+    setLabel: (id, label) => PanelGroup.renameTab(`${id}-tab`, label),
+export function buildDemo(id: string, e: Engine): Promise<void> | null {
+  return d ? d.build(pinned(e), shippedMedia(d.id)) : null;
+function pinned(e: Engine): Engine {
+  const known = new Set(e.projects.map((p) => p.id));
+  const adopt = (): void => { for (const p of e.projects) if (!known.has(p.id)) { known.add(p.id); mine = p.id; } };
+      if (k === 'switchTo') return (id: string): void => { mine = id; t.switchTo(id); };
+        adopt();
+        return out instanceof Promise ? out.then((r: unknown) => { adopt(); return r; }) : out;
+function maskCoverage(mask: { raster: { canvas: CanvasImageSource; width: number; height: number }; placement: import('./types').Transform }, W: number, H: number): Float32Array {
+  g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    const folders = ancestors(map, l).filter((g) => g.mask?.raster && g.mask.enabled);
+    if (!own && !folders.length) return null;
+      if (!c) { c = maskCoverage({ raster: m.mask.raster, placement: m.mask.placement ?? m.transform }, W, H); covers.set(key, c); }
+  if (t.w !== next.w || t.h !== next.h || t.rotation !== next.rotation || t.flipX !== next.flipX || t.flipY !== next.flipY) return m;
+    return (p.layer(layer.id) as Layer).mask?.raster ?? r;
+  private target(p: Project, at?: Pt): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
+    this.hintTarget(p, l, target);
+    const hidden = !this.shownInDoc(p, l), key = `${p.id}:${l.id}:${hidden ? 'hidden' : target}`;
+    if ((!hidden && (target !== 'mask' || l.adjustment || l.fillContent)) || this.hinted.has(key)) return;
+    this.notice(hidden ? `"${l.name}" is hidden, so changes to it show when it is turned on again.` : `Working on the mask of "${l.name}": white shows the layer and black hides it. Click the layer thumbnail to work on its pixels.`);
+    if (!l || l.adjustment || l.fillContent || l.smart || l.vector) return false;
+      : this.target(p, pt) as NonNullable<ReturnType<Engine['target']>>;
+    const pick = this.target(p);
+        if (!state) { this.notice('This layer did not exist at the history state chosen as the source.'); return false; }
+    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+  if (m && mr && m.placement === null && (mr.width !== r.width || mr.height !== r.height)) return r;
+  if (m && mr && m.placement === null) {
+  const t = layer.transform, m = layer.mask, mr = m?.raster ?? null, tied = !!m && !!mr && m.placement === null;
+  if (tied && mr && (mr.width !== r.width || mr.height !== r.height)) return r;
+  if (tied && m && mr) {
+  if (t.rotation !== 0 || t.flipX || t.flipY || t.w !== mr.width || t.h !== mr.height) return mr;
+    const frame = await this.host.open(r, body, { onResize: resize });
+      const s = this.section(id), label = DOCK_PANELS.find((p) => p.id === id)?.label ?? id;
+export const VERSION = '2.3.2';
+  "version": "2.3.2",
+  "version": "2.3.2",
+      "version": "2.3.2",
+```
+
 ## A demo builds only into its own documents; workspaces keep extension panels · v2.3.2 (demos/index.ts, ui/dock.ts)
 
 - Why: the two items 2.3.1 left open, on the owner's "proceed - fix the still open".

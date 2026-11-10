@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.3.3 · 2026-11-10
+
+- Painting a layer whose mask is a different size from its pixels is no longer cut off at the layer's edge. The mask keeps every value where it shows, and painting the mask itself also reaches past its old edge, from the first stroke.
+- A mask that has its own box (unlinked earlier, or made by Paste Into) now follows its layer through a resize, rotate or flip from the options bar, not only through a move.
+- 16-bit, 32-bit and CMYK exports now match the screen for masks. Outside a mask's own box the layer shows; mask Density and Feather apply; vector masks and artboard edges clip as they do on screen.
+- The notices about painting a mask, a hidden layer or a Relight layer now come only from painting, not from filters, Fill or the tools that only read pixels. A Relight layer now says, once, that what you paint on it is replaced when its light is edited again. On a type or shape layer whose mask is targeted, Smudge, Liquify and the retouching tools keep their earlier message instead of first saying they switched to the pixels.
+- The History Brush, when its source state is older than the layer, now says what to do: choose a later state or take a snapshot after making the layer.
+- Layers panel: a second finger or pen on the panel no longer cuts into a drag, effect drag or visibility swipe already under way; a list redraw during a drag keeps the drop line on the row the drop will use; and a visibility swipe or middle-button scroll whose release was lost (the window lost focus) no longer keeps toggling eyes or scrolling.
+- Extensions: a panel whose frame fails to open no longer blocks the next attempt. Showing a panel whose tab you moved into another group that is hidden or collapsed brings that group into view. Renaming a panel renames it everywhere: its tab, its group, the dock strip and the Window menu entry with its description.
+- Demos: a document you make while a demo builds is never treated as the demo's, and a demo that fails closes only its own documents, waiting for a running task to finish first. If the demo cannot go back to its own document (you are mid-stroke in yours), it stops instead of writing into yours. The painting demo loads its fonts first, so its text always lands in the demo.
+
 ## 2.3.2 · 2026-11-10
 
 - Demos build only into their own documents. Switching to one of your documents while a demo is still being built no longer lets the rest of the demo land in yours: each step goes back to the demo's document first. Closing the demo's document while it builds stops the demo, closes what it had opened and puts your tools back.

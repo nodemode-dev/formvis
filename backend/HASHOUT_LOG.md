@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v2.3.3
+
+No engine code changed in 2.3.3 (`frontend/HASHOUT_LOG.md` has the changes). The full engine suite ran on an archive copy: 316 passed, 9 skipped (u2net, lama-inpaint, ai-upscale and sam2 models not downloaded; three macOS-only layout tests), and `test_readme.py::test_the_readme_matches_the_code` failed there only because the copy had no `.git` for `git ls-files` (it passes once a repository exists). Note for e2e: the engine's LocalGuard accepts window origins on 5190 and 5191 only (`window_origins()` in `app/core/config.py`, or FORMVIS_CORS_ORIGINS), so a dev server on another port makes the agent and MCP tests time out. Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "2.3.2"
+version = "2.3.2"
+version = "2.3.2"
+ "version": "2.3.2",
+```
+
 ## Version only · _v2.3.2
 
 No engine code changed in 2.3.2: the changes are in the window (`frontend/HASHOUT_LOG.md`). Removed version lines, the desktop shell's quoted too:
