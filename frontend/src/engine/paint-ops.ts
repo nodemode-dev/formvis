@@ -312,14 +312,15 @@ export function growLayer(p: Project, layer: Layer, want: Rect): Raster {
   if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return r;
   const m = layer.mask;
   const mr = m ? m.raster : null;
-  if (m && mr && m.placement === null && (mr.width !== r.width || mr.height !== r.height)) return r;
+  const apart = !!m && !!mr && m.placement === null && (mr.width !== r.width || mr.height !== r.height);
   const ox = t.flipX ? u.x + u.w - (box.x + box.w) : box.x - u.x;
   const oy = t.flipY ? u.y + u.h - (box.y + box.h) : box.y - u.y;
   const nr = new Raster(u.w, u.h);
   nr.ctx.drawImage(r.canvas, ox, oy);
   nr.touch();
   const patch: Partial<Layer> = { raster: nr, transform: { ...t, x: u.x, y: u.y, w: u.w, h: u.h } };
-  if (m && mr && m.placement === null) {
+  if (apart && m) patch.mask = { ...m, placement: { ...t } };
+  else if (m && mr && m.placement === null) {
     const nm = Raster.filled(u.w, u.h, '#ffffff');
     nm.ctx.clearRect(ox, oy, mr.width, mr.height);
     nm.ctx.drawImage(mr.canvas, ox, oy);
@@ -331,8 +332,7 @@ export function growLayer(p: Project, layer: Layer, want: Rect): Raster {
 }
 
 function growPlaced(p: Project, layer: Layer, r: Raster, need: Rect): Raster {
-  const t = layer.transform, m = layer.mask, mr = m?.raster ?? null, tied = !!m && !!mr && m.placement === null;
-  if (tied && mr && (mr.width !== r.width || mr.height !== r.height)) return r;
+  const t = layer.transform, m = layer.mask, mr = m?.raster ?? null, apart = !!m && !!mr && m.placement === null && (mr.width !== r.width || mr.height !== r.height), tied = !!m && !!mr && m.placement === null && !apart;
   const at = placement(t, r.width, r.height), back = invert(at);
   if (!back || !(t.w > 0) || !(t.h > 0)) return r;
   const snap = (v: number): number => (Math.abs(v - Math.round(v)) < 1e-6 ? Math.round(v) : v);
@@ -345,7 +345,8 @@ function growPlaced(p: Project, layer: Layer, r: Raster, need: Rect): Raster {
   nr.ctx.drawImage(r.canvas, ox, oy);
   nr.touch();
   const patch: Partial<Layer> = { raster: nr, transform: { ...t, x: c.x - w / 2, y: c.y - h / 2, w, h } };
-  if (tied && m && mr) {
+  if (apart && m) patch.mask = { ...m, placement: { ...t } };
+  else if (tied && m && mr) {
     const nm = Raster.filled(u.w, u.h, '#ffffff');
     nm.ctx.clearRect(ox, oy, mr.width, mr.height);
     nm.ctx.drawImage(mr.canvas, ox, oy);
@@ -361,7 +362,7 @@ function growPlaced(p: Project, layer: Layer, r: Raster, need: Rect): Raster {
 export function growMask(p: Project, layer: Layer, want: Rect): Raster | null {
   const m = layer.mask, mr = m?.raster ?? null, t = m?.placement ?? null;
   if (!m || !mr || !t) return mr;
-  if (t.rotation !== 0 || t.flipX || t.flipY || t.w !== mr.width || t.h !== mr.height) return mr;
+  if (t.rotation !== 0 || t.flipX || t.flipY || t.w !== mr.width || t.h !== mr.height) return padPlacedMask(p, layer, m, mr, t, want);
   const box: Rect = { x: t.x, y: t.y, w: t.w, h: t.h };
   const u = unionRect(box, integral(want));
   if (u.x === box.x && u.y === box.y && u.w === box.w && u.h === box.h) return mr;
@@ -371,6 +372,23 @@ export function growMask(p: Project, layer: Layer, want: Rect): Raster | null {
   nm.ctx.drawImage(mr.canvas, box.x - u.x, box.y - u.y);
   nm.touch();
   p.updateLayer(layer.id, { mask: { ...m, raster: nm, placement: { ...t, x: u.x, y: u.y, w: u.w, h: u.h } } });
+  return nm;
+}
+
+function padPlacedMask(p: Project, layer: Layer, m: NonNullable<Layer['mask']>, mr: Raster, t: Layer['transform'], want: Rect): Raster {
+  const at = placement(t, mr.width, mr.height), back = invert(at), need = integral(want);
+  if (!back || !(t.w > 0) || !(t.h > 0)) return mr;
+  const snap = (v: number): number => (Math.abs(v - Math.round(v)) < 1e-6 ? Math.round(v) : v);
+  const seen = boundsOf([[need.x, need.y], [need.x + need.w, need.y], [need.x, need.y + need.h], [need.x + need.w, need.y + need.h]].map(([x, y]) => { const q = applyMat(back, x, y); return { x: snap(q.x), y: snap(q.y) }; }));
+  const u = integral(unionRect({ x: 0, y: 0, w: mr.width, h: mr.height }, seen));
+  if (u.x === 0 && u.y === 0 && u.w === mr.width && u.h === mr.height) return mr;
+  if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return mr;
+  const ox = -u.x, oy = -u.y, w = u.w * (t.w / mr.width), h = u.h * (t.h / mr.height), c = applyMat(at, u.w / 2 - ox, u.h / 2 - oy);
+  const nm = Raster.filled(u.w, u.h, '#ffffff');
+  nm.ctx.clearRect(ox, oy, mr.width, mr.height);
+  nm.ctx.drawImage(mr.canvas, ox, oy);
+  nm.touch();
+  p.updateLayer(layer.id, { mask: { ...m, raster: nm, placement: { ...t, x: c.x - w / 2, y: c.y - h / 2, w, h } } });
   return nm;
 }
 

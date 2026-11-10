@@ -201,7 +201,12 @@ export function stripExt(name: string): string { return name.replace(/\.[A-Za-z0
 function followMask(l: Layer, next: Transform): Mask | null {
   const m = l.mask, t = l.transform;
   if (!m || !m.linked || !m.placement) return m;
-  if (t.w !== next.w || t.h !== next.h || t.rotation !== next.rotation || t.flipX !== next.flipX || t.flipY !== next.flipY) return m;
+  if (t.w !== next.w || t.h !== next.h || t.rotation !== next.rotation || t.flipX !== next.flipX || t.flipY !== next.flipY) {
+    const P = m.placement;
+    if (((P.rotation % 360) + 360) % 360 !== ((t.rotation % 360) + 360) % 360 || !(t.w > 0) || !(t.h > 0)) return m;
+    const c = applyMat(boxChange(t, next), P.x + P.w / 2, P.y + P.h / 2), w = P.w * (next.w / t.w), h = P.h * (next.h / t.h);
+    return { ...m, placement: { ...P, x: c.x - w / 2, y: c.y - h / 2, w, h, rotation: next.rotation, flipX: P.flipX !== (t.flipX !== next.flipX), flipY: P.flipY !== (t.flipY !== next.flipY) } };
+  }
   return { ...m, placement: { ...m.placement, x: m.placement.x + (next.x - t.x), y: m.placement.y + (next.y - t.y) } };
 }
 
@@ -1318,6 +1323,7 @@ export class Engine {
     if (this.transformEdit && this.transformEdit.project === this.projects[i]) { this.transformEdit = null; this.pendingTransform = false; }
     if (this.floatSel && this.floatSel.project === this.projects[i]) this.floatSel = null;
     const closing = this.projects[i];
+    for (const k of [...this.hinted]) if (k.startsWith(`${id}:`)) this.hinted.delete(k);
     this.projects.splice(i, 1);
     this.docViews.closeAllOf(id);   // the document's further views go with it (36.16)
     if (this.currentId === id) this.currentId = (this.projects[i] ?? this.projects[this.projects.length - 1])?.id ?? null;
@@ -5154,10 +5160,11 @@ export class Engine {
     if (m.placement) return PO.growMask(p, layer, canvas) ?? r;
     if (!layer.raster || liveText(layer) || layer.smart || layer.vector || layer.shape || layer.fillContent) return r;
     this.growLayer(p, layer, canvas);
-    return (p.layer(layer.id) as Layer).mask?.raster ?? r;
+    const grown = p.layer(layer.id) as Layer;
+    return grown.mask?.placement ? PO.growMask(p, grown, canvas) ?? r : grown.mask?.raster ?? r;
   }
 
-  private target(p: Project, at?: Pt): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
+  private target(p: Project, at?: Pt, hint = false): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
     if (!this.paintable(p.activeLayer)) return null;
     const l0 = p.activeLayer;   // read after the check: a chosen folder hands over to the layer inside it
     // An adjustment layer paints its mask (made, revealing all, when it has none).
@@ -5165,22 +5172,23 @@ export class Engine {
     const la = p.layer(l0.id) as Layer, target: Target = la.adjustment || (p.maskTarget && la.mask) ? 'mask' : 'pixels';
     const raster = target === 'mask' ? this.ensureMask(p, la, at) : this.ensurePixels(p, la);
     const l = p.layer(l0.id) as Layer;
-    this.hintTarget(p, l, target);
+    if (hint) this.hintTarget(p, l, target);
     const t = target === 'mask' ? (l.mask?.placement ?? l.transform) : l.transform;
     return { layer: l, target, raster, local: placement(t, raster.width, raster.height) };
   }
 
   private readonly hinted = new Set<string>();
   private hintTarget(p: Project, l: Layer, target: Target): void {
-    const hidden = !this.shownInDoc(p, l), key = `${p.id}:${l.id}:${hidden ? 'hidden' : target}`;
-    if ((!hidden && (target !== 'mask' || l.adjustment || l.fillContent)) || this.hinted.has(key)) return;
+    const hidden = !this.shownInDoc(p, l);
+    const why = hidden ? 'hidden' : target === 'mask' && !l.adjustment && !l.fillContent ? 'mask' : target === 'pixels' && l.relight ? 'relight' : null, key = `${p.id}:${l.id}:${why}`;
+    if (!why || this.hinted.has(key) || this.quiet || (this.lockedAt && performance.now() - this.lockedAt < 50)) return;
     this.hinted.add(key);
-    this.notice(hidden ? `"${l.name}" is hidden, so changes to it show when it is turned on again.` : `Working on the mask of "${l.name}": white shows the layer and black hides it. Click the layer thumbnail to work on its pixels.`);
+    this.notice(why === 'hidden' ? `"${l.name}" is hidden, so changes to it show when it is turned on again.` : why === 'mask' ? `Working on the mask of "${l.name}": white shows the layer and black hides it. Click the layer thumbnail to work on its pixels.` : `"${l.name}" is a Relight layer: what you paint on it is replaced when its light is edited again.`);
   }
 
   private pixelsOnly(p: Project, what: string): boolean {
     const l = p.activeLayer;
-    if (!l || l.adjustment || l.fillContent || l.smart || l.vector) return false;
+    if (!l || l.adjustment || l.fillContent || l.smart || l.vector || l.shape || liveText(l)) return false;
     if (p.maskTarget && l.mask) { this.setMaskTarget(false); this.notice(`${what} works on layer pixels, so the pixels of "${l.name}" are targeted now.`); }
     return true;
   }
@@ -5217,7 +5225,7 @@ export class Engine {
     const al = p.activeLayer as Layer;
     const pick: { layer: Layer; target: Target; raster: Raster | TiledRaster; local: Mat } = lt
       ? { layer: al, target: 'pixels', raster: lt, local: placement(al.transform, lt.width, lt.height) }
-      : this.target(p, pt) as NonNullable<ReturnType<Engine['target']>>;
+      : this.target(p, pt, true) as NonNullable<ReturnType<Engine['target']>>;
     const white = pick.target === 'mask' && ((this.maskPaint === 'follow' ? luminance(this.fg) >= 0.5 : this.maskPaint === 'white') !== (this.brushMode === 'erase'));
     // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
     // colour, since it may not make pixels transparent.
@@ -5668,7 +5676,7 @@ export class Engine {
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return false; }
     if (this.smartLocked(p)) return false;
     this.pixelsOnly(p, 'The Background Eraser');
-    const pick = this.target(p);
+    const pick = this.target(p, undefined, true);
     if (!pick || pick.target !== 'pixels') { this.notice('The Background Eraser works on a layer\'s pixels, not its mask.'); return false; }
     p.history.begin('Background Eraser', p.snapshot());
     this.bgErase = { p, raster: pick.raster, local: pick.local, full: pick.raster.ctx.getImageData(0, 0, pick.raster.width, pick.raster.height), touched: null, sample: null, last: pt, opts };
@@ -6340,6 +6348,8 @@ export class Engine {
         l.tiled.drawTo(ctxOf(surface), placement(l.transform, l.tiled.width, l.tiled.height));
       }
     }
+    const hl = p.activeLayer;
+    if (hl && !this.quickMask && !this.alphaTargeted()) this.hintTarget(p, hl, hl.adjustment || (p.maskTarget && hl.mask) ? 'mask' : 'pixels');
     const data = ctxOf(surface).getImageData(0, 0, W, H).data;
     const tol = this.bucket.tolerance, contiguous = this.bucket.contiguous, soft = this.bucket.antiAlias;
     if (W * H >= WAND_FROM && !this.waiting()) {
@@ -10545,7 +10555,7 @@ export class Engine {
       const src = snap?.kind === 'merged' ? snap.state.doc.layers[0] : snap?.state.doc.layers.find((l) => l.id === l0.id);
       if (this.historyBrushFromState && this.historySourceIndex !== null) {
         const state = this.historySource(p);
-        if (!state) { this.notice('This layer did not exist at the history state chosen as the source.'); return false; }
+        if (!state) { this.notice('This layer did not exist at the history state chosen as the source: choose a later state in the History panel, or take a snapshot after making the layer.'); return false; }
         texture = { surface: kind === 'artHistory' ? this.artHistoryTexture(p, l0, state) : state, dx: 0, dy: 0 };
       } else {
         if (!snap) { this.notice('The History Brush paints from a snapshot or a history state: take a snapshot in the History panel (New Snapshot) or mark a state in its source column.'); return false; }
@@ -10555,7 +10565,7 @@ export class Engine {
       }
     }
     p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush', artHistory: 'Art History Brush', patternStamp: 'Pattern Stamp', colorReplace: 'Color Replacement' }[kind], p.snapshot());
-    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+    const pick = this.target(p, undefined, true) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     // The Clone Stamp's Flow and Mode (1.50.6, the tool audit), from the options bar; Lock Transparency keeps precedence.
     const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : kind === 'clone' ? { ...this.brush, color: white, flow: this.retouch.cloneFlow } : { ...this.brush, color: white };
