@@ -360,6 +360,8 @@ export class LayersPanel {
         else if (bottom > this.list.scrollTop + this.list.clientHeight) this.list.scrollTop = bottom - this.list.clientHeight;
       }
     }
+    const d = this.drag;
+    if (d?.started && d.target) this.showDrop(d.target);
     this.syncProps();
   }
 
@@ -700,6 +702,7 @@ export class LayersPanel {
       const t = e.target as HTMLElement;
       const row = t.closest<HTMLElement>('.cv-layer');
       if (!row || e.button !== 0) return;
+      if ([this.drag, this.fxDrag, this.swipe].some((g) => g && ('started' in g ? g.started : true) && g.pointerId !== e.pointerId)) return;
       if (this.renaming) this.rows.querySelector<HTMLInputElement>('.cv-layer-rename')?.blur();
       if (this.renaming) return;
       const id = row.dataset.id as ID;
@@ -775,6 +778,7 @@ export class LayersPanel {
       this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, onMask: !!t.closest('.cv-layer-mask') && !e.shiftKey, target: null, maskFrom, tabTarget: null, src: p.id, foot: null };
     });
     rows.addEventListener('pointermove', (e) => {
+      if (e.buttons === 0 && this.swipe && this.swipe.pointerId === e.pointerId) { this.swipe = null; this.engine.endVisibilitySwipe(); }
       if (e.buttons === 0) { if (this.fxDrag && !this.fxDrag.started) this.fxDrag = null; if (this.drag && !this.drag.started) this.drag = null; }
       const fd = this.fxDrag;
       if (fd && fd.pointerId === e.pointerId) {
@@ -917,6 +921,7 @@ export class LayersPanel {
     });
     this.list.addEventListener('pointermove', (e) => {
       if (!pan || pan.id !== e.pointerId) return;
+      if (!(e.buttons & 4)) { endPan(e); return; }
       this.list.scrollTop -= e.clientY - pan.y;
       pan.y = e.clientY;
     });
@@ -928,6 +933,10 @@ export class LayersPanel {
     };
     this.list.addEventListener('pointerup', endPan);
     this.list.addEventListener('pointercancel', endPan);
+    window.addEventListener('blur', () => {
+      if (pan) endPan(new PointerEvent('pointercancel', { pointerId: pan.id }));
+      if (this.swipe) { this.swipe = null; this.engine.endVisibilitySwipe(); }
+    });
     this.list.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
     rows.addEventListener('dblclick', (e) => {
       const t = e.target as HTMLElement;
