@@ -285,9 +285,15 @@ export class Dock {
     const ids = DOCK_PANELS.map((p) => p.id);
     const o = order.filter((id) => ids.includes(id));
     for (const id of ids) if (!o.includes(id)) o.push(id);
+    const was = this.state, ext = (id: string): boolean => id.startsWith('ext-');
+    was.order.forEach((id, i) => {
+      if (!ext(id) || o.includes(id)) return;
+      const prev = was.order.slice(0, i).reverse().find((x) => o.includes(x));
+      o.splice(prev ? o.indexOf(prev) + 1 : 0, 0, id);
+    });
     // A panel the workspace does not name (the Info panel, newer than the workspaces) keeps its default: hidden if it comes hidden.
     const named = new Set([...order, ...hidden]), extra = DEFAULT.hidden.filter((id) => !named.has(id));
-    this.state = { order: o, hidden: [...hidden, ...extra].filter((id) => ALL_PANELS.some((p) => p.id === id)), side: [...DEFAULT_SIDE] };
+    this.state = { order: o, hidden: [...[...hidden, ...extra].filter((id) => ALL_PANELS.some((p) => p.id === id) && !ext(id)), ...was.hidden.filter(ext)], side: [...DEFAULT_SIDE, ...was.side.filter(ext)] };
     this.save();
   }
 
