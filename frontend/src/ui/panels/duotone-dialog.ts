@@ -46,7 +46,6 @@ export class DuotoneDialog extends Dialog {
     this.body.append(this.ramp);
     this.button('Cancel', 'ghost', () => this.close());
     this.okBtn = this.button('OK', 'primary', () => { const d = this.d; this.close(); this.engine.setDuotone(d); });
-    this.remember();
   }
 
   show(): void {

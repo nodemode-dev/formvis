@@ -2,6 +2,26 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Duotone, Color Range and Focus Area open with the document's own state · v2.3.4 (ui/panels/duotone-dialog.ts, ui/panels/color-range-dialog.ts, ui/panels/focus-area-dialog.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to the constructors' `remember()` calls and `ColorRangeDialog.show`.
+- Wrong: `open()` restores remembered controls and fires their handlers after `show()` has set them from the document or the engine. Duotone Options showed and applied the last-used inks and curves on another document; Color Range's `show('depth')` opened in the remembered Select mode and Combine ignored the options bar; Focus Area's Mode ignored the options bar and its restored Sample All Layers called `engine.setAutoSel`, flipping the selection tools' option (also at start-up). Now Duotone does not remember; Color Range skips Combine and applies depth after `open()` (with Detect Faces disabled, as its Select handler does); Focus Area skips Mode and the Sample All Layers box.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    this.remember();
+    this.remember();
+    this.remember();
+    if (mode === 'depth') {
+      this.pick.value = 'depth';
+      this.farLimit.disabled = this.nearLimit.disabled = false;
+    }
+    this.faces = null;
+    this.detect.checked = false;
+    this.open();
+```
+
 ## Paragraph text breaks long words between whole characters, emoji included · v2.3.4 (engine/text.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/text.ts` `wrapLines`, the character break of a word wider than the line.
