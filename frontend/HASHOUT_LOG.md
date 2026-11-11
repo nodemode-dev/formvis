@@ -2,6 +2,31 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Renaming an action keeps the steps that play it; importing shows the imported action · v2.3.4 (ui/panels/actions-dialogs.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ActionsDialog.rename` and `ActionsDialog.importJson`.
+- Wrong: play and conditional steps name the action they play (`playNamed` in app.ts), but `rename()` changed `a.name` only, so those steps played nothing. `importJson` set `this.pick.value` to the new last index before `sync()` added that option; the select was left with nothing selected and inserting the option selected the first action, so steps, Play and Delete acted on it. Now `rename()` rewrites, in every action, `name` of play steps equal to the old name (and a `Play <old>` label) and `then` / `else` of conditional steps; both import paths `sync()`, set the value, and `sync()` again, as `moveAction` does.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly (rename only gained lines; this pair appeared in both import paths, each now preceded by `this.sync();`):
+
+```text
+        this.pick.value = String(this.store.list.length - 1);
+        this.sync();
+```
+
+## Relight keeps drawing after the WebGL context is lost · v2.3.4 (gpu/relight-gl.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/relight-gl.ts` `renderRelight`.
+- Why: review formvis__extensions-gpu-config F4 (fixer X1). `init()` cached its state once; after a context loss every GL call did nothing, `readPixels` left the buffer zeroed and the Relight layer's paint became transparent black for the session, with the CPU path never taken again.
+- Change: before drawing, a lost context (`isContextLost()`) is dropped with `forgetRelightUploads()` and `init()` makes a fresh one; when that one is lost too, `shadeRelight` draws on the CPU with the settings of the size fallback (the lost test comes before the size test, since `getParameter` answers null on a lost context). A context lost by the time `readPixels` returns is dropped the same way and the CPU result is returned instead of the zeroed buffer.
+- Verified: `tsc --noEmit` (no error in this file). Not run: a forced loss with `WEBGL_lose_context` in a browser.
+- Replaced, quoted exactly:
+
+```text
+  const st = init(), w = geo.width, h = geo.height;
+  if (!st || w > maxTex || h > maxTex) return shadeRelight(base, geo, content, { shadowSteps: Math.min(steps, 16), shade, split });
+```
+
 ## Fill and Brush Settings list patterns defined or loaded after start-up · v2.3.4 (ui/panels/fill-dialog.ts, ui/panels/brush-settings.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `FillDialog.show` and the `BrushSettings` constructor's Texture section.
