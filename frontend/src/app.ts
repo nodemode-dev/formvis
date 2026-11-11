@@ -274,7 +274,7 @@ import { GEN_CHANGED, genPrefs } from './io/gen-prefs';
 import { FalTaskDialog } from './ui/panels/fal-task-dialog';
 import { ColorPickerDialog } from './ui/panels/color-picker';
 import { LiveMaskDialog } from './ui/panels/live-mask-dialog';
-import { Commands, comboOf, type Command, type CommandParam } from './ui/commands';
+import { Commands, Told, comboOf, type Command, type CommandParam } from './ui/commands';
 import { anyDialogOpen, askSaveChanges, askSaveChangesAll, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
 import { icon } from './ui/icons';
@@ -4342,8 +4342,8 @@ export function startApp(): void {
         const from = a?.from === undefined ? 1 : Number(a.from);
         if (!Number.isInteger(from) || from < 1 || from > Math.max(1, x.steps.length)) throw new Error(`from must be a step number from 1 to ${Math.max(1, x.steps.length)}.`);
         const r = await playAction(x, from - 1);
-        if (!r) throw new Error('Open a document to play an action on.');
-        if (r.stopped || r.failed) throw new Error(`"${x.name}" stopped at step ${r.done + 1}${r.stopped ? '' : `, ${r.failed}, which could not run here`}; play-action with from ${r.done + 1} resumes there.`);
+        if (!r) throw new Told('Open a document to play an action on.');
+        if (r.stopped || r.failed) throw new Told(`"${x.name}" stopped at step ${r.done + 1}${r.stopped ? '' : `, ${r.failed}, which could not run here`}; play-action with from ${r.done + 1} resumes there.`);
         return { played: true, from };
       },
     },

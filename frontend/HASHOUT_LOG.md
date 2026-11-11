@@ -86,6 +86,14 @@ export const VERSION = '2.3.3';
 - Now: `playAction` returns the `actions.play` result (`null` with no document); the command throws "<name> stopped at step N, <step>, which could not run here; play-action with from N resumes there" (or the stopped form, or "Open a document ..."). The two UI callers wrap it as `async (x) => { await playAction(x); }` to keep their `Promise<void>` type.
 - Verified: `tsc --noEmit` clean. Not run: run_command play-action on an action with a disabled step.
 
+## play-action from a menu, a key or the command search stays quiet when the action stops · v2.3.4 (ui/commands.ts, app.ts)
+
+- Kind: fix of the entry above · logged: v2.3.4 · 2026-11-11 · refers to `ui/commands.ts` `Told` (new) and `Commands.run`; `app.ts` command `play-action`.
+- Wrong: `Commands.run` (menus, keys, command search) does not wait for a command, so the new throw from `play-action` became an unhandled rejection there: after the toast that says where the action stopped, the window also showed "Something went wrong (...). Your work is safe" and logged an error, for an action that only reached a Stop step or a step that could not run. The browser suite caught it: `e2e/test_offered_options.py::test_every_menu_command_runs[0]`, play-action after an action recording.
+- Now: `play-action` throws `Told`, an `Error` subclass that means the person has already been told. `Commands.run` attaches a handler that lets a `Told` end there and throws anything else again, so every other failing command is reported as before. `Commands.call` is unchanged: agents, the command line and `--action` at launch still get the failure with the same message.
+- Verified with a scratch browser probe outside the repo on an action whose only step cannot run: through `commands.run` the toast shows and no uncaught error is raised; through `commands.call` the caller gets the error "... stopped at step 1 ...; play-action with from 1 resumes there."; another command that rejects through `commands.run` is still reported. `tsc --noEmit` clean.
+- Replaced, quoted exactly: `    cmd.run(params);` in `Commands.run`, and `throw new Error(` twice in `play-action` (the no-document and the stopped lines).
+
 ## Generate, Select by Text and 3D tools write into the document they started on · v2.3.4 (automation/agent-bridge.ts, automation/fal-tools.ts, automation/pack-tools.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `agent-bridge.ts` `generate_image`, `fal-tools.ts` `falGenerate` and `falSelectByText`, `pack-tools.ts` `glbTool` (`glb_place`, `glb_edit`). Review formvis__app-automation F10 (fixer A1).

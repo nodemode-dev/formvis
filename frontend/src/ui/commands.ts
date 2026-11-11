@@ -22,6 +22,8 @@ export interface Command {
 
 export interface CommandParam { type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object'; required?: boolean; enum?: ReadonlyArray<string | number>; min?: number; max?: number; description?: string }
 
+export class Told extends Error {}
+
 /** Names given to some physical key codes inside a combo. */
 const CODE_KEYS: Record<string, string> = {
   BracketLeft: '[', BracketRight: ']', Equal: '=', Minus: '-', NumpadAdd: '=', NumpadSubtract: '-',
@@ -124,7 +126,8 @@ export class Commands {
     const cmd = this.map.get(id);
     if (!cmd || !this.enabled(cmd)) return false;
     const label = this.label(cmd);
-    cmd.run(params);
+    const out = cmd.run(params);
+    if (out instanceof Promise) out.catch((e: unknown) => { if (!(e instanceof Told)) throw e; });
     this.onRun?.(cmd, label);
     return true;
   }
