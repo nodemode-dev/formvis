@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Fill Path, Stroke Path and Pixels shapes on a mask hide in black; on an alpha channel they land in place · v2.3.4 (engine/path-ops.ts, engine/image-edit.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/path-ops.ts` `paintPath`, `PathHost.regionEdit`; `engine/image-edit.ts` `RegionApply`, `regionEdit`.
+- Wrong: `paintPath` drew the paint `source-over` into the raster for every target. A mask (and an alpha channel, which `Engine.regionEdit` hands over as target `mask`) keeps its value in alpha with white colour, so any opaque colour, black included, made the area fully revealing. The path was mapped by `l.transform` (or the mask's placement) while an alpha channel's raster is document-size with an identity map, so on a moved layer the shape landed shifted.
+- Now: `RegionApply`'s argument carries the target's `local` (`IE.regionEdit` passes `t.local`; the Engine's alpha wrapper gives identity), and `paintPath` maps the path by `invert(local)`, falling back to the old map. On target `mask` the painted surface becomes white with alpha = coverage times Rec. 709 luminance, and is laid in with `destination-out` (the coverage) then `lighter`, the same as Fill's mask branch, so black hides, white reveals, greys and gradients give their level.
+- Verified: `tsc --noEmit` clean in the engine; vitest `src/engine` 7 files, 36 passed. Not run: Fill Path on a mask in a browser.
+- Replaced, quoted exactly:
+
+```text
+export type RegionApply = (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void;
+      apply({ raster, target: t.target, rect: box, cover: cov });
+  regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void): void;
+import { invert, mul, placement, setMat, translation } from './geometry';
+  host.regionEdit(name, ({ raster, target, rect, cover }) => {
+    setMat(c, mul(translation(-rect.x, -rect.y), invert(placement(t, raster.width, raster.height))));
+    r.drawImage(s, rect.x, rect.y);
+```
+
 ## Magic Wand and Copy read a targeted layer mask's own values · v2.3.4 (engine/select-ops.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/select-ops.ts` `maskRgba`, `selectedPixels`.

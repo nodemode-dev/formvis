@@ -7,7 +7,7 @@ import type { Target } from './image-edit';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 import { SelectionMask, type SelectionMode } from './selection';
 import { createSurface, ctxOf, type Ctx2D, type Raster, type Surface } from './surface';
-import { invert, mul, placement, setMat, translation } from './geometry';
+import { invert, mul, placement, setMat, translation, type Mat } from './geometry';
 import { pressureOption, type BrushDynamics } from './brush-dynamics';
 import { uid, type ID, type Layer, type Pt, type Rect, type RGB, type ShapeStyle } from './types';
 import type { StrokeTool } from './index';
@@ -47,7 +47,7 @@ export interface PathHost {
   changeVectorMask(change: 'delete' | 'enable' | 'link'): boolean;
   applySelection(next: SelectionMask | null, mode: SelectionMode, name: string): void;
   paintable(l: Layer | null): boolean;
-  regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void): void;
+  regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null; local?: Mat }) => void): void;
   /** The stroke engine a path stroke drives: the brush settings it borrows and the stroke calls. */
   stroker: {
     dynamics: BrushDynamics;
@@ -315,11 +315,11 @@ export function paintPath(host: PathHost, name: string, paint: (c: Ctx2D, shape:
   const vp = given ?? workPath(host);
   if (!vp || !pathBounds(vp)) { host.notice('Draw a path with the Pen tool first.'); return; }
   const shape = tracePath(vp);
-  host.regionEdit(name, ({ raster, target, rect, cover }) => {
+  host.regionEdit(name, ({ raster, target, rect, cover, local }) => {
     const p = host.current as Project, l = p.activeLayer as Layer;
     const t = target === 'mask' ? l.mask?.placement ?? l.transform : l.transform;
     const s = createSurface(rect.w, rect.h), c = ctxOf(s);
-    setMat(c, mul(translation(-rect.x, -rect.y), invert(placement(t, raster.width, raster.height))));
+    setMat(c, mul(translation(-rect.x, -rect.y), invert(local ?? placement(t, raster.width, raster.height))));
     paint(c, shape, vp);
     if (cover) {
       c.setTransform(1, 0, 0, 1, 0, 0);
@@ -329,7 +329,20 @@ export function paintPath(host: PathHost, name: string, paint: (c: Ctx2D, shape:
     const r = raster.ctx;
     r.save();
     r.setTransform(1, 0, 0, 1, 0, 0);
-    r.drawImage(s, rect.x, rect.y);
+    if (target === 'mask') {
+      const img = c.getImageData(0, 0, rect.w, rect.h), d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+        d[i] = d[i + 1] = d[i + 2] = 255;
+        d[i + 3] = Math.round(d[i + 3] * v);
+      }
+      const lit = createSurface(rect.w, rect.h);
+      ctxOf(lit).putImageData(img, 0, 0);
+      r.globalCompositeOperation = 'destination-out';
+      r.drawImage(s, rect.x, rect.y);
+      r.globalCompositeOperation = 'lighter';
+      r.drawImage(lit, rect.x, rect.y);
+    } else r.drawImage(s, rect.x, rect.y);
     r.restore();
   });
 }
