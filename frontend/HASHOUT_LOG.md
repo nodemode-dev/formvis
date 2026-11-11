@@ -2,6 +2,20 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A Relight session ends in its own document when you switch · v2.3.4 (ui/relight-session.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/relight-session.ts` `RelightSession.follow` (new), `begin`, `commit`, `end` (review formvis__ui-o-z.md F1).
+- Wrong: the session kept only `layerId`, and `Engine.setRelight`, `dropNewRelight` and `previewRelight` act on `this.current`. After New Relight Layer (or Edit Lighting) in A and a click on B's tab, Done found no layer in B and lost the lights with no notice, Cancel undid nothing, and A kept an empty "Relight Layer N" with its "New Relight Layer" step; a Marigold commit awaiting `relightSplit` hit the same.
+- Now: `project` is kept from `begin` to `end`. On `projects` or `active`, `follow()` cancels a running session (not while `busy`) whose document is no longer current: a new layer is dropped in its own document (`switchTo` there, `cancel()`, `switchTo` back to the document picked), an edited one only loses its preview; a closed document just ends the session. `commit` switches to its document for `setRelight` and back, and skips the write when that document was closed.
+- Verified: `npx tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+import type { Engine, ID, ToolId } from '../engine';
+    this.layerId = null; this.isNew = false; this.full = null; this.proxy = null;
+      this.engine.setRelight(id, structuredClone(this.content), new ImageData(new Uint8ClampedArray(px), f.w, f.h), this.isNew);
+```
+
 ## Group Layers keeps a folder's layers together; Bring Forward drops none · v2.3.4 (engine/layer-structure.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-structure.ts` `groupLayers`, `stepSibling`.

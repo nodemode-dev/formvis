@@ -1,4 +1,4 @@
-import type { Engine, ID, ToolId } from '../engine';
+import type { Engine, ID, Project, ToolId } from '../engine';
 import {
   MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, TAKE_OUT, levelGain, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, originalLight, relightFrom, relightGeometry, resampleDepth, sceneGeometry, shadeRelight, shadingField, withNormals,
   type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType, type SplitMaps,
@@ -54,6 +54,7 @@ export class RelightSession {
   readonly bar: HTMLElement;
   readonly pill: HTMLElement;
   private layerId: ID | null = null;
+  private project: Project | null = null;
   private isNew = false;
   private prevTool: ToolId = 'move';
   /** The tool in use before the Relight tool was picked in the toolbar, which `end` brings back. */
@@ -131,7 +132,21 @@ export class RelightSession {
       },
     });
     for (const ev of ['active', 'history', 'doc'] as const) engine.on(ev, () => this.syncPill());
+    for (const ev of ['projects', 'active'] as const) engine.on(ev, () => this.follow());
     this.syncPill();
+  }
+
+  private follow(): void {
+    const e = this.engine, back = this.project, to = e.current;
+    if (!this.layerId || this.busy || !back || to === back) return;
+    if (this.isNew && e.projects.includes(back)) {
+      e.switchTo(back.id);
+      this.cancel();
+      if (to && e.projects.includes(to)) e.switchTo(to.id);
+      return;
+    }
+    this.isNew = false;
+    this.cancel();
   }
 
   get editing(): boolean { return this.layerId !== null; }
@@ -150,6 +165,7 @@ export class RelightSession {
     const below = e.compositeUnder(id);
     if (!below) { if (this.isNew) e.dropNewRelight(id); this.isNew = false; return; }
     this.layerId = id;
+    this.project = p;
     this.full = { data: below.data, w: W, h: H };
     const k = Math.min(1, PREVIEW_SIDE / Math.max(W, H)), pw = Math.max(1, Math.round(W * k)), ph = Math.max(1, Math.round(H * k));
     const pbase = k < 1 ? scaled(below, pw, ph) : below.data;
@@ -368,7 +384,10 @@ export class RelightSession {
         } catch { split = null; }
       }
       const px = renderRelight(base, geo, this.content, this.depthFull ? 24 : 0, shadingField(f.data, f.w, f.h), split);
-      this.engine.setRelight(id, structuredClone(this.content), new ImageData(new Uint8ClampedArray(px), f.w, f.h), this.isNew);
+      const e = this.engine, back = this.project, to = e.current;
+      if (back && to !== back) e.switchTo(back.id);
+      if (back && e.current === back) e.setRelight(id, structuredClone(this.content), new ImageData(new Uint8ClampedArray(px), f.w, f.h), this.isNew);
+      if (to && e.current !== to && e.projects.includes(to)) e.switchTo(to.id);
     } finally {
       this.busy = false;
       setClass(this.bar, 'is-busy', false);
@@ -385,7 +404,7 @@ export class RelightSession {
 
   private end(): void {
     if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
-    this.layerId = null; this.isNew = false; this.full = null; this.proxy = null;
+    this.layerId = null; this.project = null; this.isNew = false; this.full = null; this.proxy = null;
     this.depthFull = null; this.source = null; this.splitUsed = null;
     if (this.engine.tool === 'relight') this.engine.setTool(this.prevTool);
     setHidden(this.panel, true);
