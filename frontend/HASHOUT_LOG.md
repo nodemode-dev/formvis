@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A trackpad pinch zooms about the fingers in a turned or flipped view · v2.3.4 (ui/stage.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/stage.ts` `Stage.bindPointer`, the `gesturechange` handler (review formvis__ui-o-z.md F3).
+- Wrong: the WebKit pinch anchor was measured against the overlay canvas's box, which `turn()` rotates, flips and `resize()` enlarges, so with Rotate View, Flip Horizontal or PAR correction the picture jumped. Now the anchor is the stage host's point through `Stage.unturn`, as the wheel, touch and pointer paths do.
+- Verified: `npx tsc --noEmit` clean; node round trip of `unturn` against the view's CSS transform (rotation, PAR, flip) on a scratch copy, exact. Not run: Safari or the macOS app.
+- Replaced, quoted exactly:
+
+```text
+      const r = o.getBoundingClientRect();
+      this.engine.zoomTo(pinch.z0 * g.scale, { x: g.clientX - r.left, y: g.clientY - r.top });
+```
+
 ## A crafted ICC profile's tag count no longer freezes the window on open · v2.3.4 (io/icc-read.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/icc-read.ts` `profileName`.

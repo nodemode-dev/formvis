@@ -1339,8 +1339,8 @@ export class Stage {
       if (!pinch || !this.engine.current || !(g.scale > 0)) return;
       if (Stage.controls.rotate && typeof g.rotation === 'number') this.engine.setViewRotation(pinch.r0 + g.rotation);   // Enhanced Controls: the trackpad turns the view
       if (!Stage.controls.pinch) return;
-      const r = o.getBoundingClientRect();
-      this.engine.zoomTo(pinch.z0 * g.scale, { x: g.clientX - r.left, y: g.clientY - r.top });
+      const r = this.rect ?? this.host.getBoundingClientRect(), v = this.engine.current.viewport;
+      this.engine.zoomTo(pinch.z0 * g.scale, Stage.unturn(g.clientX - r.left, g.clientY - r.top, r.width, r.height, v.rotation ?? 0, Stage.parOf(this.engine), v.flipped));
     });
     o.addEventListener('gestureend', (e) => { e.preventDefault(); pinch = null; });
     o.addEventListener('contextmenu', (e) => {
