@@ -14,6 +14,7 @@ The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and
 - Layers panel: a second finger or pen on the panel no longer cuts into a drag, effect drag or visibility swipe already under way; a list redraw during a drag keeps the drop line on the row the drop will use; and a visibility swipe or middle-button scroll whose release was lost (the window lost focus) no longer keeps toggling eyes or scrolling.
 - Extensions: a panel whose frame fails to open no longer blocks the next attempt. Showing a panel whose tab you moved into another group that is hidden or collapsed brings that group into view. Renaming a panel renames it everywhere: its tab, its group, the dock strip and the Window menu entry with its description.
 - Demos: a document you make while a demo builds is never treated as the demo's, and a demo that fails closes only its own documents, waiting for a running task to finish first. If the demo cannot go back to its own document (you are mid-stroke in yours), it stops instead of writing into yours. The painting demo loads its fonts first, so its text always lands in the demo.
+- Panel groups count their empty header space when fitting tabs, so a group whose tabs fit (Channels beside Layers and Paths) no longer folds its last tab behind the overflow arrow.
 
 ## 2.3.2 · 2026-11-10
 
