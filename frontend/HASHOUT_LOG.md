@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Ending the composite workers mid-run no longer stalls every later composite · v2.3.4 (engine/composite-bands.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/composite-bands.ts` `endCompositePool`, `run`, `runFloat`.
+- Why: review formvis__engine-a-e F5 (fixer E2).
+- Wrong: with Composite on worker threads on, `run` and `runFloat` kept the `pool` they took before awaiting `idle()` during the upload. If the pool ended meanwhile (`setCompositeOnWorkers(false)` or a worker `onerror`), the bands went to terminated workers, which drop messages; the band promises never settled, `inTurn` stayed `turning`, and every later frame, PNG and 16-bit export, Merge Visible and Flatten queued behind it for good.
+- Now: a module `generation` counter is raised by `endCompositePool`; each run notes it beside `ensure()` and returns null (the caller composites itself) after any `idle()` that finds it changed. Nothing was removed.
+- Verified: `tsc --noEmit` no error in this file. Not run: the race needs live workers in a browser.
+
 ## Colorize with a negative hue tints with that hue · v2.3.4 (engine/adjust.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/adjust.ts` `hsvAdjust`.
