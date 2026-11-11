@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A crafted ICC profile's tag count no longer freezes the window on open · v2.3.4 (io/icc-read.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/icc-read.ts` `profileName`.
+- Wrong: the tag count at byte 128 was trusted, so a profile saying 0xFFFFFFFF tags ran about four billion empty iterations (measured 1.8 s per 20 million, about 390 s in all) on the main thread. Trigger: opening a PNG, JPEG, TIFF or PSD whose embedded profile carries that count.
+- Now: `n` is `Math.min(count, Math.max(0, Math.floor((icc.length - 132) / 12)))`, the tag records the bytes can hold.
+- Verified: `tsc --noEmit` clean; a node copy: the 200-byte crafted profile returns at once, a one-tag `desc` profile still reads its name.
+- Replaced, quoted exactly:
+
+```text
+    const dv = new DataView(icc.buffer, icc.byteOffset, icc.byteLength), n = dv.getUint32(128);
+```
+
 ## A second OK in Convert to Profile, Assign Profile or Convert Mode does nothing · v2.3.4 (ui/panels/colour-dialogs.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/colour-dialogs.ts` `ConvertProfileDialog.ok`, `AssignProfileDialog.ok`, `ModeConvertDialog.ok`.
