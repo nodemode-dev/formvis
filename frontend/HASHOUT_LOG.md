@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The colour view never keeps the previous document's transform after a switch · v2.3.4 (ui/colour.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/colour.ts` `ColourView.refresh`.
+- Wrong: the early return for a document that needs no transform came before `++this.seq`, so a `colourLut` or `rgbCmykLut` request still in flight for the previous profiled or proofed document passed `n === this.seq` when it arrived and tinted the plain one; `this.key` already matched, so the wrong view stayed. Also the document and profile were read before `await this.chosenMonitor(...)`, so an older call resuming late could win. Now the counter advances right after `this.key = vkey`, and the monitor profile is awaited before `engine.current` is read.
+- Verified: `tsc --noEmit` clean. Not run: a slow-engine switch in a window.
+- Replaced, quoted exactly:
+
+```text
+    const c = loadPrefs().colour, chosen = c.useDisplay && c.monitor !== 'system' ? await this.chosenMonitor(c.monitor) : null;
+    if (!p || (!pv && (raw || (!prof && !proofing && !monitor)))) { this.engine.setViewTransform(null); return; }
+    const n = ++this.seq;
+```
+
 ## The History panel's pick belongs to the document it was made in · v2.3.4 (ui/history.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/history.ts` `HistoryPanel.sync`, the row click.
