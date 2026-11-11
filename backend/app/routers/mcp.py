@@ -977,7 +977,7 @@ async def _run(name: str, args: dict) -> dict:
             path = _path(args.get("path"), _FILES[name][0], True)
             if path.stat().st_size > _MAX_OPEN:
                 return _fail(f"{path.name} is larger than 512 MB.")
-            data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
+            data = await asyncio.to_thread(lambda: base64.b64encode(path.read_bytes()).decode())
             out = await _call("__open", {"name": path.name, "data": data, **{k: args[k] for k in ("into", "svg_width", "reference") if k in args}})
             opened = (out.get("structuredContent") or {}).get("id") if not out.get("isError") and args.get("into") != "layer" else None
             if isinstance(opened, str):
@@ -987,7 +987,7 @@ async def _run(name: str, args: dict) -> dict:
             path = _path(args.get("path"), _FILES[name][0], True)
             if path.stat().st_size > _MAX_OPEN:
                 return _fail(f"{path.name} is larger than 512 MB.")
-            data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
+            data = await asyncio.to_thread(lambda: base64.b64encode(path.read_bytes()).decode())
             args = {**{k: v for k, v in args.items() if k != "path"}, "data": data, "name": args.get("name") or path.stem[:120]}
         elif name == "place_image" and not args.get("data"):
             return _fail("Give place_image a path (an absolute path to the image file) or data (base64).")
@@ -995,7 +995,7 @@ async def _run(name: str, args: dict) -> dict:
             path = _path(args.get("path"), _FILES[name][0], True)
             if path.stat().st_size > _MAX_OPEN:
                 return _fail(f"{path.name} is larger than 512 MB.")
-            data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
+            data = await asyncio.to_thread(lambda: base64.b64encode(path.read_bytes()).decode())
             args = {**{k: v for k, v in args.items() if k != "path"}, "data": data, **({"name": args.get("name") or path.stem[:120]} if name == "glb_place" else {})}
         if name == "timeline_render":   # 1.59.7, DEV_PLAN 25.5: the window renders, this writes
             path = _path(args.get("path"), _FILES[name][0], False, args.get("overwrite"))
@@ -1004,7 +1004,7 @@ async def _run(name: str, args: dict) -> dict:
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
                 return out if out.get("isError") else _fail("formvis rendered nothing.")
-            blob = base64.b64decode(data)
+            blob = await asyncio.to_thread(base64.b64decode, data)
             await asyncio.to_thread(path.write_bytes, blob)
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
         if name in ("export_mask", "export_layer"):
@@ -1013,7 +1013,7 @@ async def _run(name: str, args: dict) -> dict:
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
                 return out if out.get("isError") else _fail("formvis gave nothing to write.")
-            blob = base64.b64decode(data)
+            blob = await asyncio.to_thread(base64.b64decode, data)
             await asyncio.to_thread(path.write_bytes, blob)
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
         if name in ("save_project", "export_image"):
@@ -1029,7 +1029,7 @@ async def _run(name: str, args: dict) -> dict:
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
                 return out if out.get("isError") else _fail("formvis gave nothing to write.")
-            blob = base64.b64decode(data)
+            blob = await asyncio.to_thread(base64.b64decode, data)
             if name == "export_image" and kind in _ENCODED and not args.get("layers"):
                 from app.services import imaging
                 try:

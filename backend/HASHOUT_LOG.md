@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Agent file reads and writes encode and decode off the event loop · _v2.3.4 (app/routers/mcp.py _run)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F12.
+- Why: `open_file`, `place_image` and `glb_place`/`glb_info` read the file in a thread but base64-encoded it (up to 512 MB) on the event loop, and `timeline_render`, `export_mask`/`export_layer` and `save_project`/`export_image` decoded the window's base64 there; for a few hundred MB that held every other request, the bridge poll and the terminal streams for seconds.
+- Change: `data = await asyncio.to_thread(lambda: base64.b64encode(path.read_bytes()).decode())` at the three reads, `blob = await asyncio.to_thread(base64.b64decode, data)` at the three writes. Left as they were: the `json.dumps` in `bridge_next` and `await request.json()` in `bridge_result`.
+- Checked: a scratch script through `_run` with the window call stubbed: open_file sends the file's bytes; export_mask and timeline_render write the decoded bytes. The timing check was not run.
+- Replaced, quoted exactly: `            data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()` (three times) and `            blob = base64.b64decode(data)` (three times).
+
 ## Malformed PNM numbers, profile data and XPM rgbi colours answer 4xx · _v2.3.4 (app/services/pnm.py _Reader.number, read; app/services/colour.py _b64 new, _profile, _raw, _ref_bytes; app/services/xpm.py _colour)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-services F10.
