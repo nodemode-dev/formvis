@@ -2,6 +2,20 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layer Comps: Last Document State stays on top; the Measurement Log's selection stays with its document · v2.3.4 (ui/layer-comps.ts, ui/measurement-log.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/layer-comps.ts` `LayerCompsPanel.sync`, `compRows` (new); `ui/measurement-log.ts` `MeasurementLogPanel.sync`, `selectedIn` (new). Two commits.
+- Wrong (1): `patchList` began its cursor at the list's first child, the unkeyed state row, and inserted each comp before it, so Last Document State sat below the comps. The comps now live in `div.cv-comps-rows` after the state row and the empty line, and `patchList` runs there; the list's click delegation is unchanged.
+- Wrong (2): `selected` and `anchor` were panel state keyed by per-document ids counted from 1, so a selection made in A stayed after switching to B and Delete or Export acted on B's records. `sync()` now clears both when `engine.current` differs from `selectedIn`.
+- Verified: `tsc --noEmit` (no error in these files). Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+      `<div class="cv-comps-empty">No layer comps yet. Use New to record the current state.</div></div>` +
+    patchList<Row>(this.rows, list, {
+import type { Engine } from '../engine';
+```
+
 ## Enter on a focused button in the Brush Preset picker does that button's job · v2.3.4 (ui/brush-picker.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/brush-picker.ts` `BrushPicker` constructor (document keydown).
