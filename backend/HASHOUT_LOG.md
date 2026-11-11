@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The desktop app's terminals get the engine's real address · _v2.3.4 (app/services/terminal.py engine_port new, base_env)
+
+- Kind: fix · logged 2026-11-11 · handoff from the routers and native-tauri-packaging reviews.
+- Why: `base_env` built FORMVIS_ENGINE_URL from FORMVIS_PORT, which the desktop shell sets to 0 so the engine picks a free port, so every desktop terminal pointed at `http://127.0.0.1:0`.
+- Now: `engine_port()` returns FORMVIS_PORT (or `config.BACKEND_PORT`) as before; when that is 0 it reads `engine.port` in the data folder (written by `formvis_engine.announce_port` once uvicorn listens) and takes its port when its `pid` is this process.
+- Checked: temporary data folder: port 0 with no file stays :0; a file naming this pid and 51234 gives :51234; another pid's file is ignored; 8190 or unset gives :8190.
+- Replaced, quoted exactly: `    env["FORMVIS_ENGINE_URL"] = f"http://127.0.0.1:{os.environ.get('FORMVIS_PORT', config.BACKEND_PORT)}"`
+
 ## cli stack, contact, fit, photomerge and hdr run on the engine's Python · _v2.3.4 (formvis py, cli branch)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F7.
