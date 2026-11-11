@@ -1,11 +1,12 @@
 import { Raster, docTransform, effectsActive, newLayer, uid, placement, createSurface, ctxOf, toBlob, type BlendMode, type Doc, type ID, type Layer, type Surface } from '../engine';
 import type { LayerLocks } from '../engine/types';
+import { ancestors, byId, groupIsolated } from '../engine/tree';
 import { unzip, zipFiles } from './zip';
 
 /** OpenRaster (.ora, 1.51.7, the capability plan): the open layered format of several painting apps, written and read
  *  from its public specification. A ZIP: "mimetype" first and uncompressed, stack.xml (the layers, topmost first,
- *  groups as nested stacks), a PNG per layer, mergedimage.png and a thumbnail. formvis's groups are pass-through, as
- *  isolation="auto"; adjustment layers have no OpenRaster form and are left out, said so. */
+ *  groups as nested stacks), a PNG per layer, mergedimage.png and a thumbnail. A pass-through folder is isolation="auto",
+ *  an isolated or blended one isolation="isolate" with its mode; adjustment layers have no OpenRaster form, said so. */
 export const isOraFile = (f: File): boolean => /\.ora$/i.test(f.name) || f.type === 'image/openraster';
 
 const TO_ORA: Partial<Record<BlendMode, string>> = {
@@ -23,19 +24,22 @@ const esc = (s: string): string => s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '
 export async function writeOra(doc: Doc, composite: Surface, alone: (l: Layer) => Surface): Promise<{ blob: Blob; notes: string[] }> {
   const files: Array<{ name: string; blob: Blob }> = [], notes = new Set<string>();
   let n = 0;
+  const map = byId(doc);
   const layerXml = async (l: Layer, depth: string): Promise<string> => {
     const locked = `${l.locks?.all ? ' edit-locked="true"' : ''}${l.locks?.transparency ? ' alpha-locked="true"' : ''}`;
     const common = `name="${esc(l.name)}" opacity="${l.opacity.toFixed(3)}" visibility="${l.visible === false ? 'hidden' : 'visible'}"${locked}`;
     if (l.isGroup) {
       const kids = await children(l.id, depth + '  ');
-      return `${depth}<stack ${common} isolation="auto">\n${kids}${depth}</stack>\n`;
+      return `${depth}<stack ${common} composite-op="${TO_ORA[l.blend] ?? 'svg:src-over'}" isolation="${groupIsolated(l) ? 'isolate' : 'auto'}">\n${kids}${depth}</stack>\n`;
     }
     if (l.adjustment) notes.add('Adjustment layers have no OpenRaster form and were written as pictures of what they do to the layers below.');
     const op = l.adjustment ? 'svg:src-over' : TO_ORA[l.blend ?? 'normal'];
     if (!op) notes.add(`${l.blend} has no OpenRaster blend mode; those layers were written as Normal.`);
     // Plain pixels when the layer's placement is an unscaled, unrotated move by whole pixels: written as they are.
     const m = l.raster ? placement(l.transform, l.raster.width, l.raster.height) : null;
-    const plain = !!m && !l.text && !l.shape && !l.smart && !(l.mask && l.mask.enabled !== false) && !effectsActive(l.effects) && Math.abs(m[0] - 1) < 1e-9 && Math.abs(m[1]) < 1e-9 && Math.abs(m[2]) < 1e-9 && Math.abs(m[3] - 1) < 1e-9 && Number.isInteger(Math.round(m[4] * 1e6) / 1e6) && Number.isInteger(Math.round(m[5] * 1e6) / 1e6);
+    const base = l.clipId ? map.get(l.clipId) : undefined, folded = ancestors(map, l).some((g) => (g.mask && g.mask.enabled !== false) || (g.vectorMask && g.vectorMask.enabled !== false));
+    const plain = !!m && !l.text && !l.shape && !l.smart && !(l.mask && l.mask.enabled !== false) && !(l.vectorMask && l.vectorMask.enabled !== false) && !(base && !base.blendClipped) && (l.fill ?? 1) === 1 && !l.blendIf && !l.fillContent && !folded && !effectsActive(l.effects) && Math.abs(m[0] - 1) < 1e-9 && Math.abs(m[1]) < 1e-9 && Math.abs(m[2]) < 1e-9 && Math.abs(m[3] - 1) < 1e-9 && Number.isInteger(Math.round(m[4] * 1e6) / 1e6) && Number.isInteger(Math.round(m[5] * 1e6) / 1e6);
+    if (plain && l.clipId) notes.add('OpenRaster has no clipping; layers clipped to a base that blends them as a group were written unclipped.');
     const img: Surface = plain && l.raster ? l.raster.canvas as Surface : alone(l), x = plain && m ? m[4] : 0, y = plain && m ? m[5] : 0;
     const src = `data/layer${n++}.png`;
     files.push({ name: src, blob: await toBlob(img) });

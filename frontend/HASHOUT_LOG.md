@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## OpenRaster export keeps vector masks, Fill, Blend If, clipping, folder masks and folder modes · v2.3.4 (io/ora.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/ora.ts` `writeOra`, `plain` and the group branch.
+- Wrong: `plain` checked only the layer mask, text, shape, smart object, effects and a whole-pixel move, so a layer with a vector mask, Fill below 1, Blend If, fill content, clipping or a masked folder around it was written as its raw pixels; folders were always `isolation="auto"` with no `composite-op`, so a Multiply or isolated folder reopened as Normal pass-through. Nothing was noted. Trigger: ORA export of any of those.
+- Now: such layers are not `plain` and go through `alone(l)` (`renderLayerAlone`, which keeps the ancestors and so applies folder masks, the vector mask, Fill and Blend If; the clip coverage is drawn from the base even while the base is hidden, `clipCoverage` does not read `hidden`). A layer clipped to a base with `blendClipped` stays plain (drawn alone it would be empty, `clippedGroup` returns on the hidden base) and a note says it was written unclipped. Folders write `composite-op` from `TO_ORA` and `isolation="isolate"` when `groupIsolated`; `readOraFile` reads both. The header comment says so.
+- Verified: `tsc --noEmit` clean. Not run: an ORA export and reopen in a browser.
+- Replaced, quoted exactly:
+
+```text
+ *  groups as nested stacks), a PNG per layer, mergedimage.png and a thumbnail. formvis's groups are pass-through, as
+ *  isolation="auto"; adjustment layers have no OpenRaster form and are left out, said so. */
+      return `${depth}<stack ${common} isolation="auto">\n${kids}${depth}</stack>\n`;
+    const plain = !!m && !l.text && !l.shape && !l.smart && !(l.mask && l.mask.enabled !== false) && !effectsActive(l.effects) && Math.abs(m[0] - 1) < 1e-9 && Math.abs(m[1]) < 1e-9 && Math.abs(m[2]) < 1e-9 && Math.abs(m[3] - 1) < 1e-9 && Number.isInteger(Math.round(m[4] * 1e6) / 1e6) && Number.isInteger(Math.round(m[5] * 1e6) / 1e6);
+```
+
 ## Content-Aware Move moves the selection inside its undo step · v2.3.4 (engine/index.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.contentAwareMoveNow` (review formvis__engine-index.md F5).
