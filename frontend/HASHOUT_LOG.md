@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Moving a panel tab to another group keeps an extension panel's page alive · v2.3.4 (ui/panel-group.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panel-group.ts` `PanelGroup.attach`, reached from `moveTab` (handoff from X1, review formvis__extensions-gpu-config.md F1 part 2 of 3).
+- Wrong: `attach` re-parented the page with `appendChild`; an extension panel's page holds an iframe, and moving it destroys its browsing context, so dragging the tab to another group reloaded the panel (typed state and activation lost). Now a page that is already connected moves with `moveBefore(page, null)` when the body has it; otherwise (other engines, or a page attached for the first time, which `moveBefore` refuses) `appendChild` as before.
+- Verified: `npx tsc --noEmit`, no errors in this file. Not run: e2e test_extension_dock_panel with a tab drag.
+- Replaced, quoted exactly:
+
+```text
+    body.appendChild(page);
+```
+
 ## The window's capability drops the window permissions the page never uses · v2.3.4 (src-tauri/capabilities/default.json)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/capabilities/default.json` `permissions`; review formvis__native-tauri-packaging F12.

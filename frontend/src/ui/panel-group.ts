@@ -149,7 +149,7 @@ export class PanelGroup {
     btn.addEventListener('click', (e) => { if (PanelGroup.justDragged) { e.preventDefault(); PanelGroup.justDragged = false; return; } this.show(tid); });
     btn.addEventListener('pointerdown', (e) => this.tabDrag(e, tid, btn));
     strip.appendChild(btn);
-    body.appendChild(page);
+    if (typeof body.moveBefore === 'function' && page.isConnected && body.isConnected) body.moveBefore(page, null); else body.appendChild(page);
     this.tabs.set(tid, { btn, body: page, label });
     this.root.classList.remove('is-empty');
     requestAnimationFrame(() => this.fitTabs());
