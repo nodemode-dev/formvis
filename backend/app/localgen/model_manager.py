@@ -604,6 +604,8 @@ def set_source(model: str, mode: str, url: str | None) -> dict:
         raise ValueError("Unknown source mode")
     if mode != "upstream" and not url:
         raise ValueError("A mirror or custom source needs a URL")
+    if mode == "custom" and len(MODELS[model]["files"]) > 1:
+        raise ValueError("A custom address is for a one-file model; use a mirror for this one")
     ROOT.mkdir(parents=True, exist_ok=True)
     data = _sources()
     data[model] = {"mode": mode, "url": url}

@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## "One custom address" is refused for a model of several files · _v2.3.4 (app/localgen/model_manager.py set_source)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F6.
+- Why: a custom source is one exact URL that `source_for` gives for every file, so a multi-file model always failed on a checksum mismatch and could never be installed that way.
+- Now: `set_source` raises ValueError (the route's 400) for mode "custom" when the model has more than one file; a mirror still works. A custom source saved earlier is left as it is. No line was removed.
+- Checked: krea-2-mlx-q8 custom refused; lama-inpaint custom and krea-2-mlx-q8 mirror saved.
+
 ## A command slot with a random seed gets a fresh seed per picture · _v2.3.4 (app/localgen/local_models.py run_command_slot)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F5.
