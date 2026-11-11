@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## ffmpeg's report read as UTF-8 · _v2.3.4 (app/routers/video.py _probe, _frames, _encode)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F6.
+- Why: the `subprocess.run` calls had `text=True` and no encoding, so on Windows (Python before 3.15, no UTF-8 mode) ffmpeg's UTF-8 stderr was decoded with cp1252, and metadata whose UTF-8 holds 0x81, 0x8D, 0x8F, 0x90 or 0x9D (for example U+306E, E3 81 AE) raised UnicodeDecodeError: a 500 from probe, frames or encode.
+- Change: the four calls (the `-vsync` retry included) add `encoding="utf-8", errors="replace"`.
+- Checked: a clip titled with U+306E: decoding the report as cp1252 raises at byte 0x81; `_probe` with `subprocess.run` defaulting to cp1252 answers size, rate and duration. Not run on Windows.
+
 ## A cancelled or failed local generation leaves nothing behind · _v2.3.4 (app/localgen/generate.py _generate_local: leftovers new, made, operation, guarded new; app/localgen/jobs.py run)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F2 and F3.

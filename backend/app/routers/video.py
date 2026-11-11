@@ -36,7 +36,7 @@ def _ffmpeg() -> str:
 
 def _probe(path: Path) -> dict:
     """Size, frame rate and duration from ffmpeg's own report of the file (no ffprobe needed)."""
-    r = subprocess.run([_ffmpeg(), "-hide_banner", "-i", str(path)], capture_output=True, text=True, timeout=60)
+    r = subprocess.run([_ffmpeg(), "-hide_banner", "-i", str(path)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     text = r.stderr
     video = next((ln for ln in text.splitlines() if "Video:" in ln), "")
     if not video:
@@ -80,10 +80,10 @@ def _frames(path: Path, out: Path, start: float, end: float, every: int, max_fra
     if filters:
         cmd += ["-vf", ",".join(filters)]
     cmd += ["-fps_mode", "vfr", "-frames:v", str(max_frames), str(out / "f%05d.png")]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
     if r.returncode != 0 and "Unrecognized option 'fps_mode'" in r.stderr:
         cmd[cmd.index("-fps_mode")] = "-vsync"
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
     pngs = sorted(out.glob("f*.png"))
     if r.returncode != 0 or not pngs:
         raise HTTPException(status_code=422, detail=f"ffmpeg could not read frames from that clip{': ' + r.stderr.strip()[-200:] if r.stderr.strip() else ''}.")
@@ -139,7 +139,7 @@ def _encode(folder: Path, names: list[str], delays: list[int], fps_in: float = 0
     out = folder / "out.mp4"
     cmd = [_ffmpeg(), "-hide_banner", "-loglevel", "error", "-framerate", _rate(fps), "-i", str(folder / "s%06d.png"),
            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-r", _rate(fps), "-movflags", "+faststart", str(out)]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
     if r.returncode != 0 or not out.is_file():
         raise HTTPException(status_code=422, detail=f"ffmpeg could not write the video{': ' + r.stderr.strip()[-200:] if r.stderr.strip() else ''}.")
     return out.read_bytes()
