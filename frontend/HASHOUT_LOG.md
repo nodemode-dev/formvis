@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Navigator stops panning when its drag is cancelled · v2.3.4 (ui/navigator.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/navigator.ts` `NavigatorPanel` constructor (preview drag).
+- Wrong: only pointerup cleared `dragging`; a touch or pen drag ended by pointercancel, or a lost release, left it set and every later hover over `.cv-nav-preview` panned the document. pointercancel and lostpointercapture now clear it, and a pointermove with no button down ends the drag.
+- Verified: `tsc --noEmit` (no error in this file). Not run: touch or pen input.
+- Replaced, quoted exactly:
+
+```text
+    this.canvas.addEventListener('pointermove', (e) => { if (dragging) move(e); });
+```
+
 ## Renaming an action keeps the steps that play it; importing shows the imported action · v2.3.4 (ui/panels/actions-dialogs.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ActionsDialog.rename` and `ActionsDialog.importJson`.

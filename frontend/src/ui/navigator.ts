@@ -56,8 +56,10 @@ export class NavigatorPanel {
       engine.pan(v.centerX - x * v.zoom - v.panX, v.height / 2 - y * v.zoom - v.panY);
     };
     this.canvas.addEventListener('pointerdown', (e) => { dragging = true; this.canvas.setPointerCapture(e.pointerId); move(e); });
-    this.canvas.addEventListener('pointermove', (e) => { if (dragging) move(e); });
+    this.canvas.addEventListener('pointermove', (e) => { if (dragging && e.buttons) move(e); else dragging = false; });
     this.canvas.addEventListener('pointerup', () => { dragging = false; });
+    this.canvas.addEventListener('pointercancel', () => { dragging = false; });
+    this.canvas.addEventListener('lostpointercapture', () => { dragging = false; });
     for (const ev of ['render', 'viewport', 'projects', 'overlay', 'doc'] as const) engine.on(ev, () => this.schedule());
     new ResizeObserver(() => this.schedule()).observe(this.canvas);
     this.schedule();
