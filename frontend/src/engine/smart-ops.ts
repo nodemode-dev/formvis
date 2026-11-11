@@ -43,7 +43,7 @@ export function addSmartFilterMask(host: SmartHost): void {
   if (!p || !l || !sm || !l.raster) { host.notice('Select a smart object first.'); return; }
   if (sm.filterMask) return;
   const src = sm.source, mask = new Raster(src.width, src.height), sel = p.selection;
-  if (sel && !sm.warp) {
+  if (sel && !sm.warp && !sm.deform) {
     const m = (l.raster.width - src.width) / 2;
     setMat(mask.ctx, mul(translation(-m, -m), mul(invert(placement(l.transform, l.raster.width, l.raster.height)), translation(sel.x, sel.y))));
     mask.ctx.drawImage(sel.surface(), 0, 0);

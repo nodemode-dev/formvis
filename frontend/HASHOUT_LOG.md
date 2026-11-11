@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Add Smart Filter Mask on a warped smart object no longer lands offset · v2.3.4 (engine/smart-ops.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/smart-ops.ts` `addSmartFilterMask`.
+- Wrong: the selection was mapped into source space assuming `l.raster` is the source padded evenly and placed by `l.transform`; a smart object with a live deform has `warp` null (restack clears it) while its raster is the warped, cropped render, so the mask landed at an unrelated offset and scale. Trigger: Warp, Puppet Warp or Perspective Warp on a smart object, a selection, then Add Smart Filter Mask.
+- Now: the guard also requires `!sm.deform`, so a deformed object gets the all-white mask, as a distorted one does.
+- Verified: `tsc --noEmit` clean. Not run: the command in a browser.
+- Replaced, quoted exactly:
+
+```text
+  if (sel && !sm.warp) {
+```
+
 ## Stack Mode None shows the top layer as it is · v2.3.4 (engine/stack-modes.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/stack-modes.ts` `computeStack`, reached from `engine/smart-object-ops.ts` `setStackMode`.
