@@ -9,6 +9,8 @@ Pillow and numpy, Photomerge and Merge to HDR through the engine's merge routes 
   photomerge <files...> [--layout auto|perspective|cylindrical|collage|reposition] [--crop] [--vignette] [--distortion] [--out FILE]
   hdr <files...> [--no-align] [--times 1/60,1/15,...] [--depth 32|16|8] [--out FILE]
 """
+from __future__ import annotations
+
 import argparse
 import io
 import json

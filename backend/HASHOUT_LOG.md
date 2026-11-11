@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The MCP server, agents and cli start on Python 3.9 · _v2.3.4 (setup/mcp_stdio.py, setup/agents.py, setup/cli.py, setup/cli_offline.py)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F1.
+- Why: annotations such as `-> str | None` are evaluated when a function is defined, which needs Python 3.10, so on 3.9 (the macOS /usr/bin/python3 that a GUI client finds first, and the runtime the .mcpb manifest declares) `./formvis mcp`, `agents` and `cli` stopped at import with `TypeError: unsupported operand type(s) for |`.
+- Each of the four files now has `from __future__ import annotations` right after its docstring (in cli.py before `HELP`). An ast scan of every setup/*.py found no other 3.10-only syntax.
+- Checked with Python 3.9.25: the old mcp_stdio.py raised the TypeError; now `--version`, `agents install --dry-run`, `cli version` and the cli_offline import all run.
+
 ## A negative or non-finite FITS axis is refused, no endless loop · _v2.3.4 (app/services/fits.py _num, _data_size)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-services F1.

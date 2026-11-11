@@ -11,6 +11,7 @@
                             command is on the path) and every skill; files backed up before changing; running
                             it again changes nothing
 """
+from __future__ import annotations
 
 import json
 import os

@@ -26,6 +26,7 @@ for the window (FORMVIS_CLI_TIMEOUT sets it); when it gives up or is stopped, th
 The engine's address: FORMVIS_URL, or http://127.0.0.1:8190. Editing commands need the window open (./formvis boot) and outside agents allowed
 (Preferences > Plugins), or --headless on list, describe, run, process, batch, droplet, serve and convert, which starts a window with no
 screen for that run (./formvis headless) and closes it after; info, convert of flat pictures and jobs need only the engine."""
+from __future__ import annotations
 
 HELP = {
     "list": "list [text] [--group name]\n  The command catalogue: id, label, when to use it. Needs the window to have been open once.",

@@ -16,6 +16,7 @@ is started (1.53.3).
 
 The server declares tools.listChanged, and tells the client (notifications/tools/list_changed) when the engine's tool count
 changes or the engine comes back."""
+from __future__ import annotations
 
 import json
 import os
