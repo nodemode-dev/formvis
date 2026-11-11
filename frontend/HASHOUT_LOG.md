@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A replayed Hue/Saturation step applies its recorded settings · v2.3.4 (ui/panels/adjust-panel.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/adjust-panel.ts` `AdjustPanel.applySettings`, with `kernel()`.
+- Wrong: action playback of an image Hue/Saturation step (`dialogs.adjust.applySettings(kind, data, false)` in app.ts) set `kind` and `data` only, while the hsv kernel reads `this.hsv`, set by `prepare()`, which replay skips: a no-op in a fresh session, otherwise the last dialog's settings. Now an hsv step sets `this.hsv = hsvFromData(this.data)` before the kernel is built. Added line only; nothing removed.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+
 ## Smart Sharpen and Shake Reduction sliders follow recalled settings · v2.3.4 (ui/panels/filter-panel.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/filter-panel.ts` `FilterPanel` constructor, the smartSharpen and shakeReduction sections.
