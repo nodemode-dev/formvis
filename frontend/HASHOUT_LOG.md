@@ -2,6 +2,32 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Smart Sharpen and Shake Reduction sliders follow recalled settings · v2.3.4 (ui/panels/filter-panel.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/filter-panel.ts` `FilterPanel` constructor, the smartSharpen and shakeReduction sections.
+- Wrong: the rows captured `s.smart` and `s.shake` at construction, but `recallSettings` and the `Object.assign(this.s, ...)` in the show, ask and smart filter paths replace those objects. The sliders then showed and wrote a stale object: old values shown, preview unchanged when moved, and OK applied the recalled values. Now `ss()` and `sh()` return the current objects, as the Develop rows' views do, in every callback, `angleOn` and both section syncs.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    const ss = s.smart;
+    const ssAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { ss.amount = v; this.schedule(); }, { def: d.smart.amount });
+    const ssRadius = sliderRow('Radius (px)', 0.1, 64, 0.1, (v) => { ss.radius = v; this.schedule(); }, { def: d.smart.radius });
+    const ssNoise = sliderRow('Reduce Noise (%)', 0, 100, 1, (v) => { ss.noise = v; this.schedule(); }, { def: d.smart.noise });
+    const ssAngle = sliderRow('Angle (°)', -90, 90, 1, (v) => { ss.angle = v; this.schedule(); }, { def: d.smart.angle });
+    const angleOn = (): void => { const off = ss.remove !== 'motion'; ssAngle.el.classList.toggle('is-off', off); for (const i of ssAngle.el.querySelectorAll('input')) i.disabled = off; };
+    const ssRemove = selectRow('Remove', [['gaussian', 'Gaussian Blur'], ['lens', 'Lens Blur'], ['motion', 'Motion Blur']], (v) => { ss.remove = v as SharpenRemove; angleOn(); this.schedule(); });
+    const ssShadows = sliderRow('Shadows fade (%)', 0, 100, 1, (v) => { ss.shadows = v; this.schedule(); }, { def: d.smart.shadows });
+    const ssHighlights = sliderRow('Highlights fade (%)', 0, 100, 1, (v) => { ss.highlights = v; this.schedule(); }, { def: d.smart.highlights });
+      ssAmount.set(ss.amount); ssRadius.set(ss.radius); ssNoise.set(ss.noise); ssRemove.set(ss.remove); ssAngle.set(ss.angle); angleOn(); ssShadows.set(ss.shadows); ssHighlights.set(ss.highlights);
+    const sh = s.shake;
+    const shAngle = sliderRow('Trace angle (°)', -90, 90, 1, (v) => { sh.angle = v; this.schedule(); }, { def: d.shake.angle });
+    const shLength = sliderRow('Trace length (px)', 1, 100, 1, (v) => { sh.length = v; this.schedule(); }, { max: 300, def: d.shake.length });
+    const shSmooth = sliderRow('Smoothing (%)', 0, 100, 1, (v) => { sh.smoothing = v; this.schedule(); }, { def: d.shake.smoothing });
+    const shAmount = sliderRow('Amount (%)', 1, 300, 1, (v) => { sh.amount = v; this.schedule(); }, { def: d.shake.amount });
+    this.section('shakeReduction', [this.shakeNote, shAngle.el, shLength.el, shSmooth.el, shAmount.el, shEstimate], () => { shAngle.set(sh.angle); shLength.set(sh.length); shSmooth.set(sh.smoothing); shAmount.set(sh.amount); });
+```
+
 ## A Relight session ends in its own document when you switch · v2.3.4 (ui/relight-session.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/relight-session.ts` `RelightSession.follow` (new), `begin`, `commit`, `end` (review formvis__ui-o-z.md F1).

@@ -309,27 +309,28 @@ export class FilterPanel extends Dialog {
       lensFocal.set(i.focal); lensInvert.set(i.invert); lensNoise.set(i.noise); lensDist.set(i.gaussian ? 'gaussian' : 'uniform'); lensMono.set(i.mono);
       this.pullDepth();
     });
-    const ss = s.smart;
-    const ssAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { ss.amount = v; this.schedule(); }, { def: d.smart.amount });
-    const ssRadius = sliderRow('Radius (px)', 0.1, 64, 0.1, (v) => { ss.radius = v; this.schedule(); }, { def: d.smart.radius });
-    const ssNoise = sliderRow('Reduce Noise (%)', 0, 100, 1, (v) => { ss.noise = v; this.schedule(); }, { def: d.smart.noise });
-    const ssAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { ss.angle = v; this.schedule(); }, { def: d.smart.angle });
-    const angleOn = (): void => { const off = ss.remove !== 'motion'; ssAngle.el.classList.toggle('is-off', off); for (const i of ssAngle.el.querySelectorAll('input')) i.disabled = off; };
-    const ssRemove = selectRow('Remove', [['gaussian', 'Gaussian Blur'], ['lens', 'Lens Blur'], ['motion', 'Motion Blur']], (v) => { ss.remove = v as SharpenRemove; angleOn(); this.schedule(); });
-    const ssShadows = sliderRow('Shadows fade (%)', 0, 100, 1, (v) => { ss.shadows = v; this.schedule(); }, { def: d.smart.shadows });
-    const ssHighlights = sliderRow('Highlights fade (%)', 0, 100, 1, (v) => { ss.highlights = v; this.schedule(); }, { def: d.smart.highlights });
+    const ss = (): typeof s.smart => s.smart;
+    const ssAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { ss().amount = v; this.schedule(); }, { def: d.smart.amount });
+    const ssRadius = sliderRow('Radius (px)', 0.1, 64, 0.1, (v) => { ss().radius = v; this.schedule(); }, { def: d.smart.radius });
+    const ssNoise = sliderRow('Reduce Noise (%)', 0, 100, 1, (v) => { ss().noise = v; this.schedule(); }, { def: d.smart.noise });
+    const ssAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { ss().angle = v; this.schedule(); }, { def: d.smart.angle });
+    const angleOn = (): void => { const off = ss().remove !== 'motion'; ssAngle.el.classList.toggle('is-off', off); for (const i of ssAngle.el.querySelectorAll('input')) i.disabled = off; };
+    const ssRemove = selectRow('Remove', [['gaussian', 'Gaussian Blur'], ['lens', 'Lens Blur'], ['motion', 'Motion Blur']], (v) => { ss().remove = v as SharpenRemove; angleOn(); this.schedule(); });
+    const ssShadows = sliderRow('Shadows fade (%)', 0, 100, 1, (v) => { ss().shadows = v; this.schedule(); }, { def: d.smart.shadows });
+    const ssHighlights = sliderRow('Highlights fade (%)', 0, 100, 1, (v) => { ss().highlights = v; this.schedule(); }, { def: d.smart.highlights });
     this.section('smartSharpen', [ssAmount.el, ssRadius.el, ssNoise.el, ssRemove.el, ssAngle.el, ssShadows.el, ssHighlights.el], () => {
-      ssAmount.set(ss.amount); ssRadius.set(ss.radius); ssNoise.set(ss.noise); ssRemove.set(ss.remove); ssAngle.set(ss.angle); angleOn(); ssShadows.set(ss.shadows); ssHighlights.set(ss.highlights);
+      const c = ss();
+      ssAmount.set(c.amount); ssRadius.set(c.radius); ssNoise.set(c.noise); ssRemove.set(c.remove); ssAngle.set(c.angle); angleOn(); ssShadows.set(c.shadows); ssHighlights.set(c.highlights);
     });
     // Develop: Camera Raw-style controls over formnodal's develop core, grouped as the develop studio groups them.
-    const sh = s.shake;
-    const shAngle = sliderRow('Trace angle (\u00b0)', -90, 90, 1, (v) => { sh.angle = v; this.schedule(); }, { def: d.shake.angle });
-    const shLength = sliderRow('Trace length (px)', 1, 100, 1, (v) => { sh.length = v; this.schedule(); }, { max: 300, def: d.shake.length });
-    const shSmooth = sliderRow('Smoothing (%)', 0, 100, 1, (v) => { sh.smoothing = v; this.schedule(); }, { def: d.shake.smoothing });
-    const shAmount = sliderRow('Amount (%)', 1, 300, 1, (v) => { sh.amount = v; this.schedule(); }, { def: d.shake.amount });
+    const sh = (): typeof s.shake => s.shake;
+    const shAngle = sliderRow('Trace angle (\u00b0)', -90, 90, 1, (v) => { sh().angle = v; this.schedule(); }, { def: d.shake.angle });
+    const shLength = sliderRow('Trace length (px)', 1, 100, 1, (v) => { sh().length = v; this.schedule(); }, { max: 300, def: d.shake.length });
+    const shSmooth = sliderRow('Smoothing (%)', 0, 100, 1, (v) => { sh().smoothing = v; this.schedule(); }, { def: d.shake.smoothing });
+    const shAmount = sliderRow('Amount (%)', 1, 300, 1, (v) => { sh().amount = v; this.schedule(); }, { def: d.shake.amount });
     const shEstimate = el<HTMLButtonElement>('<button class="cv-btn" type="button">Estimate from image</button>');
     shEstimate.addEventListener('click', () => this.estimateShake());
-    this.section('shakeReduction', [this.shakeNote, shAngle.el, shLength.el, shSmooth.el, shAmount.el, shEstimate], () => { shAngle.set(sh.angle); shLength.set(sh.length); shSmooth.set(sh.smoothing); shAmount.set(sh.amount); });
+    this.section('shakeReduction', [this.shakeNote, shAngle.el, shLength.el, shSmooth.el, shAmount.el, shEstimate], () => { const c = sh(); shAngle.set(c.angle); shLength.set(c.length); shSmooth.set(c.smoothing); shAmount.set(c.amount); });
     // s.develop is replaced when saved settings are recalled, so the tone and detail rows reach it through these views.
     const view = <T extends object>(get: () => T): T => new Proxy({} as T, { get: (_o, k) => (get() as Record<string | symbol, unknown>)[k], set: (_o, k, v) => { (get() as Record<string | symbol, unknown>)[k] = v; return true; } });
     const t = view(() => s.develop.tone), dt = view(() => s.develop.detail);
