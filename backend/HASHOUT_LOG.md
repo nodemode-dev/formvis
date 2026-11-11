@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A TIFF directory cut inside an entry reads as not raw, no 500 · _v2.3.4 (app/services/raw_develop.py _ifd0, _ifd_at)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F8.
+- Why: both directory readers kept an entry with 8 to 11 bytes left, and `sniff` (also `_baseline`, `gain_maps`) unpacked its 4-byte value outside a try, so an upload with a cut Make entry beside tag 330 raised struct.error from `imaging.is_raw`, a 500.
+- Now: each loop breaks at the first entry shorter than 12 bytes. No line was removed.
+- Checked: the review's 32-byte file: struct.error before, `sniff` returns "" after.
+
 ## mcp, cli and headless find an engine on FORMVIS_PORT · _v2.3.4 (setup/mcp_stdio.py URL; setup/cli.py URL; setup/cli_offline.py URL; setup/headless.py ENGINE)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F10.

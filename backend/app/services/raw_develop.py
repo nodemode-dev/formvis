@@ -32,6 +32,8 @@ def _ifd0(data: bytes) -> dict:
         out = {}
         for i in range(min(n, 512)):
             e = data[at + 2 + i * 12:at + 14 + i * 12]
+            if len(e) < 12:
+                break
             tag, kind, count = struct.unpack(order + "HHI", e[:8])
             out[tag] = (kind, count, e[8:12], order)
         return out
@@ -76,6 +78,8 @@ def _ifd_at(data: bytes, at: int, order: str) -> dict:
         out = {}
         for i in range(min(n, 512)):
             e = data[at + 2 + i * 12:at + 14 + i * 12]
+            if len(e) < 12:
+                break
             tag, kind, count = struct.unpack(order + "HHI", e[:8])
             out[tag] = (kind, count, e[8:12], order)
         return out
