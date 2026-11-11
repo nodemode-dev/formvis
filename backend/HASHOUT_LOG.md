@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## formvis.bat test passes without Rust · _v2.3.4 (setup/test.bat native step)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F6.
+- Why: the `)` of "(cargo)" in `echo [formvis] native renderer tests (cargo)` closed the `where cargo && ( ... )` block early, so `pushd`, `cargo test` and `popd` ran outside the guard: without Rust, FAIL=1 and exit 1 although every suite passed.
+- The echo now reads `native renderer tests ^(cargo^)`. Replaced, quoted exactly: `echo [formvis] native renderer tests (cargo) &`.
+- Not run on Windows; reasoned from cmd's block parsing. CRLF kept.
+
 ## Video Frames to Layers with an ffmpeg older than 5.1 · _v2.3.4 (app/routers/video.py _frames)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F5.
