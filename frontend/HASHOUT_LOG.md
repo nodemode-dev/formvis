@@ -2,6 +2,20 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## An update on Windows stops the engine before the installer runs · v2.3.4 (src-tauri/src/main.rs install_update)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/src/main.rs` `install_update`; review formvis__native-tauri-packaging F5.
+- Wrong: the engine was stopped after `download_and_install` returned, but on Windows tauri-plugin-updater 2.12.0 launches the installer and calls `std::process::exit(0)` inside `install`, after only its own hook (`cleanup_before_exit`, which neither fires `RunEvent::Exit` nor kills shell children). The engine kept running, so the installer could not overwrite `formvis-engine.exe` or the old engine stayed beside the new app. Now `download` and `install` are called apart, as `download_and_install` does, with `#[cfg(windows)] kill_backend(&app);` between them; macOS and Linux keep their order. `kill_backend` takes the child from its slot, so the later call is a no-op on Windows.
+- Verified: `cargo check --locked` in `src-tauri` for the Linux and the `x86_64-pc-windows-gnu` targets, both clean. Not run: an update on Windows.
+- Replaced, quoted exactly:
+
+```text
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|err| format!("Could not install the update: {err}"))?;
+```
+
 ## The native renderer sizes regions of a gigapixel or more without overflow · v2.3.4 (native/formvis-render/src/lib.rs, native/formvis-render/src/composite.rs)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `TiledLayer::write`, `TiledLayer::read` (lib.rs) and `Blender::blend_region` (composite.rs); review formvis__native-tauri-packaging F7.

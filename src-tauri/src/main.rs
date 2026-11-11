@@ -313,10 +313,13 @@ async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
         .ok()
         .and_then(|mut slot| slot.take())
         .ok_or_else(|| "No update is waiting; check for updates again.".to_string())?;
-    update
-        .download_and_install(|_, _| {}, || {})
+    let bytes = update
+        .download(|_, _| {}, || {})
         .await
         .map_err(|err| format!("Could not install the update: {err}"))?;
+    #[cfg(windows)]
+    kill_backend(&app);
+    update.install(bytes).map_err(|err| format!("Could not install the update: {err}"))?;
     open_exit_gate(&app);
     kill_backend(&app);
     app.restart()
