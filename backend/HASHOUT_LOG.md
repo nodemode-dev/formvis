@@ -2,6 +2,23 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A JSON line that is not an object no longer ends the MCP stdio server · _v2.3.4 (setup/mcp_stdio.py forward)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F11.
+- Why: only lines that failed `json.loads` were answered; a JSON-RPC batch `[{...}]`, a bare value or a non-object `params` raised `AttributeError: 'list' object has no attribute 'get'` out of `main`, and the client lost every tool.
+- `forward` answers such a line with `-32600 Invalid Request` (the request's id when it has one) and the loop reads on.
+- Checked by piping a batch, `5`, a list as params and a ping into the server in attach mode: three Invalid Request answers, then the ping answered; the old file stopped at the first line.
+
+## Overlapping large-picture calls no longer leave the bomb limit raised · _v2.3.4 (app/services/large.py _raised new, _raised_lock new, _unbounded; app/services/imaging.py _truncated_lock new, _truncated_jpeg)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F7.
+- Why: `_unbounded` saved and restored the process-wide `Image.MAX_IMAGE_PIXELS` with no lock, so two overlapping calls (A in, B in, A out, B out) left it at 65,535 squared for the session and every later untrusted decode lost the 100 MP guard. `_truncated_jpeg` switched `LOAD_TRUNCATED_IMAGES` on and off from any thread.
+- Now: `_unbounded` counts its open blocks under `_raised_lock`; the first in saves and raises the limit, the last out restores it. `_truncated_jpeg` holds `_truncated_lock` for the whole decode. While any large operation runs, other decodes still see the raised limit, as before (moving off the globals is a larger change).
+- Checked: two threads overlapping in the review's order: raised during B, `config.MAX_PIXELS` after both.
+- Replaced, quoted exactly:
+  - `_unbounded`: `    old = Image.MAX_IMAGE_PIXELS` / `    Image.MAX_IMAGE_PIXELS = LARGEST * LARGEST` / `    try:` / `        yield` / `    finally:` / `        Image.MAX_IMAGE_PIXELS = old`
+  - `_truncated_jpeg`: the same body, now indented under `with _truncated_lock:`.
+
 ## The CI release notes step fails when the script fails · _v2.3.4 (.github/workflows/ci.yml lint)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `.github/workflows/ci.yml` job `lint`, step "Release notes script reads the changelog"; review formvis__native-tauri-packaging F11.

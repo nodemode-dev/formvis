@@ -131,6 +131,8 @@ def forward(line: str) -> str | None:
         msg = json.loads(line)
     except ValueError:
         return json.dumps({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
+    if not isinstance(msg, dict) or not isinstance(msg.get("params") or {}, dict):
+        return json.dumps({"jsonrpc": "2.0", "id": msg.get("id") if isinstance(msg, dict) else None, "error": {"code": -32600, "message": "Invalid Request"}})
     refused = outside_roots(msg)
     if refused:
         return json.dumps({"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": refused}], "isError": True}}) if msg.get("id") is not None else None
