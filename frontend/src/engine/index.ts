@@ -3195,8 +3195,9 @@ export class Engine {
     if (!p) return 0;
     const boxes = p.doc.layers.filter((l) => l.vector && /^Redaction \d+$/.test(l.name));
     if (!boxes.length) { this.notice('No redaction boxes: draw them with the Markup tool set to Redact.'); return 0; }
-    const ids = new Set(boxes.map((l) => l.id)), rects = boxes.map((l) => ({ x: l.transform.x, y: l.transform.y, w: l.transform.w, h: l.transform.h }));
-    const under = (l: Layer): boolean => !ids.has(l.id) && !!l.raster && rects.some((r) => r.x < l.transform.x + l.transform.w && r.x + r.w > l.transform.x && r.y < l.transform.y + l.transform.h && r.y + r.h > l.transform.y);
+    const order = new Map(hierarchy(p.doc).map((e, i) => [e.layer.id, i] as const)), below = (l: Layer, at: number): boolean => (order.get(l.id) ?? Infinity) < at;
+    const ids = new Set(boxes.map((l) => l.id)), rects = boxes.map((l) => ({ x: l.transform.x, y: l.transform.y, w: l.transform.w, h: l.transform.h, at: order.get(l.id) ?? -1 }));
+    const under = (l: Layer): boolean => !ids.has(l.id) && !!l.raster && rects.some((r) => below(l, r.at) && r.x < l.transform.x + l.transform.w && r.x + r.w > l.transform.x && r.y < l.transform.y + l.transform.h && r.y + r.h > l.transform.y);
     const skewed = p.doc.layers.filter((l) => under(l) && (l.transform.rotation || l.transform.flipX || l.transform.flipY || Math.abs(l.transform.w - (l.raster?.width ?? 0)) > 0.5 || Math.abs(l.transform.h - (l.raster?.height ?? 0)) > 0.5));
     if (skewed.length) { this.notice(`Rasterize ${skewed.map((l) => l.name).join(', ')} first (rotated or scaled beneath a redaction), then apply again.`, 'error'); return 0; }
     let burned = 0;
@@ -3205,7 +3206,7 @@ export class Engine {
         if (!under(l) || !l.raster) continue;
         const copy = Raster.from(l.raster.canvas as CanvasImageSource, l.raster.width, l.raster.height);   // a new raster: undo keeps the old
         copy.ctx.fillStyle = '#000';
-        for (const r of rects) copy.ctx.fillRect(r.x - l.transform.x, r.y - l.transform.y, r.w, r.h);
+        for (const r of rects) if (below(l, r.at)) copy.ctx.fillRect(r.x - l.transform.x, r.y - l.transform.y, r.w, r.h);
         copy.touch();
         q.updateLayer(l.id, { raster: copy, text: null, vector: null, shape: null, smart: null, fillContent: null });
         burned += 1;

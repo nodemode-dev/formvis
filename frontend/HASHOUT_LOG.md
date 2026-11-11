@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Apply Redactions burns only the layers beneath each box · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.applyRedactions` (review formvis__engine-index.md F8).
+- Wrong: `under(l)` tested only rectangle overlap, so a layer stacked above a Redaction box (a caption over it) was rasterized and painted black. Old lines: `rects = boxes.map((l) => ({ x: l.transform.x, y: l.transform.y, w: l.transform.w, h: l.transform.h }))`, `rects.some((r) => r.x < l.transform.x ...`, `for (const r of rects) copy.ctx.fillRect(...)`.
+- Changed: `order` maps each layer id to its index in `hierarchy(p.doc)` (bottom first); each rect carries its box's index `at`; `below(l, at)` gates both `under` and each `fillRect`, so a layer is burned only by the boxes above it.
+- Checked: `npx tsc --noEmit`, no error in this file; a node check of the rule on a copy of `hierarchy` (layers below a box true, a folder's caption above it false). Apply Redactions in the window not run.
+
 ## Drags, dialogs and Rotate 90° wait for a running job instead of slipping past it · v2.3.4 (engine/index.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.beginOpacityEdit`, `beginFillEdit`, `beginVisibilitySwipe`, `beginLive`, `rotateCanvas` (review formvis__engine-index.md F6, F7).
