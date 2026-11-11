@@ -20,8 +20,8 @@ async function ready(): Promise<Engine> {
 /** The session is the app's own design demo (frontend/src/demos/design.ts, also Home > Demos in the app), built from
  *  the data packs while html[data-demo] keeps the window hidden, then shown once. */
 export async function openSession(): Promise<void> {
-  const e = await ready();
   try {
+    const e = await ready();
     await buildDesignDemo(e, packMedia);
   } finally {
     await frame();

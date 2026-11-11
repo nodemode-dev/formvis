@@ -1,5 +1,12 @@
 # HASHOUT_LOG: demos/retouch
 
+## A window that does not start in time is shown, not left behind the start line · _v2.3.4 (demos/retouch/src/session.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `demos/retouch/src/session.ts` `openSession`.
+- Why: review formvis__extensions-gpu-config F9 (fixer X1). `ready()` was awaited before the `try`, so a timeout or a failed start left `html[data-demo]` in place and the page on its start line forever.
+- Change: `const e = await ready();` moved inside the `try`, so the `finally` always reveals the window (`addLinks` still runs only after a build). The bundle is rebuilt at release.
+- Verified: `tsc --noEmit -p demos/retouch/tsconfig.json`, clean. Not run: the page with a forced timeout.
+
 ## Why the real window
 
 Demo 1 runs the whole FormVis window and the owner approved that. This demo does the same: the application's entry is bundled and the page imports demo 1's shim (`/api` answers, TypeScript kernels) by path, read only. Nothing in `demo/` or `frontend/` changes.
