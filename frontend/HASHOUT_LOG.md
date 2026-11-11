@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The dev server's plugin worker policy closes connections · v2.3.4 (vite.config.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `vite.config.ts` `PLUGIN_WORKER_DEV_CSP`.
+- Why: review formvis__extensions-gpu-config F5 (fixer X1). The dev policy allowed `connect-src 'self' ws://localhost:5190`; under `npm run dev` the `/api` proxy (`ws: true`) forwards to the engine, so plugin code that got past the worker's JavaScript seal could reach the engine's HTTP and WebSocket routes. The built app's `PLUGIN_WORKER_CSP` (backend/app/main.py) is `connect-src 'none'`.
+- Change: `connect-src 'none'`. `script-src blob: 'self'` stays for the worker's own module imports; `plugins/plugin-worker.ts` opens no connection itself and seals fetch, XMLHttpRequest and WebSocket before importing the plugin. A dynamic `import('/api/...')` is a script fetch and stays allowed by `script-src 'self'` in dev, as before.
+- Verified: `tsc --noEmit` (no error in this file). Not run: a folder plugin under the dev server.
+- Replaced, quoted exactly:
+
+```text
+const PLUGIN_WORKER_DEV_CSP = `default-src 'none'; script-src blob: 'self'; connect-src 'self' ws://localhost:${FRONTEND_PORT}; worker-src 'none'; frame-src 'none'; img-src 'none'; style-src 'none'`;
+```
+
 ## Frame Trace shows the GPU time of WebGL2 filters · v2.3.4 (gpu/filters.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/filters.ts` `GlFilters.single`, `lensGather`, `timeLater` and `readTimer` (new), `waiting` (new).

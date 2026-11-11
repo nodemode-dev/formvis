@@ -9,7 +9,7 @@ const ISOLATION = process.env.FORMVIS_ISOLATED === '0' ? {} : { 'Cross-Origin-Op
 
 // The sealed folder-plugin worker gets a closed policy here too (the engine sets PLUGIN_WORKER_CSP for the built app). The dev
 // server also has to serve the worker's own imports (the Vite client) from the same origin, so scripts allow 'self' and blob:.
-const PLUGIN_WORKER_DEV_CSP = `default-src 'none'; script-src blob: 'self'; connect-src 'self' ws://localhost:${FRONTEND_PORT}; worker-src 'none'; frame-src 'none'; img-src 'none'; style-src 'none'`;
+const PLUGIN_WORKER_DEV_CSP = `default-src 'none'; script-src blob: 'self'; connect-src 'none'; worker-src 'none'; frame-src 'none'; img-src 'none'; style-src 'none'`;
 const pluginWorkerPolicy = (): Plugin => ({
   name: 'formvis-plugin-worker-policy',
   configureServer(server) {
