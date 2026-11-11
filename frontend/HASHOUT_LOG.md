@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Show Only This Layer solos again after an Undo · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.soloLayer` (review formvis__engine-index.md F9).
+- Wrong: `soloed` lives outside history and was set or cleared whatever the step did. Alt-click, Undo, Alt-click took the restore branch (`back.id === id`), restored a visibility equal to the current one, recorded nothing and cleared the state, so the click did nothing. Old lines: `const restoring = !!back && back.id === id;`, `this.edit(restoring ? ...`, and the unconditional `if (restoring) this.soloed.delete(p.id); else this.soloed.set(...)`.
+- Changed: `restoring` also needs some layer whose visibility differs from `back.visible`; the edit's result is kept as `done`, and the state is cleared or stored only when `done`.
+- Checked: `npx tsc --noEmit`, no error in this file; the window replay not run.
+
 ## Apply Redactions burns only the layers beneath each box · v2.3.4 (engine/index.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.applyRedactions` (review formvis__engine-index.md F8).

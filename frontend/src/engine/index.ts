@@ -4220,8 +4220,8 @@ export class Engine {
     if (!p || !l) return;
     const up = new Set<ID>([id, ...ancestors(byId(p.doc), l).map((a) => a.id)]), inside = new Set<ID>(l.isGroup ? descendantIds(p.doc.layers, id) : []);
     const back = this.soloed.get(p.id), before = new Map(p.doc.layers.map((x) => [x.id, x.visible] as const));
-    const restoring = !!back && back.id === id;
-    this.edit(restoring ? 'Show All Layers' : 'Show Only This Layer', (q) => {
+    const restoring = !!back && back.id === id && p.doc.layers.some((x) => (back.visible.get(x.id) ?? x.visible) !== x.visible);
+    const done = this.edit(restoring ? 'Show All Layers' : 'Show Only This Layer', (q) => {
       let changed = false;
       for (const x of q.doc.layers) {
         const want = restoring ? back.visible.get(x.id) ?? x.visible : up.has(x.id) ? true : inside.has(x.id) ? x.visible : false;
@@ -4229,6 +4229,7 @@ export class Engine {
       }
       return changed;
     });
+    if (!done) return;
     if (restoring) this.soloed.delete(p.id);
     else this.soloed.set(p.id, { id, visible: before });
   }
