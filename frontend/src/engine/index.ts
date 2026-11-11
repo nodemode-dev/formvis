@@ -4859,7 +4859,6 @@ export class Engine {
         return { ...t, x: c.x + lx * cs - ly * sn - t.w / 2 + dx, y: c.y + lx * sn + ly * cs - t.h / 2 + dy, rotation: t.rotation + turn, ...(sampling ? { sampling } : {}) };
       };
       const layers = p.doc.layers.map((l) => {
-        if (l.isGroup) return l;
         const t = turned(l.transform), moved = { ...l, transform: t, mask: l.mask?.placement ? { ...l.mask, placement: turned(l.mask.placement) } : l.mask };
         if (l.id !== bg?.id || !l.raster || l.mask || l.channels || l.smart || l.vector) return moved;
         const r = Raster.filled(W2, H2, rgbCss(fill));
@@ -9452,7 +9451,6 @@ export class Engine {
       if (turn) {
         const a = (turn * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a);
         for (const l of p.doc.layers) {
-          if (l.isGroup) continue;
           const t = l.transform, lx = t.x + t.w / 2 - c.x, ly = t.y + t.h / 2 - c.y;
           const next = { ...t, x: c.x + lx * cs - ly * sn - t.w / 2, y: c.y + lx * sn + ly * cs - t.h / 2, rotation: t.rotation + turn };
           p.updateLayer(l.id, { transform: next, mask: followMask(l, next) });
@@ -9550,7 +9548,16 @@ export class Engine {
     const toOut = (q: Pt): Pt => { const u = project(back, q.x, q.y); return { x: u.x * W, y: u.y * H }; };
     const moved = new Map<ID, Partial<Layer>>();
     for (const l of p0.doc.layers) {
-      if (l.isGroup || !l.raster) continue;
+      if (l.isGroup) {
+        const m = l.mask, mt = m?.placement ?? l.transform, mq = cornersOf(mt).map(toOut);
+        if (!m?.raster || !distortUsable(mq)) continue;
+        const mb = boundsOf(mq);
+        if (mb.w * mb.h > LIMITS.pixels) { this.notice(`That perspective would stretch a layer past the ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit. Pull the corners in a little.`, 'error'); return false; }
+        const wm = warpRaster(m.raster, mt, mq, 1, true, maskEdgeTone(m.raster));
+        if (wm) moved.set(l.id, m.placement ? { mask: { ...m, raster: wm.raster, placement: wm.t } } : { transform: wm.t, mask: { ...m, raster: wm.raster } });
+        continue;
+      }
+      if (!l.raster) continue;
       const nq = cornersOf(l.transform).map(toOut);
       if (!distortUsable(nq)) continue;
       const b = boundsOf(nq);

@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Folder masks turn and warp with Arbitrary rotation, Straighten and Perspective Crop · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.rotateCanvasBy`, `straightenCrop`, `perspectiveCrop` (review formvis__engine-index.md F2).
+- Wrong: the per-layer loops skipped folders (removed lines: `if (l.isGroup) return l;` in rotateCanvasBy, `if (l.isGroup) continue;` in straightenCrop, `if (l.isGroup || !l.raster) continue;` in perspectiveCrop), so a folder's raster mask, drawn at `mask.placement ?? transform`, stayed where it was while its layers turned or warped and its vector mask moved. Every Frame is such a folder.
+- Changed: rotateCanvasBy and straightenCrop turn a folder's transform and mask placement as any layer's (straightenCrop through `followMask`). perspectiveCrop warps a folder's raster mask with `warpRaster(..., 1, true, maskEdgeTone(...))` under the same megapixel limit as layers; a placed mask gets the warped box as its placement, a tied mask gives it to the folder's transform. Folders without a raster mask keep their transform there (it draws nothing else).
+- Checked: `npx tsc --noEmit` clean; the Frame-and-rotate replay in the window not run.
+
 ## Panel tabs come back to the strip when a group gets wider · v2.3.4 (ui/panel-group.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panel-group.ts` `PanelGroup` constructor, `fitTabs` (review formvis__ui-o-z.md F2).
