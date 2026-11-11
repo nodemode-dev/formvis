@@ -668,7 +668,7 @@ def _open_window() -> bool:
         return False
     _opened_at = time.monotonic()
     import webbrowser
-    url = f"http://127.0.0.1:{config.BACKEND_PORT}/" if config.dist_dir() else f"http://localhost:{config.FRONTEND_PORT}/"
+    url = f"http://127.0.0.1:{int(os.environ.get('FORMVIS_PORT') or 0) or config.BACKEND_PORT}/" if config.dist_dir() else f"http://localhost:{config.FRONTEND_PORT}/"
     try:
         return bool(webbrowser.open(url))
     except Exception:

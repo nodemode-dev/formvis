@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The browser window opened for an agent uses the engine's port · _v2.3.4 (app/routers/mcp.py _open_window)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F13.
+- Why: the URL named `config.BACKEND_PORT`, so an engine started with `FORMVIS_PORT=8300 ./formvis backend` and a built `frontend/dist` opened 8190 for an agent's first call and the call failed after 45 s.
+- Change: the port is `FORMVIS_PORT` when set and not 0 (what `boot_backend` gives uvicorn), else `BACKEND_PORT`, as `services/terminal.py` reads it; the desktop app, which sets 0, never opens a browser window.
+- Checked: `_open_window` with `webbrowser.open` stubbed: 8300 opens `http://127.0.0.1:8300/`, empty or 0 opens 8190.
+- Replaced, quoted exactly: `    url = f"http://127.0.0.1:{config.BACKEND_PORT}/" if config.dist_dir() else f"http://localhost:{config.FRONTEND_PORT}/"`.
+
 ## Agent file reads and writes encode and decode off the event loop · _v2.3.4 (app/routers/mcp.py _run)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F12.
