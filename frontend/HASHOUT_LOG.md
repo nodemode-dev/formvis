@@ -2,6 +2,25 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The float export draws clipped layers, clipped adjustments and artboard backgrounds as the screen does · v2.3.4 (engine/compose-float.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/compose-float.ts` `composeFloat` (`coverageOf`, `alphaOf`, `run`).
+- Why: review formvis__engine-a-e F1, F2, F3, F7 (fixer E2).
+- Wrong: `alphaOf` placed the clip base into the shared `tmp` the clipped layer had just been placed in, so the first layer clipped to a base vanished and the base was drawn again in its place (16 and 32 bit, CMYK and Lab export, the float view). A clipped adjustment layer adjusted the whole composite below (only raster layers read `clipId`). The base's own mask, vector mask, opacity and its own clip base were ignored, where renderer.ts `clipCoverage` applies them. No step drew an artboard's background, so the board exported transparent where the renderer's `backdrop` fills it.
+- Now: `alphaOf(base, depth)` places the base into its own buffer and multiplies its alpha by `base.opacity`, `coverageOf(base, true)` (own and vector mask, no folders or boards) and, recursively, the alpha of `base.clipId`'s layer. A clipped adjustment multiplies that into its coverage (`cov0`) and is refused with the clipped-layer error when the base cannot be read. The top-level `run` fills a visible artboard's background (in the document's values: Lab, ink, linear or 0 to 1) over its rounded rectangle, once, at the board's entry.
+- Verified: vitest scratch check outside the repo (first clipped layer, base at 50 percent, a two-step chain, a clipped Invert over a half base, an artboard background), 5 passed; `tsc --noEmit` no error in this file; vitest `deep.test.ts`, `deep-bands.test.ts`, `lut-read.test.ts` 14 passed. Not run: an export in a browser.
+- Replaced, quoted exactly:
+
+```text
+  const coverageOf = (l: Layer): Float32Array | null => {
+    const up = ancestors(map, l), folders = up.filter((g) => g.mask?.raster && g.mask.enabled);
+  const alphaOf = (base: Layer): Float32Array | null => {
+    if (!base.raster) return null;
+    tmp.fill(0); place(tmp, W, H, src, base.transform, 1, S);
+    a = new Float32Array(N); for (let i = 0; i < N; i++) a[i] = tmp[i * S + A];
+    const op0 = l.opacity * (drawn ? 1 : l.fill ?? 1), cov0 = coverageOf(l), adjMode = l.adjustment ? l.blend ?? 'normal' : 'normal', viaMode = adjMode !== 'normal';
+```
+
 ## Cancel during a fal, ComfyUI, Align/Blend or Generate Image run discards its result · v2.3.4 (ui/panels/fal-task-dialog.ts, ui/panels/comfyui-run.ts, ui/panels/align-blend-dialog.ts, ui/panels/generate-image.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `FalTaskDialog.run`, `ComfyuiRunDialog.run`, `AlignBlendDialog.execute` and `apply`, the `GenerateImageDialog` constructor.
