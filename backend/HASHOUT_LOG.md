@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A failed save keeps agents.json as it was · _v2.3.4 (app/services/agents.py _save)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F9.
+- Why: `write_text` truncated agents.json before writing, and a full disk's OSError was swallowed, so the file could be left empty; the next start then lost every Deny, the tool policies and the agents' folder and reply limits.
+- Now: written to a `tempfile.mkstemp` file in the data folder and moved over with `os.replace`; on failure the temporary file is removed and the old file kept. The file is now created 0600.
+- Checked: temporary data folder: a save, then a save failing with ENOSPC: the first contents stay, no temporary file left.
+- Replaced, quoted exactly: `        _file().write_text(json.dumps({"policies": _policies, "limits": _limits}), encoding="utf-8")`
+
 ## cli hdr --times 1/0 prints the usage message · _v2.3.4 (setup/cli_offline.py hdr_cmd)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F13.
