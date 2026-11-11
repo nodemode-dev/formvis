@@ -9337,8 +9337,8 @@ export class Engine {
     return true;
   }
 
-  insertRasterLayer(raster: Raster, name: string, x: number | null, y: number | null, extra: Partial<Layer> = {}, undoName = 'Paste'): void {
-    this.edit(undoName, (p) => {
+  insertRasterLayer(raster: Raster, name: string, x: number | null, y: number | null, extra: Partial<Layer> = {}, undoName = 'Paste'): boolean {
+    return this.edit(undoName, (p) => {
       const base = newLayer(name, p.doc, { raster, parentId: this.parentForNew(p) });
       const tx = x ?? Math.floor((p.doc.width - raster.width) / 2), ty = y ?? Math.floor((p.doc.height - raster.height) / 2);
       this.insertAboveActive(p, { ...base, transform: { ...docTransform(raster.width, raster.height), x: tx, y: ty }, ...extra });
@@ -11161,12 +11161,13 @@ export class Engine {
     if (!this.upscaleFits(p.doc.width, p.doc.height, scale)) return false;
     let result: Blob;
     try { result = await run(await toBlob(view)); } catch (err) { this.notice(err instanceof Error ? err.message : 'Upscale failed.', 'error'); return false; }
-    if (this.current !== p) { this.notice(`${p.name} changed while upscaling, so the enlarged picture was not placed.`, 'error'); return false; }
     const bitmap = await createImageBitmap(result), raster = new Raster(W, H);
     raster.ctx.imageSmoothingQuality = 'high';
     raster.ctx.drawImage(bitmap, 0, 0, W, H);
     bitmap.close();
     raster.touch();
+    while (this.stroke || this.busyWith) await new Promise<void>((r) => setTimeout(r, 100));
+    if (this.current !== p) { this.notice(`${p.name} changed while upscaling, so the enlarged picture was not placed.`, 'error'); return false; }
     const pixelLayers = p.doc.layers.filter((l) => !l.isGroup);
     const only = pixelLayers.length === 1 && p.doc.layers.length === 1 && pixelLayers[0].raster && !pixelLayers[0].adjustment && !pixelLayers[0].text && !pixelLayers[0].shape && !pixelLayers[0].smart ? pixelLayers[0] : null;
     return this.edit(`Upscale ${scale}x`, (pp) => {
@@ -11191,7 +11192,6 @@ export class Engine {
     area.ctx.drawImage(view, -x0, -y0);
     let result: Blob;
     try { result = await run(await toBlob(area.canvas)); } catch (err) { this.notice(err instanceof Error ? err.message : 'Upscale failed.', 'error'); return false; }
-    if (this.current !== p) { this.notice(`${p.name} changed while upscaling, so the enlarged area was not placed.`, 'error'); return false; }
     const W = w * scale, H = h * scale, bitmap = await createImageBitmap(result), layer = new Raster(W, H), cover = new Raster(W, H);
     layer.ctx.imageSmoothingQuality = 'high';
     layer.ctx.drawImage(bitmap, 0, 0, W, H);
@@ -11200,8 +11200,9 @@ export class Engine {
     cover.ctx.imageSmoothingQuality = 'high';
     cover.ctx.drawImage(sel.surface(), (sel.x - x0) * scale, (sel.y - y0) * scale, sel.w * scale, sel.h * scale);
     cover.touch();
-    this.insertRasterLayer(layer, `Upscale ${scale}x: selection`, x0, y0, { transform: { ...docTransform(w, h), x: x0, y: y0 }, mask: { raster: cover, enabled: true, linked: true, placement: null } }, `Upscale ${scale}x`);
-    return true;
+    while (this.stroke || this.busyWith) await new Promise<void>((r) => setTimeout(r, 100));
+    if (this.current !== p) { this.notice(`${p.name} changed while upscaling, so the enlarged area was not placed.`, 'error'); return false; }
+    return this.insertRasterLayer(layer, `Upscale ${scale}x: selection`, x0, y0, { transform: { ...docTransform(w, h), x: x0, y: y0 }, mask: { raster: cover, enabled: true, linked: true, placement: null } }, `Upscale ${scale}x`);
   }
 
   /** Compute Depth Map: what the document shows, read by `run` (near bright, far dark), added as a grey layer 'Depth Map'
@@ -11215,14 +11216,14 @@ export class Engine {
     if (!view) return false;
     let result: Blob;
     try { result = await run(await toBlob(view)); } catch (err) { this.notice(err instanceof Error ? err.message : 'The depth could not be read.', 'error'); return false; }
-    if (this.current !== p) return false;
     const bitmap = await createImageBitmap(result), raster = new Raster(p.doc.width, p.doc.height);
     raster.ctx.drawImage(bitmap, 0, 0, p.doc.width, p.doc.height);
     bitmap.close();
     raster.touch();
+    while (this.stroke || this.busyWith) await new Promise<void>((r) => setTimeout(r, 100));
+    if (this.current !== p) return false;
     if (old) return this.replaceLayerPixels(old.id, raster.read(), 'Recompute Depth Map');
-    this.insertRasterLayer(raster, 'Depth Map', 0, 0, {}, opts.layer ? 'Depth Map from Layer' : 'Compute Depth Map');
-    return true;
+    return this.insertRasterLayer(raster, 'Depth Map', 0, 0, {}, opts.layer ? 'Depth Map from Layer' : 'Compute Depth Map');
   }
 
   /** What the shared depth map is read from: the document with its Depth Map and Relight layers hidden. */
@@ -11484,13 +11485,14 @@ export class Engine {
       this.notice(err instanceof Error ? err.message : `${undoName} failed.`, 'error');
       return false;
     }
-    // The result goes into the document it was made for (1.87.3, D11): back to its tab when another was chosen meanwhile.
-    if (this.current !== p) {
-      if (!this.projects.includes(p)) { this.notice(`${p.name} was closed while generating, so the ${undoName} result was not placed.`, 'error'); return false; }
-      this.switchTo(p.id);
-      this.notice(`The ${undoName} result was placed in ${p.name}, the document it was made for.`);
-    }
     const bitmap = await createImageBitmap(result);
+    while (this.stroke || this.busyWith) await new Promise<void>((r) => setTimeout(r, 100));
+    // The result goes into the document it was made for (1.87.3, D11): back to its tab when another was chosen meanwhile.
+    const elsewhere = this.current !== p;
+    if (elsewhere) {
+      if (!this.projects.includes(p)) { bitmap.close(); this.notice(`${p.name} was closed while generating, so the ${undoName} result was not placed.`, 'error'); return false; }
+      this.switchTo(p.id);
+    }
     const layer = new Raster(w, h);
     layer.ctx.imageSmoothingQuality = 'high';
     layer.ctx.drawImage(bitmap, 0, 0, w, h);
@@ -11526,7 +11528,8 @@ export class Engine {
     // layer that shows, so it is seen and the hidden ones stay hidden.
     const a = p.activeLayer;
     if (a && !this.shownInDoc(p, a)) this.focus(p, [...p.doc.layers].reverse().find((x) => !x.isGroup && this.shownInDoc(p, x))?.id ?? null);
-    this.insertRasterLayer(layer, name, x0, y0, { mask: { raster: edge, enabled: true, linked: true, placement: null } }, undoName);
+    if (!this.insertRasterLayer(layer, name, x0, y0, { mask: { raster: edge, enabled: true, linked: true, placement: null } }, undoName)) { this.notice(`The ${undoName} result could not be placed in ${p.name}.`, 'error'); return false; }
+    if (elsewhere) this.notice(`The ${undoName} result was placed in ${p.name}, the document it was made for.`);
     return true;
   }
 

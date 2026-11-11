@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A generation or upscale result that lands during a stroke or job waits and is placed · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.insertRasterLayer`, `fillAreaOnce`, `upscaleInDocument`, `upscaleSelection`, `computeDepthMap` (review formvis__engine-index.md F4).
+- Wrong: the async results were placed through `edit`, which refuses during a stroke or while `busyWith` is set, and the result was ignored. `fillAreaOnce` could not `switchTo` back (refused under a stroke), still showed "The ... result was placed in ..." and returned true; the paid generation was lost. Removed lines: the notice inside `if (this.current !== p)`, the bare `this.insertRasterLayer(...); return true;` endings, and the `this.current !== p` checks placed before `createImageBitmap`.
+- Changed: each path decodes the result, then waits (`while (this.stroke || this.busyWith)`, 100 ms steps), then checks its document and places synchronously, so no await lies between check and insert. `insertRasterLayer` returns the `edit` result; `fillAreaOnce` gives the "placed in" notice only after a successful insert and an error notice with false when refused; `upscaleSelection` and `computeDepthMap` return the insert's result.
+- Checked: `npx tsc --noEmit` clean; the stubbed-generate replay not run.
+
 ## Exported color lookup tables leave out adjustments in hidden folders · v2.3.4 (engine/lut-export.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/lut-export.ts` `hasVisibleAdjustment`, `sampleLut`.
