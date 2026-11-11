@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Smudge and Liquify no longer leave a see-through rim on opaque pixels · v2.3.4 (engine/transform-commit.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/transform-commit.ts` `commitWarpStroke`.
+- Wrong: the area was cut with `destination-out` and the warped pixels (already times the area) laid with `source-over`, giving alpha a + (1 - a)^2 where the area is partial: 0.75 at coverage 0.5. Trigger: any Smudge or Liquify stroke on an opaque layer (the dab rims), much wider inside a feathered selection.
+- Now: the warped pixels are drawn with `'lighter'`, old (1 - a) plus warped a, as `PixelStroke`'s `lerp` branch does, then the operation goes back to `source-over`.
+- Verified: `tsc --noEmit` clean. Not run: a stroke in a browser.
+- Replaced, quoted exactly (the line before `ctx.drawImage(resultL, 0, 0)`):
+
+```text
+  ctx.globalCompositeOperation = 'source-over';
+```
+
 ## Reset Warp on a flipped smart object puts it back as it was · v2.3.4 (engine/smart-deform.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/smart-deform.ts` `transformOf`, used by `engine/smart-object-ops.ts` `restack`.
