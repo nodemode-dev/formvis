@@ -127,7 +127,7 @@ export class ColorRangeDialog extends Dialog {
   }
 
   show(mode?: string): void {
-    if (!this.engine.current) return;
+    if (!this.engine.current || this.isOpen) return;
     this.combine.value = this.engine.selectionMode;
     if (mode === 'depth') {
       this.pick.value = 'depth';
@@ -140,7 +140,7 @@ export class ColorRangeDialog extends Dialog {
     this.scrim.classList.add('cv-scrim-through');
     const handler = (e: PointerEvent): void => {
       const stage = document.querySelector('.cv-overlay-canvas'), p = this.engine.current;
-      if (e.button !== 0 || !stage || e.target !== stage || !p) return;
+      if (e.button !== 0 || !stage || e.target !== stage || !p || !this.isOpen) return;
       e.preventDefault();
       e.stopPropagation();
       const b = stage.getBoundingClientRect(), v = p.viewport, at = { x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, rgb = this.engine.sampleOriginal(at, true);

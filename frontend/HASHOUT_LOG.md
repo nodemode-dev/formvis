@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Color Range chosen again while open no longer leaves a canvas listener · v2.3.4 (ui/panels/color-range-dialog.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/color-range-dialog.ts` `ColorRangeDialog.show`, its pointerdown handler.
+- Wrong: `show()` had no open guard. The scrim lets pointers through, so Select > Color Range (or Depth Range) could be chosen again while it was open: `open()` returned early, but a second window capture handler was added and `this.handler` overwritten; `close()` removed only the second, and the first then called `preventDefault` and `stopPropagation` on every left press on the stage for the session. Now `show()` returns when `this.isOpen`, and the handler returns when the dialog is not open.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    if (!this.engine.current) return;
+      if (e.button !== 0 || !stage || e.target !== stage || !p) return;
+```
+
 ## A queued undo or redo lands on the document it was asked in · v2.3.4 (engine/index.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.historyOps`, `historyOp`, `drainHistory`, `undoNow`, `redoNow` (review formvis__engine-index.md F1).
