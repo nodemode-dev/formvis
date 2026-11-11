@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A file plug-in cannot call the window's ui_ and internal tools · v2.3.4 (plugins/host.ts)
+
+- Why: review formvis__app-automation F2 (fixer A1, logged 2026-11-11). `PluginHost`'s `'call'` request passed any tool name to `AgentBridge.run`, which has no caller check: a plug-in could press Allow on the window's own consent dialogs with `ui_dialog` (approving its own fal call or `set_settings`), type with `ui_key`, draw with `ui_pointer`, quit with `ui_window`, and reach `__open`, `__export`, `__project` and `close_document`, none of it behind Allow outside agents.
+- `plugins/host.ts` frame message handler (`case 'call': case 'getPixels': case 'putPixels'`): for a plug-in frame, a `call` whose tool starts with `ui_` or `__`, or is `close_document` or `set_settings`, is answered "<tool> is not available to a plugin." before `serve`. `apiFor('console')` (the Script Console, typed by the person) keeps the full set.
+- Verified: `tsc --noEmit` clean; vitest `src/plugins/desktop-policy.test.ts` passed. Not run: a live plug-in in the window.
+
 ## A new step after an undo frees the redo steps' stored pixels · v2.3.4 (engine/history.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/history.ts` `History.end`.
