@@ -3185,7 +3185,8 @@ export function startApp(): void {
   }
 
   /** The last few documents closed, kept whole in memory so File > Reopen Closed Tab brings one back as it was. */
-  const closedTabs: RecoveryRecord[] = [];
+  type KeptRecord = RecoveryRecord & { filePath?: string | null; libraryVersion?: string | null };
+  const closedTabs: KeptRecord[] = [];
   /** Next Document and Previous Document walk the tab strip, wrapping at the ends. */
   function stepDocument(by: number): void {
     const list = engine.projects, n = list.length;
@@ -3224,7 +3225,7 @@ export function startApp(): void {
     if (p.doc.layers.some((l) => l.tiled)) return;
     try {
       const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-      closedTabs.push({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName });
+      closedTabs.push({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName, filePath: p.filePath, libraryVersion: p.libraryVersion });
       while (closedTabs.length > 5) closedTabs.shift();
     } catch { /* the tab just cannot be reopened */ }
   }
@@ -3732,7 +3733,7 @@ export function startApp(): void {
     drop: (id) => earlier.drop(id),
     open: async (set) => {
       let n = 0;
-      for (const r of set.records) if (await reopen(r, `${r.name} (earlier)`)) n++;
+      for (const r of set.records) if (await reopen({ ...r, filePath: null }, `${r.name} (earlier)`)) n++;
       engine.emit('projects', null);
       if (n) toast(tn(n, 'Opened the document from {where}.', 'Opened {n} documents from {where}.').replace('{where}', t(set.kind === 'crash' ? 'a crash set' : 'an earlier session')), 'info');
       return n;
@@ -6591,7 +6592,7 @@ export function startApp(): void {
     const whole = loadPrefs().restoreSession;
     for (const p of engine.projects) {
       if (!p.modified && !whole) { if (keptAt.delete(p.id)) await recovery.drop(p.id); continue; }
-      const key = `${p.history.revision}:${p.modified}:${p.libraryName ?? ''}:${p.name}`;
+      const key = `${p.history.revision}:${p.modified}:${p.libraryName ?? ''}:${p.libraryVersion ?? ''}:${p.filePath ?? ''}:${p.name}`;
       if (keptAt.get(p.id) === key) continue;
       const store = giantTiles.store, giants = p.doc.layers.filter((l) => l.tiled && !l.isGroup);
       if (giants.length && !store) continue;   // tiles are written through the engine's bands
@@ -6600,7 +6601,8 @@ export function startApp(): void {
       try {
         const doc = copies.size ? { ...p.doc, layers: p.doc.layers.map((l) => (copies.has(l.id) ? { ...l, tiled: copies.get(l.id) } : l)) } : p.doc;
         const { manifest, files } = await serialize(doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        if (await recovery.keep({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName })) { keptAt.set(p.id, key); if (copies.size) tiledKeptAt.set(p.id, Date.now()); }
+        const rec: KeptRecord = { id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName, filePath: p.filePath, libraryVersion: p.libraryVersion };
+        if (await recovery.keep(rec)) { keptAt.set(p.id, key); if (copies.size) tiledKeptAt.set(p.id, Date.now()); }
       } catch (err) { errorLog.add('Recovery copy', message(err)); }
       finally { if (store) for (const c of copies.values()) c.release(store); }
     }
@@ -6625,7 +6627,7 @@ export function startApp(): void {
   }
   engine.on('history', keepSoon);
   engine.on('projects', keepSoon);
-  async function reopen(r: RecoveryRecord, name: string): Promise<ReturnType<typeof engine.addProject> | null> {
+  async function reopen(r: KeptRecord, name: string): Promise<ReturnType<typeof engine.addProject> | null> {
     try {
       const byName = new Map(r.files.map((f) => [f.name, f.blob]));
       const giant = (Array.isArray(r.manifest.layers) ? r.manifest.layers : []).some((x) => !!(x as { tiled?: unknown } | null)?.tiled);   // a copy with layers kept in tiles is read back by the engine, a band at a time (1.91.0)
@@ -6637,6 +6639,8 @@ export function startApp(): void {
       if (timeline) engine.setTimelineFor(p, timeline);
       if (r.modified !== false) p.history.markUnsaved();
       p.libraryName = r.libraryName ?? null;
+      p.filePath = r.filePath ?? null;
+      p.libraryVersion = r.libraryVersion ?? null;
       return p;
     } catch (err) { toast(`${r.name}: ${message(err)}`, 'error'); return null; }
   }

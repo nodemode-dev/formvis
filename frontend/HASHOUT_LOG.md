@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A second OK in Convert to Profile, Assign Profile or Convert Mode does nothing · v2.3.4 (ui/panels/colour-dialogs.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/colour-dialogs.ts` `ConvertProfileDialog.ok`, `AssignProfileDialog.ok`, `ModeConvertDialog.ok`.
+- Wrong: OK stayed live across the awaits (the profile, `colourLut`, `convertDocumentDeep`, the CMYK tables). A second click while "Converting..." showed took the same source profile and LUT, and `convertToProfile` mapped the converted pixels again: wrong colours, two undo steps. Now each dialog has `private busy = false`; `ok()` returns while it is set and clears it in a `finally` on its existing try. Added lines only; each `} catch (err) { setText(this.note, msg(err)); }` gained `finally { this.busy = false; }`.
+- Also corrected here: the Cancel entry below named `ComfyuiRunDialog`; the class is `RunWorkflowDialog`.
+- Verified: `tsc --noEmit` clean. Not run against the engine.
+
+## Session restore and Reopen Closed Tab keep the document's file · v2.3.4 (app.ts)
+
+- Why: review formvis__app-automation F5 (fixer A1, logged 2026-11-11). `RecoveryRecord` had `libraryName` but no file path or library version, so a .fvd opened from disk came back from Restore Session or Reopen Closed Tab with `p.filePath` null: Save took the panel in the library folder instead of writing back, Revert was disabled, `openPaths` opened a duplicate tab for the same path, and a library save lost its conflict check.
+- `app.ts`: `type KeptRecord = RecoveryRecord & { filePath?: string | null; libraryVersion?: string | null }` beside `closedTabs` (now `KeptRecord[]`); `rememberClosed` and `keepModified` (through `const rec: KeptRecord`) write `filePath` and `libraryVersion`; `keepModified`'s `key` adds both, so a Save As to a new path is kept; `reopen(r: KeptRecord, ...)` sets `p.filePath` and `p.libraryVersion` from the record. IndexedDB stores the record whole, so `io/recovery.ts` is unchanged. Earlier States calls `reopen({ ...r, filePath: null }, ...)`, so Save on an earlier state never writes over the current file.
+- Verified: `tsc --noEmit` clean. Not run: the desktop app.
+
 ## Dock: a cancelled header drag leaves nothing on screen; hidden extension panels stay hidden · v2.3.4 (ui/dock.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/dock.ts` `Dock.wire` (pointercancel), `Dock.move` (no button), `cancelDrag` (new), `load`.
@@ -180,7 +193,7 @@ import { invert, mul, placement, setMat, translation } from './geometry';
 
 ## Cancel during a fal, ComfyUI, Align/Blend or Generate Image run discards its result · v2.3.4 (ui/panels/fal-task-dialog.ts, ui/panels/comfyui-run.ts, ui/panels/align-blend-dialog.ts, ui/panels/generate-image.ts)
 
-- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `FalTaskDialog.run`, `ComfyuiRunDialog.run`, `AlignBlendDialog.execute` and `apply`, the `GenerateImageDialog` constructor.
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `FalTaskDialog.run`, `RunWorkflowDialog.run` (comfyui-run.ts), `AlignBlendDialog.execute` and `apply`, the `GenerateImageDialog` constructor.
 - Wrong: none checked that the dialog was still open after its awaits. Cancel or Escape during "Working on fal..." still placed the selection or the Relight layer; ComfyUI sent the job after `close()` ran, so it was never cancelled and its layers landed later; Align/Blend still moved or masked the layers and Multiband or Depth Map went into whatever document was current, and a second OK ran it twice; Generate Image closed by Escape or the close button (only Cancel set `stopped`) still added its layer.
 - Now: fal returns when `!this.isOpen` after `falRunImage`; ComfyUI calls `api.comfyuiCancel(r.job, target)` and returns when closed before `this.job` is set; `execute` takes `live: () => boolean = () => true`, read after the last await before each document change (`'Cancelled.'` is returned), and `apply` has a `busy` guard, passes `() => this.isOpen` and skips the notice when closed; Generate Image's `onClose` sets `stopped`. Added lines only; the one changed line of `apply` was `const msg = await AlignBlendDialog.execute(this.engine, this.mode, { ... spatial: this.spatial });` without the `live` argument, and its catch had no `finally`.
 - Verified: `tsc --noEmit` clean in these files. Not run against fal, ComfyUI or the engine.
