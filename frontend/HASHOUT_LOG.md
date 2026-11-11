@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Switching theme drops a skin's extra colour tokens · v2.3.4 (ui/themes.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/themes.ts` `applyTheme`, `lastVars` (new) (review formvis__ui-o-z.md F11).
+- Wrong: `applyTheme` only set the new theme's keys on `documentElement.style`, so a skin token the built-in themes lack (say `--surface-raised`) stayed in force under the next theme until reload. Now `lastVars` holds the keys last set, and those the new theme does not declare are removed before its own are set. Added lines only.
+- Verified: `npx tsc --noEmit` clean; `npx vitest run src/ui/themes.test.ts` 3 passed; node check of the removal on a scratch copy (`--surface-raised` empty after the switch).
+
 ## A cancelled touch ends a tab drag and a Color panel drag · v2.3.4 (ui/panel-group.ts, ui/swatches.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panel-group.ts` `PanelGroup.tabDrag`, `ui/swatches.ts` `SwatchesPanel.bindColor` (review formvis__ui-o-z.md F10).
