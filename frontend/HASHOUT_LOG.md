@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Reset Warp on a flipped smart object puts it back as it was · v2.3.4 (engine/smart-deform.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/smart-deform.ts` `transformOf`, used by `engine/smart-object-ops.ts` `restack`.
+- Wrong: the angle was `atan2(m[1], m[0])`, the mapped x axis, which for a mirrored matrix points the other way: the angle came out 180 degrees off while `flipX` was also set, so a horizontal flip came back as a vertical one. Trigger: Flip Horizontal on a smart object, then Warp, Puppet Warp or Perspective Warp, then Reset Warp.
+- Now: when the matrix is mirrored the angle is read from the negated x axis.
+- Verified: `tsc --noEmit` clean; a node copy of `placement` and `transformOf` over both flips and five rotations: every corner maps back within 4e-14 px. Not run: Reset Warp in a browser.
+- Replaced, quoted exactly:
+
+```text
+  const sx = Math.hypot(m[0], m[1]), sy = Math.hypot(m[2], m[3]), flip = m[0] * m[3] - m[1] * m[2] < 0, ang = (Math.atan2(m[1], m[0]) * 180) / Math.PI;
+```
+
 ## A layered TIFF with one alpha channel writes ExtraSamples inline · v2.3.4 (io/layered-tiff.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/layered-tiff.ts` `writeLayeredTiff`, the tag 338 entry.

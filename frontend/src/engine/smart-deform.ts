@@ -29,7 +29,7 @@ export function matBox(m: Mat, w: number, h: number): Rect {
 
 /** The layer transform that draws a w by h picture as `m` does, when `m` is a turn, a scale and a flip. */
 export function transformOf(m: Mat, w: number, h: number, like: Transform): Transform {
-  const sx = Math.hypot(m[0], m[1]), sy = Math.hypot(m[2], m[3]), flip = m[0] * m[3] - m[1] * m[2] < 0, ang = (Math.atan2(m[1], m[0]) * 180) / Math.PI;
+  const sx = Math.hypot(m[0], m[1]), sy = Math.hypot(m[2], m[3]), flip = m[0] * m[3] - m[1] * m[2] < 0, ang = (Math.atan2(flip ? -m[1] : m[1], flip ? -m[0] : m[0]) * 180) / Math.PI;
   const tw = sx * w, th = sy * h, c = applyMat(m, w / 2, h / 2);
   return { ...like, x: c.x - tw / 2, y: c.y - th / 2, w: tw, h: th, rotation: ang, flipX: flip, flipY: false };
 }
