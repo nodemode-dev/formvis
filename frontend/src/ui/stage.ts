@@ -1107,6 +1107,9 @@ export class Stage {
         if (this.dragId !== null) {
           const id = this.dragId;
           this.dragId = null; this.panLast = null; this.tool()?.cancel?.(this.ctx);
+          if (this.pixelDrag) { this.pixelDrag = null; this.engine.cancelPixelMove(); }
+          if (this.engine.guideDraft && this.engine.guideDraft.index !== null) { this.engine.guideDraft = null; this.engine.emit('overlay', null); }
+          if (this.tipDragging) { this.tipDragging = false; this.engine.endTipDrag(); }
           if (o.hasPointerCapture(id)) o.releasePointerCapture(id);
         }
         // A finger that was already drawing (it has travelled, or went down earlier) means this is no tap.

@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A second finger also ends a guide, pixel or tip drag · v2.3.4 (ui/stage.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/stage.ts` `Stage.bindTouch`, its `pointerdown` handler (review formvis__ui-o-z.md F6).
+- Wrong: a second finger cleared `dragId` and `panLast` and called the tool's `cancel`, but left `engine.guideDraft` (with an index), `pixelDrag` and `tipDragging` armed, so the next one-finger drag moved the guide (one history step) or the old pixels instead of reaching the tool. Now the gesture start also sets `guideDraft` to null (the guide stays), calls `cancelPixelMove()` and `endTipDrag()`. Added lines only.
+- Verified: `npx tsc --noEmit` clean. Not run: the touch scenario.
+
 ## A trackpad pinch zooms about the fingers in a turned or flipped view · v2.3.4 (ui/stage.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/stage.ts` `Stage.bindPointer`, the `gesturechange` handler (review formvis__ui-o-z.md F3).
