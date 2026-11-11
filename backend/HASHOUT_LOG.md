@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The README's line counts leave tests out · _v2.3.4 (setup/line_counts.py counts; README.md Size line)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts (outside-area note, handed to the lead).
+- Why: the README and line_counts.py say "tests excluded", but `counts()` took every tracked .ts under frontend/src (13 *.test.ts files) and every .rs under native/ (native/formvis-render/tests).
+- `counts()` skips files ending in `.test.ts` and paths with `/tests/`. Rust fell from 6,7xx to 6,207, so the README Size line says 6,200 of Rust. Replaced, quoted exactly: `            if f.endswith(ext) and f.startswith(prefixes):` and `6,700 of Rust`.
+- Checked: `line_counts.py --check` accurate; tests/test_readme.py 2 passed.
+
 ## Bad input on window routes answers 4xx, not 500 · _v2.3.4 (app/routers/large.py assemble; app/routers/bands.py _write, read_open; app/routers/io.py encode_cmyk_psd, encode_lab_psd; app/routers/nodemode.py send)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F10.
