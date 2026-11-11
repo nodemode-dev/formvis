@@ -1323,6 +1323,9 @@ export class Engine {
     if (this.transformEdit && this.transformEdit.project === this.projects[i]) { this.transformEdit = null; this.pendingTransform = false; }
     if (this.floatSel && this.floatSel.project === this.projects[i]) this.floatSel = null;
     const closing = this.projects[i];
+    if (this.meshWarpEdit?.project === closing) this.dropMeshWarp();
+    if (this.puppetEdit?.project === closing) this.dropPuppet();
+    if (this.perspectiveEdit?.project === closing) this.dropPerspective();
     for (const k of [...this.hinted]) if (k.startsWith(`${id}:`)) this.hinted.delete(k);
     this.projects.splice(i, 1);
     this.docViews.closeAllOf(id);   // the document's further views go with it (36.16)
@@ -1495,6 +1498,9 @@ export class Engine {
 
   settle(keepFloating = false): void {
     if (this.distortEdit) this.applyDistort();
+    if (this.meshWarpEdit) this.applyMeshWarp();
+    if (this.puppetEdit) this.applyPuppetWarp();
+    if (this.perspectiveEdit) this.applyPerspectiveWarp();
     if (this.pathTransform) this.applyPathTransform(false);
     if (this.gradient) this.commitGradient();
     if (this.transformEdit) this.endTransform();

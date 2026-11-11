@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A pending Warp, Puppet Warp or Perspective Warp is applied before other edits · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.settle`, `closeProject` (review formvis__engine-index.md F3).
+- Wrong: `settle()` applied the free distort, path transform, gradient, transform and drags but not `meshWarpEdit`, `puppetEdit` or `perspectiveEdit`. Painting or undoing during a pending warp and then Enter replaced the layer with the warp of `w.source` (read at begin), losing the work in between; after a document switch the apply's `p !== this.current` dropped the warp silently; `closeProject` cleared only `transformEdit` and `floatSel`, so a closed document's warp kept every other document from starting one.
+- Changed: `settle()` calls `applyMeshWarp`, `applyPuppetWarp` and `applyPerspectiveWarp` right after `applyDistort` (each drops its state before its own `edit`, so no re-entry); `closeProject` drops a pending warp whose project is the one closing. Undo during a pending warp now applies it and takes it back as one step, as a pending free transform already did.
+- Checked: `npx tsc --noEmit`, no error in this file; the window replay not run.
+
 ## Fill Path, Stroke Path and Pixels shapes on a mask hide in black; on an alpha channel they land in place · v2.3.4 (engine/path-ops.ts, engine/image-edit.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/path-ops.ts` `paintPath`, `PathHost.regionEdit`; `engine/image-edit.ts` `RegionApply`, `regionEdit`.
