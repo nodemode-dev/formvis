@@ -11584,7 +11584,8 @@ export class Engine {
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
     if (p0.maskTarget && p0.activeLayer?.mask && !this.pixelsOnly(p0, 'This tool')) { this.notice('Content-Aware Move works on layer pixels. Click the layer thumbnail to target them.'); return; }
     const sel0 = p0.selection;
-    this.regionEdit('Content-Aware Move', ({ raster }) => {
+    let landed = false;
+    this.edit('Content-Aware Move', () => { this.regionEdit('Content-Aware Move', ({ raster }) => {
       const p = this.current as Project, l = p.activeLayer as Layer, W = raster.width, H = raster.height;
       const cov = this.coverageFor(p, l, 'pixels', W, H);
       if (!cov) return;
@@ -11678,8 +11679,9 @@ export class Engine {
         }
       }
       raster.ctx.putImageData(out, 0, 0);
+      landed = true;
     }, null);
-    if (this.current === p0 && p0.selection === sel0) {
+    if (landed && this.current === p0 && p0.selection === sel0) {
       if (xf && (xf.scale !== 100 || xf.angle % 360)) {
         // After a transform the selection is the box the moved pixels fill.
         const k = Math.min(1000, Math.max(1, xf.scale)) / 100, r = (xf.angle * Math.PI) / 180, c = Math.abs(Math.cos(r)), s = Math.abs(Math.sin(r));
@@ -11688,6 +11690,7 @@ export class Engine {
       } else p0.selection = SelectionMask.cropped(sel0.x + dx, sel0.y + dy, sel0.w, sel0.h, sel0.data);
       this.emit('selection', null);
     }
+    });
   }
 
   /** Red Eye (J; 1.49.9, the owner's tool list): at a click near a red pupil, the red area joined to it

@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Content-Aware Move moves the selection inside its undo step · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.contentAwareMoveNow` (review formvis__engine-index.md F5).
+- Wrong: `p0.selection = SelectionMask.cropped(...)` ran after `regionEdit('Content-Aware Move', ...)` had closed its step, so the step's after-snapshot kept the old selection (Redo restored the pixels with the outline at the source), and a refused edit still moved the outline. Removed line: `this.regionEdit('Content-Aware Move', ({ raster }) => {` as the outer call, and the guard `if (this.current === p0 && p0.selection === sel0) {`.
+- Changed: the regionEdit call and the selection change run inside one `this.edit('Content-Aware Move', ...)` (the inner edit nests into it, so the deep-precision handling stays on the outer step); a `landed` flag set after `putImageData` gates the selection change, so a refused or empty edit leaves the outline and records nothing. The body keeps its old indentation.
+- Checked: `npx tsc --noEmit`, no error in this file; the move, Undo, Redo replay not run.
+
 ## Moving a panel tab to another group keeps an extension panel's page alive · v2.3.4 (ui/panel-group.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panel-group.ts` `PanelGroup.attach`, reached from `moveTab` (handoff from X1, review formvis__extensions-gpu-config.md F1 part 2 of 3).
