@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The CI release notes step fails when the script fails · _v2.3.4 (.github/workflows/ci.yml lint)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `.github/workflows/ci.yml` job `lint`, step "Release notes script reads the changelog"; review formvis__native-tauri-packaging F11.
+- Wrong: the step piped `setup/release_notes.py` into `head -5`; a step with no `shell:` runs as `bash -e {0}` without pipefail, so its status was `head`'s and a raising script stayed green. The pipe is removed, so the step ends with the script's status. `shell: bash` (pipefail) was not chosen: `head` closing early could then fail the step with a broken pipe.
+- Verified: the step's command run locally (exit 0); `ci.yml` parses as YAML. Not run: the workflow on GitHub.
+- Replaced, quoted exactly:
+
+```text
+        run: python setup/release_notes.py "v$(sed -n 's/^## \([0-9][0-9.]*\) .*/\1/p' CHANGELOG.md | head -1)" | head -5
+```
+
 ## A custom scratch disk starts each session empty · _v2.3.4 (app/routers/undo.py _taken new, scratch_set)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F8.
