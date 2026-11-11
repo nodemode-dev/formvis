@@ -1,5 +1,6 @@
 /** Layer Comps: pure capture and apply over a Doc. Layers a comp does not mention are left as they are. */
 import type { BlendMode, Doc, ID, Layer, LayerComp, LayerEffects } from './types';
+import { followVector } from './vector-mask';
 
 type Entry = LayerComp['layers'][ID];
 export type CompOptions = { name?: string; comment?: string; useVisibility?: boolean; usePosition?: boolean; useAppearance?: boolean };
@@ -66,7 +67,12 @@ export function applyComp(doc: Doc, comp: LayerComp): Layer[] {
     if (!e) return l;
     const patch: Partial<Layer> = {};
     if (comp.useVisibility && e.visible !== undefined && e.visible !== l.visible) patch.visible = e.visible;
-    if (comp.usePosition && e.x !== undefined && e.y !== undefined && (e.x !== l.transform.x || e.y !== l.transform.y)) patch.transform = { ...l.transform, x: e.x, y: e.y };
+    if (comp.usePosition && e.x !== undefined && e.y !== undefined && (e.x !== l.transform.x || e.y !== l.transform.y)) {
+      patch.transform = { ...l.transform, x: e.x, y: e.y };
+      const m = l.mask, dx = e.x - l.transform.x, dy = e.y - l.transform.y;
+      if (m?.linked && m.placement) patch.mask = { ...m, placement: { ...m.placement, x: m.placement.x + dx, y: m.placement.y + dy } };
+      if (l.vectorMask?.linked) patch.vectorMask = followVector(l, patch.transform);
+    }
     if (comp.useAppearance) {
       if (e.opacity !== undefined && e.opacity !== l.opacity) patch.opacity = e.opacity;
       if (e.blend !== undefined && e.blend !== l.blend) patch.blend = e.blend as BlendMode;

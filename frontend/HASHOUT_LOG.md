@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Applying a layer comp or selecting a frame carries linked masks with the layer · v2.3.4 (engine/layer-comps.ts, engine/frame-ops.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-comps.ts` `applyComp`, `engine/frame-ops.ts` `selectFrame`.
+- Wrong: both set only the layer's x and y, so a linked vector mask or a linked mask with its own placement stayed behind, unlike a Move (`followMask`, `followVector`).
+- Now: when the position changes, a linked placed mask moves by the same (dx, dy), which is what `followMask` (index.ts, not shared) does for a pure translation, and a linked vector mask goes through `followVector`. Frame thumbnails (`frameLayers` in timeline.ts, outside this fix) still draw masks unmoved.
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: in a browser.
+- Replaced, quoted exactly:
+
+```text
+    if (comp.usePosition && e.x !== undefined && e.y !== undefined && (e.x !== l.transform.x || e.y !== l.transform.y)) patch.transform = { ...l.transform, x: e.x, y: e.y };
+    target.forEach((l, i) => { const now = q.doc.layers[i]; if (l !== now && now?.id === l.id) q.updateLayer(l.id, { visible: l.visible, opacity: l.opacity, transform: l.transform, effects: l.effects }); });
+```
+
 ## Copied layers keep their vector masks; a duplicated clip base keeps its clipped layers · v2.3.4 (engine/layer-structure.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-structure.ts` `insertCopies`, `duplicateLayers`.

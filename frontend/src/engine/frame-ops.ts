@@ -6,6 +6,7 @@ import { Renderer, renderDoc } from './renderer';
 import type { Surface } from './surface';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { uid, type ID } from './types';
+import { followVector } from './vector-mask';
 
 /** What the frame animation methods need of the Engine. */
 export interface FrameHost {
@@ -53,7 +54,16 @@ export function selectFrame(host: FrameHost, id: ID): void {
   t.current = id;
   const target = frameLayers(p.doc.layers, f.state);
   host.edit('Select Frame', (q) => {
-    target.forEach((l, i) => { const now = q.doc.layers[i]; if (l !== now && now?.id === l.id) q.updateLayer(l.id, { visible: l.visible, opacity: l.opacity, transform: l.transform, effects: l.effects }); });
+    target.forEach((l, i) => {
+      const now = q.doc.layers[i];
+      if (l === now || now?.id !== l.id) return;
+      const dx = l.transform.x - now.transform.x, dy = l.transform.y - now.transform.y, m = now.mask, moved = dx !== 0 || dy !== 0;
+      q.updateLayer(l.id, {
+        visible: l.visible, opacity: l.opacity, transform: l.transform, effects: l.effects,
+        ...(moved && m?.linked && m.placement ? { mask: { ...m, placement: { ...m.placement, x: m.placement.x + dx, y: m.placement.y + dy } } } : {}),
+        ...(moved && now.vectorMask?.linked ? { vectorMask: followVector(now, l.transform) } : {}),
+      });
+    });
   });
   host.timelineChanged();
 }
