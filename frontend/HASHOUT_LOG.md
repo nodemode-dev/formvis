@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A new step after an undo frees the redo steps' stored pixels · v2.3.4 (engine/history.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/history.ts` `History.end`.
+- Wrong: `end` replaced `future` with `[]` without `History.onDrop`, while `discardRedo`, `clear` and `trim` hand each dropped step to it. An undone streamed or paged step (a filter on a giant layer) followed by any other edit kept its `disk` and `paged` keys in the engine's undo store, and its tiled rasters were never released, until the engine exited.
+- Now: the old `future` is cleared, then each of its steps goes to `History.onDrop` (the engine's `dropKeys` and `releaseTiledOf`, which still counts the new step as reaching).
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: an undo-store count in a browser.
+- Replaced, quoted exactly:
+
+```text
+    this.future = [];
+```
+
 ## Apply Layer Mask and Flatten All Masks keep what shows outside a placed mask · v2.3.4 (engine/layer-masks.ts, engine/file-scripts.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-masks.ts` `deleteMask`, `engine/file-scripts.ts` `bakeMasks`.

@@ -82,7 +82,9 @@ export class History {
     const beforeRev = this.revision, afterRev = ++this.counter;
     this.revision = afterRev;
     this.past.push({ name: p.name, before: p.before, after: snap, patches: p.patches, beforeRev, afterRev });
+    const gone = this.future;
     this.future = [];
+    for (const e of gone) History.onDrop?.(e);
     this.trim(snap);
     return true;
   }
