@@ -492,7 +492,10 @@ def download(model: str, report, cancelled):
     if model not in MODELS:
         raise ValueError("Unknown model")
     ROOT.mkdir(parents=True, exist_ok=True)
-    with _lock:
+    while not _lock.acquire(timeout=0.25):
+        if cancelled():
+            raise InterruptedError("Cancelled")
+    try:
         entries = list(MODELS[model]["files"].items())
         for i, (name, url) in enumerate(entries):
             path = ROOT / name
@@ -540,6 +543,8 @@ def download(model: str, report, cancelled):
                 )
             finally:
                 temporary.unlink(missing_ok=True)
+    finally:
+        _lock.release()
     return {"model": model, "ready": ready(model)}
 
 
@@ -561,8 +566,11 @@ def start_download(model: str):
         if not consent().get("licence"):
             raise HTTPException(409, "Krea 2 is installed from its own panel, once its licence is accepted")
     if str(MODELS[model].get("consent", "")).startswith("klein"):
+        from .klein import _is_apple_silicon
         from .klein import consent as klein_consent
 
+        if not _is_apple_silicon():
+            raise HTTPException(400, "FLUX.2 [klein] runs on Apple silicon only")
         variant = "flux2-" + MODELS[model]["consent"]
         if not klein_consent().get(variant, {}).get("licence"):
             raise HTTPException(409, "FLUX.2 [klein] is installed from its own card, once its licence is accepted")
@@ -599,6 +607,8 @@ def set_source(model: str, mode: str, url: str | None) -> dict:
         raise ValueError("Unknown source mode")
     if mode != "upstream" and not url:
         raise ValueError("A mirror or custom source needs a URL")
+    if mode == "custom" and len(MODELS[model]["files"]) > 1:
+        raise ValueError("A custom address is for a one-file model; use a mirror for this one")
     ROOT.mkdir(parents=True, exist_ok=True)
     data = _sources()
     data[model] = {"mode": mode, "url": url}

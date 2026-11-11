@@ -45,6 +45,7 @@ const sizeOf = (l: Layer): string => {
   const t = l.transform, w = l.raster?.width ?? 0, s = w ? Math.round((t.w / w) * 100) : 100;
   return `${Math.round(t.w)} x ${Math.round(t.h)}${s !== 100 ? ` ${s}%` : ''}`;
 };
+const FOOT_DROPS = new Set(['new-folder', 'duplicate', 'delete-layer-ask']);
 /** The effects listed under a layer (Photoshop's order, top down), and the name each row shows. */
 type FxKey = Exclude<keyof LayerEffects, 'extra' | 'hidden' | 'blendInterior' | 'layerMaskHides'>;
 const FX_ROWS: ReadonlyArray<readonly [FxKey, string]> = [['bevel', 'Bevel & Emboss'], ['stroke', 'Stroke'], ['innerShadow', 'Inner Shadow'], ['innerGlow', 'Inner Glow'], ['satin', 'Satin'], ['colorOverlay', 'Color Overlay'], ['gradientOverlay', 'Gradient Overlay'], ['patternOverlay', 'Pattern Overlay'], ['outerGlow', 'Outer Glow'], ['dropShadow', 'Drop Shadow']];
@@ -106,12 +107,13 @@ export class LayersPanel {
   /** The active layer the list last scrolled to. */
   private revealed: ID | null = null;
   private renaming: ID | null = null;
-  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; onMask: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null; src: string } | null = null;
+  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; onMask: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null; src: string; foot: HTMLElement | null } | null = null;
   /** The document tab a layer drag has rested on, and the timer that shows that document so the drop lands in it. */
   private spring: { key: string; timer: ReturnType<typeof setTimeout> } | null = null;
   private clearSpring(): void { if (this.spring) { clearTimeout(this.spring.timer); this.spring = null; } }
   /** Set by the app: the document point under a screen point on the stage, or null off it. A layer drag released on another document's canvas lands where it is let go. */
   docPoint: ((x: number, y: number) => { x: number; y: number } | null) | null = null;
+  deleteSelected: (() => void) | null = null;
   private stageHost: HTMLElement | null = null;
   private showStageDrop(on: boolean): void { this.stageHost ??= document.querySelector<HTMLElement>('.cv-stage'); setClass(this.stageHost, 'is-layer-drop', on); }
   private swipe: { visible: boolean; pointerId: number } | null = null;
@@ -358,6 +360,8 @@ export class LayersPanel {
         else if (bottom > this.list.scrollTop + this.list.clientHeight) this.list.scrollTop = bottom - this.list.clientHeight;
       }
     }
+    const d = this.drag;
+    if (d?.started && d.target) this.showDrop(d.target);
     this.syncProps();
   }
 
@@ -480,6 +484,26 @@ export class LayersPanel {
 
   private trashButton(): HTMLElement | null { return this.page.querySelector<HTMLElement>('.cv-panel-foot [data-cmd="delete-layer-ask"]'); }
   private overTrash(x: number, y: number): boolean { const b = this.trashButton(), hit = document.elementFromPoint(x, y); return !!b && !!hit && b.contains(hit); }
+  private underDragged(id: ID, ids: readonly ID[]): boolean {
+    const p = this.engine.current;
+    for (let l = p?.layer(id), n = 0; l?.parentId && n < 64; l = p?.layer(l.parentId), n += 1) if (ids.includes(l.parentId)) return true;
+    return false;
+  }
+  private footAt(x: number, y: number): HTMLElement | null {
+    const b = document.elementFromPoint(x, y)?.closest<HTMLElement>('.cv-panel-foot [data-cmd]') ?? null;
+    return b && this.page.contains(b) && FOOT_DROPS.has(b.dataset.cmd ?? '') ? b : null;
+  }
+  private dropOnFoot(cmd: string, ids: readonly ID[], onMask: boolean): void {
+    const p = this.engine.current;
+    if (!p || !ids.length) return;
+    if (ids.length === 1 && !(p.selectedIds.size === 1 && p.selectedIds.has(ids[0]))) this.engine.selectLayer(ids[0]);
+    if (cmd === 'new-folder') this.engine.groupLayers();
+    else if (cmd === 'duplicate') this.engine.duplicateLayers();
+    else if (cmd === 'delete-layer-ask') {
+      if (!onMask && p.maskTarget) this.engine.setMaskTarget(false);
+      if (this.deleteSelected) this.deleteSelected(); else this.engine.deleteLayers();
+    }
+  }
 
   private readonly vectorIds = new WeakMap<object, number>();
   private vectorSeq = 0;
@@ -667,7 +691,7 @@ export class LayersPanel {
     const row = this.rowOf(target.id);
     if (!row) { setClass(line, 'is-shown', false); return; }
     const top = target.where === 'above' ? row.offsetTop - 1 : target.where === 'below' ? row.offsetTop + row.offsetHeight - 1 : row.offsetTop;
-    line.style.top = `${top}px`;
+    line.style.transform = `translateY(${top}px)`;
     setClass(line, 'is-inside', target.where === 'inside');
     setClass(line, 'is-shown', true);
   }
@@ -677,7 +701,10 @@ export class LayersPanel {
     rows.addEventListener('pointerdown', (e) => {
       const t = e.target as HTMLElement;
       const row = t.closest<HTMLElement>('.cv-layer');
-      if (!row || e.button !== 0 || this.renaming) return;
+      if (!row || e.button !== 0) return;
+      if ([this.drag, this.fxDrag, this.swipe].some((g) => g && ('started' in g ? g.started : true) && g.pointerId !== e.pointerId)) return;
+      if (this.renaming) this.rows.querySelector<HTMLInputElement>('.cv-layer-rename')?.blur();
+      if (this.renaming) return;
       const id = row.dataset.id as ID;
       const sfr = t.closest<HTMLElement>('.cv-sfrow');
       if (sfr) {
@@ -735,9 +762,10 @@ export class LayersPanel {
       }
       const wasSelected = p.selectedIds.has(id);
       if (mod) this.engine.selectLayer(id, 'toggle');
-      else if (e.shiftKey && !t.closest('.cv-layer-mask, .cv-layer-vmask')) this.engine.selectLayer(id, 'range');
+      else if (e.shiftKey && !t.closest('.cv-layer-mask, .cv-layer-vmask')) this.engine.selectLayer(id, 'range', Array.from(this.rows.children, (r) => (r as HTMLElement).dataset.id as ID));
       else if (!wasSelected) this.engine.selectLayer(id);
       else if (p.activeId !== id) { p.activeId = id; this.engine.emit('active', null); }
+      if (mod && !p.selectedIds.has(id)) return;
       if (t.closest('.cv-layer-mask')) {
         if (e.shiftKey && !e.altKey) this.engine.toggleMaskEnabled();
         else this.engine.setMaskTarget(true);
@@ -747,9 +775,11 @@ export class LayersPanel {
       } else if (t.closest('.cv-layer-thumb')) this.engine.setMaskTarget(false);
       const ids = p.selectedIds.has(id) ? [...p.selectedIds] : [id];
       const maskFrom = e.altKey && t.closest('.cv-layer-mask') && p.layer(id)?.mask ? id : null;
-      this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, onMask: !!t.closest('.cv-layer-mask') && !e.shiftKey, target: null, maskFrom, tabTarget: null, src: p.id };
+      this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, onMask: !!t.closest('.cv-layer-mask') && !e.shiftKey, target: null, maskFrom, tabTarget: null, src: p.id, foot: null };
     });
     rows.addEventListener('pointermove', (e) => {
+      if (e.buttons === 0 && this.swipe && this.swipe.pointerId === e.pointerId) { this.swipe = null; this.engine.endVisibilitySwipe(); }
+      if (e.buttons === 0) { if (this.fxDrag && !this.fxDrag.started) this.fxDrag = null; if (this.drag && !this.drag.started) this.drag = null; }
       const fd = this.fxDrag;
       if (fd && fd.pointerId === e.pointerId) {
         if (!fd.started && Math.abs(e.clientY - fd.startY) < 4) return;
@@ -777,11 +807,14 @@ export class LayersPanel {
       if (!d.started) rows.setPointerCapture(e.pointerId);
       d.started = true;
       setClass(rows, 'is-copy-drag', e.altKey || !!d.maskFrom);
+      const foot = d.maskFrom || this.engine.current?.id !== d.src ? null : this.footAt(e.clientX, e.clientY);
+      if (foot !== d.foot) { setClass(d.foot, 'is-layer-drop', false); setClass(foot, 'is-layer-drop', true); d.foot = foot; }
+      if (foot) { this.clearSpring(); d.tabTarget = null; this.showTabDrop(null); this.showStageDrop(false); d.target = null; this.showDrop(null); return; }
       // A row dragged onto another project's tab copies the layer there.
       const hit = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
       const tab = hit?.closest<HTMLElement>('.cv-tab') ?? null, slot = hit?.closest<HTMLElement>('.cv-tabs > [data-cmd="new"]') ?? null;
       const cur = this.engine.current?.id ?? null, away = !!cur && cur !== d.src, over = tab?.dataset.key ?? null;
-      const key = d.maskFrom ? null : slot ? 'new' : away && over !== d.src ? cur : over && over !== cur ? over : null;
+      const key = d.maskFrom ? null : slot ? 'new' : away && over !== d.src ? cur : over && over !== cur && over !== d.src ? over : null;
       if (!d.maskFrom && !slot && over && over !== cur && this.spring?.key !== over) {
         this.clearSpring();
         const timer = setTimeout(() => { this.spring = null; if (this.drag === d) this.engine.switchTo(over); }, 650);
@@ -792,7 +825,7 @@ export class LayersPanel {
       this.showStageDrop(!!key && key !== 'new' && !!this.docPoint?.(e.clientX, e.clientY));
       if (key) { d.target = null; this.showDrop(null); return; }
       const row = this.rowAt(e.clientX, e.clientY);
-      if (!row?.dataset.id || d.ids.includes(row.dataset.id)) { d.target = null; this.showDrop(null); return; }
+      if (!row?.dataset.id || d.ids.includes(row.dataset.id) || this.underDragged(row.dataset.id, d.ids)) { d.target = null; this.showDrop(null); return; }
       const r = row.getBoundingClientRect();
       const f = (e.clientY - r.top) / r.height;
       const group = row.classList.contains('is-group');
@@ -835,10 +868,12 @@ export class LayersPanel {
       if (rows.hasPointerCapture(e.pointerId)) rows.releasePointerCapture(e.pointerId);
       this.showTabDrop(null);
       this.showStageDrop(false);
+      setClass(d.foot, 'is-layer-drop', false);
       const drop = d.started && d.tabTarget && d.tabTarget !== 'new' && !e.shiftKey && !cancel ? this.docPoint?.(e.clientX, e.clientY) ?? null : null;
       if (cancel || (d.started && !d.tabTarget && this.engine.current?.id !== d.src)) { this.engine.switchTo(d.src); return; }
       if (d.started && d.tabTarget === 'new') { if (this.engine.current?.id !== d.src) this.engine.switchTo(d.src); this.engine.copyLayersToNewDocument(d.ids); }
       else if (d.started && d.tabTarget) this.engine.copyLayersToProject(d.ids, d.tabTarget, drop ? this.dropShift(d.src, d.ids, drop) : e.shiftKey);
+      else if (d.started && d.foot) this.dropOnFoot(d.foot.dataset.cmd ?? '', d.ids, d.onMask);
       else if (d.started && d.target) {
         if (d.maskFrom) this.engine.copyMask(d.maskFrom, d.target.id);
         else this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
@@ -851,6 +886,15 @@ export class LayersPanel {
     };
     rows.addEventListener('pointerup', (e) => finish(e, false));
     rows.addEventListener('pointercancel', (e) => finish(e, true));
+    rows.addEventListener('lostpointercapture', (e) => finish(e, true));
+    document.addEventListener('keydown', (e) => {
+      const on = this.drag?.started ? this.drag : this.fxDrag?.started ? this.fxDrag : null;
+      if (e.key !== 'Escape' || !on) return;
+      e.preventDefault();
+      e.stopPropagation();
+      finish(new PointerEvent('pointercancel', { pointerId: on.pointerId }), true);
+    }, true);
+    this.list.addEventListener('scroll', () => { const d = this.drag; if (d?.started && d.target) { d.target = null; this.showDrop(null); } }, { passive: true });
     rows.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
       const row = t.closest<HTMLElement>('.cv-layer');
@@ -877,6 +921,7 @@ export class LayersPanel {
     });
     this.list.addEventListener('pointermove', (e) => {
       if (!pan || pan.id !== e.pointerId) return;
+      if (!(e.buttons & 4)) { endPan(e); return; }
       this.list.scrollTop -= e.clientY - pan.y;
       pan.y = e.clientY;
     });
@@ -888,6 +933,10 @@ export class LayersPanel {
     };
     this.list.addEventListener('pointerup', endPan);
     this.list.addEventListener('pointercancel', endPan);
+    window.addEventListener('blur', () => {
+      if (pan) endPan(new PointerEvent('pointercancel', { pointerId: pan.id }));
+      if (this.swipe) { this.swipe = null; this.engine.endVisibilitySwipe(); }
+    });
     this.list.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
     rows.addEventListener('dblclick', (e) => {
       const t = e.target as HTMLElement;

@@ -30,7 +30,7 @@ export interface EditHost {
 }
 
 export type EditTarget = NonNullable<ReturnType<EditHost['target']>>;
-export type RegionApply = (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void;
+export type RegionApply = (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null; local: Mat }) => void;
 type AsyncRun = (src: ImageData, scale: number, frame?: LibFrame) => ImageData | Promise<ImageData>;
 
 const NEED_LAYER = 'Select a pixel layer first.';
@@ -126,7 +126,7 @@ export function regionEdit(
     const raster = t.raster;
     const before = raster.read(box.x, box.y, box.w, box.h);
     try {
-      apply({ raster, target: t.target, rect: box, cover: cov });
+      apply({ raster, target: t.target, rect: box, cover: cov, local: t.local });
     } catch (e) {
       raster.write(before, box.x, box.y);
       throw e;

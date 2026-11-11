@@ -31,6 +31,12 @@ export function createReferencePanel(root: HTMLElement): void {
     ox = (vw - r.w * zoom) / 2; oy = (vh - r.h * zoom) / 2;
     paint();
   };
+  const fillTile = (node: HTMLElement, r: Ref): void => {
+    setText(q(node, '.cv-style-name'), r.name);
+    const on = r.id === active;
+    node.classList.toggle('is-active', on);
+    node.setAttribute('aria-selected', String(on));
+  };
   const sync = (): void => {
     patchList(list, refs, {
       key: (r) => r.id,
@@ -38,14 +44,10 @@ export function createReferencePanel(root: HTMLElement): void {
         const b = el<HTMLButtonElement>('<button class="cv-style-tile cv-ref-tile" type="button" role="option"><img alt="" draggable="false"><span class="cv-style-name"></span></button>');
         (q(b, 'img') as HTMLImageElement).src = r.url;
         b.title = r.name;
+        fillTile(b, r);
         return b;
       },
-      update: (node, r) => {
-        setText(q(node, '.cv-style-name'), r.name);
-        const on = r.id === active;
-        node.classList.toggle('is-active', on);
-        node.setAttribute('aria-selected', String(on));
-      },
+      update: fillTile,
     });
     setText(count, refs.length ? String(refs.length) : '');
     const cur = refs.find((r) => r.id === active) ?? null;

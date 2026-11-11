@@ -22,6 +22,8 @@ export interface Command {
 
 export interface CommandParam { type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object'; required?: boolean; enum?: ReadonlyArray<string | number>; min?: number; max?: number; description?: string }
 
+export class Told extends Error {}
+
 /** Names given to some physical key codes inside a combo. */
 const CODE_KEYS: Record<string, string> = {
   BracketLeft: '[', BracketRight: ']', Equal: '=', Minus: '-', NumpadAdd: '=', NumpadSubtract: '-',
@@ -106,6 +108,7 @@ export class Commands {
   /** Takes a command away (1.52.6: a plugin turned off or removed). */
   remove(id: string): void { const c = this.map.get(id); if (!c) return; this.map.delete(id); for (const k of c.keys ?? []) if (this.byKey.get(k) === c) this.byKey.delete(k); this.onChange?.(); }
 
+  relabel(id: string, label: string, words: Partial<Pick<Command, 'description' | 'when'>> = {}): void { const c = this.map.get(id); if (!c) return; c.label = label; Object.assign(c, words); this.onChange?.(); }
   get(id: string): Command | undefined { return this.map.get(id); }
   all(): Command[] { return [...this.map.values()]; }
   label(cmd: Command): string { return typeof cmd.label === 'function' ? cmd.label() : cmd.label; }
@@ -123,7 +126,8 @@ export class Commands {
     const cmd = this.map.get(id);
     if (!cmd || !this.enabled(cmd)) return false;
     const label = this.label(cmd);
-    cmd.run(params);
+    const out = cmd.run(params);
+    if (out instanceof Promise) out.catch((e: unknown) => { if (!(e instanceof Told)) throw e; });
     this.onRun?.(cmd, label);
     return true;
   }

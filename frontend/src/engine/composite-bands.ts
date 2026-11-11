@@ -28,6 +28,7 @@ const WORKER_BUDGET = 1_200_000_000;
 interface Slot { w: Worker; has: Set<string> }
 let slots: Slot[] = [];
 let failed = false;
+let generation = 0;
 let nextId = 1;
 interface Turn { priority: number; seq: number; go: () => Promise<unknown> }
 const turns: Turn[] = [];
@@ -66,6 +67,7 @@ export function setCompositeOnWorkers(on: boolean): void {
 
 /** Ends the workers (the Worker threads preference changed, or the page is closing). */
 export function endCompositePool(): void {
+  generation++;
   for (const s of slots) s.w.terminate();
   slots = [];
   for (const [id, j] of [...waiting]) { waiting.delete(id); j.resolve({ id, y0: 0, y1: 0, error: 'ended' }); }
@@ -143,7 +145,7 @@ async function run(doc: Doc, width: number, height: number, matrix: Mat, quality
   if (failed || width * height < COMPOSITE_MIN_PIXELS || !squareView(matrix)) return null;
   const prep = prepare(doc);
   if (!prep || !prep.layers.some((l) => l.raster)) return null;
-  const pool = ensure();
+  const pool = ensure(), gen = generation;
   if (!pool.length) return null;
   let total = 0;
   for (const r of prep.rasters.values()) total += r.w * r.h * 4;
@@ -154,6 +156,7 @@ async function run(doc: Doc, width: number, height: number, matrix: Mat, quality
     const need = pool.filter((s) => !s.has.has(key));
     if (!need.length) continue;
     await idle();
+    if (gen !== generation) return null;
     const px = r.read().data;
     if (share) {
       const sab = new SharedArrayBuffer(px.byteLength);
@@ -170,6 +173,7 @@ async function run(doc: Doc, width: number, height: number, matrix: Mat, quality
     }
   }
   await idle();
+  if (gen !== generation) return null;
   const plan = bandPlan(height, 0, Math.max(16, Math.ceil(height / (pool.length * 2))));
   const out = share && !bitmaps ? new SharedArrayBuffer(width * height * 4) : null, whole = out || bitmaps ? null : new Uint8ClampedArray(width * height * 4);
   const jobs = plan.map((b, i) => new Promise<CompOut>((resolve) => {
@@ -255,7 +259,7 @@ async function runFloat(doc: Doc): Promise<FloatComposite | null> {
   if (!compositeOn || failed || width * height < COMPOSITE_MIN_PIXELS || (doc.mode ?? 'rgb') !== 'rgb' || (doc.depth ?? 8) === 8) return null;
   const prep = prepareFloat(doc);
   if (!prep || !prep.floats.size) return null;
-  const pool = ensure();
+  const pool = ensure(), gen = generation;
   if (!pool.length) return null;
   let total = 0;
   for (const f of prep.floats.values()) total += f.data.byteLength;
@@ -263,6 +267,7 @@ async function runFloat(doc: Doc): Promise<FloatComposite | null> {
   const share = sharing(), linear = doc.depth === 32;
   for (const [key, f] of prep.floats) {
     await idle();
+    if (gen !== generation) return null;
     if (share) {
       const sab = new SharedArrayBuffer(f.data.byteLength);
       new Float32Array(sab).set(f.data);
@@ -277,6 +282,7 @@ async function runFloat(doc: Doc): Promise<FloatComposite | null> {
     }
   }
   await idle();
+  if (gen !== generation) return null;
   const plan = bandPlan(height, 0, Math.max(16, Math.ceil(height / (pool.length * 2)))), S = 4;
   const out = share ? new SharedArrayBuffer(width * height * S * 4) : null, whole = out ? null : new Float32Array(width * height * S);
   const jobs = plan.map((b, i) => new Promise<CompOut>((resolve) => {

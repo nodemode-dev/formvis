@@ -9,13 +9,10 @@
     "core:window:allow-request-user-attention",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
-    "core:window:allow-maximize",
-    "core:window:allow-unmaximize",
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "core:window:allow-set-decorations",
-    "core:window:allow-set-title",
     "core:window:allow-set-size",
     "core:event:default",
     "dialog:allow-open",
@@ -45,6 +42,7 @@
     "allow-ui-zoom",
     "allow-set-window-title",
     "allow-app-ready",
-    "allow-text-edit"
+    "allow-text-edit",
+    "allow-note-recent-document"
   ]
 }

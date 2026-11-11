@@ -29,8 +29,12 @@ export class LargePictureDialog extends Dialog {
     for (const c of [this.how, this.tile]) c.addEventListener('change', () => this.sync());
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Open', 'primary', () => void this.go());
+    this.onClose = () => { this.ticket++; this.busy = false; };
     this.remember([this.rx, this.ry, this.rw, this.rh]);   // the region is placed in this picture
   }
+
+  private busy = false;
+  private ticket = 0;
 
   show(pic: LargePictureError): void {
     this.pic = pic;
@@ -51,27 +55,34 @@ export class LargePictureDialog extends Dialog {
 
   private async go(): Promise<void> {
     const pic = this.pic;
-    if (!pic) return;
-    const base = pic.picture.replace(/\.[a-z0-9]+$/i, ''), how = this.how.value;
+    if (!pic || this.busy) return;
+    this.busy = true;
+    const base = pic.picture.replace(/\.[a-z0-9]+$/i, ''), how = this.how.value, t = this.ticket;
     setText(this.note, 'The engine is opening it...');
     let id = '';
     try {
       id = (await api.largeKeep(pic.file, pic.picture)).id;
-      if (how === 'reduced') this.engine.openImage(await decodeImage(await api.largeReduced(id, Number(this.side.value)), `${base} (reduced)`));
+      if (this.ticket !== t) return;
+      if (how === 'reduced') { const img = await decodeImage(await api.largeReduced(id, Number(this.side.value)), `${base} (reduced)`); if (this.ticket !== t) return; this.engine.openImage(img); }
       else if (how === 'region') {
         const [x, y, w, h] = [this.rx, this.ry, this.rw, this.rh].map((i) => Math.round(Number(i.value)));
-        this.engine.openImage(await decodeImage(await api.largeRegion(id, x, y, w, h), `${base} region`));
+        const img = await decodeImage(await api.largeRegion(id, x, y, w, h), `${base} region`);
+        if (this.ticket !== t) return;
+        this.engine.openImage(img);
       } else {
         const grid = await api.largeTiles(id, Number(this.tile.value));
-        for (const [n, t] of grid.entries()) {
+        for (const [n, g] of grid.entries()) {
+          if (this.ticket !== t) return;
           setText(this.note, `Opening tile ${n + 1} of ${grid.length}...`);
-          const p = this.engine.openImage(await decodeImage(await api.largeRegion(id, t.x, t.y, t.width, t.height), `${base} r${t.row + 1}c${t.col + 1}`));
-          p.tile = { source: base, width: pic.width, height: pic.height, x: t.x, y: t.y, row: t.row, col: t.col };
+          const img = await decodeImage(await api.largeRegion(id, g.x, g.y, g.width, g.height), `${base} r${g.row + 1}c${g.col + 1}`);
+          if (this.ticket !== t) return;
+          const p = this.engine.openImage(img);
+          p.tile = { source: base, width: pic.width, height: pic.height, x: g.x, y: g.y, row: g.row, col: g.col };
         }
       }
       this.close();
     } catch (err) {
       setText(this.note, err instanceof ApiError || err instanceof Error ? err.message : 'The formvis engine is offline (./formvis boot).');
-    } finally { if (id) void api.largeForget(id); }
+    } finally { if (id) void api.largeForget(id); if (this.ticket === t) this.busy = false; }
   }
 }

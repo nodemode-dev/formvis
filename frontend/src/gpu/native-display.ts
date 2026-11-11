@@ -41,6 +41,8 @@ export class NativeDisplay implements ScreenDisplay {
   private busy = false;
   private pending: Frame | null = null;
   private dead = false;
+  private shown = new Map<string, object>();
+  private used = new Map<string, object>();
 
   private constructor(readonly canvas: HTMLCanvasElement, private readonly invoke: Invoke, readonly adapter: string) {}
 
@@ -135,7 +137,8 @@ export class NativeDisplay implements ScreenDisplay {
   /** Sends an image's pixels when its version has changed since it was last sent. */
   private async put(img: Img, version: number): Promise<string> {
     const id = this.id(img);
-    if (this.sent.get(img) === version) return id;
+    this.used.set(id, img);
+    if (version >= 0 && this.sent.get(img) === version) return id;
     const w = img.width, h = img.height;
     const ctx = img.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
     if (!ctx || !w || !h) return id;
@@ -152,8 +155,11 @@ export class NativeDisplay implements ScreenDisplay {
       await this.invoke('native_doc', { width: f.doc.width, height: f.doc.height });
       this.docSize = size;
     }
+    this.used = new Map();
     await this.invoke('native_stack', { stack: await this.entries(f.layers) });
     await this.present(f);
+    for (const [id, o] of this.shown) if (!this.used.has(id)) { this.sent.delete(o); await this.invoke('native_remove', { id }); }
+    this.shown = this.used;
   }
 
   private async entries(layers: readonly DisplayLayer[]): Promise<Record<string, unknown>[]> {
@@ -167,6 +173,7 @@ export class NativeDisplay implements ScreenDisplay {
       }
       if (l.lut) {
         const table = this.id(l.lut);
+        this.used.set(table, l.lut);
         if (this.sent.get(l.lut) !== l.version) {
           if (l.lut3) {
             await this.invoke('native_table3', new Uint8Array(l.lut.buffer, l.lut.byteOffset, l.lut.byteLength), { headers: { 'x-id': table } });

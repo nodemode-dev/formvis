@@ -61,6 +61,8 @@ export async function falGenerate(e: Engine, ask: Ask, a: Args, id: string, prom
   const k = explicit ? Math.min(1, W / bmp.width, H / bmp.height) : 1, w = explicit ? Math.max(1, Math.round(bmp.width * k)) : W, h = explicit ? Math.max(1, Math.round(bmp.height * k)) : H;
   const r = new Raster(w, h);
   r.ctx.drawImage(bmp, 0, 0, w, h); bmp.close(); r.touch();
+  if (e.current !== p && e.projects.includes(p)) e.switchTo(p.id);
+  if (e.current !== p) return fail(`${p.name} was closed or could not be brought forward while fal ran; nothing was added.`);
   e.insertRasterLayer(r, 'Generated Image', Math.round((W - w) / 2), Math.round((H - h) / 2), {}, 'Generate Image');
   return text(`Generated with ${m.label} on fal at ${pic.width} by ${pic.height}${out.seed !== undefined ? `, seed ${out.seed}` : ''}; the result is a new layer (id ${e.activeLayer?.id}).`, { id: e.activeLayer?.id, model: m.id, seed: out.seed ?? null, width: pic.width, height: pic.height });
 }
@@ -112,6 +114,8 @@ export async function falSelectByText(e: Engine, ask: Ask, a: Args, mode: 'repla
     for (let i = 0; i < data.length; i++) { const v = alpha ? px[i * 4 + 3] : px[i * 4]; if (v > data[i]) data[i] = v; }
   }
   if (!data.some((v) => v >= 128)) return fail(`Nothing in the picture matched "${prompt}". Try other words.`);
+  if (e.current !== p && e.projects.includes(p)) e.switchTo(p.id);
+  if (e.current !== p) return fail(`${p.name} was closed or could not be brought forward while fal ran; nothing was selected.`);
   e.applyAutoSelection(0, 0, W, H, data, 'Select by Text', { mode });
   const s = e.current?.selection;
   return s ? text(`Selected "${prompt}" with ${m.label} (${masks.length} mask${masks.length === 1 ? '' : 's'}): ${s.w} by ${s.h} at ${s.x}, ${s.y}.`, { x: s.x, y: s.y, width: s.w, height: s.h, masks: masks.length }) : fail(`Nothing in the picture matched "${prompt}".`);

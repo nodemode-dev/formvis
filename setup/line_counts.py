@@ -34,7 +34,7 @@ def counts(root: Path = ROOT) -> dict[str, int]:
     for name, prefixes, ext in KINDS:
         total = 0
         for f in files:
-            if f.endswith(ext) and f.startswith(prefixes):
+            if f.endswith(ext) and f.startswith(prefixes) and not f.endswith(".test.ts") and "/tests/" not in f:
                 with open(root / f, encoding="utf-8") as fh:
                     total += sum(1 for _ in fh)
         out[name] = total

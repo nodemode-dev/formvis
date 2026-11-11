@@ -9,6 +9,7 @@ import itertools
 import json
 import os
 import secrets
+import tempfile
 import time
 import uuid
 
@@ -59,9 +60,19 @@ def _load() -> None:
 
 
 def _save() -> None:
+    path = _file()
+    temporary = None
     try:
-        _file().write_text(json.dumps({"policies": _policies, "limits": _limits}), encoding="utf-8")
+        fd, temporary = tempfile.mkstemp(prefix=".agents-", suffix=".tmp", dir=path.parent)
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            out.write(json.dumps({"policies": _policies, "limits": _limits}))
+        os.replace(temporary, path)
     except OSError:
+        if temporary:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
         return
 
 

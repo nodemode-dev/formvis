@@ -34,7 +34,7 @@ export class ArtboardPdfDialog extends Dialog {
   show(): void {
     const p = this.engine.current;
     if (this.isOpen || !p) return;
-    this.s = { ...this.s, name: this.s.name || p.name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled' };
+    this.s = { ...this.s, name: p.name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled' };
     this.sync();
     this.open();
   }

@@ -56,7 +56,7 @@ export class ColorRangeDialog extends Dialog {
     for (const c of [this.pick, this.fuzz, this.invert, this.farLimit, this.nearLimit]) c.addEventListener('input', () => { this.farLimit.disabled = this.nearLimit.disabled = this.pick.value !== 'depth' && this.pick.value !== 'luminosity'; this.detect.disabled = this.pick.value !== 'skin'; this.refresh(); });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => { const o = this.options(); this.close(); this.engine.selectColorRange(o); });
-    this.remember();
+    this.remember([this.combine]);
   }
 
   private options(): Parameters<Engine['colorRangeMask']>[0] {
@@ -127,20 +127,21 @@ export class ColorRangeDialog extends Dialog {
   }
 
   show(mode?: string): void {
-    if (!this.engine.current) return;
+    if (!this.engine.current || this.isOpen) return;
     this.combine.value = this.engine.selectionMode;
-    if (mode === 'depth') {
-      this.pick.value = 'depth';
-      this.farLimit.disabled = this.nearLimit.disabled = false;
-    }
     this.faces = null;
     this.detect.checked = false;
     this.open();
+    if (mode === 'depth') {
+      this.pick.value = 'depth';
+      this.farLimit.disabled = this.nearLimit.disabled = false;
+      this.detect.disabled = true;
+    }
     this.refresh();
     this.scrim.classList.add('cv-scrim-through');
     const handler = (e: PointerEvent): void => {
       const stage = document.querySelector('.cv-overlay-canvas'), p = this.engine.current;
-      if (e.button !== 0 || !stage || e.target !== stage || !p) return;
+      if (e.button !== 0 || !stage || e.target !== stage || !p || !this.isOpen) return;
       e.preventDefault();
       e.stopPropagation();
       const b = stage.getBoundingClientRect(), v = p.viewport, at = { x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, rgb = this.engine.sampleOriginal(at, true);

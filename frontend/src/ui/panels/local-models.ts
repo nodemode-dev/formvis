@@ -29,7 +29,7 @@ export class LocalModelsSection {
   private readonly sky = el('<div class="cv-local-card" data-model="skyseg"></div>');
   private readonly moge = el('<div class="cv-local-card" data-model="moge-2-vits-normal"></div>');
   private readonly source = el('<div class="cv-local-card" data-model="sources"></div>');
-  private job: string | null = null;
+  private readonly jobs = new Map<HTMLElement, string>();
   private sourcesBuilt = false;
   private sourceSaved: Json = {};
   private sourceShow: (() => void) | null = null;
@@ -44,20 +44,21 @@ export class LocalModelsSection {
   }
 
   private async follow(job: string, note: HTMLElement, done: () => void): Promise<void> {
-    this.job = job;
-    while (this.job === job) {
+    this.jobs.set(note, job);
+    while (this.jobs.get(note) === job) {
       await new Promise((ok) => setTimeout(ok, 800));
       let j: Json;
-      try { j = await api(`/jobs/${job}`); } catch { setText(note, 'Lost touch with the engine.'); return; }
-      if (j.status === 'done') { setText(note, 'Installed.'); this.job = null; done(); return; }
-      if (['error', 'failed', 'cancelled'].includes(j.status)) { setText(note, j.error || j.message || 'The download stopped.'); this.job = null; done(); return; }
+      try { j = await api(`/jobs/${job}`); } catch { if (this.jobs.get(note) === job) this.jobs.delete(note); setText(note, 'Lost touch with the engine.'); return; }
+      if (this.jobs.get(note) !== job) return;
+      if (j.status === 'done') { setText(note, 'Installed.'); this.jobs.delete(note); done(); return; }
+      if (['error', 'failed', 'cancelled'].includes(j.status)) { setText(note, j.error || j.message || 'The download stopped.'); this.jobs.delete(note); done(); return; }
       setText(note, `${j.message ?? 'Downloading'}${typeof j.progress === 'number' ? ` (${Math.round(j.progress * 100)}%)` : ''}`);
     }
   }
 
   private cancelButton(note: HTMLElement): HTMLButtonElement {
     const b = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Cancel</button>');
-    b.addEventListener('click', () => { const j = this.job; this.job = null; if (j) void api(`/jobs/${j}`, { method: 'DELETE' }).catch(() => undefined); setText(note, 'Cancelled.'); });
+    b.addEventListener('click', () => { const j = this.jobs.get(note); this.jobs.delete(note); if (j) void api(`/jobs/${j}`, { method: 'DELETE' }).catch(() => undefined); setText(note, 'Cancelled.'); });
     return b;
   }
 

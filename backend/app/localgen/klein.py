@@ -205,7 +205,7 @@ def generate_to_file(
         verdict = content_filter.check(np.asarray(Image.open(path).convert("RGB")))
         if verdict["withheld"]:
             path.unlink(missing_ok=True)
-            raise ValueError(f"The content filter withheld this picture (NSFW score {verdict['nsfw']:.2f}).")
+            return {"withheld": True, "nsfw": verdict["nsfw"], "seed": seed}
     with Image.open(path) as picture:
         size = picture.size
     return {
@@ -262,6 +262,8 @@ def start_install(body: InstallBody) -> dict:
     spec = VARIANTS.get(body.variant)
     if spec is None or body.build not in spec["builds"]:
         raise HTTPException(400, "Unknown model or build")
+    if not _is_apple_silicon():
+        raise HTTPException(400, "FLUX.2 [klein] runs on Apple silicon only")
     if not consent().get(body.variant, {}).get("licence"):
         raise HTTPException(409, "accept the licence first")
     return jobs.submit("klein-install", lambda _id, report, cancelled: install(body.variant, body.build, report, cancelled))

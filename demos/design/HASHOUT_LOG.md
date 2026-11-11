@@ -2,6 +2,13 @@
 
 Living log for the type and design demo. Entries are anchored by file and symbol.
 
+## A window that does not start in time is shown, not left behind the start line · _v2.3.4 (demos/design/src/session.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `demos/design/src/session.ts` `openSession`.
+- Why: review formvis__extensions-gpu-config F9 (fixer X1). `ready()` was awaited before the `try`, so a timeout or a failed start left `html[data-demo]` in place and the page on its start line forever.
+- Change: `const e = await ready();` moved inside the `try`, so the `finally` always reveals the window. The bundle is rebuilt at release.
+- Verified: `tsc --noEmit -p demos/design/tsconfig.json`, clean. Not run: the page with a forced timeout.
+
 ## The design kit, three artboards and page-side encoders (demos/design/src/session.ts, shim/api.ts, shim/encode.ts, vite.config.mjs)
 
 - Why: the owner approved the first demo and asked for three demos per app that touch different aspects. This one is type and design: a social and event graphic made with Type, shapes, layer styles, smart filters and the Filter Gallery, artboards of several sizes, Export As and a layered PSD.

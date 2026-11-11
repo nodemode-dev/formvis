@@ -66,6 +66,7 @@ export class FalTaskDialog extends Dialog {
     setText(this.state, 'Working on fal...');
     try {
       const { result, blob } = await falRunImage(model, inputs, await toBlob(flat));
+      if (!this.isOpen) return;
       if (e.current !== p) { setText(this.state, 'The document changed, so the result was not placed.'); return; }
       if (task === 'segment') {
         const mask = result.masks?.[0] ? pngBlob(result.masks[0].png) : await alphaMask(blob);

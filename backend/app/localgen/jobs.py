@@ -7,11 +7,14 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
+from .media import forget
 from .orchestration import publish
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 _lock = threading.RLock()
 _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="formvis-job")
+_installs = ThreadPoolExecutor(max_workers=2, thread_name_prefix="formvis-install")
+INSTALL_KINDS = ("model-download", "krea-2-install", "klein-install", "lora-fetch", "relight-runtime-install")
 _jobs = {}
 
 
@@ -67,6 +70,8 @@ def submit(kind: str, operation) -> dict:
                     job["status"] = "cancelled"
                     if result.get("file"):
                         Path(result["file"]).unlink(missing_ok=True)
+                    for item in result.get("media") or []:
+                        forget(item["id"])
                 else:
                     job.update(status="done", progress=1, result=result)
             publish("job", job=job_id, job_kind=kind, status=_jobs[job_id]["status"], progress=1.0, file=(result or {}).get("file"))
@@ -79,7 +84,7 @@ def submit(kind: str, operation) -> dict:
                 _jobs[job_id].update(status="error", error=str(exc))
             publish("job", job=job_id, job_kind=kind, status="error", error=str(exc))
 
-    _pool.submit(run)
+    (_installs if kind in INSTALL_KINDS else _pool).submit(run)
     return {"job_id": job_id}
 
 

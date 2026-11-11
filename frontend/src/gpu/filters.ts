@@ -716,6 +716,31 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
 
   private free(...ts: Tex[]): void { for (const t of ts) this.gl.deleteTexture(t.t); }
 
+  /** A timer query's result is ready only after control returns to the event loop, so the last run's query is kept
+   *  and read then (or at the next run), into lastGpuMs and the frame trace. */
+  private waiting: { q: WebGLQuery; key: string; tries: number } | null = null;
+  private timeLater(q: WebGLQuery | null, key: string): void {
+    this.readTimer();
+    if (this.waiting) { this.gl.deleteQuery(this.waiting.q); this.waiting = null; }
+    if (!q || !this.timer) { this.lastGpuMs = null; return; }
+    this.waiting = { q, key, tries: 0 };
+    setTimeout(() => this.readTimer(), 0);
+  }
+  private readTimer(): void {
+    const w = this.waiting, gl = this.gl;
+    if (!w || !this.timer) return;
+    if (gl.isContextLost()) { this.waiting = null; return; }
+    if (!gl.getQueryParameter(w.q, gl.QUERY_RESULT_AVAILABLE)) {
+      if (++w.tries < 60) setTimeout(() => this.readTimer(), 16);
+      else { gl.deleteQuery(w.q); this.waiting = null; }
+      return;
+    }
+    this.lastGpuMs = gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? null : Number(gl.getQueryParameter(w.q, gl.QUERY_RESULT)) / 1e6;
+    frameTrace.noteGpu(w.key, this.lastGpuMs);
+    gl.deleteQuery(w.q);
+    this.waiting = null;
+  }
+
   private pass(p: WebGLProgram, out: Tex, inputs: Tex[], set?: (gl: WebGL2RenderingContext, loc: Loc) => void): void {
     const gl = this.gl, loc: Loc = (n) => gl.getUniformLocation(p, n);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
@@ -757,9 +782,8 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
         if (chain) fin = chain(first);
         if (q && this.timer) gl.endQuery(this.timer.TIME_ELAPSED_EXT);
         this.readBack(fin, new Uint8Array(res.data.buffer));
-        this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
-        frameTrace.noteGpu(key, this.lastGpuMs);
-      } finally { this.free(input, first); if (out !== first) this.free(out); if (fin !== first && fin !== out) this.free(fin); if (q) gl.deleteQuery(q); }
+        this.timeLater(q, key);
+      } finally { this.free(input, first); if (out !== first) this.free(out); if (fin !== first && fin !== out) this.free(fin); if (q && q !== this.waiting?.q) gl.deleteQuery(q); }
       return res;
     });
   }
@@ -1103,9 +1127,8 @@ export class GlFilters implements GpuFilterRunner, GpuEffectRunner {
         gl.disable(gl.SCISSOR_TEST);
         if (q && this.timer) gl.endQuery(this.timer.TIME_ELAPSED_EXT);
         this.readBack(out, new Uint8Array(res.data.buffer));
-        this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
-        frameTrace.noteGpu('lens', this.lastGpuMs);
-      } finally { gl.disable(gl.SCISSOR_TEST); this.free(levels, rad, tapTex, input, out); if (q) gl.deleteQuery(q); }
+        this.timeLater(q, 'lens');
+      } finally { gl.disable(gl.SCISSOR_TEST); this.free(levels, rad, tapTex, input, out); if (q && q !== this.waiting?.q) gl.deleteQuery(q); }
       return res;
     });
   }

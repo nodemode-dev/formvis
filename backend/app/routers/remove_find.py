@@ -89,6 +89,8 @@ async def find_route(image: UploadFile = File(...), kind: str = Form("people")) 
     data = await image.read()
     try:
         mask = await run_in_threadpool(find, data, kind)
+    except ModuleNotFoundError as exc:
+        raise HTTPException(501, f"Finding {kind} needs the {exc.name} package, which this install of the engine does not include.") from exc
     except Exception as exc:
         raise HTTPException(500, f"Finding {kind} failed: {exc}") from exc
     return Response(mask, media_type="image/png")

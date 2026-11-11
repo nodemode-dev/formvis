@@ -1,12 +1,15 @@
 import { kernelFor } from './renderer';
 import type { Layer } from './types';
+import { ancestors } from './tree';
 
 /** Color lookup tables from a document's adjustment layers (DEV_PLAN 29.6 part a). No DOM.
  *  Layer masks are ignored: a table is one global mapping, so a masked adjustment is recorded as if it covered
  *  the whole picture. Only visible adjustment layers count, mixed in by their opacity. */
 export interface LutDoc { readonly layers: readonly Layer[] }
 
-export const hasVisibleAdjustment = (doc: LutDoc): boolean => doc.layers.some((l) => l.adjustment && l.visible);
+const shown = (doc: LutDoc, l: Layer): boolean => l.visible && ancestors(new Map(doc.layers.map((x) => [x.id, x])), l).every((g) => g.visible);
+
+export const hasVisibleAdjustment = (doc: LutDoc): boolean => doc.layers.some((l) => l.adjustment && shown(doc, l));
 
 /** Run the visible adjustment layers, bottom to top, over an identity lattice of size^3 points (r fastest).
  *  Returns floats 0 to 1, three per point, r fastest. */
@@ -17,7 +20,7 @@ export function sampleLut(doc: LutDoc, size: number): Float32Array {
     cur[i] = Math.round((r / den) * 255); cur[i + 1] = Math.round((g / den) * 255); cur[i + 2] = Math.round((b / den) * 255); cur[i + 3] = 255;
   }
   for (const l of doc.layers) {
-    if (!l.adjustment || !l.visible) continue;
+    if (!l.adjustment || !shown(doc, l)) continue;
     const kernel = kernelFor(l.adjustment);
     if (!kernel) continue;
     const next = new Uint8ClampedArray(cur);

@@ -20,7 +20,7 @@ import time
 import urllib.error
 import urllib.request
 
-ENGINE = os.environ.get("FORMVIS_URL", "http://127.0.0.1:8190").rstrip("/")
+ENGINE = os.environ.get("FORMVIS_URL", f"http://127.0.0.1:{os.environ.get('FORMVIS_PORT', '').lstrip('0') or 8190}").rstrip("/")
 SEED = ("try{const k='formvis.prefs',o=JSON.parse(localStorage.getItem(k)||'{}');"
         "if(o.agentsAllowed!==true){o.agentsAllowed=true;localStorage.setItem(k,JSON.stringify(o));}}catch(e){}")
 

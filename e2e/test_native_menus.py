@@ -24,7 +24,7 @@ def test_the_menus_go_to_the_macos_menu_bar(context):
     page.wait_for_function("window.__menus.some((c) => c.cmd === 'plugin:menu|set_as_app_menu')", timeout=15000)
     made = page.evaluate("window.__menus.filter((c) => c.cmd === 'plugin:menu|new').map((c) => c.o)")
     subs = [m["text"] for m in made if m and m["kind"] == "Submenu"]
-    for name in ["formvis", "File", "Edit", "Image", "Layer", "Select", "Filter", "View", "Window", "Help"]:
+    for name in ["FormVis", "File", "Edit", "Image", "Layer", "Select", "Filter", "View", "Window", "Help"]:
         assert name in subs, subs
     save = [m for m in made if m and m["kind"] == "MenuItem" and m["text"] == "Save"]
     assert save and save[0]["accelerator"] == "CmdOrCtrl+S", save

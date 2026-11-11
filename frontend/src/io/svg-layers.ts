@@ -123,10 +123,10 @@ function arcToCubics(x0: number, y0: number, rxIn: number, ryIn: number, rotDeg:
  *  cubics, arcs split into cubics. A malformed tail stops the parse and keeps what was read. */
 function pathSegments(d: string): Seg[] {
   const segs: Seg[] = [];
-  const tokens = [...d.matchAll(/([a-zA-Z])|([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)/g)].map((m) => m[1] ?? Number(m[2]));
+  const found = [...d.matchAll(/([a-zA-Z])|([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)/g)], tokens = found.map((m): string | number => m[1] ?? Number(m[2])), raw = found.map((m) => m[2] ?? '');
   let i = 0, cmd = '', cx = 0, cy = 0, sx = 0, sy = 0, lcx = 0, lcy = 0, lqx = 0, lqy = 0, prev = '';
   const num = (): number => { const v = tokens[i++]; return typeof v === 'number' ? v : NaN; };
-  const flag = (): boolean => num() !== 0;
+  const flag = (): boolean => { const r = raw[i]; if (r && r.length > 1 && (r[0] === '0' || r[0] === '1')) { raw[i] = r.slice(1); tokens[i] = Number(raw[i]); return r[0] === '1'; } return num() !== 0; };
   while (i < tokens.length) {
     const tk = tokens[i];
     if (typeof tk === 'string') { cmd = tk; i++; if (cmd === 'z' || cmd === 'Z') { segs.push({ t: 'Z' }); cx = sx; cy = sy; prev = 'Z'; continue; } }

@@ -336,6 +336,11 @@ export class ActionsDialog extends Dialog {
   private rename(): void {
     const a = this.selected(), name = this.name.value.trim().slice(0, 80);
     if (!a || !name) return;
+    const old = a.name;
+    for (const x of this.store.list) for (const s of x.steps) {
+      if (s.kind === 'play' && s.name === old) { s.name = name; if (s.label === `Play ${old}`) s.label = `Play ${name}`; }
+      else if (s.kind === 'conditional') { if (s.then === old) s.then = name; if (s.else === old) s.else = name; }
+    }
     a.name = name;
     this.name.value = '';
     this.store.save();
@@ -389,6 +394,7 @@ export class ActionsDialog extends Dialog {
         const { actions, unsupported } = parseAtn(await f.arrayBuffer());
         if (!actions.length) { setText(this.note, `${f.name} holds no actions.`); return; }
         this.store.add(actions);
+        this.sync();
         this.pick.value = String(this.store.list.length - 1);
         this.sync();
         const skipped = unsupported.length ? `; ${unsupported.length} step${unsupported.length === 1 ? '' : 's'} had no formvis equivalent and stay grayed, kept for saving back: ${unsupported.slice(0, 5).join(', ')}` : '';
@@ -398,6 +404,7 @@ export class ActionsDialog extends Dialog {
       const more = actionsFrom(JSON.parse(await f.text()));
       if (!more.length) { setText(this.note, `${f.name} holds no actions formvis can play.`); return; }
       this.store.add(more);
+      this.sync();
       this.pick.value = String(this.store.list.length - 1);
       this.sync();
     } catch { setText(this.note, `${f.name} is not an actions file.`); }

@@ -526,6 +526,7 @@ export class AdjustPanel extends Dialog {
     }
     this.kind = kind;
     this.data = structuredClone(data);
+    if (kind === 'hsv') this.hsv = hsvFromData(this.data);
     const k = this.kernel();
     if (!k) return false;
     this.engine.applyImageEdit(ADJUSTMENT_LABELS[kind], (src, scale) => {

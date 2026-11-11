@@ -15,6 +15,8 @@ export class TiffPagesDialog extends Dialog {
   private readonly note = el('<p class="cv-note" role="status"></p>');
   private file: File | null = null;
   private pages: Page[] = [];
+  private busy = false;
+  private ticket = 0;
 
   constructor(private readonly engine: Engine) {
     super('TIFF Pages', 420);
@@ -22,6 +24,7 @@ export class TiffPagesDialog extends Dialog {
     this.body.append(this.info, row, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Open', 'primary', () => void this.go());
+    this.onClose = () => { this.ticket++; this.busy = false; };
     this.remember();   // how pages are opened (kept under TIFF Pages and Icon Sizes alike)
   }
 
@@ -45,29 +48,37 @@ export class TiffPagesDialog extends Dialog {
 
   private async go(): Promise<void> {
     const f = this.file;
-    if (!f) return;
-    const base = f.name.replace(/\.[^.]+$/, ''), how = this.how.value, e = this.engine;
+    if (!f || this.busy) return;
+    this.busy = true;
+    const base = f.name.replace(/\.[^.]+$/, ''), how = this.how.value, e = this.engine, t = this.ticket;
     try {
       if (how === 'largest') {
         const big = [...this.pages].sort((a, b) => b.width * b.height - a.width * a.height)[0];
-        e.openImage(await decodeImage(await api.decode(f, f.name, big.index), `${base}.png`)).name = base;
+        const img = await decodeImage(await api.decode(f, f.name, big.index), `${base}.png`);
+        if (this.ticket !== t) return;
+        e.openImage(img).name = base;
       } else if (how === 'documents') {
         for (const p of this.pages) {
           setText(this.note, `Opening page ${p.index + 1} of ${this.pages.length}...`);
-          e.openImage(await decodeImage(await api.decode(f, f.name, p.index), `${base} page ${p.index + 1}.png`)).name = `${base} page ${p.index + 1}`;
+          const img = await decodeImage(await api.decode(f, f.name, p.index), `${base} page ${p.index + 1}.png`);
+          if (this.ticket !== t) return;
+          e.openImage(img).name = `${base} page ${p.index + 1}`;
         }
       } else {
+        const pages = [];
+        for (const p of this.pages) {
+          setText(this.note, `Adding page ${p.index + 1} of ${this.pages.length}...`);
+          pages.push({ p, raster: (await this.page(p)).raster });
+          if (this.ticket !== t) return;
+        }
         const W = Math.max(...this.pages.map((p) => p.width)), H = Math.max(...this.pages.map((p) => p.height));
         e.newDocument(W, H, base, 'transparent');
         const empty = e.current?.doc.layers[0]?.id;   // the new document's empty layer: one layer per page is wanted
-        for (const p of this.pages) {
-          setText(this.note, `Adding page ${p.index + 1} of ${this.pages.length}...`);
-          const { raster } = await this.page(p);
-          e.insertRasterLayer(raster, `Page ${p.index + 1}`, 0, 0, {}, 'Open Page');
-        }
+        for (const { p, raster } of pages) e.insertRasterLayer(raster, `Page ${p.index + 1}`, 0, 0, {}, 'Open Page');
         if (empty && e.current?.layer(empty)) { e.selectLayer(empty); e.deleteLayers(); }
       }
       this.close();
     } catch (err) { setText(this.note, err instanceof ApiError || err instanceof Error ? err.message : 'The pages could not be read.'); }
+    finally { if (this.ticket === t) this.busy = false; }
   }
 }

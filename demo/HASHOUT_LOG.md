@@ -2,6 +2,13 @@
 
 Living log for the offline browser demo. Entries are anchored by file and symbol.
 
+## A window that does not start in time is shown, not left behind the start line · _v2.3.4 (demo/src/session.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `demo/src/session.ts` `openSession`.
+- Why: review formvis__extensions-gpu-config F9 (fixer X1). `ready()` (400 tries 50 ms apart for `body.app-ready`) was awaited before the `try`, so when it threw (a slow machine opening the bundle from `file://`, or the app's start failing) the `finally` that removes `html[data-demo]` never ran: "Starting formvis" stayed forever, with an unhandled rejection and no message.
+- Change: `const e = await ready();` moved inside the `try`; a timeout now reveals the window, empty, and the rejection still reaches the caller. The same change is in `demos/design` and `demos/retouch`. The bundle is rebuilt at release.
+- Verified: `tsc --noEmit -p demo/tsconfig.json`, clean. Not run: the page with a forced timeout.
+
 ## No dialog over the painting · _v2.0.2 (demo/src/session.ts, main.ts)
 
 - Why: the owner wants the first screen to read as a photo editing and painting canvas, and the Levels Layer dialog hid half the painting. The Levels layer is now added with `addAdjustmentLayer` and a levels range (black 4, gamma 1.05, white 250) between Painted light and Warm grade, with no dialog; Painted light is selected, the Brush is active and the Brushes panel shows. `shim/spots.ts` (the dialog's remembered position) and the catalogue call are removed, so the 2.0.1 entry below about the open dialog and its position is superseded. Re-verified from `file://`: 0 console messages, 0 non-local requests, the frame log hidden until one change to visible, a drag paints and Ctrl+Z restores the picture.

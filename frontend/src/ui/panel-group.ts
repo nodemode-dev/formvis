@@ -58,7 +58,7 @@ export class PanelGroup {
   setMenu(items: () => string[]): void { this.menu = items; setHidden(this.root.querySelector('.cv-group-more') as HTMLElement, false); }
 
   constructor(host: HTMLElement, readonly id: string, list: readonly GroupTab[], label: string) {
-    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><span class="cv-group-grip" title="Drag to move the group" aria-hidden="true">${icon('grip', 14)}</span><div class="cv-group-tabs" role="tablist"></div><button class="cv-group-over" type="button" title="More tabs" aria-label="More tabs" aria-haspopup="menu" hidden>${icon('chevronDown', 12)}</button><span></span><button class="cv-group-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu" hidden>${icon('more3', 16)}</button><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimize" aria-label="Minimize">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
+    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><span class="cv-group-grip" title="Drag to move the group" aria-hidden="true">${icon('grip', 14)}</span><div class="cv-group-tabs" role="tablist"></div><button class="cv-group-over" type="button" title="More tabs" aria-label="More tabs" aria-haspopup="menu" hidden>${icon('chevronDown', 12)}</button><span class="cv-group-space"></span><button class="cv-group-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu" hidden>${icon('more3', 16)}</button><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimize" aria-label="Minimize">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
     const more = this.root.querySelector('.cv-group-more') as HTMLElement;
     (this.root.querySelector('.cv-group-over') as HTMLElement).addEventListener('click', (e) => this.openOverflow(e.currentTarget as HTMLElement));
@@ -76,13 +76,16 @@ export class PanelGroup {
     host.appendChild(this.root);
     // Tabs fit in steps (1.49.6, the owner's walkthrough: tabs were shortened to Chann..., Pa...): normal, then compact,
     // then tight lettering, and only then are inactive tabs shortened; again whenever the width or the tabs change.
-    new ResizeObserver(() => this.fitTabs()).observe(strip);
+    const fit = new ResizeObserver(() => this.fitTabs());
+    fit.observe(strip);
+    fit.observe(this.root.querySelector('.cv-group-head') as HTMLElement);
   }
 
   fitTabs(): void {
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement;
     const chev = this.root.querySelector('.cv-group-over') as HTMLElement;
-    const full = strip.clientWidth + (chev.hidden ? 0 : chev.offsetWidth + 6);
+    const space = this.root.querySelector(':scope > .cv-group-head > .cv-group-space') as HTMLElement | null;
+    const full = strip.clientWidth + (space?.clientWidth ?? 0) + (chev.hidden ? 0 : chev.offsetWidth + 6);
     if (!strip.clientWidth) return;
     for (const c of strip.children) c.classList.remove('is-over');
     const width = (): number => [...strip.children].reduce((w, c) => w + (c as HTMLElement).scrollWidth + (c as HTMLElement).offsetWidth - (c as HTMLElement).clientWidth, 0) + Math.max(0, strip.children.length - 1) * 2;
@@ -146,7 +149,7 @@ export class PanelGroup {
     btn.addEventListener('click', (e) => { if (PanelGroup.justDragged) { e.preventDefault(); PanelGroup.justDragged = false; return; } this.show(tid); });
     btn.addEventListener('pointerdown', (e) => this.tabDrag(e, tid, btn));
     strip.appendChild(btn);
-    body.appendChild(page);
+    if (typeof body.moveBefore === 'function' && page.isConnected && body.isConnected) body.moveBefore(page, null); else body.appendChild(page);
     this.tabs.set(tid, { btn, body: page, label });
     this.root.classList.remove('is-empty');
     requestAnimationFrame(() => this.fitTabs());
@@ -176,8 +179,10 @@ export class PanelGroup {
       PanelGroup.onGapHint?.(null, 0);
       document.removeEventListener('pointermove', move, true);
       document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', up, true);
       ghost?.remove();
       target?.root.classList.remove('is-tab-target', 'is-tab-full');
+      if (ev.type === 'pointercancel') return;
       if (ghost) PanelGroup.justDragged = true;
       if (ghost && target) { if (!target.full) { PanelGroup.moveTab(tid, this, target); PanelGroup.saveHomes(); } }
       else if (ghost && this.tabs.size > 1 && PanelGroup.onDetach?.(tid, this, ev.clientX, ev.clientY)) PanelGroup.saveHomes();
@@ -185,6 +190,7 @@ export class PanelGroup {
     };
     document.addEventListener('pointermove', move, true);
     document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
   }
 
   /** Moves a tab (its page, kept as it is) from one group to another; an emptied group is hidden. */
@@ -204,7 +210,11 @@ export class PanelGroup {
 
   /** Where each tab lives, remembered; restored once every group exists. */
   static saveHomes(): void {
-    const homes: Record<string, string> = {};
+    let homes: Record<string, string> = {};
+    try { const was = JSON.parse(localStorage.getItem(HOMES) ?? '{}') as Record<string, string>; if (was && typeof was === 'object') homes = was; } catch { homes = {}; }
+    const present = new Set<string>();
+    for (const g of PanelGroup.all.values()) for (const tid of g.tabs.keys()) present.add(tid);
+    for (const tid of Object.keys(homes)) if (present.has(tid) || !tid.startsWith('ext-')) delete homes[tid];
     for (const [gid, g] of PanelGroup.all) for (const tid of g.tabs.keys()) homes[tid] = gid;
     try { localStorage.setItem(HOMES, JSON.stringify(homes)); } catch { /* this session only */ }
   }

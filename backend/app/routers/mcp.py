@@ -653,7 +653,7 @@ def _err(req_id, code: int, message: str) -> dict:
 def _live() -> bool:
     """A window polled lately, or is working through a call it took (for as long as _ask waits, 600 s)."""
     now = time.monotonic()
-    return now - _seen <= LIVE or any(now - t < 600 for t in _taken.values())
+    return (_seen > 0 and now - _seen <= LIVE) or any(now - t < 600 for t in _taken.values())
 
 
 def _fail(text: str) -> dict:
@@ -664,11 +664,11 @@ def _open_window() -> bool:
     """formvis opened in the browser, at most once a minute; not in the desktop app (it is the window) or when
     FORMVIS_OPEN_WINDOW=0 (tests, headless machines)."""
     global _opened_at
-    if os.environ.get("FORMVIS_OPEN_WINDOW", "1") == "0" or config.is_desktop() or time.monotonic() - _opened_at < 60:
+    if os.environ.get("FORMVIS_OPEN_WINDOW", "1") == "0" or config.is_desktop() or (_opened_at > 0 and time.monotonic() - _opened_at < 60):
         return False
     _opened_at = time.monotonic()
     import webbrowser
-    url = f"http://127.0.0.1:{config.BACKEND_PORT}/" if config.dist_dir() else f"http://localhost:{config.FRONTEND_PORT}/"
+    url = f"http://127.0.0.1:{int(os.environ.get('FORMVIS_PORT') or 0) or config.BACKEND_PORT}/" if config.dist_dir() else f"http://localhost:{config.FRONTEND_PORT}/"
     try:
         return bool(webbrowser.open(url))
     except Exception:
@@ -820,19 +820,22 @@ def _info(args: dict) -> dict:
     suffix = src.suffix.lower()
     info: dict = {"path": str(src), "name": src.name, "bytes": src.stat().st_size, "kind": "project" if suffix in _PROJECTS else "picture"}
     if suffix in (".psd", ".psb"):
-        with open(src, "rb") as f:
-            sig, ver, _, channels, height, width, depth, mode = struct.unpack(">4sH6sHIIHH", f.read(26))
-            if sig != b"8BPS":
-                raise ValueError(f"{src.name} is not a PSD file.")
-            big = ver == 2
-            for _skip in range(2):   # the colour mode data, then the image resources
-                f.seek(struct.unpack(">I", f.read(4))[0], 1)
-            wide = 8 if big else 4
-            section = struct.unpack(">Q" if big else ">I", f.read(wide))[0]
-            layers = 0
-            if section:
-                inner = struct.unpack(">Q" if big else ">I", f.read(wide))[0]
-                layers = abs(struct.unpack(">h", f.read(2))[0]) if inner else 0
+        try:
+            with open(src, "rb") as f:
+                sig, ver, _, channels, height, width, depth, mode = struct.unpack(">4sH6sHIIHH", f.read(26))
+                if sig != b"8BPS":
+                    raise ValueError(f"{src.name} is not a PSD file.")
+                big = ver == 2
+                for _skip in range(2):   # the colour mode data, then the image resources
+                    f.seek(struct.unpack(">I", f.read(4))[0], 1)
+                wide = 8 if big else 4
+                section = struct.unpack(">Q" if big else ">I", f.read(wide))[0]
+                layers = 0
+                if section:
+                    inner = struct.unpack(">Q" if big else ">I", f.read(wide))[0]
+                    layers = abs(struct.unpack(">h", f.read(2))[0]) if inner else 0
+        except struct.error as exc:
+            raise ValueError(f"{src.name} is not a readable PSD: {exc}") from exc
         info.update(width=width, height=height, mode=_PSD_MODES.get(mode, str(mode)), depth=depth, channels=channels, layers=layers)
     elif suffix in (".fvd", ".fmv", ".ora"):
         try:
@@ -848,7 +851,7 @@ def _info(args: dict) -> dict:
                     layers = manifest.get("layers") or []
                     info.update(width=manifest.get("width"), height=manifest.get("height"), layers=len(layers), groups=sum(1 for l in layers if l.get("isGroup")),
                                 **{k: manifest[k] for k in ("mode", "depth", "profile", "resolution") if k in manifest})
-        except (zipfile.BadZipFile, KeyError, StopIteration, ValueError) as exc:
+        except (zipfile.BadZipFile, KeyError, StopIteration, ValueError, AttributeError, TypeError) as exc:
             raise ValueError(f"{src.name} is not a readable project: {exc}") from exc
     else:
         from PIL import Image
@@ -974,7 +977,7 @@ async def _run(name: str, args: dict) -> dict:
             path = _path(args.get("path"), _FILES[name][0], True)
             if path.stat().st_size > _MAX_OPEN:
                 return _fail(f"{path.name} is larger than 512 MB.")
-            data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
+            data = await asyncio.to_thread(lambda: base64.b64encode(path.read_bytes()).decode())
             out = await _call("__open", {"name": path.name, "data": data, **{k: args[k] for k in ("into", "svg_width", "reference") if k in args}})
             opened = (out.get("structuredContent") or {}).get("id") if not out.get("isError") and args.get("into") != "layer" else None
             if isinstance(opened, str):
@@ -984,7 +987,7 @@ async def _run(name: str, args: dict) -> dict:
             path = _path(args.get("path"), _FILES[name][0], True)
             if path.stat().st_size > _MAX_OPEN:
                 return _fail(f"{path.name} is larger than 512 MB.")
-            data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
+            data = await asyncio.to_thread(lambda: base64.b64encode(path.read_bytes()).decode())
             args = {**{k: v for k, v in args.items() if k != "path"}, "data": data, "name": args.get("name") or path.stem[:120]}
         elif name == "place_image" and not args.get("data"):
             return _fail("Give place_image a path (an absolute path to the image file) or data (base64).")
@@ -992,7 +995,7 @@ async def _run(name: str, args: dict) -> dict:
             path = _path(args.get("path"), _FILES[name][0], True)
             if path.stat().st_size > _MAX_OPEN:
                 return _fail(f"{path.name} is larger than 512 MB.")
-            data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
+            data = await asyncio.to_thread(lambda: base64.b64encode(path.read_bytes()).decode())
             args = {**{k: v for k, v in args.items() if k != "path"}, "data": data, **({"name": args.get("name") or path.stem[:120]} if name == "glb_place" else {})}
         if name == "timeline_render":   # 1.59.7, DEV_PLAN 25.5: the window renders, this writes
             path = _path(args.get("path"), _FILES[name][0], False, args.get("overwrite"))
@@ -1001,7 +1004,7 @@ async def _run(name: str, args: dict) -> dict:
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
                 return out if out.get("isError") else _fail("formvis rendered nothing.")
-            blob = base64.b64decode(data)
+            blob = await asyncio.to_thread(base64.b64decode, data)
             await asyncio.to_thread(path.write_bytes, blob)
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
         if name in ("export_mask", "export_layer"):
@@ -1010,7 +1013,7 @@ async def _run(name: str, args: dict) -> dict:
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
                 return out if out.get("isError") else _fail("formvis gave nothing to write.")
-            blob = base64.b64decode(data)
+            blob = await asyncio.to_thread(base64.b64decode, data)
             await asyncio.to_thread(path.write_bytes, blob)
             return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
         if name in ("save_project", "export_image"):
@@ -1026,7 +1029,7 @@ async def _run(name: str, args: dict) -> dict:
             data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
             if not data:
                 return out if out.get("isError") else _fail("formvis gave nothing to write.")
-            blob = base64.b64decode(data)
+            blob = await asyncio.to_thread(base64.b64decode, data)
             if name == "export_image" and kind in _ENCODED and not args.get("layers"):
                 from app.services import imaging
                 try:
@@ -1117,7 +1120,7 @@ async def _write_back(name: str) -> str:
     return path
 
 
-async def _agent_call(client: str, name: str, args: dict) -> dict:
+async def _agent_call(client: str, name: str, args: dict, cli: bool = False) -> dict:
     """A tool call as an outside agent's: refused when agents are off or this client is denied, held for the person's
     approval when it is risky under the Ask policy, and noted in the activity feed either way. The Claude Code the window's own
     terminal dock started (agents.INAPP_CLIENT, known by its per-run token) is not asked whether outside agents may edit."""
@@ -1148,7 +1151,7 @@ async def _agent_call(client: str, name: str, args: dict) -> dict:
         if refusal:
             agents.end(entry, "denied", refusal)
             return _fail(refusal)
-        if agents.policy_of(client) == "ask" and not (client == "formvis-cli" and name == "convert_file"):   # the command line names both files and --overwrite itself
+        if agents.policy_of(client) == "ask" and not (cli and name in ("convert_file", "run_command")):   # the command line names both files and --overwrite, and risky commands need --yes
             why = await _risk(name, args)
             if why:
                 refusal = await agents.approval(entry, why)
@@ -1158,6 +1161,9 @@ async def _agent_call(client: str, name: str, args: dict) -> dict:
     except asyncio.CancelledError:
         agents.end(entry, "error", "cancelled by the agent")
         raise
+    except Exception as exc:
+        agents.end(entry, "error", str(exc))
+        return _fail(f"{name} failed: {exc}")
     _announce(name, bool(out.get("isError")))
     first = next((c.get("text", "") for c in out.get("content", []) if c.get("type") == "text"), "")
     agents.end(entry, "error" if out.get("isError") else "ok", first)
@@ -1182,6 +1188,12 @@ def _client_of(request: Request, params: dict, sid: str | None) -> tuple[str, st
     if agents.is_inapp(request.headers.get("x-formvis-inapp")):
         return agents.INAPP_CLIENT, version
     return (f"{name} (outside)" if name == agents.INAPP_CLIENT else name), version
+
+
+def _from_cli(request: Request, params: dict, sid: str | None) -> bool:
+    """The command line's own HTTP call: named formvis-cli by its header, with no MCP session or clientInfo, through which any agent can claim that name."""
+    info = (params.get("_meta") or {}).get("io.modelcontextprotocol/clientInfo") or params.get("clientInfo")
+    return request.headers.get("x-formvis-client") == "formvis-cli" and not info and not sid
 
 
 # Live resources: the same state the read tools give, as documents a client can attach.
@@ -1326,13 +1338,13 @@ def _budgeted(name: str, result: dict) -> dict:
     return out
 
 
-async def _stream_call(req_id, modern: bool, client: str, name: str, args: dict, token):
+async def _stream_call(req_id, modern: bool, client: str, name: str, args: dict, token, cli: bool = False):
     """One tool call answered as server-sent events: the window's progress as notifications/progress with the client's token,
     then the result. A client's notifications/cancelled or a dropped connection stops the call, and the window with it."""
     queue: asyncio.Queue = asyncio.Queue()
     mark = _sink.set(queue)
     key = (client, json.dumps(req_id))
-    task = asyncio.ensure_future(_agent_call(client, name, args))   # the task keeps the context it was made in, so its window requests report to the queue
+    task = asyncio.ensure_future(_agent_call(client, name, args, cli))   # the task keeps the context it was made in, so its window requests report to the queue
     _sink.reset(mark)
     _inflight[key] = task
     event = lambda msg: f"event: message\ndata: {json.dumps(msg)}\n\n"
@@ -1411,11 +1423,15 @@ async def mcp(request: Request) -> Response:
         return Response(content=json.dumps(_err(None, -32700, "Parse error")), media_type="application/json", status_code=400)
     if isinstance(msg, list):
         return Response(content=json.dumps(_err(None, -32600, "Batches are not supported")), media_type="application/json", status_code=400)
+    if not isinstance(msg, dict):
+        return Response(content=json.dumps(_err(None, -32600, "Invalid Request: send one JSON-RPC object")), media_type="application/json", status_code=400)
     req_id, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
     if req_id is None:   # a notification
         if method == "notifications/cancelled" and isinstance(params, dict) and params.get("requestId") is not None:
             _cancel(_client_of(request, params, request.headers.get("mcp-session-id"))[0], params["requestId"])
         return Response(status_code=202)
+    if not isinstance(params, dict) or not isinstance(params.get("_meta") or {}, dict):
+        return Response(content=json.dumps(_err(req_id, -32602, "Invalid params: params and params._meta must be objects")), media_type="application/json", status_code=400)
     headers: dict[str, str] = {}
     sid = request.headers.get("mcp-session-id")
     meta = params.get("_meta") or {}
@@ -1453,7 +1469,7 @@ async def mcp(request: Request) -> Response:
         out = _ok(req_id, {"tools": [t for t in TOOLS if t["name"] in CORE] if core else TOOLS}, modern, cacheable=True)
     elif method == "tools/call":
         name, args = params.get("name"), params.get("arguments") or {}
-        if name in NAMES and isinstance(args, dict):
+        if isinstance(name, str) and name in NAMES and isinstance(args, dict):
             args = {k: v for k, v in args.items() if v is not None}   # null reads as left out
             why = _invalid(args, SCHEMAS[name], "")
             if why:
@@ -1464,11 +1480,12 @@ async def mcp(request: Request) -> Response:
                 out = _ok(req_id, _fail(f"{name} was not run: this agent already has {MAX_PER_CLIENT} calls waiting. Wait for one to finish, or cancel one, then retry."), modern)
             else:
                 client = _client_of(request, params, sid)[0]
+                cli = _from_cli(request, params, sid)
                 key = (client, json.dumps(req_id))
                 token = meta.get("progressToken")
                 if token is not None and "text/event-stream" in request.headers.get("accept", ""):   # progress asked for: notifications/progress, then the result, as an event stream
-                    return StreamingResponse(_stream_call(req_id, modern, client, name, args, token), media_type="text/event-stream", headers=headers)
-                task = asyncio.ensure_future(_agent_call(client, name, args))
+                    return StreamingResponse(_stream_call(req_id, modern, client, name, args, token, cli), media_type="text/event-stream", headers=headers)
+                task = asyncio.ensure_future(_agent_call(client, name, args, cli))
                 _inflight[key] = task
                 try:
                     if await _until_gone(request, task):

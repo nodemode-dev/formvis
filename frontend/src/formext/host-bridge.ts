@@ -193,7 +193,7 @@ export class ExtensionHost {
       frame.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
     }
     const pending = new Map<number, Pending>();
-    let seq = 0;
+    let seq = 0, hellos = 0, shown: Parameters<Frame['activate']>[0] | null = null;
     let ready: () => void = () => undefined;
     const loaded = new Promise<void>((resolve) => (ready = resolve));
     const post = (body: Record<string, unknown>) => frame.contentWindow?.postMessage({ formext: 1, jsonrpc: '2.0', ...body }, '*');
@@ -211,7 +211,17 @@ export class ExtensionHost {
         else waiting.resolve(msg.result);
         return;
       }
-      if (msg.method === 'host.hello') ready();
+      if (msg.method === 'host.hello') {
+        if (hellos++) {
+          for (const w of pending.values()) {
+            clearTimeout(w.timer);
+            w.reject(new HostError(ERR.CANCELLED, 'the panel reloaded'));
+          }
+          pending.clear();
+          if (shown) void send('ext.activate', shown).catch(() => undefined);
+        }
+        ready();
+      }
       const method = String(msg.method);
       opts.onRequest?.(method, 'start');
       try {
@@ -242,7 +252,10 @@ export class ExtensionHost {
     const handle: Frame = {
       ext,
       frame,
-      activate: (activation) => send('ext.activate', activation),
+      activate: (activation) => {
+        if (activation.reason === 'panel') shown = activation;
+        return send('ext.activate', activation);
+      },
       send,
       dispose: () => {
         window.removeEventListener('message', onMessage);
@@ -294,7 +307,7 @@ export class ExtensionHost {
   }
 
   broadcast(name: string, data: unknown) {
-    for (const f of this.frames) f.frame.contentWindow?.postMessage({ formext: 1, jsonrpc: '2.0', method: 'ext.event', params: { name, data } }, '*');
+    for (const f of this.frames) if (f.ext.permissions.includes('document') && this.isGranted(f.ext)) f.frame.contentWindow?.postMessage({ formext: 1, jsonrpc: '2.0', method: 'ext.event', params: { name, data } }, '*');
   }
 
   setTheme(theme: Theme) {

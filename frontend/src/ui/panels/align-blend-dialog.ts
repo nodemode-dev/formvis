@@ -23,6 +23,7 @@ export class AlignBlendDialog extends Dialog {
   private halo = 0;
   private depth = false;
   private spatial = true;
+  private busy = false;
   private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
 
   static get(engine: Engine, mode: AlignBlendMode): AlignBlendDialog {
@@ -56,7 +57,7 @@ export class AlignBlendDialog extends Dialog {
   }
 
   /** Runs without the dialog; resolves to a sentence about what happened. */
-  static async execute(engine: Engine, mode: AlignBlendMode, o: AlignBlendOptions): Promise<string> {
+  static async execute(engine: Engine, mode: AlignBlendMode, o: AlignBlendOptions, live: () => boolean = () => true): Promise<string> {
     const ids = AlignBlendDialog.layers(engine);
     if (ids.length < 2) return 'Select two or more pixel layers.';
     const blobs: Blob[] = [];
@@ -76,6 +77,7 @@ export class AlignBlendDialog extends Dialog {
         x.drawImage(bmp, 0, 0);
         bent.push(x.getImageData(0, 0, W, H));
       }
+      if (!live()) return 'Cancelled.';
       const lens = o.vignette && !bent.some(Boolean) ? (r as { gains?: Array<VignetteGain | null> }).gains ?? [] : [];
       const ok = bent.some(Boolean) || lens.some(Boolean)
         ? engine.edit('Auto-Align Layers', () => {
@@ -99,6 +101,7 @@ export class AlignBlendDialog extends Dialog {
     const r = await api.mergeBlend(blobs, o.method ?? 'panorama', !!o.seamless, o.halo ?? 0, !!o.depth, o.spatial !== false);
     if (o.method === 'multiband' && r.blended && engine.current) {
       const W = engine.current.doc.width, H = engine.current.doc.height, bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${r.blended}`)).blob()), raster = new Raster(W, H);
+      if (!live()) return 'Cancelled.';
       raster.ctx.drawImage(bmp, 0, 0, W, H);
       raster.touch();
       engine.insertRasterLayer(raster, 'Multiband Blend', 0, 0, {}, 'Auto-Blend Layers');
@@ -106,9 +109,11 @@ export class AlignBlendDialog extends Dialog {
     }
     const masks: ImageBitmap[] = [];
     for (const m of r.masks) masks.push(await createImageBitmap(await (await fetch(`data:image/png;base64,${m}`)).blob()));
+    if (!live()) return 'Cancelled.';
     const ok = engine.applyLayerEdits(ids.map((id, i) => ({ id, mask: masks[i], gain: o.seamless ? r.tones[i] : undefined, field: o.seamless ? r.fields?.[i] ?? undefined : undefined })), 'Auto-Blend Layers');
     if (ok && r.depth && engine.current) {
       const W = engine.current.doc.width, H = engine.current.doc.height, bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${r.depth}`)).blob()), raster = new Raster(W, H);
+      if (!live()) return 'Cancelled.';
       raster.ctx.drawImage(bmp, 0, 0, W, H);
       raster.touch();
       engine.insertRasterLayer(raster, 'Depth Map', 0, 0, { visible: false }, 'Depth Map from Auto-Blend');
@@ -142,11 +147,14 @@ export class AlignBlendDialog extends Dialog {
   show(): void { setText(this.note, ''); this.open(); }
 
   private async apply(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
     setText(this.note, this.mode === 'align' ? 'Aligning...' : 'Blending...');
     try {
-      const msg = await AlignBlendDialog.execute(this.engine, this.mode, { projection: this.projection, method: this.method, seamless: this.seamless, vignette: this.vignette, reference: this.reference, distortion: this.distortion, registration: this.registration, halo: this.halo, depth: this.depth, spatial: this.spatial });
+      const msg = await AlignBlendDialog.execute(this.engine, this.mode, { projection: this.projection, method: this.method, seamless: this.seamless, vignette: this.vignette, reference: this.reference, distortion: this.distortion, registration: this.registration, halo: this.halo, depth: this.depth, spatial: this.spatial }, () => this.isOpen);
+      if (!this.isOpen) return;
       this.close();
       this.engine.notice(msg);
-    } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The engine could not do this.'); }
+    } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The engine could not do this.'); } finally { this.busy = false; }
   }
 }

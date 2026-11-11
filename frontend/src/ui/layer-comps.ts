@@ -13,6 +13,7 @@ type Row = { key: string; id: string; name: string; comment: string; missing: nu
 export class LayerCompsPanel {
   private readonly rows: HTMLElement;
   private readonly empty: HTMLElement;
+  private readonly compRows: HTMLElement;
   private readonly count: HTMLElement;
   private readonly foot: HTMLButtonElement[];
   private readonly open = new Set<string>();
@@ -37,11 +38,12 @@ export class LayerCompsPanel {
       `<section class="cv-layer-comps" aria-label="Layer Comps">` +
       `<div class="cv-panel-head"><span class="cv-comps-title">${icon('layers', 14)}<span>Layer Comps</span></span><span></span><span class="cv-comps-count"></span></div>` +
       `<div class="cv-comps-list" role="listbox" aria-label="Layer Comps"><div class="cv-comp-row cv-comp-state" role="option"><span class="cv-comp-mark"></span><span class="cv-comp-name">Last Document State</span></div>` +
-      `<div class="cv-comps-empty">No layer comps yet. Use New to record the current state.</div></div>` +
+      `<div class="cv-comps-empty">No layer comps yet. Use New to record the current state.</div><div class="cv-comps-rows"></div></div>` +
       `<div class="cv-panel-foot">${btn('previous', 'Previous comp', 'chevronLeft')}${btn('next', 'Next comp', 'chevronRight')}${btn('update', 'Update the selected comp', 'refresh')}${btn('options', 'Layer Comp Options', 'settings')}${btn('duplicate', 'Duplicate the selected comp', 'duplicate')}${btn('new', 'New layer comp', 'add')}${btn('delete', 'Delete the selected comp', 'delete')}</div></section>`);
     const section = q(root, '.cv-layer-comps');
     this.rows = q(section, '.cv-comps-list');
     this.empty = q(section, '.cv-comps-empty');
+    this.compRows = q(section, '.cv-comps-rows');
     this.count = q(section, '.cv-comps-count');
     this.foot = Array.from(section.querySelectorAll<HTMLButtonElement>('.cv-panel-foot [data-act]'));
     section.querySelector('.cv-panel-foot')!.addEventListener('click', (e) => {
@@ -109,7 +111,7 @@ export class LayerCompsPanel {
     });
     const list: Row[] = comps.map((c) => ({ key: c.id, id: c.id, name: c.name, comment: c.comment, ...(d && c.id === active ? compStatus(d, c) : { missing: d ? compStatus(d, c).missing : 0, changed: 0 }) }));
     for (const id of [...this.open]) if (!comps.some((c) => c.id === id)) this.open.delete(id);
-    patchList<Row>(this.rows, list, {
+    patchList<Row>(this.compRows, list, {
       key: (r) => r.key,
       create: (r) => {
         const row = el(`<div class="cv-comp-row" role="option"><span class="cv-comp-mark" title="Apply this comp"></span><span class="cv-comp-name"></span><button class="cv-comp-twist" type="button" title="Show the comment" aria-label="Comment">${icon('chevronDown', 12)}</button><div class="cv-comp-comment"></div></div>`);

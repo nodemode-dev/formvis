@@ -25,6 +25,7 @@ simplest case needs no file at all.
 """
 
 import json
+import os
 import shlex
 import subprocess
 import time
@@ -335,13 +336,14 @@ def run_command_slot(
 ) -> dict:
     """Run a command slot with its template filled; the file at {out} is the result."""
     filled = []
+    seed = int(seed) if seed is not None else int.from_bytes(os.urandom(4), "little")
     values = {
         "prompt": prompt,
         "out": str(out),
         "width": str(width),
         "height": str(height),
         "seconds": str(seconds),
-        "seed": str(seed if seed is not None else 0),
+        "seed": str(seed),
     }
     for part in slot["command"]:
         text = part
@@ -358,4 +360,4 @@ def run_command_slot(
     if not out.is_file() or out.stat().st_size == 0:
         raise ValueError(f"the runner finished but wrote nothing at {out}")
     report(1.0)
-    return {"path": str(out), "model": slot["id"], "provider": "command", "seconds": round(time.time() - started, 1)}
+    return {"path": str(out), "model": slot["id"], "provider": "command", "seconds": round(time.time() - started, 1), "seed": seed}

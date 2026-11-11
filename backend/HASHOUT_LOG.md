@@ -2,6 +2,477 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 2.3.4: the review fixes and the version lines · _v2.3.4 (CHANGELOG.md; the version sites)
+
+- Kind: release · logged 2026-11-11. Every engine, setup, packaging and shell change of 2.3.4 has its own entry below, one per fix, each naming the review finding it answers; the frontend's are in `frontend/HASHOUT_LOG.md`. Deferred findings are listed in the fixers' logs, not here.
+- Verified at release: `npx tsc --noEmit` clean; vitest 48 files, 222 tests passed; backend pytest on this machine without OpenCV: 60 passed, 8 skipped, and every other engine test stopped at `import cv2` (OpenCV is not installed here; 8 modules not collected for the same reason); `cargo check --locked` of native/formvis-render (all targets) and native/formvis-kernels clean; `./formvis counts --check` accurate; `agents sync --check` in step. The desktop shell (src-tauri) was not built (no WebKit here).
+- Verified afterwards, on a machine with the pinned requirements: every job of `ci.yml` with its own commands (engine tests on Python 3.12: 317 passed, 9 skipped; window smoke: 2 passed); the browser suite as `e2e.yml` runs it, 12 shards, on SwiftShader. Its first pass failed six tests, all on two review fixes: the options bar refit (five tests; withdrawn, see `frontend/HASHOUT_LOG.md`) and play-action from the menu path (one test; fixed, same log). All six pass after those two changes, and nothing else failed.
+- Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "2.3.3"
+version = "2.3.3"
+version = "2.3.3"
+ "version": "2.3.3",
+```
+
+## A window that never polled is not live on a machine that has just started · _v2.3.4 (app/routers/mcp.py _live, _open_window)
+
+- Kind: fix · logged 2026-11-11 · found in formpath, where the same line failed CI on a runner that had been up for under 30 s.
+- Why: `_seen` and `_opened_at` start at 0.0 and were compared with `time.monotonic()` as if 0.0 were long ago. That clock counts from when the machine started, so for the first 30 s after a start `_live()` was true with no window ever seen, and an agent call was queued for consent (180 s) instead of being told formvis is not open; for the first 60 s `_open_window()` held back as if a window had just been opened.
+- Now: `_live()` needs `_seen > 0` for the poll half (the `_taken` half is unchanged), and `_open_window()` only holds back when `_opened_at > 0`.
+- Checked: a scratch probe outside the repo sets the clock and reads `_live()` with nothing ever seen. Clock at 3 s: True before, False after. Clock at 100 s: False both times. Engine tests with the clock starting at 3 s: 317 passed, 9 skipped.
+- Replaced, quoted exactly: `    return now - _seen <= LIVE or any(now - t < 600 for t in _taken.values())` and, in `_open_window`, `config.is_desktop() or time.monotonic() - _opened_at < 60:`
+
+## The desktop engine exits when the shell that started it is gone · _v2.3.4 (formvis_engine.py watch_parent)
+
+- Kind: fix · logged 2026-11-11 · handoff from fixer N, review formvis__native-tauri-packaging F8 (engine half).
+- Why: in a one-file build the server's parent is the PyInstaller launcher, which outlives a shell killed by a panic, kill -9 or a web view crash, so watching `getppid()` never fired: the server kept its port and memory and the _MEI folder stayed.
+- Now: when FORMVIS_SHELL_PID (the shell's pid, passed since b73fbca) is a positive integer, `run()` loops while `os.kill(pid, 0)` finds it (ProcessLookupError: gone; PermissionError: alive), then removes the _MEI folder and exits as before; without it the getppid watch is unchanged. POSIX only, as before. A shell left as an unreaped zombie still counts as alive.
+- Checked: a child running `watch_parent` with the variable set to a stand-in process exited 1.1 s after that process was killed; without the variable it kept running under a live parent. Not run on a frozen build.
+- Replaced, quoted exactly: `    if parent <= 1:` and `        while os.getppid() == parent:` / `            time.sleep(2)`
+
+## A model downloaded after a Relight is used on the next one · _v2.3.4 (app/localgen/relight_split.py _split)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F8.
+- Why: the split cache key held only selfie-multiclass and YuNet readiness, from the old classic split; `_scene_split` now depends on U2-Net, Depth Anything and MoGe-2 with its runtime, so a download of one of them did not change the cached result for the same picture.
+- Now: the key adds `ready("u2net-onnx")`, `ready("depth-anything-v2-small")` and `relight_scene.moge_ready()`.
+- Checked: with a stub cv2 and a counting `_scene_split`: the same picture splits once; after depth-anything is ready it splits again.
+- Replaced, quoted exactly: `    key = hashlib.sha1(data).hexdigest() + engine + str(model_manager.ready(PARTS)) + str(model_manager.ready("yunet-face"))`
+
+## FLUX.2 [klein] cannot be installed where it never runs · _v2.3.4 (app/localgen/klein.py start_install; app/localgen/model_manager.py start_download)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F9.
+- Why: on Windows and Linux the klein install and a klein model download went ahead (several GB of MLX weights and an mflux environment) although `policy()` does not offer klein there; only the licence was checked.
+- Now: both answer 400 "FLUX.2 [klein] runs on Apple silicon only" when `_is_apple_silicon()` is false, before the licence check.
+- Checked: both entry points answer 400 on this Linux machine. Not run on Apple silicon.
+- Replaced, quoted exactly: `        from .klein import consent as klein_consent` (now beside `from .klein import _is_apple_silicon`).
+
+## "One custom address" is refused for a model of several files · _v2.3.4 (app/localgen/model_manager.py set_source)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F6.
+- Why: a custom source is one exact URL that `source_for` gives for every file, so a multi-file model always failed on a checksum mismatch and could never be installed that way.
+- Now: `set_source` raises ValueError (the route's 400) for mode "custom" when the model has more than one file; a mirror still works. A custom source saved earlier is left as it is. No line was removed.
+- Checked: krea-2-mlx-q8 custom refused; lama-inpaint custom and krea-2-mlx-q8 mirror saved.
+
+## A command slot with a random seed gets a fresh seed per picture · _v2.3.4 (app/localgen/local_models.py run_command_slot)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F5.
+- Why: a None seed (random, the default) filled `{seed}` with "0", so every picture of a command slot batch was the same.
+- Now: a None seed becomes `int.from_bytes(os.urandom(4), "little")` for each call, and the result has `"seed"`.
+- Checked: `printf {seed} > {out}` twice with no seed wrote two different seeds matching the results; seed 42 stays 42.
+- Replaced, quoted exactly: `        "seed": str(seed if seed is not None else 0),` and `    return {"path": str(out), "model": slot["id"], "provider": "command", "seconds": round(time.time() - started, 1)}`
+
+## One FLUX.2 [klein] picture withheld by the filter no longer fails the batch · _v2.3.4 (app/localgen/klein.py generate_to_file; app/localgen/generate.py _generate_local)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F4.
+- Why: klein raised ValueError for a withheld picture and the loop had no handler, so the whole batch ended in "error" and the pictures already made were lost; Krea 2 notes the picture and keeps the rest.
+- Now: klein deletes the picture and returns `{"withheld": True, "nsfw", "seed"}` like `krea2.generate_many`, and the klein branch of `_generate_local` appends the same note and continues.
+- Checked: a fake klein runner withholding call 3 of 4: "done", three pictures, one note.
+- Replaced, quoted exactly: `            raise ValueError(f"The content filter withheld this picture (NSFW score {verdict['nsfw']:.2f}).")`
+
+## The browser window opened for an agent uses the engine's port · _v2.3.4 (app/routers/mcp.py _open_window)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F13.
+- Why: the URL named `config.BACKEND_PORT`, so an engine started with `FORMVIS_PORT=8300 ./formvis backend` and a built `frontend/dist` opened 8190 for an agent's first call and the call failed after 45 s.
+- Change: the port is `FORMVIS_PORT` when set and not 0 (what `boot_backend` gives uvicorn), else `BACKEND_PORT`, as `services/terminal.py` reads it; the desktop app, which sets 0, never opens a browser window.
+- Checked: `_open_window` with `webbrowser.open` stubbed: 8300 opens `http://127.0.0.1:8300/`, empty or 0 opens 8190.
+- Replaced, quoted exactly: `    url = f"http://127.0.0.1:{config.BACKEND_PORT}/" if config.dist_dir() else f"http://localhost:{config.FRONTEND_PORT}/"`.
+
+## Agent file reads and writes encode and decode off the event loop · _v2.3.4 (app/routers/mcp.py _run)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F12.
+- Why: `open_file`, `place_image` and `glb_place`/`glb_info` read the file in a thread but base64-encoded it (up to 512 MB) on the event loop, and `timeline_render`, `export_mask`/`export_layer` and `save_project`/`export_image` decoded the window's base64 there; for a few hundred MB that held every other request, the bridge poll and the terminal streams for seconds.
+- Change: `data = await asyncio.to_thread(lambda: base64.b64encode(path.read_bytes()).decode())` at the three reads, `blob = await asyncio.to_thread(base64.b64decode, data)` at the three writes. Left as they were: the `json.dumps` in `bridge_next` and `await request.json()` in `bridge_result`.
+- Checked: a scratch script through `_run` with the window call stubbed: open_file sends the file's bytes; export_mask and timeline_render write the decoded bytes. The timing check was not run.
+- Replaced, quoted exactly: `            data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()` (three times) and `            blob = base64.b64decode(data)` (three times).
+
+## Malformed PNM numbers, profile data and XPM rgbi colours answer 4xx · _v2.3.4 (app/services/pnm.py _Reader.number, read; app/services/colour.py _b64 new, _profile, _raw, _ref_bytes; app/services/xpm.py _colour)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F10.
+- Why: built-in exceptions escaped the parsers' own error classes, so these gave a 500: a PNM number over 4,300 digits (int string limit), `icc` that is not valid base64 or not a string, a proof ref with neither `icc` nor `id` (KeyError), and an XPM `rgbi:1..2/0/0`.
+- Now: pnm refuses a header number or a P2/P3 word longer than nine digits (PnmError); colour decodes `icc` through `_b64` (ColourError on ValueError or TypeError) and `_raw` raises ColourError when neither key is set; xpm raises XpmError when an rgbi part is not a number.
+- Checked: each input raises the module's error; a valid P2 file and `rgbi:1/0.5/0` still read.
+- Replaced, quoted exactly:
+  - `pnm._Reader.number`: `        if not t.isdigit():`
+  - `pnm.read`: `        if len(words) < count or not all(w.isdigit() for w in words[:count]):`
+  - `colour._profile`: `        data = base64.b64decode(ref["icc"])`
+  - `colour._raw`: `    return base64.b64decode(ref["icc"]) if ref.get("icc") else _find(str(ref["id"]))`
+  - `colour._ref_bytes`: `        return base64.b64decode(ref["icc"])`
+  - `xpm._colour`: `        r, g, b = (round(min(1.0, float(p)) * 255) for p in m.groups())`
+
+## The README's line counts leave tests out · _v2.3.4 (setup/line_counts.py counts; README.md Size line)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts (outside-area note, handed to the lead).
+- Why: the README and line_counts.py say "tests excluded", but `counts()` took every tracked .ts under frontend/src (13 *.test.ts files) and every .rs under native/ (native/formvis-render/tests).
+- `counts()` skips files ending in `.test.ts` and paths with `/tests/`. Rust fell from 6,7xx to 6,207, so the README Size line says 6,200 of Rust. Replaced, quoted exactly: `            if f.endswith(ext) and f.startswith(prefixes):` and `6,700 of Rust`.
+- Checked: `line_counts.py --check` accurate; tests/test_readme.py 2 passed.
+
+## Bad input on window routes answers 4xx, not 500 · _v2.3.4 (app/routers/large.py assemble; app/routers/bands.py _write, read_open; app/routers/io.py encode_cmyk_psd, encode_lab_psd; app/routers/nodemode.py send)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F10.
+- Why: unchecked input raised past the handlers: `assemble` read `w["x"]` from places that are not objects or lack whole-number x and y; `_write` took `rows[0]` of an empty body; `read_open` hit `struct.error` on a PNG shorter than its header and left the file open; the two PSD encoders read `json.loads(meta)` and `m["width"]` unguarded; `nodemode.send` called `m.get` on non-objects and `int()` on a non-numeric width after earlier files were uploaded.
+- Change: `assemble` asserts each place is an object with int x and y (422); `_write` refuses an empty body with its row check (400); `read_open` reads the header in a try that closes the file (400); the encoders read meta and the size in a try for ValueError, KeyError and TypeError (422); `nodemode.send` asserts every item is an object with numeric width and height before uploading (422).
+- Checked: a scratch app with the four routers (OpenCV and psd-tools stubbed): each bad input answers 422 or 400. `tests/test_nodemode.py`, `test_large.py`, `test_legacy_bands_video.py`: 22 passed (OpenCV stubbed).
+- Replaced, quoted exactly: `bands.py` `_write`: `    if len(body) % row:` and `        raise HTTPException(400, "Not a whole number of rows.")`; `read_open`'s four header lines are now indented under `try`; in each encoder `    m = json.loads(meta)` and `    W, H, raw = int(m["width"]), int(m["height"]), file.file.read()` are now under `try`.
+
+## The nginx hosting template no longer proxies to an engine that refuses it · _v2.3.4 (packaging/web/nginx.conf)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `packaging/web/nginx.conf` `location /api/`; review formvis__native-tauri-packaging F6.
+- Wrong: the block proxied `/api/` to 127.0.0.1:8190 with `Host $host`; `LocalGuard._permitted` refuses a Host that is not loopback and an Origin that is not one of `config.window_origins()`, so every request got 403. Passing the guard would mean exposing the local engine to the public site, which the guard is there to prevent. The block is removed and the template says the hosted page runs without the engine.
+- Verified: read against `app/core/local_guard.py`. Not run: `nginx -t` (nginx not installed).
+- Replaced, quoted exactly:
+
+```text
+    location /api/ {
+        proxy_pass http://127.0.0.1:8190;
+        proxy_set_header Host $host;
+        client_max_body_size 512m;
+    }
+
+```
+
+## A failed save keeps agents.json as it was · _v2.3.4 (app/services/agents.py _save)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F9.
+- Why: `write_text` truncated agents.json before writing, and a full disk's OSError was swallowed, so the file could be left empty; the next start then lost every Deny, the tool policies and the agents' folder and reply limits.
+- Now: written to a `tempfile.mkstemp` file in the data folder and moved over with `os.replace`; on failure the temporary file is removed and the old file kept. The file is now created 0600.
+- Checked: temporary data folder: a save, then a save failing with ENOSPC: the first contents stay, no temporary file left.
+- Replaced, quoted exactly: `        _file().write_text(json.dumps({"policies": _policies, "limits": _limits}), encoding="utf-8")`
+
+## cli hdr --times 1/0 prints the usage message · _v2.3.4 (setup/cli_offline.py hdr_cmd)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F13.
+- Why: `eval_fraction("1/0")` raised ZeroDivisionError, which `hdr_cmd` did not catch, so the command ended in a traceback.
+- `hdr_cmd` catches `(ValueError, ZeroDivisionError)` and prints the --times message, exit 2. Replaced, quoted exactly: `    except ValueError:` (the one after the --times parse).
+- Checked: `cli.py hdr h1.png h2.png --times 1/0` printed the message and exited 2.
+
+## clean --all on Windows removes the venv on its own · _v2.3.4 (setup/clean.bat)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F12.
+- Why: in `if exist A rmdir A & if exist B rmdir B` the second command belongs to the first `if`, so with frontend\node_modules already gone backend\venv was kept.
+- Each `if exist ... rmdir` is now in its own parentheses inside the `--all` block. Replaced, quoted exactly: `if /i "%~1"=="--all" ( if exist frontend\node_modules rmdir /s /q frontend\node_modules & if exist backend\venv rmdir /s /q backend\venv )`.
+- Not run on Windows; reasoned from cmd's parsing. CRLF kept.
+
+## Store manifests list every release and name the FormVis bundles · _v2.3.4 (packaging/linux/ai.nodemode.formvis.metainfo.xml, packaging/flatpak/ai.nodemode.formvis.yml, packaging/homebrew/formvis.rb)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to the metainfo `<releases>`, the Flatpak deb sources and their `x-checker-data`, the cask `url` and `app`; review formvis__native-tauri-packaging F10.
+- Wrong: the metainfo's newest release was 1.96.4. Tauri names the bundles after productName FormVis since 1.99.1, but the Flatpak url-queries selected `"formvis_" + $version + "_<arch>.deb"`, which never matches, and the cask named `formvis_#{version}_aarch64.dmg` and `formvis.app`. Now the metainfo lists 1.96.5 to 2.3.3 with their CHANGELOG dates, and the Flatpak deb URLs and url-queries and the cask's url and app use `FormVis`.
+- Left to the owner at release, as the 1.96.5 entry records: the version and sha256 lines of the Flatpak manifest (1.89.0), the cask (1.89.0) and the FreeBSD Makefile and distinfo (1.90.7), and the checkers that still read `nodemode-ai/formvis` releases. The metainfo is not in VERSION_SITES, so the release commit should add its newest `<release>` by hand.
+- Verified: the metainfo parses and every date matches `CHANGELOG.md`; the Flatpak manifest parses as YAML; `ruby -c` on the cask. Not run: `appstreamcli validate` (not installed), `flatpak-external-data-checker`, `brew audit`.
+- Replaced, quoted exactly:
+
+```text
+  url "https://github.com/nodemode-ai/formcompiler/releases/download/formvis-v#{version}/formvis_#{version}_aarch64.dmg"
+  app "formvis.app"
+        url: https://github.com/nodemode-ai/formcompiler/releases/download/formvis-v1.89.0/formvis_1.89.0_amd64.deb
+          url-query: .assets[] | select(.name == "formvis_" + $version + "_amd64.deb") | .browser_download_url
+        url: https://github.com/nodemode-ai/formcompiler/releases/download/formvis-v1.89.0/formvis_1.89.0_arm64.deb
+          url-query: .assets[] | select(.name == "formvis_" + $version + "_arm64.deb") | .browser_download_url
+```
+
+## A TIFF directory cut inside an entry reads as not raw, no 500 · _v2.3.4 (app/services/raw_develop.py _ifd0, _ifd_at)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F8.
+- Why: both directory readers kept an entry with 8 to 11 bytes left, and `sniff` (also `_baseline`, `gain_maps`) unpacked its 4-byte value outside a try, so an upload with a cut Make entry beside tag 330 raised struct.error from `imaging.is_raw`, a 500.
+- Now: each loop breaks at the first entry shorter than 12 bytes. No line was removed.
+- Checked: the review's 32-byte file: struct.error before, `sniff` returns "" after.
+
+## mcp, cli and headless find an engine on FORMVIS_PORT · _v2.3.4 (setup/mcp_stdio.py URL; setup/cli.py URL; setup/cli_offline.py URL; setup/headless.py ENGINE)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F10.
+- Why: boot_backend, serve, doctor and boot_all honour FORMVIS_PORT, but these four defaulted to 8190, so with FORMVIS_PORT=9000 the MCP autostart served on 9000 and polled 8190 for 60 s, and cli and headless said the engine was not answering.
+- The default address takes `os.environ.get('FORMVIS_PORT', '').lstrip('0') or 8190`: unset, empty and 0 (the desktop sidecar's free-port value, inherited by its terminals) keep 8190. FORMVIS_MCP_URL and FORMVIS_URL still win.
+- Replaced, quoted exactly: `URL = os.environ.get("FORMVIS_MCP_URL", "http://127.0.0.1:8190/mcp")`; `URL = os.environ.get("FORMVIS_URL", "http://127.0.0.1:8190").rstrip("/")` (cli.py, cli_offline.py); `ENGINE = os.environ.get("FORMVIS_URL", "http://127.0.0.1:8190").rstrip("/")`.
+- Checked by importing the four with FORMVIS_PORT unset, 0 and 9000, and `FORMVIS_PORT=9000 formvis cli version` against a stand-in server on 9000.
+
+## Malformed JSON-RPC to /mcp answers a JSON-RPC error · _v2.3.4 (app/routers/mcp.py mcp)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F9.
+- Why: a body that is JSON but not an object, `params` that is a list or string, a non-object `params._meta`, or a list or object as the tools/call `name` raised AttributeError or TypeError in `mcp()`: an HTTP 500 with no JSON-RPC body.
+- Change: a non-object body answers -32600 and non-object `params` or `params._meta` -32602 (status 400, as the parse and batch errors); tools/call tests `isinstance(name, str)` before `name in NAMES`.
+- Checked: a scratch app with the mcp router: each malformed body answers -32600 or -32602; tools/list still answers.
+- Replaced, quoted exactly: `        if name in NAMES and isinstance(args, dict):`.
+
+## Undo keys and export names checked before the path is built · _v2.3.4 (app/routers/undo.py _find; app/routers/large.py exported)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F11.
+- Why: `_find` tested `(d / f"{key}.z").exists()` before `_path` validated the key, so on Windows `DELETE /api/undo/..%5C..%5Csomefile` (a backslash after decoding) found and deleted an existing `.z` outside the store (`get` decompressed it). `exported` refused `/` and `\` but not a drive prefix, and on Windows `Path("C:/.../exports") / "D:name.png"` is the drive-relative `D:name.png`.
+- Change: `_find` calls `_path(key)` first (400 unless 32 hex digits); `exported` also refuses `":"` (assembled names are letters, digits, space, `-` and `_`).
+- Checked: `_find` answers 400 for `..\x`, `C:x` and `../x`; the PureWindowsPath join shown above. Not run on Windows.
+- Replaced, quoted exactly: `    return _path(key)` (end of `_find`), and `    if "/" in file or "\\" in file or file.startswith(".") or not path.is_file():`.
+
+## A JSON line that is not an object no longer ends the MCP stdio server · _v2.3.4 (setup/mcp_stdio.py forward)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F11.
+- Why: only lines that failed `json.loads` were answered; a JSON-RPC batch `[{...}]`, a bare value or a non-object `params` raised `AttributeError: 'list' object has no attribute 'get'` out of `main`, and the client lost every tool.
+- `forward` answers such a line with `-32600 Invalid Request` (the request's id when it has one) and the loop reads on.
+- Checked by piping a batch, `5`, a list as params and a ping into the server in attach mode: three Invalid Request answers, then the ping answered; the old file stopped at the first line.
+
+## Overlapping large-picture calls no longer leave the bomb limit raised · _v2.3.4 (app/services/large.py _raised new, _raised_lock new, _unbounded; app/services/imaging.py _truncated_lock new, _truncated_jpeg)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F7.
+- Why: `_unbounded` saved and restored the process-wide `Image.MAX_IMAGE_PIXELS` with no lock, so two overlapping calls (A in, B in, A out, B out) left it at 65,535 squared for the session and every later untrusted decode lost the 100 MP guard. `_truncated_jpeg` switched `LOAD_TRUNCATED_IMAGES` on and off from any thread.
+- Now: `_unbounded` counts its open blocks under `_raised_lock`; the first in saves and raises the limit, the last out restores it. `_truncated_jpeg` holds `_truncated_lock` for the whole decode. While any large operation runs, other decodes still see the raised limit, as before (moving off the globals is a larger change).
+- Checked: two threads overlapping in the review's order: raised during B, `config.MAX_PIXELS` after both.
+- Replaced, quoted exactly:
+  - `_unbounded`: `    old = Image.MAX_IMAGE_PIXELS` / `    Image.MAX_IMAGE_PIXELS = LARGEST * LARGEST` / `    try:` / `        yield` / `    finally:` / `        Image.MAX_IMAGE_PIXELS = old`
+  - `_truncated_jpeg`: the same body, now indented under `with _truncated_lock:`.
+
+## The CI release notes step fails when the script fails · _v2.3.4 (.github/workflows/ci.yml lint)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `.github/workflows/ci.yml` job `lint`, step "Release notes script reads the changelog"; review formvis__native-tauri-packaging F11.
+- Wrong: the step piped `setup/release_notes.py` into `head -5`; a step with no `shell:` runs as `bash -e {0}` without pipefail, so its status was `head`'s and a raising script stayed green. The pipe is removed, so the step ends with the script's status. `shell: bash` (pipefail) was not chosen: `head` closing early could then fail the step with a broken pipe.
+- Verified: the step's command run locally (exit 0); `ci.yml` parses as YAML. Not run: the workflow on GitHub.
+- Replaced, quoted exactly:
+
+```text
+        run: python setup/release_notes.py "v$(sed -n 's/^## \([0-9][0-9.]*\) .*/\1/p' CHANGELOG.md | head -1)" | head -5
+```
+
+## A custom scratch disk starts each session empty · _v2.3.4 (app/routers/undo.py _taken new, scratch_set)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F8.
+- Why: `clear()` at the engine's start empties only `<data>/undo`; tiles in `<scratch>/formvis-undo` (Preferences > Performance, sent again by the window at every start) from earlier sessions, or a crash, were never deleted, so the folder grew without bound.
+- Change: `scratch_set` deletes the `*.z` files of a `formvis-undo` folder the first time this process takes it (after the write probe; the folder then goes into `_taken`), so a folder taken again in the same session keeps its live tiles. Like `clear()`, it assumes one engine per scratch folder at a time.
+- Checked: a scratch app with the undo router: a stale `.z` is gone after the PUT; a tile kept in folder A survives A, B, A again and reads back.
+
+## mcp --root lets menu calls through · _v2.3.4 (setup/mcp_stdio.py MENUS, CONTROL, outside_roots)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F8.
+- Why: `ui_menu_invoke` and `ui_menu_list` use `path` for a menu path ("File > Save"); under any root `outside_roots` checked it as a file and refused every menu call.
+- `MENUS` (`ui_menu_list`, `ui_menu_invoke`): their `path` is skipped; `CONTROL` maps `ui.menu.list` and `ui.menu.invoke` so control_call behaves the same. Replaced, quoted exactly: `        if not isinstance(value, str) or not value.strip():`.
+- Checked with a scratch call of `outside_roots`: menu calls pass, the write-back and folder refusals still hold.
+
+## The desktop app's terminals get the engine's real address · _v2.3.4 (app/services/terminal.py engine_port new, base_env)
+
+- Kind: fix · logged 2026-11-11 · handoff from the routers and native-tauri-packaging reviews.
+- Why: `base_env` built FORMVIS_ENGINE_URL from FORMVIS_PORT, which the desktop shell sets to 0 so the engine picks a free port, so every desktop terminal pointed at `http://127.0.0.1:0`.
+- Now: `engine_port()` returns FORMVIS_PORT (or `config.BACKEND_PORT`) as before; when that is 0 it reads `engine.port` in the data folder (written by `formvis_engine.announce_port` once uvicorn listens) and takes its port when its `pid` is this process.
+- Checked: temporary data folder: port 0 with no file stays :0; a file naming this pid and 51234 gives :51234; another pid's file is ignored; 8190 or unset gives :8190.
+- Replaced, quoted exactly: `    env["FORMVIS_ENGINE_URL"] = f"http://127.0.0.1:{os.environ.get('FORMVIS_PORT', config.BACKEND_PORT)}"`
+
+## cli stack, contact, fit, photomerge and hdr run on the engine's Python · _v2.3.4 (formvis py, cli branch)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F7.
+- Why: `setup/cli_offline.py` needs numpy, Pillow and OpenCV from backend/venv, but the launcher ran `python3 setup/cli.py`, so `./formvis cli fit ...` stopped with `ModuleNotFoundError: No module named 'numpy'`.
+- `formvis`: `py` is backend/venv/bin/python, else backend/venv/Scripts/python.exe, else python3 (as setup/counts and setup/bench pick); the cli branch uses it for `stack|contact|fit|photomerge|hdr` and keeps python3 for the rest. perf, headless and cli's --headless stay on python3, where the manual has Playwright installed. serve's `image.*` methods still run on python3.
+- Replaced, quoted exactly: `  cli) exec python3 "$here/setup/cli.py" "$@" ;;`.
+- Checked in a scratch tree with a numpy and Pillow venv as backend/venv: `cli fit some.png --width 100 --height 100` wrote some-fit.png in the caller's folder.
+
+## Merge to HDR keeps the chosen ghost base with estimated times · _v2.3.4 (app/routers/merge.py hdr)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F7.
+- Why: with no EXIF exposure times and none typed in, the estimation branch stored its median-bright reference in `base`, the person's chosen ghost base, so with Remove Ghosts on `pick` took the median photo and not the chosen one.
+- Change: the estimation's reference is the local `ref`; `base` reaches the ghost step unchanged (with -1 it still uses the middle exposure).
+- Checked: by reading only (hdr needs OpenCV and scipy, which the venv lacks).
+- Replaced, quoted exactly: `        base = int(np.argsort([float(np.median(l)) for l in lin])[len(lin) // 2])`, `            if k == base:`, `            ok = (l > 0.05) & (l < 0.85) & (lin[base] > 0.05) & (lin[base] < 0.85)`, `            times[k] = float(np.median(l[ok] / lin[base][ok])) if ok.sum() > 100 else 1.0`.
+
+## ffmpeg's report read as UTF-8 · _v2.3.4 (app/routers/video.py _probe, _frames, _encode)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F6.
+- Why: the `subprocess.run` calls had `text=True` and no encoding, so on Windows (Python before 3.15, no UTF-8 mode) ffmpeg's UTF-8 stderr was decoded with cp1252, and metadata whose UTF-8 holds 0x81, 0x8D, 0x8F, 0x90 or 0x9D (for example U+306E, E3 81 AE) raised UnicodeDecodeError: a 500 from probe, frames or encode.
+- Change: the four calls (the `-vsync` retry included) add `encoding="utf-8", errors="replace"`.
+- Checked: a clip titled with U+306E: decoding the report as cp1252 raises at byte 0x81; `_probe` with `subprocess.run` defaulting to cp1252 answers size, rate and duration. Not run on Windows.
+
+## A cancelled or failed local generation leaves nothing behind · _v2.3.4 (app/localgen/generate.py _generate_local: leftovers new, made, operation, guarded new; app/localgen/jobs.py run)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F2 and F3.
+- Why: the image-to-image source copy, each staged picture and mflux's `<stem>-<seed>.png` files at the top of `data/generated` were removed only on success, and Local files' Clean never looks there. A cancel did not stop the operation from copying its pictures into `generated/pictures`, and `jobs.run` then dropped the result; a batch that failed part way left its first pictures there too.
+- Now: `leftovers` holds the source copy and every staged path (the Krea 2 batch paths too); `made` moved out of `operation` so `guarded`, the function the job runs, can see it. `guarded` removes every leftover and any `<stem>-*.png` beside it in a `finally`, and on any exception forgets the pictures already ingested. `operation` raises InterruptedError when cancelled at the top of each picture and right before `ingest_path`. A 429 (or any HTTPException) from `jobs.submit` removes the source copy. `jobs.run` forgets the result's `media` items when the job was cancelled after the operation returned.
+- Checked: a fake command slot, count 4, temporary data folder: done gives 4 library pictures and no top-level files; cancel during picture 2 gives "cancelled", empty library, no top-level files; a failure at picture 3 gives "error" and nothing left.
+- Replaced, quoted exactly:
+  - `operation`: `        made = []`
+  - `_generate_local`: `    return jobs.submit("generate", operation)`
+
+## formvis.bat test passes without Rust · _v2.3.4 (setup/test.bat native step)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F6.
+- Why: the `)` of "(cargo)" in `echo [formvis] native renderer tests (cargo)` closed the `where cargo && ( ... )` block early, so `pushd`, `cargo test` and `popd` ran outside the guard: without Rust, FAIL=1 and exit 1 although every suite passed.
+- The echo now reads `native renderer tests ^(cargo^)`. Replaced, quoted exactly: `echo [formvis] native renderer tests (cargo) &`.
+- Not run on Windows; reasoned from cmd's block parsing. CRLF kept.
+
+## Video Frames to Layers with an ffmpeg older than 5.1 · _v2.3.4 (app/routers/video.py _frames)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F5.
+- Why: `-fps_mode vfr` exists from FFmpeg 5.1; the 4.x of Ubuntu 22.04 and Debian 11 exits with "Unrecognized option 'fps_mode'", so with it on the PATH (which `ffmpeg_fetch.start` and `_ffmpeg` both prefer) every clip answered 422.
+- Change: when the run fails with that message, `_frames` swaps `-fps_mode` for `-vsync` (same `vfr` value) and runs once more. No version probe; a newer ffmpeg never takes the second run.
+- Checked: a 1 s test clip, every 2nd frame, through a wrapper that refuses `-fps_mode` as 4.x does and then runs the system ffmpeg 6.1.1: 5 frames; ffmpeg 6.1.1 alone: 5 frames. A real 4.4 not run.
+
+## Relative paths for cli, mcp, corpus and perf mean the caller's folder · _v2.3.4 (formvis; setup/perf.py main; setup/cli.py droplet_cmd)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F4.
+- Why: `formvis` ran `cd "$(dirname "$0")"` before every command, so the Python helpers resolved relative names against the repository: `cli convert photo.jpg ...` from ~/Pictures found no file, `process`, `stack`, `contact` and the others wrote into the repository, `mcp --root .` meant the repository, and `perf --baseline base.json` found nothing and skipped the comparison (always a pass). Droplet scripts did `cd '<repo>'` before `./formvis cli process "$@"`.
+- `formvis`: `here="$(cd "$(dirname "$0")" && pwd)"`; the `cd "$here"` is skipped for perf, corpus, mcp, headless, agents and cli, which run `python3 "$here/setup/<script>.py"` (each finds the repository from `__file__`). `perf.py` stops with exit 2 when `--baseline` names no file. Droplet scripts call `'<repo>/formvis'` and `"<repo>\setup\cli.py"` without a cd, and `--to` is written as an absolute path.
+- Replaced, quoted exactly: `cd "$(dirname "$0")"`; `exec python3 setup/<name>.py "$@"` for the six commands; in droplet_cmd `exec ./formvis cli droplet ...`, `python setup\\cli.py droplet ...`, `exec ./formvis cli process ...`, `python setup\\cli.py process ...`, `cd '{root}' || exit 1\n` and `cd /d \"{root}\"\r\n`, and `flags['to']` unresolved.
+- Checked from a scratch folder: `mcp --version`, `version`, `perf --baseline nope.json` (exit 2), a written droplet (`sh -n` passes). cli against a running engine and the .cmd twin were not run.
+
+## file_info refuses a short PSD or an odd manifest; no agent call stays running · _v2.3.4 (app/routers/mcp.py _info, _agent_call)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F4.
+- Why: `_info` raised `struct.error` on a `.psd` or `.psb` shorter than its header or cut inside its sections, and `AttributeError` on a `.fvd` or `.fmv` whose `manifest.json` is a list or whose layers are not objects. `_run` catches only ValueError and OSError, and `_agent_call` ended the activity entry only on CancelledError, so `/mcp` answered a bare 500 and the entry stayed "running" in Agent Connect, `jobs_list` and `formvis://jobs` for the session.
+- Change: the PSD header block is inside `try`, and `struct.error` becomes ValueError "is not a readable PSD"; the project branch also catches AttributeError and TypeError. `_agent_call` has an `except Exception` after the CancelledError clause that ends the entry as error and answers `_fail(f"{name} failed: {exc}")`.
+- Checked: a scratch script through `_agent_call`: a 6-byte PSD, a PSD cut in its sections, a list manifest and number layers each answer isError with the reason; a `_run` that raises RuntimeError answers "file_info failed: kaboom"; every entry ends as error.
+- Replaced, quoted exactly: in `_info`, the PSD block now indented one level under `try` (unchanged otherwise), and `        except (zipfile.BadZipFile, KeyError, StopIteration, ValueError) as exc:`.
+
+## formvis.bat passes every argument and runs the Python commands · _v2.3.4 (formvis.bat; setup/mcp_stdio.py main --where)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F3.
+- Why: formvis.bat forwarded only `%~2`, so `counts --commands --check` dropped `--check` and always exited 0 and `bench --frames 30` lost its value; `mcp`, `cli`, `agents`, `headless`, `perf`, `corpus` and `version` were unknown commands, while `mcp --where` under Windows Python offered `formvis.bat mcp` as the client config.
+- formvis.bat: `set REST=%*` then `call set REST=%%REST:*%1=%%` (the command line less its first word, quoting as typed) goes to install, counts, bench, verify-local and clean. `mcp cli agents headless perf corpus` jump to `:py` before `cd /d "%~dp0"` and run `backend\venv\Scripts\python.exe` (else `python`) on `setup\<name>.py` (`mcp_stdio.py` for mcp) with REST; `version` runs `mcp_stdio.py --version`; the usage lists them. test.bat and desktop_build.bat take no arguments and stay as they were.
+- `--where` on Windows outside the packaged app gives `sys.executable` with `[mcp_stdio.py]` as the client's command (as `agents install` registers), since a client cannot start a .bat without a shell.
+- Replaced, quoted exactly: `cd /d "%~dp0"` as line 3 (now after the Python jump), `%ARG%` in the install, counts, bench, verify-local and clean lines, and in --where `{"command": launcher, "args": ["mcp"]}`.
+- Not run on Windows; reasoned from cmd's parsing rules. CRLF kept on every line.
+
+## Sends to ComfyUI and NodeMode run off the event loop · _v2.3.4 (app/routers/comfyui.py send, run, upscale; app/routers/nodemode.py send)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F3.
+- Why: the four routes were `async def` and called `outbound.request` (plain `urllib.request.urlopen`, 20 s connect timeout, up to 64 uploads a call) and `_follow`'s `ready.wait(2)` directly, so a slow, firewalled or busy target blocked the event loop and the whole engine (bridge long poll, terminal sockets, saves) waited.
+- Change: each is a plain `def` route that FastAPI runs in its thread pool; uploads are read with `f.file.read()`, `run` calls `send(...)` and `upscale` calls `run(...)` without `await`.
+- Checked: the ComfyUI and NodeMode test files (21 tests) pass with OpenCV stubbed by a scratch pytest plugin. The blackholed-target timing check was not run.
+- Replaced, quoted exactly:
+  - `comfyui.py`: `async def send(target: str = Form(...), items: str = Form(...), files: list[UploadFile] = File(...)) -> dict:`, `            data = await f.read()`, `async def run(target: str = Form(...), workflow: str = Form(...), items: str = Form("[]"), prompt: str | None = Form(None), files: list[UploadFile] | None = File(None)) -> dict:`, `    uploaded = await send(target=target, items=items, files=files) if takes_image and files else {"files": []}   # text to image sends nothing`, `async def upscale(target: str = Form(...), model: str = Form(...), image: UploadFile = File(...)) -> dict:`, `    return await run(target=target, workflow=json.dumps(flow), items=json.dumps([{"name": "Upscale", "kind": "image"}]), prompt=None, files=[image])`
+  - `nodemode.py`: `async def send(target: str = Form(...), title: str = Form("formvis"), items: str = Form(...), files: list[UploadFile] = File(...)) -> dict:`, and `_upload(base, name, await f.read())` in its loop.
+
+## Downloads and installs run beside generations; a waiting download cancels · _v2.3.4 (app/localgen/jobs.py _installs new, INSTALL_KINDS new, submit; app/localgen/model_manager.py download)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F1.
+- Why: one pool of two workers ran every job, and `download()` holds `_lock` across all files of a model, so a running download plus a second one waiting on the lock took both workers and every later job stayed queued for the whole download. Cancel was read only in the chunk loop, so a waiting download could not be cancelled.
+- Now: kinds in `INSTALL_KINDS` (model-download, krea-2-install, klein-install, lora-fetch, relight-runtime-install) go to `_installs`, a second pool of two; everything else keeps `_pool`. `download()` takes `_lock` with `acquire(timeout=0.25)` in a loop and raises InterruptedError once cancelled, then releases it in a `finally`.
+- Not changed (open): a continuous Krea 2 session still holds HEAVY with no limit, so one ordinary generation waits in the second worker; `scan` and `remove_model` still wait synchronously for a running download's `_lock` (the review's 409 on a timed acquire would need the window to show it).
+- Checked: with two download jobs running, an upscale job finished at once; a download waiting on a held `_lock` ended "cancelled" 0.05 s after its cancel.
+- Replaced, quoted exactly:
+  - `jobs.submit`: `    _pool.submit(run)`
+  - `model_manager.download`: `    with _lock:`
+
+## Gray to the same gray profile keeps four floats a pixel · _v2.3.4 (app/services/colour.py convert_deep)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F5.
+- Why: with the same gray profile as source and destination, the identity short cut copied the document's three channels although `values` held the one gray channel, and the `dst_space == "GRAY"` repeat then made nine colour floats a pixel; the window read four a pixel and scrambled the layer.
+- Now: the short cut copies `values`, which already match `src_kind`.
+- Checked: a 2 by 1 RGBA body, source and destination `builtin:gray-g22`: 32 bytes back (was 80), values unchanged; sRGB to sRGB unchanged.
+- Replaced, quoted exactly: `            result = px[:, :n_in].astype(np.float64)`
+
+## A Claude Code prompt that starts with a dash stays the prompt · _v2.3.4 (app/services/claude_code.py terminal_argv)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F4.
+- Why: a new Claude Code tab got the prompt as a bare argument after the options, so `- make the sky bluer` or `--help me with layers` went to Claude Code's option parser (unknown option and the tab died, or an option took effect).
+- Now: `--` comes before the prompt. Not run: Claude Code is not started here; checked by reading `terminal_argv` and its one caller `open_terminal`.
+- Replaced, quoted exactly: `        cmd.append(prompt)`
+
+## Features that need scipy answer 501 naming it · _v2.3.4 (app/routers/merge.py panorama_route, hdr_route; app/routers/remove_find.py find_route)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F1.
+- Why: `panorama` (layouts Auto and Reposition), `_ghost_weight` (Merge to HDR with ghost above 0), `_distractions` and `find` import `scipy.ndimage`, and scipy is in no base requirements file (NOTICE lists it only under the frozen ML extra). On a default install the merge routes answered a bare 500 (only ValueError was mapped) and `/api/remove/find` a 500 "Finding people failed: No module named 'scipy'".
+- Change: the three routes catch `ModuleNotFoundError` before their other handlers and answer 501 with the feature and `exc.name`. Owner decision left open: add scipy to `requirements.txt` and `requirements_macos.txt` (and move its NOTICE row), or replace the four ndimage calls with OpenCV ones.
+- Checked: a scratch app with the two routers (cv2 stubbed, the workers replaced by functions that import scipy, which the venv lacks): each route answers 501 naming scipy. The real paths not run (no OpenCV in the venv).
+
+## mcp --root and --read-root refuse a save or export with no path · _v2.3.4 (setup/mcp_stdio.py CONTROL, outside_roots)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F5.
+- Why: `outside_roots` checked only the `path` and `output_path` named in a call. After `open_file` on a file under `--read-root`, `export_image {}` or `save_project {}` made the engine write back to that file with `overwrite: True` (`_agent_call` and `_write_back` in app/routers/mcp.py), replacing a file the person allowed only to be read. `control_call` with `app.open`, `app.save` or `app.export` skipped the check too.
+- `CONTROL` maps those three methods to their tools; `outside_roots` checks a control_call's `params` as that tool's arguments, and while any root is set refuses save_project and export_image with no path ("give a path inside" the --root folders). With no roots nothing changes.
+- Replaced, quoted exactly: `    args = params.get("arguments") or {}` and `        writing = key == "output_path" or params.get("name") in WRITES`.
+- Checked by calling `outside_roots` from a scratch script (read-only open passes, write-back refused, control_call cases refused, odd arguments do not raise); not run against a live engine.
+
+## A DPX or Cineon line padding larger than the file is refused · _v2.3.4 (app/services/dpx.py read; app/services/cin.py read)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F3.
+- Why: both readers pad the pixel block to `stride * h` before the reshape and trusted the header's end-of-line padding; for a one-row picture the length check leaves the padding out, so a 2 KB file with padding 0xFFFFFFF0 allocated gigabytes of zeros (MemoryError or the OOM killer).
+- Now: right after `stride` is set, `eol > len(data)` raises DpxError and `line_pad > len(data)` raises CinError. For two rows or more the existing length check already bounds the padding. No line was removed.
+- Checked: a 2,051-byte DPX with padding 0xFFFFFFF0 or 300,000,000 raises DpxError at once (peak RSS 37 MB), and a Cineon with 0xFFFFFFF0 raises CinError; both still decode with padding 0.
+
+## Window commands over HTTP pass the agent gate; the command line is known by its connection · _v2.3.4 (app/routers/commands.py run; app/routers/mcp.py _agent_call, _from_cli new, _stream_call, mcp)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F2, and the orchestrator's handoff from formvis__backend-services (the formvis-cli name).
+- Why: `POST /api/commands/{id}` called `mcp._call("run_command", ...)` directly, so any local process (an agent in a shell, or one whose MCP client was denied) ran window commands past the `WINDOW_ONLY` refusal, the Agent Connect switch and deny policy (`agents.admit`), the Ask approval for risky commands (`_risk`, `agents.approval`) and the activity feed. Trigger: `curl -X POST 127.0.0.1:8190/api/commands/terminal.new` once outside agents had been allowed.
+- Change: `run` calls `mcp._agent_call(client, "run_command", ...)`, the client named by `_client_of(request, {}, None)` as an MCP call is. The Ask-policy skip that was keyed on the client name `formvis-cli` (which any MCP client can claim in clientInfo) is now the `cli` flag of `_agent_call`, set by `_from_cli`: true only for a plain HTTP call with `X-Formvis-Client: formvis-cli` and no MCP session id or clientInfo (setup/cli.py and cli_offline.py). It covers `convert_file` and `run_command`, which the command line confirms with `--overwrite` and `--yes`.
+- Checked: a scratch app with the two routers: agents off refuses, `terminal.new` and `agent.claude.open` are refused as window-only (also from the CLI), each shows in the activity feed as denied; `_from_cli` is false with clientInfo, a session id or a User-Agent only. `tests/test_mcp.py` not run (no OpenCV in the venv).
+- Replaced, quoted exactly:
+  - `commands.py` `run`: `    task = asyncio.ensure_future(mcp._call("run_command", {"id": cid, "params": body.params if body else {}}))`
+  - `mcp.py` `_agent_call`: `        if agents.policy_of(client) == "ask" and not (client == "formvis-cli" and name == "convert_file"):   # the command line names both files and --overwrite itself`
+
+## A key never follows a redirect to another host · _v2.3.4 (app/services/outbound.py _SameOrigin, opener, request; app/services/llm.py _call, chat_stream; app/services/generative.py _post)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F2.
+- Why: urllib's default redirect handler copies every header but Content-Length and Content-Type into the redirected request, so a 30x from the language model service, a ComfyUI proxy or a plain-http man in the middle sent `Authorization` (or ComfyUI's sign-in header) to any host it named.
+- Now: `outbound.opener` follows a redirect only when scheme, host and port stay the same; otherwise it raises HTTPError with the redirect's code, which each caller already reports as a service error. `outbound.request`, `llm._call`, `llm.chat_stream` and `generative._post` open through it. `generative._download` sends no key and still uses `urlopen`.
+- Checked: two local servers: a 302 to another port is refused and the other server sees no request; a same-origin 302 is still followed with its header.
+- Replaced, quoted exactly:
+  - `outbound.request`: `    return urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers or {}, method=method), timeout=timeout)`
+  - `llm._call`: `        with urllib.request.urlopen(req, timeout=timeout) as r:`
+  - `llm.chat_stream`: `            r = urllib.request.urlopen(req, timeout=180)`
+  - `generative._post`: `        with urllib.request.urlopen(request, timeout=180) as response:`
+
+## agents install on Windows writes a Codex config that parses · _v2.3.4 (setup/agents.py ARGS, install_claude, install_codex, install_cursor)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F2.
+- Why: `install_codex` wrote `command = "C:\Users\..."`, a TOML basic string with raw backslashes that TOML refuses, so Codex lost its whole config.toml; from a Windows checkout every client was also given the bash script `formvis`, which Windows cannot start.
+- `ARGS` (`["mcp"]`) beside `LAUNCH`; on Windows in a checkout `LAUNCH, ARGS = sys.executable, [setup\mcp_stdio.py]`. The Codex block writes both with `json.dumps(..., ensure_ascii=False)`; Claude Code and Cursor take `LAUNCH, *ARGS`. Elsewhere the written config is the same as before.
+- Replaced, quoted exactly: `    block = f'[mcp_servers.formvis]\ncommand = "{LAUNCH}"\nargs = ["mcp"]\nstartup_timeout_sec = 90\ntool_timeout_sec = 600\n'` and `    entry = {"command": LAUNCH, "args": ["mcp"]}`.
+- Not changed: the CRLF case in the review, because `read_text` gives the regex LF lines. Checked with a scratch run over a CRLF config.toml (Windows and POSIX launchers, tomllib parses, other servers kept, a second run changes nothing); not run on Windows.
+
+## The MCP server, agents and cli start on Python 3.9 · _v2.3.4 (setup/mcp_stdio.py, setup/agents.py, setup/cli.py, setup/cli_offline.py)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F1.
+- Why: annotations such as `-> str | None` are evaluated when a function is defined, which needs Python 3.10, so on 3.9 (the macOS /usr/bin/python3 that a GUI client finds first, and the runtime the .mcpb manifest declares) `./formvis mcp`, `agents` and `cli` stopped at import with `TypeError: unsupported operand type(s) for |`.
+- Each of the four files now has `from __future__ import annotations` right after its docstring (in cli.py before `HELP`). An ast scan of every setup/*.py found no other 3.10-only syntax.
+- Checked with Python 3.9.25: the old mcp_stdio.py raised the TypeError; now `--version`, `agents install --dry-run`, `cli version` and the cli_offline import all run.
+
+## A negative or non-finite FITS axis is refused, no endless loop · _v2.3.4 (app/services/fits.py _num, _data_size)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F1.
+- Why: a header with a negative NAXISn made `_data_size` negative, so `_image_extension` read the primary header again forever (one worker at full CPU, the open never answered). A NAN or INF card made `int(...)` raise ValueError or OverflowError, a 500.
+- Now: `_num` raises FitsError for a value that is not finite; `_data_size` raises FitsError ("The FITS header gives a negative size.") for a negative NAXIS, NAXISn, GCOUNT or PCOUNT.
+- Checked: the reviewer's repro on a copy of the module raises FitsError at once for both headers; a valid 2 by 2 file still reads.
+- Replaced, quoted exactly:
+  - `_num`: `        return float(cards[key].replace("D", "E").replace("d", "e"))`
+  - `_data_size`: `    count = 1 if naxis else 0` / `    for i in range(1, naxis + 1):` / `        count *= int(_num(cards, f"NAXIS{i}"))` / `    size = abs(int(_num(cards, "BITPIX"))) // 8 * int(_num(cards, "GCOUNT", 1)) * (count + int(_num(cards, "PCOUNT", 0)))`
+
+## Version only · _v2.3.3
+
+No engine code changed in 2.3.3 (`frontend/HASHOUT_LOG.md` has the changes). The full engine suite ran on an archive copy: 316 passed, 9 skipped (u2net, lama-inpaint, ai-upscale and sam2 models not downloaded; three macOS-only layout tests), and `test_readme.py::test_the_readme_matches_the_code` failed there only because the copy had no `.git` for `git ls-files` (it passes once a repository exists). Note for e2e: the engine's LocalGuard accepts window origins on 5190 and 5191 only (`window_origins()` in `app/core/config.py`, or FORMVIS_CORS_ORIGINS), so a dev server on another port makes the agent and MCP tests time out. Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "2.3.2"
+version = "2.3.2"
+version = "2.3.2"
+ "version": "2.3.2",
+```
+
+## Version only · _v2.3.2
+
+No engine code changed in 2.3.2: the changes are in the window (`frontend/HASHOUT_LOG.md`). Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "2.3.1"
+version = "2.3.1"
+version = "2.3.1"
+ "version": "2.3.1",
+```
+
+## Version only · _v2.3.1
+
+No engine code changed in 2.3.1: the changes are in the window (`frontend/HASHOUT_LOG.md`). Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "2.3.0"
+version = "2.3.0"
+version = "2.3.0"
+ "version": "2.3.0",
+```
+
+## Version only · _v2.3.0
+
+No engine code changed in 2.3.0: the paint-tool and Layers panel changes are all in the window (`frontend/HASHOUT_LOG.md`). 2.1.1 and 2.2.0 changed no engine code either and left no entry here. Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "2.2.0"
+version = "2.2.0"
+version = "2.2.0"
+ "version": "2.2.0",
+```
+
 ## Form extensions: list, stamp, files and the portal link · _v2.1.0 (app/services/formext_host.py new, app/routers/extensions.py new, app/main.py, app/core/local_guard.py, app/routers/mcp.py; setup/cli.py, formvis)
 
 - Why: the Form Extension Contract, API 1. `app/services/formext_host.py` is the kit's resolver copied unchanged (Apache-2.0, NOTICE row): FormPortal's root, `enabled.json` and `dev.json` under `extensions/formvis/`, manifest checks with the kit's refusal messages, `file_for` and `headers_for`.

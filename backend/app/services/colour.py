@@ -122,12 +122,19 @@ def add(data: bytes, filename: str) -> dict:
     return {"id": hashlib.sha1(data).hexdigest()[:16], **info, "file": f"{stem}.icc", "added": True}
 
 
+def _b64(text) -> bytes:
+    try:
+        return base64.b64decode(text)
+    except (ValueError, TypeError) as exc:
+        raise ColourError("The colour profile is not valid base64.") from exc
+
+
 def _profile(ref: dict | None) -> tuple[ImageCms.ImageCmsProfile, str]:
     """A profile reference from the window: {"icc": base64}, {"id": listed}, or None for sRGB."""
     if not ref:
         return ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")), "RGB"
     if ref.get("icc"):
-        data = base64.b64decode(ref["icc"])
+        data = _b64(ref["icc"])
     elif ref.get("id"):
         data = _find(str(ref["id"]))
     else:
@@ -302,7 +309,9 @@ def convert_pixels(raw: bytes, width: int, height: int, to: str, profile: dict, 
 
 
 def _raw(ref: dict) -> bytes:
-    return base64.b64decode(ref["icc"]) if ref.get("icc") else _find(str(ref["id"]))
+    if not ref.get("icc") and not ref.get("id"):
+        raise ColourError("The proof profile names neither a profile nor its data.")
+    return _b64(ref["icc"]) if ref.get("icc") else _find(str(ref["id"]))
 
 
 def _gamut(grid, src, prf, prf_mode, proof_intent, flags, delta: float = GAMUT_DELTA_E) -> bytes:
@@ -321,7 +330,7 @@ DEEP_CHANNELS = {"RGB": 3, "CMYK": 4, "LAB": 3}
 
 def _ref_bytes(ref: dict | None, fallback: str) -> bytes:
     if ref and ref.get("icc"):
-        return base64.b64decode(ref["icc"])
+        return _b64(ref["icc"])
     if ref and ref.get("id"):
         return _find(str(ref["id"]))
     try:
@@ -361,7 +370,7 @@ def convert_deep(raw: bytes, width: int, height: int, mode: str, source: dict | 
         if dst_space not in lcms.SPACES:
             raise ColourError(f"Profiles for {dst_space} are not supported.")
         if src_bytes == dst_bytes and src_kind == dst_space:
-            result = px[:, :n_in].astype(np.float64)
+            result = values.astype(np.float64)
         else:
             result = lcms.from_lcms(lcms.transform(lcms.to_lcms(values, src_kind), src_bytes, src_kind, dst_bytes, dst_space, intent, bpc, False, preserve_black), dst_space)
         result = lcms.quantise(result, bits, dither)

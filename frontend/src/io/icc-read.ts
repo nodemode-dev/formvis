@@ -99,7 +99,7 @@ export async function exifColourSpace(file: Blob): Promise<number | null> {
 /** The profile's description ('desc' v2 or 'mluc' v4), or 'Embedded profile'. */
 export function profileName(icc: Uint8Array): string {
   try {
-    const dv = new DataView(icc.buffer, icc.byteOffset, icc.byteLength), n = dv.getUint32(128);
+    const dv = new DataView(icc.buffer, icc.byteOffset, icc.byteLength), n = Math.min(dv.getUint32(128), Math.max(0, Math.floor((icc.length - 132) / 12)));
     for (let i = 0; i < n; i++) {
       const at = 132 + i * 12;
       if (String.fromCharCode(...icc.subarray(at, at + 4)) !== 'desc') continue;

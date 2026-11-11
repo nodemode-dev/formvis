@@ -85,8 +85,9 @@ export class LiquifyDialog extends Dialog {
     this.scrim.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
       e.preventDefault();
+      e.stopPropagation();
       this.stepStroke(e.shiftKey);
-    });
+    }, { capture: true });
     const saveMesh = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Save Mesh...</button>');
     saveMesh.addEventListener('click', () => this.saveMesh());
     const loadMesh = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Load Mesh...</button>');
@@ -141,7 +142,9 @@ export class LiquifyDialog extends Dialog {
     this.meshRow.set(String(this.cell));
     this.syncTools();
     this.render();
+    const keep = this.liq === saved ? saved : null;
     this.open();
+    if (keep && this.liq !== keep) { this.cell = keep.cell; this.liq = keep; this.meshRow.set(String(keep.cell)); this.render(); }
   }
 
   /** Alt held while dragging: Push Left pushes right instead (36.4). */

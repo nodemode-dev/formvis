@@ -9,6 +9,8 @@ Pillow and numpy, Photomerge and Merge to HDR through the engine's merge routes 
   photomerge <files...> [--layout auto|perspective|cylindrical|collage|reposition] [--crop] [--vignette] [--distortion] [--out FILE]
   hdr <files...> [--no-align] [--times 1/60,1/15,...] [--depth 32|16|8] [--out FILE]
 """
+from __future__ import annotations
+
 import argparse
 import io
 import json
@@ -19,7 +21,7 @@ import uuid
 
 PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".psd"}
 STACK_MODES = ("mean", "median", "minimum", "maximum", "range", "stddev", "variance", "summation")
-URL = os.environ.get("FORMVIS_URL", "http://127.0.0.1:8190").rstrip("/")
+URL = os.environ.get("FORMVIS_URL", f"http://127.0.0.1:{os.environ.get('FORMVIS_PORT', '').lstrip('0') or 8190}").rstrip("/")
 
 
 def say(text: str) -> None:
@@ -310,7 +312,7 @@ def hdr_cmd(argv: list[str]) -> int:
         return 2
     try:
         times = ",".join(str(eval_fraction(t)) for t in a.times.split(",") if t.strip())
-    except ValueError:
+    except (ValueError, ZeroDivisionError):
         say("--times takes numbers or fractions such as 1/60, comma separated.")
         return 2
     got = engine_call("/api/merge/hdr", files, {"align": str(not a.no_align).lower(), "times": times})

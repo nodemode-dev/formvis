@@ -96,6 +96,8 @@ export function saveChoice(choice: ThemeChoice): void {
   }
 }
 
+let lastVars = new Set<string>();
+
 /** Apply a profile and accent to the document. Mirrors applySettings():
  * profile vars first, then the derived --bg-node and --shadow-lg the
  * profiles do not declare, then the accent and its dim variant. Idempotent:
@@ -104,6 +106,8 @@ export function saveChoice(choice: ThemeChoice): void {
 export function applyTheme(choice: ThemeChoice = readChoice()): void {
   const root = document.documentElement;
   const theme = THEMES[choice.theme] || THEMES[DEFAULT_THEME];
+  for (const k of lastVars) if (!(k in theme.vars)) root.style.removeProperty(k);
+  lastVars = new Set(Object.keys(theme.vars));
   for (const [k, v] of Object.entries(theme.vars)) root.style.setProperty(k, v);
   document.body.classList.toggle('theme-light', !!theme.light);
   root.style.setProperty('--bg-node', theme.vars['--bg-node'] || theme.vars['--bg-secondary']);

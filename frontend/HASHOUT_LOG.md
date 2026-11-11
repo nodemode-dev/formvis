@@ -2,6 +2,1360 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 2.3.4: the review fixes and the version lines · v2.3.4 (CHANGELOG.md; the version sites; the three demo bundles)
+
+- Kind: release · logged: v2.3.4 · 2026-11-11. Every window change of 2.3.4 has its own entry below, one per fix, each naming the review finding it answers; the engine, setup and shell changes are in `backend/HASHOUT_LOG.md`.
+- Verified at release: `npx tsc --noEmit` clean; vitest 48 files, 222 tests passed. No browser or e2e run was made for this release; the entries below say what each fix was checked with.
+- Removed version lines:
+
+```text
+export const VERSION = '2.3.3';
+  "version": "2.3.3",
+  "version": "2.3.3",
+      "version": "2.3.3",
+```
+
+## Color Match, Current and Below and the plug-in renders hide by stack order · v2.3.4 (engine/index.ts colorMatch, renderBelow, renderThrough, belowOverrides)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `colorMatch` (the reference picture), `renderBelow`, `renderThrough` and `belowOverrides` (handoff from E1, formvis__engine-index.md outside-area note 1).
+- Wrong: each hid "this layer and what is above it" by the index in `doc.layers`. A folder may come before or after its children in that list (a Frame folder comes after), so the hidden set could take in a folder holding layers below, hiding them, or miss one above.
+- Changed: each ranks layers with `order = new Map(hierarchy(p.doc).map((e, i) => [e.layer.id, i]))`, the renderer's stacking order (bottom first, folder before children), as `applyRedactions` does since be7bf2f; a layer not in the hierarchy ranks as above (`?? Infinity`). `renderThrough` walks folders from `p.layer(id)`.
+- Old lines: `const at = p.doc.layers.findIndex((x) => x.id === l.id), hidden = new Map<ID, LayerOverride>();` with `p.doc.layers.forEach((x, i) => { if (i >= at && x.id !== l.parentId) ...`; `const at = p ? p.doc.layers.findIndex((l) => l.id === id) : -1;` (twice) with `if (i >= at)` and `else if (i > at)`; `for (let a = p.doc.layers[at]!.parentId; ...`; `const layers = p.doc.layers, at = layers.findIndex((x) => x.id === l.id), ancestors = new Set<ID>();` with `if (i > at && !ancestors.has(x.id))`.
+- Checked: `npx tsc --noEmit` clean; a scratch node run of `hierarchy` with a folder stored after its children: renderBelow of the top child now hides only it and the layer above (before, the folder too, so its lower child vanished). The window was not run.
+
+## Reordering the dock keeps an extension panel's frame alive where the browser can · v2.3.4 (ui/dock.ts Dock.apply, the float frame loop)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/dock.ts` `apply` and the float-frame loop above it (handoff from X1, formvis__extensions-gpu-config.md F1 part 1 of 3).
+- Wrong: `apply` re-inserted every section of the column with `insertBefore` (and the side column with `appendChild`) whenever the order changed, and a floating panel went into its frame with `appendChild`; moving an iframe reloads it, so an extension panel lost its state and activation when a second one opened or the workspace changed.
+- Changed: those three moves use `moveBefore` when it exists and both nodes are connected (as `panel-group.ts` attach does), else the old call. Old lines: `for (const s of want) this.dock.insertBefore(s, this.marker);`, `for (const s of sideWant) this.side.appendChild(s);`, `if (s.parentElement !== f) { f.appendChild(s); ...`.
+- Not changed: the strip's fly-out (`replaceWith` then `appendChild`) and moving only out-of-place sections; both change the order logic and need a browser check.
+- Checked: `npx tsc --noEmit` clean; not run in a browser.
+
+## The command reference says Clean Working Files asks first · v2.3.4 (.claude/skills/formvis-driving/references/commands.md, .agents mirror)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to the `clean-working-files` row of the generated command reference (handoff from A1 for formvis__app-automation.md F1, after 527c997 made the command `'mr'` in `automation/command-meta.ts`).
+- Wrong: the row still ended `(changes the picture) |`, so the reference did not say the command waits for the person, and `agents sync` would report drift once a catalogue exists.
+- Changed: `./formvis agents sync` cannot write commands.md here (no window has written the catalogue on this machine), so both copies gain ` (asks first)` by hand, what `commands_reference` writes for a risky command. Old line ending quoted: `and says how much space came back. (changes the picture) |`.
+- Checked: `agents sync --check` in step.
+
+## Show Only This Layer solos again after an Undo · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.soloLayer` (review formvis__engine-index.md F9).
+- Wrong: `soloed` lives outside history and was set or cleared whatever the step did. Alt-click, Undo, Alt-click took the restore branch (`back.id === id`), restored a visibility equal to the current one, recorded nothing and cleared the state, so the click did nothing. Old lines: `const restoring = !!back && back.id === id;`, `this.edit(restoring ? ...`, and the unconditional `if (restoring) this.soloed.delete(p.id); else this.soloed.set(...)`.
+- Changed: `restoring` also needs some layer whose visibility differs from `back.visible`; the edit's result is kept as `done`, and the state is cleared or stored only when `done`.
+- Checked: `npx tsc --noEmit`, no error in this file; the window replay not run.
+
+## Apply Redactions burns only the layers beneath each box · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.applyRedactions` (review formvis__engine-index.md F8).
+- Wrong: `under(l)` tested only rectangle overlap, so a layer stacked above a Redaction box (a caption over it) was rasterized and painted black. Old lines: `rects = boxes.map((l) => ({ x: l.transform.x, y: l.transform.y, w: l.transform.w, h: l.transform.h }))`, `rects.some((r) => r.x < l.transform.x ...`, `for (const r of rects) copy.ctx.fillRect(...)`.
+- Changed: `order` maps each layer id to its index in `hierarchy(p.doc)` (bottom first); each rect carries its box's index `at`; `below(l, at)` gates both `under` and each `fillRect`, so a layer is burned only by the boxes above it.
+- Checked: `npx tsc --noEmit`, no error in this file; a node check of the rule on a copy of `hierarchy` (layers below a box true, a folder's caption above it false). Apply Redactions in the window not run.
+
+## Drags, dialogs and Rotate 90° wait for a running job instead of slipping past it · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.beginOpacityEdit`, `beginFillEdit`, `beginVisibilitySwipe`, `beginLive`, `rotateCanvas` (review formvis__engine-index.md F6, F7).
+- Wrong: the four begin* entry points checked only `this.stroke`, so while `busyWith` was set (a pooled or banded filter, Merge Visible or Flatten on workers, a `lockedTask` save) their `history.begin` nested into the job's open step: the change was folded into the job's step, and a cancelled job's `rollback()` left it in the document with no step. `rotateCanvas` ignored the result of `this.edit(...)` and still called `this.pan(dw, -dw)` when the turn was refused.
+- Changed: each begin* also returns early on `this.waiting()` (the notice edit() gives); `rotateCanvas` keeps `const ok = this.edit(...)` and pans only when `ok`. Old lines: `if (!p || this.stroke || this.opacityOpen) return;`, `if (!p || this.stroke || this.fillOpen) return;`, `if (!p || !l || this.stroke) return null;`, `if (!p || this.stroke || this.liveOpen) return false;`, `this.edit(name, (p) => {`, `if (p && quarters !== 2 && p.doc.width !== p.doc.height) {`.
+- Checked: `npx tsc --noEmit`, no error in this file; the window replay not run.
+
+## Photomerge, Merge to HDR, Load Files into Stack, Large Picture and TIFF Pages stop on Cancel and run once · v2.3.4 (ui/panels/merge-dialog.ts, ui/panels/load-stack-dialog.ts, ui/panels/large-picture.ts, ui/panels/tiff-pages.ts)
+
+- Why: review formvis__panels-g-w F9 (fixer P2, kind: fix, logged 2026-11-11). `MergeDialog.apply`, `LoadStackDialog.apply`, `LargePictureDialog.go` and `TiffPagesDialog.go` kept OK enabled through the engine's stitch, merge, decode or region calls and never checked afterwards whether the dialog had been closed, so Cancel still opened the panorama, HDR, stack, tiles or pages, and a second OK ran the job again.
+- Each dialog has `busy` and `ticket`; `onClose` bumps the ticket and clears `busy`. The method returns at once while `busy` (Merge and Load Stack set `failed`, so `drive` throws "A merge is already running." or "Files are already loading."), takes `t = this.ticket`, and after each await returns when `this.ticket !== t`, before `close()` and before any document is opened (each tile and each page too); `finally` clears `busy` when the ticket is still `t`. `drive` runs with the dialog closed, so no close bumps its ticket. `TiffPagesDialog.go` as layers decodes every page first, then makes the document and inserts them, so a Cancel leaves no half-built document and pages cannot land in a document switched to meanwhile. In `LargePictureDialog.go` the tile loop variable is `g`, since `t` is the ticket. OK is not disabled while busy; a second press is ignored.
+- Checked: `tsc --noEmit` (0 errors). Not run: the window against the engine.
+
+## Document events reach only extensions granted the document permission · v2.3.4 (formext/host-bridge.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `formext/host-bridge.ts` `ExtensionHost.broadcast`, fed by `formext/extensions.ts` `watchEngine`. Handoff from fixer X1, formvis__extensions-gpu-config F6 (fixed by A1).
+- Wrong: `broadcast` posted `document.changed`, `document.switched`, `selection.changed` and `layer.activated` to every frame, so an extension with no permissions learned document names, sizes and selections on every change, though `document.read` needs the `document` permission.
+- Now: `broadcast` (only those four events use it; the theme goes through `setTheme` to every frame) skips a frame unless `f.ext.permissions.includes('document') && this.isGranted(f.ext)`.
+- Verified: `tsc --noEmit` clean. Not run: an extension without permissions in the window.
+
+## A Form extension panel that reloads is shown again and its stale requests end at once · v2.3.4 (formext/host-bridge.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `formext/host-bridge.ts` `ExtensionHost.mount` (`onMessage`, `handle.activate`). Handoff from fixer X1, formvis__extensions-gpu-config F1 part 3 (fixed by A1).
+- Wrong: where `moveBefore` is missing (other engines, the Linux WebKit shell) moving a panel's frame reloads it; the new page says `host.hello` again but was never sent `ext.activate`, so the panel stayed blank, and a request in flight waited the full 30 s for an answer the old page could no longer give.
+- Now: `mount` counts `host.hello` (`hellos`) and keeps the last activation with reason `panel` (`shown`, set in `activate`). On a second or later hello it rejects every pending request with `ERR.CANCELLED` "the panel reloaded" and sends `shown` again. A command activation is never replayed, so a reload cannot run a command twice.
+- Verified: `tsc --noEmit` clean. Not run: a panel moved in the Linux WebKit shell.
+
+## play-action fails when the action stopped or a step could not run · v2.3.4 (app.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `app.ts` `playAction`, command `play-action`, the Actions dialog and panel `play` callbacks. Review formvis__app-automation F12 (fixer A1).
+- Wrong: `playAction` toasted the outcome and returned nothing, so `play-action` answered `{ played: true }` for a run that stopped or failed partway; agents, scripts and `--action` at launch took it as done.
+- Now: `playAction` returns the `actions.play` result (`null` with no document); the command throws "<name> stopped at step N, <step>, which could not run here; play-action with from N resumes there" (or the stopped form, or "Open a document ..."). The two UI callers wrap it as `async (x) => { await playAction(x); }` to keep their `Promise<void>` type.
+- Verified: `tsc --noEmit` clean. Not run: run_command play-action on an action with a disabled step.
+
+## play-action from a menu, a key or the command search stays quiet when the action stops · v2.3.4 (ui/commands.ts, app.ts)
+
+- Kind: fix of the entry above · logged: v2.3.4 · 2026-11-11 · refers to `ui/commands.ts` `Told` (new) and `Commands.run`; `app.ts` command `play-action`.
+- Wrong: `Commands.run` (menus, keys, command search) does not wait for a command, so the new throw from `play-action` became an unhandled rejection there: after the toast that says where the action stopped, the window also showed "Something went wrong (...). Your work is safe" and logged an error, for an action that only reached a Stop step or a step that could not run. The browser suite caught it: `e2e/test_offered_options.py::test_every_menu_command_runs[0]`, play-action after an action recording.
+- Now: `play-action` throws `Told`, an `Error` subclass that means the person has already been told. `Commands.run` attaches a handler that lets a `Told` end there and throws anything else again, so every other failing command is reported as before. `Commands.call` is unchanged: agents, the command line and `--action` at launch still get the failure with the same message.
+- Verified with a scratch browser probe outside the repo on an action whose only step cannot run: through `commands.run` the toast shows and no uncaught error is raised; through `commands.call` the caller gets the error "... stopped at step 1 ...; play-action with from 1 resumes there."; another command that rejects through `commands.run` is still reported. `tsc --noEmit` clean.
+- Replaced, quoted exactly: `    cmd.run(params);` in `Commands.run`, and `throw new Error(` twice in `play-action` (the no-document and the stopped lines).
+
+## Generate, Select by Text and 3D tools write into the document they started on · v2.3.4 (automation/agent-bridge.ts, automation/fal-tools.ts, automation/pack-tools.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `agent-bridge.ts` `generate_image`, `fal-tools.ts` `falGenerate` and `falSelectByText`, `pack-tools.ts` `glbTool` (`glb_place`, `glb_edit`). Review formvis__app-automation F10 (fixer A1).
+- Wrong: each captured `p` before a long await (fal, the ask dialog, a local model, the model render) but inserted into `e.current` after it, so a tab switch meanwhile put the layer (sized for `p`), the W by H mask, or the 3D and depth layers into the other document.
+- Now: after the await, `if (e.current !== p && e.projects.includes(p)) e.switchTo(p.id)`, then a fail ("<name> was closed or could not be brought forward ...") when `e.current !== p`, before `insertRasterLayer`, `applyAutoSelection`, the 3D `e.edit` and each depth layer; `glbTool` has the two as `back()` and `gone()`, computed lazily so `glb_info` without a document still works.
+- Verified: `tsc --noEmit` clean. Not run: a tab switch during a live generation.
+
+## fill and draw_shape leave the person's colours and Shape tool settings as they were · v2.3.4 (automation/agent-bridge.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `automation/agent-bridge.ts` `AgentBridge.run` cases `fill` and `draw_shape`. Review formvis__app-automation F11 (fixer A1).
+- Wrong: `fill` set `e.fg` to the agent's colour, and `draw_shape` set `e.fg`, `e.bg` and `Object.assign(e.shapeSettings, ...)`, none put back; the person's colours and Shape tool settings changed after an agent's or an extension's (`tool:fill`, `tool:draw_shape`) call.
+- Now: `fill` keeps `e.fg` and restores it in a `finally` around `e.fill('fg')`; `draw_shape` keeps `{ fg, bg, shape: { ...e.shapeSettings } }` and restores all three in a `finally` around `e.drawShape`. Both engine calls copy the colours synchronously, so the result is unchanged.
+- Verified: `tsc --noEmit` clean. Not run: the tools from an agent.
+
+## Video Frames to Layers describes and trims the clip chosen last · v2.3.4 (ui/panels/video-dialog.ts)
+
+- Why: review formvis__panels-g-w F14 (fixer P2, kind: fix, logged 2026-11-11). `picked` stored whatever `api.videoProbe` returned last, so a slow probe of an earlier clip set `info`, To and the description for the newer `file`, and OK trimmed it with the other clip's duration and frame rate.
+- `picked`: keeps the file it probes (`f`), clears `info` while probing (OK then says to choose a video), and drops a result or an error that arrives when `f !== this.file`.
+- Checked: `tsc --noEmit` (no error in this file). Not run: the window.
+
+## New Guide Layout and Interpret Footage leave no hidden dialog behind · v2.3.4 (ui/panels/guide-layout.ts, ui/panels/interpret-footage.ts)
+
+- Why: review formvis__panels-g-w F13 (fixer P2, kind: fix, logged 2026-11-11). `openGuideLayout` and `openInterpretFootage` build a `new Dialog` per use; its constructor appends a scrim with listeners to `#overlay-root` and `close()` only hides it, so hidden scrims (and New Guide Layout's `remember` listeners) piled up for the session.
+- Both set `dlg.onClose = () => dlg.scrim.remove()`. `Dialog.close` hands focus back to where it came from after `onClose`.
+- Checked: `tsc --noEmit` (no error in these files). Not run: the window (`#overlay-root .cv-scrim` count over ten opens).
+
+## Vanishing Point starts each open with the focal length the plane implies · v2.3.4 (ui/panels/vanishing-dialog.ts)
+
+- Why: review formvis__panels-g-w F12 (fixer P2, kind: fix, logged 2026-11-11). `show` sets `focalPx = null` (follow the plane's estimate), but `open()` restored the remembered Focal length slider and fired `setFocal`, pinning connected planes on the next picture to the last value typed; Child angle and depth were restored on a root plane too. Only the paste source select was in the skip list.
+- `VanishingDialog` constructor: `remember` skips the selects and inputs of `source`, `focalRow`, `angleRow` and `depthRow`.
+- Checked: `tsc --noEmit` (no error in this file). Not run: the window.
+
+## Merge to HDR takes exposure times typed as fractions · v2.3.4 (ui/panels/merge-dialog.ts)
+
+- Why: review formvis__panels-g-w F10 (fixer P2, kind: fix, logged 2026-11-11). `MergeDialog.apply` sent `Number(t.trim())` for each entry of Exposure times, so `1/250` went as NaN and the engine refused the merge; `drive` (the command path) already turned fractions into numbers.
+- `apply` (HDR branch): each entry is `top / bottom` when it has a slash, else `Number(t.trim())`, the conversion `drive` uses.
+- Checked: `tsc --noEmit` (no error in this file); node on a copy of the parse: `1/250, 1/60, 1/15` gives 0.004, 0.01667, 0.06667 and `0.004,0.5, 2` gives 0.004, 0.5, 2.
+
+## Export Layers, Artboards or Comps to Files fills the prefix and folder from the document it opens for · v2.3.4 (ui/panels/layer-export-dialog.ts)
+
+- Why: review formvis__panels-g-w F6 (fixer P2, kind: fix, logged 2026-11-11). `show` kept `prefix: this.s.prefix || name, folder: this.s.folder || ...` and `this.s` lives for the session, so the dialog for another document (or for the same document's artboards or comps) offered the first document's prefix and folder, and its files were named and placed after it.
+- `LayerExportDialog`: `filledFor` holds `${p.id}:${what}` (`what` is layers, artboards or comps); when `show` opens for another key, the prefix is the document's name and the folder `${safeName(name, 60, 'Untitled')} ${what}`; for the same key the typed values stay.
+- Checked: `tsc --noEmit` (no error in this file). Not run: the window.
+
+## The engine is told the shell's own pid · v2.3.4 (src-tauri/src/main.rs engine spawn)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/src/main.rs`, the sidecar spawn in `setup`, and `backend/formvis_engine.py` `watch_parent`; review formvis__native-tauri-packaging F8.
+- Wrong: `watch_parent` exits when the server's parent is gone, but in a one-file build that parent is the PyInstaller launcher, which outlives a shell that dies without `RunEvent::Exit` (panic under `panic = "abort"`, `kill -9`, a web view crash); the server kept its port, memory and `_MEI` folder. Now the shell passes `FORMVIS_SHELL_PID` (`std::process::id()`) beside `FORMVIS_PORT`. The engine half, `watch_parent` polling that pid (`os.kill(pid, 0)` on POSIX) when it is set, is handed to the backend fixers (`fixlogs/formvis__handoffs.md`); until it lands the variable is unused.
+- Verified: `cargo check --locked` in `src-tauri` clean. Not run: a `kill -9` of the AppImage's shell.
+- Replaced, quoted exactly:
+
+```text
+            let mut sidecar = engine.env("FORMVIS_PORT", "0");
+```
+
+## Layers to Files as PSD or layered TIFF leaves out the document's comps, and with Trim its alphas, slices and notes · v2.3.4 (io/layer-export.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/layer-export.ts` `encodeOne`, the `psd` and `tiff-layers` branches.
+- Wrong: each file was written from `{ ...doc, width, height, layers: [one], guides: [] }`, so the comps named layers the file lacks and, with Trim, the alpha channels, slices and notes kept full-document coordinates on a file the trimmed layer's size (the alpha planes were taken from the document's top-left corner). Trigger: Layers to Files or Quick Export to PSD or TIFF with layer, Trim on, in a document with alpha channels, slices, notes or comps.
+- Now: both calls pass `comps` and `activeComp` as undefined, and `alphas`, `slices` and `notes` as undefined when the picture is not the document's size; an untrimmed export keeps them, since they still line up.
+- Verified: `tsc --noEmit` clean. Not run: Layers to Files in a browser.
+- Replaced, quoted exactly:
+
+```text
+    const { bytes } = await writePsdFile({ ...doc, width: s.width, height: s.height, layers: [one], guides: [] }, s, false, null);
+    return (await writeLayeredTiff({ ...doc, width: s.width, height: s.height, layers: [one], guides: [] }, s, null)).blob;
+```
+
+## Open SVG as Layers reads arcs whose flags have no separators · v2.3.4 (io/svg-layers.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/svg-layers.ts` `pathSegments`, the tokenizer and `flag`.
+- Wrong: the large-arc and sweep flags were read as general numbers, so in `M0 0a5 5 0 015 5L20 20` the token `015` became 15, the end point became NaN and the parse stopped, dropping the shape. Trigger: minified SVG path data opened as layers.
+- Now: the tokenizer keeps each number's source text (`raw`); `flag` takes the first character of a token that starts with 0 or 1 and is longer than one character, leaving the rest as the next token. `tokens` is typed `string | number` so the rest can be put back.
+- Verified: `tsc --noEmit` clean; a node copy: compact, spaced, comma-separated and `10.5.5` flags all give the right flags and end points.
+- Replaced, quoted exactly:
+
+```text
+  const tokens = [...d.matchAll(/([a-zA-Z])|([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)/g)].map((m) => m[1] ?? Number(m[2]));
+  const flag = (): boolean => num() !== 0;
+```
+
+## A Save for Web slice message stays a string in the HTML page · v2.3.4 (io/sfw-html.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/sfw-html.ts` `slicesHtml`, the `link` helper.
+- Wrong: the message went into `onmouseover="window.status='...'"` HTML-escaped only; the parser decodes `&#39;` to a quote before the script runs, so `x';alert(1);//` ended the string and ran as code on hover. Trigger: a slice message typed or read from a .fvd project, then Save for Web with HTML.
+- Now: the message is escaped for a JavaScript string (backslash, quote, CR, LF, U+2028, U+2029 as a space) and then passed through `esc` for the attribute.
+- Verified: `tsc --noEmit` clean; a node check that decodes the attribute and runs it gives back the same plain strings for three hostile messages.
+- Replaced, quoted exactly:
+
+```text
+      const link = (inner: string): string => (c.url ? `<a href="${esc(c.url)}"${c.target ? ` target="${esc(c.target)}"` : ''}${c.message ? ` title="${esc(c.message)}" onmouseover="window.status='${esc(c.message).replace(/'/g, '&#39;')}';return true" onmouseout="window.status='';return true"` : ''}>${inner}</a>` : inner);
+```
+
+## OpenRaster export keeps vector masks, Fill, Blend If, clipping, folder masks and folder modes · v2.3.4 (io/ora.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/ora.ts` `writeOra`, `plain` and the group branch.
+- Wrong: `plain` checked only the layer mask, text, shape, smart object, effects and a whole-pixel move, so a layer with a vector mask, Fill below 1, Blend If, fill content, clipping or a masked folder around it was written as its raw pixels; folders were always `isolation="auto"` with no `composite-op`, so a Multiply or isolated folder reopened as Normal pass-through. Nothing was noted. Trigger: ORA export of any of those.
+- Now: such layers are not `plain` and go through `alone(l)` (`renderLayerAlone`, which keeps the ancestors and so applies folder masks, the vector mask, Fill and Blend If; the clip coverage is drawn from the base even while the base is hidden, `clipCoverage` does not read `hidden`). A layer clipped to a base with `blendClipped` stays plain (drawn alone it would be empty, `clippedGroup` returns on the hidden base) and a note says it was written unclipped. Folders write `composite-op` from `TO_ORA` and `isolation="isolate"` when `groupIsolated`; `readOraFile` reads both. The header comment says so.
+- Verified: `tsc --noEmit` clean. Not run: an ORA export and reopen in a browser.
+- Replaced, quoted exactly:
+
+```text
+ *  groups as nested stacks), a PNG per layer, mergedimage.png and a thumbnail. formvis's groups are pass-through, as
+ *  isolation="auto"; adjustment layers have no OpenRaster form and are left out, said so. */
+      return `${depth}<stack ${common} isolation="auto">\n${kids}${depth}</stack>\n`;
+    const plain = !!m && !l.text && !l.shape && !l.smart && !(l.mask && l.mask.enabled !== false) && !effectsActive(l.effects) && Math.abs(m[0] - 1) < 1e-9 && Math.abs(m[1]) < 1e-9 && Math.abs(m[2]) < 1e-9 && Math.abs(m[3] - 1) < 1e-9 && Number.isInteger(Math.round(m[4] * 1e6) / 1e6) && Number.isInteger(Math.round(m[5] * 1e6) / 1e6);
+```
+
+## Content-Aware Move moves the selection inside its undo step · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.contentAwareMoveNow` (review formvis__engine-index.md F5).
+- Wrong: `p0.selection = SelectionMask.cropped(...)` ran after `regionEdit('Content-Aware Move', ...)` had closed its step, so the step's after-snapshot kept the old selection (Redo restored the pixels with the outline at the source), and a refused edit still moved the outline. Removed line: `this.regionEdit('Content-Aware Move', ({ raster }) => {` as the outer call, and the guard `if (this.current === p0 && p0.selection === sel0) {`.
+- Changed: the regionEdit call and the selection change run inside one `this.edit('Content-Aware Move', ...)` (the inner edit nests into it, so the deep-precision handling stays on the outer step); a `landed` flag set after `putImageData` gates the selection change, so a refused or empty edit leaves the outline and records nothing. The body keeps its old indentation.
+- Checked: `npx tsc --noEmit`, no error in this file; the move, Undo, Redo replay not run.
+
+## Moving a panel tab to another group keeps an extension panel's page alive · v2.3.4 (ui/panel-group.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panel-group.ts` `PanelGroup.attach`, reached from `moveTab` (handoff from X1, review formvis__extensions-gpu-config.md F1 part 2 of 3).
+- Wrong: `attach` re-parented the page with `appendChild`; an extension panel's page holds an iframe, and moving it destroys its browsing context, so dragging the tab to another group reloaded the panel (typed state and activation lost). Now a page that is already connected moves with `moveBefore(page, null)` when the body has it; otherwise (other engines, or a page attached for the first time, which `moveBefore` refuses) `appendChild` as before.
+- Verified: `npx tsc --noEmit`, no errors in this file. Not run: e2e test_extension_dock_panel with a tab drag.
+- Replaced, quoted exactly:
+
+```text
+    body.appendChild(page);
+```
+
+## The window's capability drops the window permissions the page never uses · v2.3.4 (src-tauri/capabilities/default.json)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/capabilities/default.json` `permissions`; review formvis__native-tauri-packaging F12.
+- Wrong: any page on `http://127.0.0.1:*` in the window got `core:window:allow-maximize`, `allow-unmaximize` and `allow-set-title`, which nothing calls (the page uses `toggle_maximize` and the shell's `set_window_title`; the native menu's items are predefined). They are removed.
+- Kept, found in use: `ui/caption-buttons.ts` calls minimize, toggle_maximize, is_maximized, close, start_dragging and set_decorations; `ui/panels/assistant.ts` request_user_attention; `gpu/native-display.ts` gains a `native_remove` call in another 2.3.4 fix; `shell:allow-open` serves tauri-plugin-shell's injected script, which sends every `target="_blank"` link through `plugin:shell|open`. Not done: tying the remote pattern to the engine's port in `on_navigation`.
+- Verified: grep of `frontend/src`, `frontend/public`, `e2e`, `backend/tests` and `setup` for each permission; `cargo check --locked` in `src-tauri` clean (the build step validates the capability). Not run: the e2e desktop packaging tests.
+- Replaced, quoted exactly:
+
+```text
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-set-title",
+```
+
+## The AppImage launcher is valid when its path holds a dollar, quote or back tick · v2.3.4 (src-tauri/src/integration.rs exec_quote)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/src/integration.rs` `exec_quote`; review formvis__native-tauri-packaging F9.
+- Wrong: the `'"' | '`' | '$'` arm pushed one backslash. The Desktop Entry spec unescapes the string before applying Exec quoting, so `\$` is an invalid string escape and GLib rejects the Exec value; the menu entry for an AppImage under such a path did not start the app. Now the arm pushes two backslash characters (`\\$`, `\\"`, ``\\` ``), as the spec asks; the backslash arm already wrote four.
+- Verified: `cargo check --locked` in `src-tauri` clean. Not run: `desktop-file-validate` (not installed).
+- Replaced, quoted exactly:
+
+```text
+                out.push('\\');
+```
+
+## An update on Windows stops the engine before the installer runs · v2.3.4 (src-tauri/src/main.rs install_update)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/src/main.rs` `install_update`; review formvis__native-tauri-packaging F5.
+- Wrong: the engine was stopped after `download_and_install` returned, but on Windows tauri-plugin-updater 2.12.0 launches the installer and calls `std::process::exit(0)` inside `install`, after only its own hook (`cleanup_before_exit`, which neither fires `RunEvent::Exit` nor kills shell children). The engine kept running, so the installer could not overwrite `formvis-engine.exe` or the old engine stayed beside the new app. Now `download` and `install` are called apart, as `download_and_install` does, with `#[cfg(windows)] kill_backend(&app);` between them; macOS and Linux keep their order. `kill_backend` takes the child from its slot, so the later call is a no-op on Windows.
+- Verified: `cargo check --locked` in `src-tauri` for the Linux and the `x86_64-pc-windows-gnu` targets, both clean. Not run: an update on Windows.
+- Replaced, quoted exactly:
+
+```text
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|err| format!("Could not install the update: {err}"))?;
+```
+
+## The native renderer sizes regions of a gigapixel or more without overflow · v2.3.4 (native/formvis-render/src/lib.rs, native/formvis-render/src/composite.rs)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `TiledLayer::write`, `TiledLayer::read` (lib.rs) and `Blender::blend_region` (composite.rs); review formvis__native-tauri-packaging F7.
+- Wrong: `w * h * 4` and the row offsets were computed in u32 before `as usize`, so a region of 2^30 pixels or more (a 33,000 by 33,000 `formvis-render composite`, allowed by the budget on a 32 GB machine) wrapped and the command panicked. Now every size is `(w as usize) * (h as usize) * 4` and every offset `(((py - y) as usize) * w as usize + (px - x) as usize) * 4`.
+- Verified: `cargo check --locked --all-targets` and `cargo test --locked` in `native/formvis-render`, 21 passed on a software adapter. Not run: a gigapixel composite.
+- Replaced, quoted exactly:
+
+```text
+        assert_eq!(rgba.len(), (w * h * 4) as usize);
+                let any = (y0..y1).any(|py| (x0..x1).any(|px| rgba[(((py - y) * w + (px - x)) * 4 + 3) as usize] > 0));
+                        let s = (((py - y) * w + (px - x)) * 4) as usize;
+        let mut out = vec![0u8; (w * h * 4) as usize];
+                        let d = (((ly - y) * w + (lx - x)) * 4) as usize;
+        let mut out = vec![0u8; (w * h * 4) as usize];
+                        let d = (((ly - y) * w + (lx - x)) * 4) as usize;
+```
+
+## docker build finds the manual the Help panel imports · v2.3.4 (Dockerfile)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `Dockerfile` stage `frontend`, for `ui/panels/help.ts` `import MANUAL from '../../../../docs/MANUAL.md?raw'`; review formvis__native-tauri-packaging F4.
+- Wrong: the stage copied only `frontend/`, so `npx vite build` could not resolve `/src/docs/MANUAL.md` and `docker build .` stopped. A scan of every non-test import under `frontend/src` finds this one leaving the folder. Now `COPY docs/MANUAL.md /src/docs/MANUAL.md` follows `COPY frontend/ ./`; `.dockerignore` does not exclude `docs/`.
+- Verified: the import scan. Not run: `docker build` (too heavy for this shared machine).
+- Nothing removed.
+
+## Batch and Lens Correction batch close each file's document when a step or the encode fails · v2.3.4 (app.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `app.ts` `runBatch`, `runLensBatch`. Review formvis__app-automation F8 (fixer A1).
+- Wrong: `engine.closeProject(p.id)` ran on the success path only; a throwing action step or a failed TIFF `api.encode` went to the catch and left that file's document open as an unsaved tab, one per failing file.
+- Now: as `imageProcessor` does, `let id = ''` before the `try`, the id kept once the file opens, and `finally { if (id) engine.closeProject(id); }`; the inline closes (success, stopped, "could not be corrected") are gone, since the `finally` covers them, `break` and `continue` included.
+- Verified: `tsc --noEmit` clean. Not run: a batch with the engine stopped.
+
+## A generation or upscale result that lands during a stroke or job waits and is placed · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.insertRasterLayer`, `fillAreaOnce`, `upscaleInDocument`, `upscaleSelection`, `computeDepthMap` (review formvis__engine-index.md F4).
+- Wrong: the async results were placed through `edit`, which refuses during a stroke or while `busyWith` is set, and the result was ignored. `fillAreaOnce` could not `switchTo` back (refused under a stroke), still showed "The ... result was placed in ..." and returned true; the paid generation was lost. Removed lines: the notice inside `if (this.current !== p)`, the bare `this.insertRasterLayer(...); return true;` endings, and the `this.current !== p` checks placed before `createImageBitmap`.
+- Changed: each path decodes the result, then waits (`while (this.stroke || this.busyWith)`, 100 ms steps), then checks its document and places synchronously, so no await lies between check and insert. `insertRasterLayer` returns the `edit` result; `fillAreaOnce` gives the "placed in" notice only after a successful insert and an error notice with false when refused; `upscaleSelection` and `computeDepthMap` return the insert's result.
+- Checked: `npx tsc --noEmit` clean; the stubbed-generate replay not run.
+
+## Exported color lookup tables leave out adjustments in hidden folders · v2.3.4 (engine/lut-export.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/lut-export.ts` `hasVisibleAdjustment`, `sampleLut`.
+- Wrong: both tested `l.visible` alone, so a visible adjustment inside a hidden folder went into the .cube, .3dl or .csp.
+- Now: `shown` requires the layer and every ancestor (`tree.ancestors` over the LutDoc's layers) to be visible. With the dialog's selected-only scope the folders are not in the LutDoc, so there only the layer's own eye counts, as before.
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: the export dialog.
+- Replaced, quoted exactly:
+
+```text
+export const hasVisibleAdjustment = (doc: LutDoc): boolean => doc.layers.some((l) => l.adjustment && l.visible);
+    if (!l.adjustment || !l.visible) continue;
+```
+
+## Picking a brush marks its tile in place and keeps focus · v2.3.4 (ui/properties.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/properties.ts` `PropertiesColumn.brushes`, its `fill` and tile click (review formvis__ui-o-z.md F12).
+- Wrong: the cache key `k` held `e.brushPresetId` and the tile click set `key = ''`, so every pick rebuilt every folder head, tile and thumbnail (each imported tip re-rasterised) and focus fell to the body. Now the key leaves the preset out; `tiles` (preset id to tile, cleared with `thumbs` on a rebuild) has `is-on` toggled in place on every call, and the click calls `fill()` without clearing the key.
+- Verified: `npx tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => `${p.id}:${brushGroupOf(p)}:${p.name}`).join(',')].join('|');
+          tile.addEventListener('click', () => { e.applyBrushPreset(p); key = ''; fill(); });
+```
+
+## Switching theme drops a skin's extra colour tokens · v2.3.4 (ui/themes.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/themes.ts` `applyTheme`, `lastVars` (new) (review formvis__ui-o-z.md F11).
+- Wrong: `applyTheme` only set the new theme's keys on `documentElement.style`, so a skin token the built-in themes lack (say `--surface-raised`) stayed in force under the next theme until reload. Now `lastVars` holds the keys last set, and those the new theme does not declare are removed before its own are set. Added lines only.
+- Verified: `npx tsc --noEmit` clean; `npx vitest run src/ui/themes.test.ts` 3 passed; node check of the removal on a scratch copy (`--surface-raised` empty after the switch).
+
+## A cancelled touch ends a tab drag and a Color panel drag · v2.3.4 (ui/panel-group.ts, ui/swatches.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panel-group.ts` `PanelGroup.tabDrag`, `ui/swatches.ts` `SwatchesPanel.bindColor` (review formvis__ui-o-z.md F10).
+- Wrong: the tab drag listened only for `pointermove`/`pointerup` on the document, so after a `pointercancel` (the browser taking the touch as a scroll) a hover showed the ghost and the next `pointerup` moved, detached or tore off the tab. The Color square and hue strip reset `down` only on `pointerup`, so after a cancel a hovering mouse changed the foreground colour. Now `up` also runs on `pointercancel` (listener removed with the others; on a cancel it clears the ghost and target and returns before any move), and the colour drags reset on `pointercancel` and `lostpointercapture` too.
+- Verified: `npx tsc --noEmit` clean. Not run: a touch drag with a dispatched pointercancel.
+- Replaced, quoted exactly:
+
+```text
+      cv.addEventListener('pointerup', () => { down = false; });
+```
+
+## The Paper texture tiles without a seam · v2.3.4 (engine/procedural-tips.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/procedural-tips.ts` `textureGrey` ('paper').
+- Wrong: the two value-noise lattices wrapped every `n / 24` and `n / 6` cells, 5.33 and 21.33 for the built-in 128 px tile, so the lattice did not repeat at the tile edge (and non-integer cells reached `cell()`): a seam every tile in Pattern Overlay, Fill with pattern and brush textures.
+- Now: `k1 = max(1, round(n / 24))`, `k2 = max(1, round(n / 6))` cells, feature size `n / k1` and `n / k2`, so each lattice repeats exactly at n.
+- Verified: node on a scratch copy of `vnoise` (the smooth terms): edge jump at n 128 from 67.4 to 2.6 levels (largest step inside the tile 9.7), n 64 from 16.2 to 1.6, n 96 unchanged. `tsc --noEmit` clean.
+- Replaced, quoted exactly:
+
+```text
+  if (kind === 'paper') return 255 * Math.min(1, 0.55 + 0.35 * vnoise(x, y, 24, 31, n / 24) + 0.25 * (cell(x, y, 33) - 0.5) + 0.15 * (vnoise(x, y, 6, 35, n / 6) - 0.5));
+```
+
+## Applying a layer comp or selecting a frame carries linked masks with the layer · v2.3.4 (engine/layer-comps.ts, engine/frame-ops.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-comps.ts` `applyComp`, `engine/frame-ops.ts` `selectFrame`.
+- Wrong: both set only the layer's x and y, so a linked vector mask or a linked mask with its own placement stayed behind, unlike a Move (`followMask`, `followVector`).
+- Now: when the position changes, a linked placed mask moves by the same (dx, dy), which is what `followMask` (index.ts, not shared) does for a pure translation, and a linked vector mask goes through `followVector`. Frame thumbnails (`frameLayers` in timeline.ts, outside this fix) still draw masks unmoved.
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: in a browser.
+- Replaced, quoted exactly:
+
+```text
+    if (comp.usePosition && e.x !== undefined && e.y !== undefined && (e.x !== l.transform.x || e.y !== l.transform.y)) patch.transform = { ...l.transform, x: e.x, y: e.y };
+    target.forEach((l, i) => { const now = q.doc.layers[i]; if (l !== now && now?.id === l.id) q.updateLayer(l.id, { visible: l.visible, opacity: l.opacity, transform: l.transform, effects: l.effects }); });
+```
+
+## Copied layers keep their vector masks; a duplicated clip base keeps its clipped layers · v2.3.4 (engine/layer-structure.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-structure.ts` `insertCopies`, `duplicateLayers`.
+- Wrong: `insertCopies` moved a copy's transform and placed mask by (dx, dy) but not its vector mask, whose path is in document pixels, so after Duplicate Layer to another document (centred) or a paste between sizes the mask cut the wrong area. `duplicateLayers` put a root's copies straight after it, so the copy of a clip base sat inside its clip chain and `normalizeClips` unclipped every layer clipped to the original.
+- Now: `insertCopies` moves `c.vectorMask` with `movedVector` by the same offset. `duplicateLayers` files a root's copies after the run of layers right after it whose `clipId` is the root (concatenated when two roots share that spot). `addLayer` with a base active still inserts inside the chain (the owner may want a new layer there to join the group): not changed.
+- Verified: node on a scratch copy of the placement and `normalizeClips`: `base c1 c2` duplicated gives `base c1 c2 base'` with both clips kept; a clipped layer's own copy stays clipped. `tsc --noEmit` clean.
+- Replaced, quoted exactly:
+
+```text
+      copiesAfter.set(rootId, fixed);
+```
+
+## Flatten All Layer Effects and Rasterize Layer Style keep a tied mask over its old box · v2.3.4 (engine/file-scripts.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/file-scripts.ts` `bakeEffects`.
+- Wrong: the patch gives the layer a document-size raster and `docTransform`, and kept the mask as it was. A tied mask (`placement === null`) is drawn through the layer's transform, so it was stretched over the whole canvas.
+- Now: a tied mask gets `placement: { ...l.transform }`, its old box, as 2.3.3's `growLayer` does, so it stays where it was; outside that box it reveals (the renderer's `covers: false`), which keeps the baked effects that showed outside the layer before. The finding suggested a document-size redraw transparent outside the box; that would hide those effects, so it was not used.
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: the flatten in a browser.
+- Replaced, quoted exactly:
+
+```text
+    patches.set(l.id, { ...PLAIN, raster: r, transform: docTransform(r.width, r.height), effects: null, fill: 1 });
+```
+
+## Opened and saved files reach the system's recent documents · v2.3.4 (src-tauri/build.rs, src-tauri/capabilities/default.json)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/build.rs` `APP_COMMANDS` and `src-tauri/capabilities/default.json` `permissions`, for `note_recent_document` (main.rs) called by `app.ts` `noteRecent`; review formvis__native-tauri-packaging F1.
+- Wrong: the command was registered in `generate_handler!` but missing from `APP_COMMANDS` and the capability. The window's origin is remote to Tauri, so the ACL refused the call and the page's `.catch(() => undefined)` hid it: no file ever reached the macOS Recent Items, the GTK recent list or the Windows jump list. Now `"note_recent_document"` closes `APP_COMMANDS` and `"allow-note-recent-document"` closes the permissions list.
+- Verified: `cargo check --locked` in `src-tauri` clean (the Tauri build step accepts the new permission), with an empty placeholder sidecar in `src-tauri/binaries` and a placeholder `frontend/dist`, both git-ignored and removed after. Not run: a release desktop build.
+- Replaced, quoted exactly:
+
+```text
+    "text_edit",
+];
+    "allow-text-edit"
+  ]
+```
+
+## The last raw z-index values use the layer tokens · v2.3.4 (styles/tokens.css, styles/panels.css, styles/shell.css)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `styles/tokens.css` (the stacking scale), `styles/panels.css` `.cv-comp-comment`, `.cv-dock-split`, `.cv-props-col:not(.is-collapsed)`, `.cv-props-resize`, `styles/shell.css` `.cv-taskbar::before`.
+- Why: review formvis__extensions-gpu-config F10 (fixer X1). Five rules set z-index as plain numbers (2, 2, 4, 5 and -1), against tokens.css rule 2 and harness law 3.
+- Change: the scale gains `--z-under: -1`, `--z-local-2: 2`, `--z-local-4: 4` and `--z-local-5: 5`, and the five rules use them; the values are the same, so the stacking order does not change.
+- Verified: `grep -n "z-index" src/styles/*.css | grep -v "var(--z"` lists only comments. Not run: a visual check in the window.
+
+## 32-bit Preview Options puts the view back on every close but OK · v2.3.4 (ui/panels/preview32-dialog.ts)
+
+- Why: review formvis__panels-g-w F8 (fixer P2, kind: fix, logged 2026-11-11). The restore of `before` lived in the Cancel button's handler; Escape, the X and a click on the scrim go through `Dialog.close()`, which had no `onClose` here, so the live Exposure and Gamma change stayed although the dialog says Cancel puts it back.
+- `Preview32Dialog`: a `kept` flag set by OK before `close()`; `onClose` calls `colour.setPreview(before...)` unless `kept`, then clears it; Cancel only closes.
+- Checked: `tsc --noEmit` (no error in this file). Not run: the window.
+
+## One Ctrl+Z in Liquify or a generative prompt undoes one thing · v2.3.4 (ui/panels/liquify-dialog.ts, ui/panels/prompt-history.ts, landed in 9f0fd45)
+
+- Why: review formvis__panels-g-w F7 (fixer P2, kind: fix, logged 2026-11-11). Two Mod+Z handlers ran on one keydown: Liquify's scrim listener stepped the stroke and the Dialog base listener (registered first, same scrim) ran `DialogHistory.undo`, putting back the last settled control; `PromptHistory`'s field listener undid the prompt and the event bubbled on to the same `DialogHistory.undo`, whose skip for a field with typing of its own only applies to inputs (the prompt is a textarea), so Influence or the Model select went back too.
+- `LiquifyDialog` constructor: the Mod+Z listener is registered with `{ capture: true }` and calls `e.stopPropagation()` before `stepStroke`. `PromptHistory` `keys`: `e.stopPropagation()` beside each `e.preventDefault()`, for undo and redo. This entry lands with the next fix: 9f0fd45 instead carried the entry "The native renderer follows live previews..." (gpu/native-display.ts), another fixer's, which was in the working tree when it was committed.
+- Checked: `tsc --noEmit` (no error in these files). Not run: the window.
+
+## The dev server's plugin worker policy closes connections · v2.3.4 (vite.config.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `vite.config.ts` `PLUGIN_WORKER_DEV_CSP`.
+- Why: review formvis__extensions-gpu-config F5 (fixer X1). The dev policy allowed `connect-src 'self' ws://localhost:5190`; under `npm run dev` the `/api` proxy (`ws: true`) forwards to the engine, so plugin code that got past the worker's JavaScript seal could reach the engine's HTTP and WebSocket routes. The built app's `PLUGIN_WORKER_CSP` (backend/app/main.py) is `connect-src 'none'`.
+- Change: `connect-src 'none'`. `script-src blob: 'self'` stays for the worker's own module imports; `plugins/plugin-worker.ts` opens no connection itself and seals fetch, XMLHttpRequest and WebSocket before importing the plugin. A dynamic `import('/api/...')` is a script fetch and stays allowed by `script-src 'self'` in dev, as before.
+- Verified: `tsc --noEmit` (no error in this file). Not run: a folder plugin under the dev server.
+- Replaced, quoted exactly:
+
+```text
+const PLUGIN_WORKER_DEV_CSP = `default-src 'none'; script-src blob: 'self'; connect-src 'self' ws://localhost:${FRONTEND_PORT}; worker-src 'none'; frame-src 'none'; img-src 'none'; style-src 'none'`;
+```
+
+## Frame Trace shows the GPU time of WebGL2 filters · v2.3.4 (gpu/filters.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/filters.ts` `GlFilters.single`, `lensGather`, `timeLater` and `readTimer` (new), `waiting` (new).
+- Why: review formvis__extensions-gpu-config F8 (fixer X1). Both runs read `QUERY_RESULT_AVAILABLE` in the same task as `endQuery`; WebGL2 makes a result available only after control returns to the event loop, so `lastGpuMs` was always null and `frameTrace.noteGpu` ignored it.
+- Change: the ended query goes to `timeLater`, which first reads any query still waiting, deletes an unread older one, and keeps the new one; `readTimer` runs on a `setTimeout` (0, then every 16 ms, up to 60 tries) and at the next run, and writes `lastGpuMs` and `noteGpu` (null when the counter was disjoint), then deletes the query. The `finally` blocks delete a query only when it was not handed over (`q !== this.waiting?.q`), so a run that throws still deletes its query; a lost context drops the waiting one.
+- Verified: `tsc --noEmit` (no error in this file). Not run: the trace in a browser with `EXT_disjoint_timer_query_webgl2`.
+- Replaced, quoted exactly:
+
+```text
+        this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
+        frameTrace.noteGpu(key, this.lastGpuMs);
+      } finally { this.free(input, first); if (out !== first) this.free(out); if (fin !== first && fin !== out) this.free(fin); if (q) gl.deleteQuery(q); }
+        this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
+        frameTrace.noteGpu('lens', this.lastGpuMs);
+      } finally { gl.disable(gl.SCISSOR_TEST); this.free(levels, rad, tapTex, input, out); if (q) gl.deleteQuery(q); }
+```
+
+## The native renderer follows live previews and lets go of layers it no longer draws · v2.3.4 (gpu/native-display.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/native-display.ts` `NativeDisplay.put`, `frame`, `entries` (the table branch), `shown` and `used` (new).
+- Why: review formvis__extensions-gpu-config F7 and the orchestrator's handoff from formvis__native-tauri-packaging (fixer X1). `put` skipped an image whose version equalled the one last sent; live previews on a mask or clipping base carry version -1 every frame, so the preview froze after its first frame (the WebGPU and WebGL2 displays upload every frame for a negative version). And `native_remove` was never called, so the renderer kept the tiles and tables of every replaced or deleted layer, and of documents no longer shown, for the session.
+- Change: `put` returns early only when `version >= 0` and the version matches. `frame` starts a fresh `used` map (id to object), `put` and the table branch record into it, and after `present` every id of the previous frame's `shown` that this frame did not use is sent to `native_remove({ id })` and dropped from `sent`, so it is sent again if it comes back (switching back to a document). Tables are covered too: the renderer's `Document::remove` drops both layers and tables.
+- Verified: `tsc --noEmit` (no error in this file). Not run: the desktop app (no Tauri shell or GPU here).
+- Replaced, quoted exactly:
+
+```text
+    if (this.sent.get(img) === version) return id;
+```
+
+## Layer Comps: Last Document State stays on top; the Measurement Log's selection stays with its document · v2.3.4 (ui/layer-comps.ts, ui/measurement-log.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/layer-comps.ts` `LayerCompsPanel.sync`, `compRows` (new); `ui/measurement-log.ts` `MeasurementLogPanel.sync`, `selectedIn` (new). Two commits.
+- Wrong (1): `patchList` began its cursor at the list's first child, the unkeyed state row, and inserted each comp before it, so Last Document State sat below the comps. The comps now live in `div.cv-comps-rows` after the state row and the empty line, and `patchList` runs there; the list's click delegation is unchanged.
+- Wrong (2): `selected` and `anchor` were panel state keyed by per-document ids counted from 1, so a selection made in A stayed after switching to B and Delete or Export acted on B's records. `sync()` now clears both when `engine.current` differs from `selectedIn`.
+- Verified: `tsc --noEmit` (no error in these files). Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+      `<div class="cv-comps-empty">No layer comps yet. Use New to record the current state.</div></div>` +
+    patchList<Row>(this.rows, list, {
+import type { Engine } from '../engine';
+```
+
+## Enter on a focused button in the Brush Preset picker does that button's job · v2.3.4 (ui/brush-picker.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/brush-picker.ts` `BrushPicker` constructor (document keydown).
+- Wrong: the document-wide Enter ran `take()` before the focused button's click, so Enter on Revert found `before` cleared and kept the trial brush, and Enter on a preset row applied it after the picker closed. Enter now leaves a focused `HTMLButtonElement` inside `this.root` to act on its own.
+- Verified: `tsc --noEmit` (no error in this file). Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    document.addEventListener('keydown', (e) => { if (!this.isOpen) return; if (e.key === 'Escape') this.revert(); else if (e.key === 'Enter' && document.activeElement !== this.find) this.take(); });
+```
+
+## The Navigator stops panning when its drag is cancelled · v2.3.4 (ui/navigator.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/navigator.ts` `NavigatorPanel` constructor (preview drag).
+- Wrong: only pointerup cleared `dragging`; a touch or pen drag ended by pointercancel, or a lost release, left it set and every later hover over `.cv-nav-preview` panned the document. pointercancel and lostpointercapture now clear it, and a pointermove with no button down ends the drag.
+- Verified: `tsc --noEmit` (no error in this file). Not run: touch or pen input.
+- Replaced, quoted exactly:
+
+```text
+    this.canvas.addEventListener('pointermove', (e) => { if (dragging) move(e); });
+```
+
+## Renaming an action keeps the steps that play it; importing shows the imported action · v2.3.4 (ui/panels/actions-dialogs.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ActionsDialog.rename` and `ActionsDialog.importJson`.
+- Wrong: play and conditional steps name the action they play (`playNamed` in app.ts), but `rename()` changed `a.name` only, so those steps played nothing. `importJson` set `this.pick.value` to the new last index before `sync()` added that option; the select was left with nothing selected and inserting the option selected the first action, so steps, Play and Delete acted on it. Now `rename()` rewrites, in every action, `name` of play steps equal to the old name (and a `Play <old>` label) and `then` / `else` of conditional steps; both import paths `sync()`, set the value, and `sync()` again, as `moveAction` does.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly (rename only gained lines; this pair appeared in both import paths, each now preceded by `this.sync();`):
+
+```text
+        this.pick.value = String(this.store.list.length - 1);
+        this.sync();
+```
+
+## Relight keeps drawing after the WebGL context is lost · v2.3.4 (gpu/relight-gl.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/relight-gl.ts` `renderRelight`.
+- Why: review formvis__extensions-gpu-config F4 (fixer X1). `init()` cached its state once; after a context loss every GL call did nothing, `readPixels` left the buffer zeroed and the Relight layer's paint became transparent black for the session, with the CPU path never taken again.
+- Change: before drawing, a lost context (`isContextLost()`) is dropped with `forgetRelightUploads()` and `init()` makes a fresh one; when that one is lost too, `shadeRelight` draws on the CPU with the settings of the size fallback (the lost test comes before the size test, since `getParameter` answers null on a lost context). A context lost by the time `readPixels` returns is dropped the same way and the CPU result is returned instead of the zeroed buffer.
+- Verified: `tsc --noEmit` (no error in this file). Not run: a forced loss with `WEBGL_lose_context` in a browser.
+- Replaced, quoted exactly:
+
+```text
+  const st = init(), w = geo.width, h = geo.height;
+  if (!st || w > maxTex || h > maxTex) return shadeRelight(base, geo, content, { shadowSteps: Math.min(steps, 16), shade, split });
+```
+
+## Fill and Brush Settings list patterns defined or loaded after start-up · v2.3.4 (ui/panels/fill-dialog.ts, ui/panels/brush-settings.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `FillDialog.show` and the `BrushSettings` constructor's Texture section.
+- Wrong: both Pattern selects were filled once from `allPatterns()` at construction, before kept patterns load (app.ts after the dialogs are built) and before any Define Pattern, so user patterns could not be chosen and a remembered one was skipped on restore; Brush Settings built the row only when patterns existed. Now Fill refills its select in place on each show (extra options removed, others updated by index), before `open()` restores, and falls back to the first pattern when its id is gone; Brush Settings always builds the row and refills it in its row sync, which runs on each show.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    if (!this.patternId) this.patternId = allPatterns()[0]?.id ?? '';
+    const patterns = allPatterns().map((p) => [p.id, p.name] as const);
+    if (patterns.length) pick('Pattern', patterns, () => s().texture.pattern || patterns[0][0], (v) => put({ texture: { ...s().texture, pattern: v } }));
+```
+
+## Export As and Artboards to PDF start from the current document's name · v2.3.4 (ui/panels/export-dialog.ts, ui/panels/artboard-pdf-dialog.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ExportDialog.show` and `ArtboardPdfDialog.show`.
+- Wrong: the name typed in Export As stayed in `this.s.fileName` for the session (stripped only from the stored copy), so another document's Export As was prefilled with it and `exportName()` used it; Artboards to PDF kept the first document's name for every later one. Now Export As sets `fileName: undefined` before `load()` on each show, and Artboards to PDF takes the name from the current document each time.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly (export-dialog.ts only gained a line):
+
+```text
+    this.s = { ...this.s, name: this.s.name || p.name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled' };
+```
+
+## Duotone, Color Range and Focus Area open with the document's own state · v2.3.4 (ui/panels/duotone-dialog.ts, ui/panels/color-range-dialog.ts, ui/panels/focus-area-dialog.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to the constructors' `remember()` calls and `ColorRangeDialog.show`.
+- Wrong: `open()` restores remembered controls and fires their handlers after `show()` has set them from the document or the engine. Duotone Options showed and applied the last-used inks and curves on another document; Color Range's `show('depth')` opened in the remembered Select mode and Combine ignored the options bar; Focus Area's Mode ignored the options bar and its restored Sample All Layers called `engine.setAutoSel`, flipping the selection tools' option (also at start-up). Now Duotone does not remember; Color Range skips Combine and applies depth after `open()` (with Detect Faces disabled, as its Select handler does); Focus Area skips Mode and the Sample All Layers box.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    this.remember();
+    this.remember();
+    this.remember();
+    if (mode === 'depth') {
+      this.pick.value = 'depth';
+      this.farLimit.disabled = this.nearLimit.disabled = false;
+    }
+    this.faces = null;
+    this.detect.checked = false;
+    this.open();
+```
+
+## Paragraph text breaks long words between whole characters, emoji included · v2.3.4 (engine/text.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/text.ts` `wrapLines`, the character break of a word wider than the line.
+- Wrong: the break used UTF-16 indices, so a run of emoji or other astral characters could be cut inside a surrogate pair; both halves drew as replacement boxes. A single such character wider than the box was split too. Trigger: box text holding a long run of emoji.
+- Now: the loop runs only while the word has more than one code point (`[...w].length > 1`), and a break that falls after a high surrogate steps back one unit (or forward over the whole first character when it would be the only one).
+- Verified: `tsc --noEmit` clean; a node copy of the loop with a width per code point: ten emoji in 40 and 50 px, three in 10 px, one in 5 px and mixed text break with no lone surrogate and join back unchanged.
+- Replaced, quoted exactly (and one line added after the inner `while`):
+
+```text
+      while (w.length > 1 && lineWidth(c, t, w, wAt) > max) {
+```
+
+## Add Smart Filter Mask on a warped smart object no longer lands offset · v2.3.4 (engine/smart-ops.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/smart-ops.ts` `addSmartFilterMask`.
+- Wrong: the selection was mapped into source space assuming `l.raster` is the source padded evenly and placed by `l.transform`; a smart object with a live deform has `warp` null (restack clears it) while its raster is the warped, cropped render, so the mask landed at an unrelated offset and scale. Trigger: Warp, Puppet Warp or Perspective Warp on a smart object, a selection, then Add Smart Filter Mask.
+- Now: the guard also requires `!sm.deform`, so a deformed object gets the all-white mask, as a distorted one does.
+- Verified: `tsc --noEmit` clean. Not run: the command in a browser.
+- Replaced, quoted exactly:
+
+```text
+  if (sel && !sm.warp) {
+```
+
+## Stack Mode None shows the top layer as it is · v2.3.4 (engine/stack-modes.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/stack-modes.ts` `computeStack`, reached from `engine/smart-object-ops.ts` `setStackMode`.
+- Wrong: alpha was always the mean of the stack's alphas and None only picked the colour, so lower layers showed through the top layer's holes at the mean alpha (opaque red under clear gave red at 128). Trigger: a stacked smart object switched to another mode and back to None.
+- Now: None returns a copy of the top layer's pixels, as `stackToSmartObject` shows it when the object is made.
+- Verified: `tsc --noEmit` clean. Not run: the mode switch in a browser.
+- Added (no line removed), before `const ch`:
+
+```text
+  if (mode === 'none') return new ImageData(new Uint8ClampedArray(layers[n - 1].data), first.width, first.height);
+```
+
+## Knockout keeps the knocked-out layer's own pixels when the backdrop needs scratch room · v2.3.4 (engine/renderer.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/renderer.ts` `Renderer.knockout`.
+- Wrong: `knockout` got the layer's prepared slot `a` (slot 0) and rendered the backdrop into slot 2. The nested `render` takes slot 0 for any backdrop layer off the plain path (mask, vector mask, Blend If, a pixel blend mode, per-render effects; `prepare` clears it), and a backdrop adjustment's `adjust` takes slot 2, the nested render's own target. The layer was then cut and drawn with the backdrop's pixels.
+- Now: `a.s` is copied to a fresh surface (`keep`) first; the backdrop renders into a fresh surface; after it, `a` is prepared and `keep` drawn back, and `keep` is the silhouette for the `destination-in` and `destination-out` draws.
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: renderDoc in a browser.
+- Replaced, quoted exactly:
+
+```text
+    const back = this.slot(2, W, H);
+    back.c.setTransform(1, 0, 0, 1, 0, 0); back.c.clearRect(0, 0, W, H);
+    if (only.size) this.render({ ...job, target: back.s, only, overrides: job.overrides, quality: job.quality });
+    back.c.drawImage(a.s, 0, 0);
+    ctx.globalCompositeOperation = 'destination-out'; ctx.drawImage(a.s, 0, 0);
+```
+
+## Editing an Adaptive Wide Angle or Liquify smart filter keeps its own lens model and mesh size · v2.3.4 (ui/panels/wide-angle-dialog.ts, ui/panels/liquify-dialog.ts)
+
+- Why: review formvis__panels-g-w F5 (fixer P2, kind: fix, logged 2026-11-11). `Dialog.open()` runs `restoreRemembered()` after `show()` has loaded the filter being edited; the Correction select (not in the skip list) went back to the last-used model and fired its handler (`model` replaced, `pick` cleared), so OK saved the wrong lens; in Liquify the remembered Mesh size fired `setCell()`, which resampled the saved field to another cell size.
+- `WideAngleDialog.show`: `want = { ...this.s }` before `open()`; when a filter is edited (`o`), `this.s = want` after it, with `model.set`, `strength.set` (no events) and `syncRows()`. `LiquifyDialog.show`: `keep` is the saved field when it was taken; if `open()` replaced `this.liq`, the field, `this.cell` and the Mesh size select are put back and the preview redrawn. The remembered values are not changed.
+- Checked: `tsc --noEmit` (no error in these files). Not run: the window.
+
+## Each Local models card follows and cancels only its own download · v2.3.4 (ui/panels/local-models.ts, landed in 94c66b2)
+
+- Why: review formvis__panels-g-w F4 (fixer P2, kind: fix, logged 2026-11-11). `LocalModelsSection` kept one `job` field for every card: a second download replaced it, so the first card's `follow` loop exited (`this.job !== job`) with its progress frozen and its `done()` never run, and the first card's Cancel sent DELETE for the second card's job.
+- `follow` and `cancelButton`: `job` is replaced by `jobs`, a `Map` from the card's status note to the job it follows. `follow` loops while `jobs.get(note) === job`, ignores a poll answered after a Cancel, and deletes the entry when the job ends or the engine is lost; Cancel deletes and stops only `jobs.get(note)`. The call sites are unchanged, since each card already passes its own note to both. This entry was meant for 94c66b2 and lands with the next fix.
+- Checked: `tsc --noEmit` (no error in this file). Not run: two downloads against the engine.
+
+## Smudge and Liquify no longer leave a see-through rim on opaque pixels · v2.3.4 (engine/transform-commit.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/transform-commit.ts` `commitWarpStroke`.
+- Wrong: the area was cut with `destination-out` and the warped pixels (already times the area) laid with `source-over`, giving alpha a + (1 - a)^2 where the area is partial: 0.75 at coverage 0.5. Trigger: any Smudge or Liquify stroke on an opaque layer (the dab rims), much wider inside a feathered selection.
+- Now: the warped pixels are drawn with `'lighter'`, old (1 - a) plus warped a, as `PixelStroke`'s `lerp` branch does, then the operation goes back to `source-over`.
+- Verified: `tsc --noEmit` clean. Not run: a stroke in a browser.
+- Replaced, quoted exactly (the line before `ctx.drawImage(resultL, 0, 0)`):
+
+```text
+  ctx.globalCompositeOperation = 'source-over';
+```
+
+## Reset Warp on a flipped smart object puts it back as it was · v2.3.4 (engine/smart-deform.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/smart-deform.ts` `transformOf`, used by `engine/smart-object-ops.ts` `restack`.
+- Wrong: the angle was `atan2(m[1], m[0])`, the mapped x axis, which for a mirrored matrix points the other way: the angle came out 180 degrees off while `flipX` was also set, so a horizontal flip came back as a vertical one. Trigger: Flip Horizontal on a smart object, then Warp, Puppet Warp or Perspective Warp, then Reset Warp.
+- Now: when the matrix is mirrored the angle is read from the negated x axis.
+- Verified: `tsc --noEmit` clean; a node copy of `placement` and `transformOf` over both flips and five rotations: every corner maps back within 4e-14 px. Not run: Reset Warp in a browser.
+- Replaced, quoted exactly:
+
+```text
+  const sx = Math.hypot(m[0], m[1]), sy = Math.hypot(m[2], m[3]), flip = m[0] * m[3] - m[1] * m[2] < 0, ang = (Math.atan2(m[1], m[0]) * 180) / Math.PI;
+```
+
+## A layered TIFF with one alpha channel writes ExtraSamples inline · v2.3.4 (io/layered-tiff.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/layered-tiff.ts` `writeLayeredTiff`, the tag 338 entry.
+- Wrong: with one alpha channel ExtraSamples is two SHORTs, four bytes, which TIFF stores in the entry; the writer stored the offset `extraAt`, so tifffile read (180, 0) and Pillow could not open the file. Trigger: "TIFF with layer" export from a document with one saved selection.
+- Now: the value is `2` with no alphas, `Uint8Array.of(2, 0, 0, 0)` (inline, copied by the existing Uint8Array branch) with one, `extraAt` with more.
+- Verified: `tsc --noEmit` clean; the reviewer's Python port with the fix: tifffile reads (2, 0), Pillow opens RGBA.
+- Replaced, quoted exactly:
+
+```text
+    { tag: 279, type: 4, count: 1, value: pixels.length }, { tag: 284, type: 3, count: 1, value: 1 }, { tag: 338, type: 3, count: 1 + alphas.length, value: alphas.length ? extraAt : 2 },
+```
+
+## close_document refuses to drop unsaved tiled work and says when nothing closed · v2.3.4 (app.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `app.ts` command `close-document`, `requestClose`. Review formvis__app-automation F6 (fixer A1).
+- Wrong: the command discards unsaved changes on the promise (the MCP tool's words) that Reopen Closed Tab can bring the tab back, but `rememberClosed` keeps nothing for a document with a tiled layer and the recovery copy goes at the next `keepModified`, so the edits were lost. When `closeProject` refused (a stroke, or `waiting()`), the command still returned `{ closed: id }` and `rememberClosed` had pushed a record of a still-open document.
+- Now: the command throws, naming save_project, when `want.modified` and a layer is `tiled`, and throws when `await requestClose(...)` is false. `requestClose` pops its own record from `closedTabs` when the document did not close.
+- Verified: `tsc --noEmit` clean. Not run: an agent's close_document on a modified giant document.
+
+## Lens Flare at 32 bits no longer dims light above white · v2.3.4 (engine/deep-fx.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/deep-fx.ts` `lensFlareDeep`.
+- Why: review formvis__engine-a-e F11 (fixer E2).
+- Wrong: the screen formula `1 - (1 - v) * (1 - add)` assumes 0 to 1; at 32 bits a value above 1 came out lower (v = 2 with add 0.5 gave 1.5), so the flare dimmed HDR highlights.
+- Now: `v + (1 - Math.min(1, v)) * add`, the same result below white and no loss above it.
+- Verified: vitest scratch check outside the repo, a pixel at [2, 2, 2] stays at or above 2; `tsc --noEmit` no error in this file.
+- Replaced, quoted exactly:
+
+```text
+    for (let c = 0; c < 3; c++) out[o + c] = 1 - ((1 - out[o + c]) * (1 - Math.min(1, (add[c] * k) / 255)));
+```
+
+## A toolbar slot remembers the tool last chosen from it, Rotate View included · v2.3.4 (ui/tool-groups.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/tool-groups.ts` `rememberTool`, `slotTool` (review formvis__ui-o-z.md F9).
+- Wrong: `rememberTool` stored under `t.key` while `slotTool` reads `last.get(g.key)`, where a group's key is `group ?? key`; Rotate View (key R, group H) was never remembered in the Hand slot and a stray R entry was saved. Now it stores under `t.group ?? t.key`.
+- Verified: `npx tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+  if (!t || last.get(t.key) === t.id) return;
+  last.set(t.key, t.id);
+```
+
+## Gaussian and Motion Blur layers no longer darken edges next to transparency · v2.3.4 (engine/adjust-params.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/adjust-params.ts` `PARAM_ADJUSTMENTS.gaussianBlur.kernel`, `PARAM_ADJUSTMENTS.motionBlur.kernel`.
+- Why: review formvis__engine-a-e F10 (fixer E2).
+- Wrong: both kernels averaged the colour channels unweighted; transparent pixels read back from the canvas as rgb 0, so opaque pixels next to transparency took a dark fringe.
+- Now: each sample's colour is weighted by its alpha and divided by the blurred (Gaussian) or summed (Motion) alpha; a pixel whose weight is 0 keeps its colour, and every pixel keeps its own alpha. A fully opaque picture gives the same values as before (the box blur clamps at the edges, so an alpha of 1 stays 1).
+- Verified: vitest scratch check outside the repo, a 20 pixel red square on transparency keeps red edge pixels under Gaussian radius 8 and Motion distance 20; `tsc --noEmit` no error in this file.
+- Replaced, quoted exactly:
+
+```text
+      for (let k = 0; k < 3; k++) {
+        const ch = new Float32Array(W * H);
+        for (let i = k, j = 0; j < W * H; i += 4, j++) ch[j] = px[i];
+        for (let pass = 0; pass < 3; pass++) boxBlur(ch, W, H, r);
+        for (let i = k, j = 0; j < W * H; i += 4, j++) px[i] = Math.round(ch[j]);
+      }
+        let r = 0, g = 0, b = 0;
+          const t = s - steps / 2, sx = Math.min(W - 1, Math.max(0, Math.round(x + dx * t))), sy = Math.min(H - 1, Math.max(0, Math.round(y + dy * t))), o = (sy * W + sx) * 4;
+          r += src[o]; g += src[o + 1]; b += src[o + 2];
+        const o = (y * W + x) * 4, c = steps + 1;
+        px[o] = Math.round(r / c); px[o + 1] = Math.round(g / c); px[o + 2] = Math.round(b / c);
+```
+
+## A new reference image shows its name and is marked at once · v2.3.4 (ui/reference-panel.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/reference-panel.ts` `createReferencePanel`, `sync`, `fillTile` (new) (review formvis__ui-o-z.md F8).
+- Wrong: `patchList` calls `update` only for existing nodes, and `create` set neither `.cv-style-name` nor `is-active`/`aria-selected`, so an added tile stayed nameless and unmarked until the next sync. Now `create` ends with `fillTile(b, r)` and `update` is `fillTile`.
+- Verified: `npx tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+      update: (node, r) => {
+        setText(q(node, '.cv-style-name'), r.name);
+        const on = r.id === active;
+        node.classList.toggle('is-active', on);
+        node.setAttribute('aria-selected', String(on));
+      },
+```
+
+## The options bar refit on conditional controls, tried and withdrawn · v2.3.4 (ui/options.ts)
+
+- Kind: withdrawn fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/options.ts` `OptionsBar.queue` (review formvis__ui-o-z.md F7).
+- The finding: the `g.sig !== this.sigOf(g)` refit runs only in `show()` (tool events), so controls shown by an `options` event (Clone Stamp Show Overlay, symmetry, airbrush, Shape Path mode) overflow the bar and scroll behind its edge chevrons until the next tool or width change.
+- Tried: the queued frame ran `refresh()`, then the same signature check, and on a change `fit`, `paintMore` and `syncEdges`. It compiled and was not run in a window when it was committed.
+- Withdrawn in the same release, before any push, because the browser suite showed what it does to a control the user has just asked for: the refit moves the newly shown controls into the More panel in the same frame. At 1400 px, choosing W × H × Res in Crop left only Crop and Cancel on the bar with the W, H and Resolution fields in More, and the Healing Brush's Pattern list, the Patch tool's Sample All Layers, Crop's Show Cropped Area and the Move tool's transform fields were no longer where a click had put them. Five tests failed on it: `e2e/test_crop_size.py`, `e2e/test_heal_patterns.py` (the bars offer the pattern), `e2e/test_patch_sample_all.py` (the option shows in Content-Aware mode), `e2e/test_cover_doc2_layers_paint_crop.py` (Show Cropped Area) and `e2e/test_cover_misc_defect_options_bar.py` (d07, the Move tool's transform fields are on the bar).
+- `queue()` is back to its 2.3.3 line, quoted exactly below. The finding stays open for the owner: a refit that keeps the just-shown controls on the bar (moving older sections out first) would close it without this cost.
+
+```text
+    this.frame = requestAnimationFrame(() => { this.frame = 0; this.refresh(); });
+```
+
+## A second finger also ends a guide, pixel or tip drag · v2.3.4 (ui/stage.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/stage.ts` `Stage.bindTouch`, its `pointerdown` handler (review formvis__ui-o-z.md F6).
+- Wrong: a second finger cleared `dragId` and `panLast` and called the tool's `cancel`, but left `engine.guideDraft` (with an index), `pixelDrag` and `tipDragging` armed, so the next one-finger drag moved the guide (one history step) or the old pixels instead of reaching the tool. Now the gesture start also sets `guideDraft` to null (the guide stays), calls `cancelPixelMove()` and `endTipDrag()`. Added lines only.
+- Verified: `npx tsc --noEmit` clean. Not run: the touch scenario.
+
+## A trackpad pinch zooms about the fingers in a turned or flipped view · v2.3.4 (ui/stage.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/stage.ts` `Stage.bindPointer`, the `gesturechange` handler (review formvis__ui-o-z.md F3).
+- Wrong: the WebKit pinch anchor was measured against the overlay canvas's box, which `turn()` rotates, flips and `resize()` enlarges, so with Rotate View, Flip Horizontal or PAR correction the picture jumped. Now the anchor is the stage host's point through `Stage.unturn`, as the wheel, touch and pointer paths do.
+- Verified: `npx tsc --noEmit` clean; node round trip of `unturn` against the view's CSS transform (rotation, PAR, flip) on a scratch copy, exact. Not run: Safari or the macOS app.
+- Replaced, quoted exactly:
+
+```text
+      const r = o.getBoundingClientRect();
+      this.engine.zoomTo(pinch.z0 * g.scale, { x: g.clientX - r.left, y: g.clientY - r.top });
+```
+
+## A crafted ICC profile's tag count no longer freezes the window on open · v2.3.4 (io/icc-read.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/icc-read.ts` `profileName`.
+- Wrong: the tag count at byte 128 was trusted, so a profile saying 0xFFFFFFFF tags ran about four billion empty iterations (measured 1.8 s per 20 million, about 390 s in all) on the main thread. Trigger: opening a PNG, JPEG, TIFF or PSD whose embedded profile carries that count.
+- Now: `n` is `Math.min(count, Math.max(0, Math.floor((icc.length - 132) / 12)))`, the tag records the bytes can hold.
+- Verified: `tsc --noEmit` clean; a node copy: the 200-byte crafted profile returns at once, a one-tag `desc` profile still reads its name.
+- Replaced, quoted exactly:
+
+```text
+    const dv = new DataView(icc.buffer, icc.byteOffset, icc.byteLength), n = dv.getUint32(128);
+```
+
+## A second OK in Convert to Profile, Assign Profile or Convert Mode does nothing · v2.3.4 (ui/panels/colour-dialogs.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/colour-dialogs.ts` `ConvertProfileDialog.ok`, `AssignProfileDialog.ok`, `ModeConvertDialog.ok`.
+- Wrong: OK stayed live across the awaits (the profile, `colourLut`, `convertDocumentDeep`, the CMYK tables). A second click while "Converting..." showed took the same source profile and LUT, and `convertToProfile` mapped the converted pixels again: wrong colours, two undo steps. Now each dialog has `private busy = false`; `ok()` returns while it is set and clears it in a `finally` on its existing try. Added lines only; each `} catch (err) { setText(this.note, msg(err)); }` gained `finally { this.busy = false; }`.
+- Also corrected here: the Cancel entry below named `ComfyuiRunDialog`; the class is `RunWorkflowDialog`.
+- Verified: `tsc --noEmit` clean. Not run against the engine.
+
+## Session restore and Reopen Closed Tab keep the document's file · v2.3.4 (app.ts)
+
+- Why: review formvis__app-automation F5 (fixer A1, logged 2026-11-11). `RecoveryRecord` had `libraryName` but no file path or library version, so a .fvd opened from disk came back from Restore Session or Reopen Closed Tab with `p.filePath` null: Save took the panel in the library folder instead of writing back, Revert was disabled, `openPaths` opened a duplicate tab for the same path, and a library save lost its conflict check.
+- `app.ts`: `type KeptRecord = RecoveryRecord & { filePath?: string | null; libraryVersion?: string | null }` beside `closedTabs` (now `KeptRecord[]`); `rememberClosed` and `keepModified` (through `const rec: KeptRecord`) write `filePath` and `libraryVersion`; `keepModified`'s `key` adds both, so a Save As to a new path is kept; `reopen(r: KeptRecord, ...)` sets `p.filePath` and `p.libraryVersion` from the record. IndexedDB stores the record whole, so `io/recovery.ts` is unchanged. Earlier States calls `reopen({ ...r, filePath: null }, ...)`, so Save on an earlier state never writes over the current file.
+- Verified: `tsc --noEmit` clean. Not run: the desktop app.
+
+## Dock: a cancelled header drag leaves nothing on screen; hidden extension panels stay hidden · v2.3.4 (ui/dock.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/dock.ts` `Dock.wire` (pointercancel), `Dock.move` (no button), `cancelDrag` (new), `load`.
+- Wrong (1): pointercancel on a header, or a move with no button after a release outside the window, only nulled `drag` and hid the marker; the `.cv-drag-ghost` label and the `.cv-float-hint` outline stayed and `docMove` stayed attached. Both now call `cancelDrag()`, which also removes the ghost and the listener and hides the outline.
+- Wrong (2): `load` filtered `hidden` to the registered ids; extension panels register after the Dock is built, so a hidden `ext-` panel came back shown after a restart and the next save forgot it. `hidden` now uses `kept`, as `order` and `side` do.
+- Verified: `tsc --noEmit` (no error in this file). Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    const hidden = Array.isArray(r.hidden) ? r.hidden.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT.hidden];
+    head.addEventListener('pointercancel', () => { this.drag = null; setHidden(this.marker, true); });
+    if ((e.buttons & 1) === 0) { this.drag = null; setHidden(this.marker, true); return; }
+```
+
+## A second question never strands the first; New Document keeps focus and honours Cancel · v2.3.4 (ui/dialogs.ts, ui/app-dialogs.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/dialogs.ts` `SaveChanges.ask`, `Confirm.ask`, `Prompt.ask`; `ui/app-dialogs.ts` `UpdateDialog.ask`, `NewCanvasDialog.renderCards`, `NewCanvasDialog.create`. One commit because the three fixes share `app-dialogs.ts`.
+- Wrong (1): asked again while open, each dialog overwrote `this.resolve`, so the first caller's promise never settled (Close Tab's Unsaved Changes then the quit flow; recovery then the Targa question). Each `ask()` now first settles the pending one as cancelled: `false`, `null`, `{ choice: 'cancel', all: false }`, `'later'`.
+- Wrong (2): `renderCards` cleared `this.cards` on every pick, removing the focused card; focus fell to the body and Escape no longer reached the scrim. It now records whether focus was inside the cards and afterwards focuses the `.is-on` card, else the `.cv-dialog` frame.
+- Wrong (3): Cancel or Escape while `create()` awaited `prepare` (CMYK profile) still made the document. It now returns when `!this.isOpen` after `prepare`.
+- Verified: `tsc --noEmit` (no error in these files), `vitest run src/ui` 6 passed. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+      if (!apply) return;
+```
+
+## Select rows add their options as text · v2.3.4 (ui/panels/controls.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/controls.ts` `selectRow` (handoff from the panels review, F1).
+- Wrong: options were interpolated into an HTML string parsed by `el()`; a WebAssembly plug-in's manifest option label (`</option></select><img src=x onerror=...>`) ran script in the window. Now the select is built empty and each pair is added with `sel.add(new Option(t, v))`, so every caller's labels and values are text.
+- Verified: `tsc --noEmit` (no error in this file), `vitest run src/ui` 6 passed. Not run: the plug-in dialog in a window.
+- Replaced, quoted exactly:
+
+```text
+  const root = el(`<label class="cv-field"><span></span><select class="cv-input">${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`);
+```
+
+## Develop Geometry keeps a layer one pixel high or wide · v2.3.4 (engine/develop.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/develop.ts` `geometryPass`.
+- Why: review formvis__engine-a-e F9 (fixer E2).
+- Wrong: the keystone terms divided by `cy = (h - 1) / 2` and `cx = (w - 1) / 2`, which are 0 on a layer one pixel high or wide; `kv * NaN` stays NaN even when `kv` is 0, so every sample was NaN, stored as 0, and the layer came out transparent under any Geometry change.
+- Now: the two divisors are `Math.max(0.5, cy)` and `Math.max(0.5, cx)`; larger layers are unchanged.
+- Verified: node check of the expression on a copy, a 10 by 1 image rotated 1 degree: 10 non-finite samples before, 0 after; `tsc --noEmit` no error in this file.
+- Replaced, quoted exactly:
+
+```text
+    const pu = u / Math.max(0.1, 1 + kv * (v / cy)), pv = v / Math.max(0.1, 1 + kh * (u / cx));
+```
+
+## A demo leaves the saved tool options and the brush preset as they were · v2.3.4 (app.ts)
+
+- Why: review formvis__app-automation F4 (fixer A1, logged 2026-11-11). While a demo built (`await settle(e, 700)` and the rest), option memory's rAF capture wrote the active tool's options to Preferences: Clone Stamp's Sample All Layers, size 150 and hardness 20, Spot Healing's Sample All, the painting demo's brush preset. The 2.3.1 restore in `openDemo`'s `finally` covered the in-memory brush and retouch values only, so the Clone Stamp keys stayed in `prefs.toolOptions` and came back at the next launch, and `brushPresetId`, `brushFlow` and `brushBlend` (set by `applyBrushPreset`) were not kept at all.
+- `app.ts` `openDemo`: `kept` also holds `preset: engine.brushPresetId`, `flow: engine.brushFlow`, `blend: engine.brushBlend` and `toolOptions: loadPrefs().toolOptions`; the `finally` sets the three brush fields back before `setBrush` (whose `options` event refreshes the bar) and ends with `updatePrefs({ toolOptions: kept.toolOptions })`. A capture still pending after that reads the restored values. No pause hook in `ui/option-memory.ts` was needed.
+- Verified: `tsc --noEmit` clean. Not run: the demos in the window with a localStorage comparison.
+
+## PSD and PSB export keeps folder masks, folder vector masks and closed folders · v2.3.4 (io/psd.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/psd.ts` `writePsdFile`, `toPsd` (the `isGroup` branch).
+- Wrong: the folder record was built inline with `opened: true` and no `maskOnto` and no `vectorMask`, so a folder's layer mask and vector mask were dropped from every PSD, PSB and layered TIFF formvis wrote, and every folder came back open. Trigger: a folder with a mask, or a closed folder, saved as PSD and opened again.
+- Now: the folder record is built as `out`, `opened` is `!(doc.collapsed ?? []).includes(l.id)`, `maskOnto(l, out)` adds the mask (placement `m.placement ?? g.transform`, as the renderer's `folderMasks` draws it), and a vector mask with outlines is written as in the pixel-layer branch (invert, notLink, disable).
+- Verified: `tsc --noEmit` clean. Not run: an export and reopen in a browser.
+- Replaced, quoted exactly:
+
+```text
+    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: true, children: build(l.id), ...(effectsPresent(l.effects) ? (() => { const e = toPsdEffects(l.effects as LayerEffects, psdPatterns); return e ? { effects: e } : {}; })() : {}), ...tag, ...toPsdArtboard(l) };
+```
+
+## Match Edges refuses a picture under 24 pixels on a side instead of throwing · v2.3.4 (engine/edge-fit.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/edge-fit.ts` `fitEdges`.
+- Why: review formvis__engine-a-e F8 (fixer E2).
+- Wrong: the pyramid loop pushes a level only while the short side is at least 24, so on a smaller document with an edge band of 200 pixels or more `levels` stayed empty and `levels[levels.length - 1]` was undefined: a TypeError instead of a refusal.
+- Now: with no level built, `fitEdges` returns `{ refused: 'The picture is too small to match edges.' }`. Nothing was removed.
+- Verified: vitest scratch check outside the repo, a 400 by 20 document is refused; `tsc --noEmit` no error in this file.
+
+## A pending Warp, Puppet Warp or Perspective Warp is applied before other edits · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.settle`, `closeProject` (review formvis__engine-index.md F3).
+- Wrong: `settle()` applied the free distort, path transform, gradient, transform and drags but not `meshWarpEdit`, `puppetEdit` or `perspectiveEdit`. Painting or undoing during a pending warp and then Enter replaced the layer with the warp of `w.source` (read at begin), losing the work in between; after a document switch the apply's `p !== this.current` dropped the warp silently; `closeProject` cleared only `transformEdit` and `floatSel`, so a closed document's warp kept every other document from starting one.
+- Changed: `settle()` calls `applyMeshWarp`, `applyPuppetWarp` and `applyPerspectiveWarp` right after `applyDistort` (each drops its state before its own `edit`, so no re-entry); `closeProject` drops a pending warp whose project is the one closing. Undo during a pending warp now applies it and takes it back as one step, as a pending free transform already did.
+- Checked: `npx tsc --noEmit`, no error in this file; the window replay not run.
+
+## Fill Path, Stroke Path and Pixels shapes on a mask hide in black; on an alpha channel they land in place · v2.3.4 (engine/path-ops.ts, engine/image-edit.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/path-ops.ts` `paintPath`, `PathHost.regionEdit`; `engine/image-edit.ts` `RegionApply`, `regionEdit`.
+- Wrong: `paintPath` drew the paint `source-over` into the raster for every target. A mask (and an alpha channel, which `Engine.regionEdit` hands over as target `mask`) keeps its value in alpha with white colour, so any opaque colour, black included, made the area fully revealing. The path was mapped by `l.transform` (or the mask's placement) while an alpha channel's raster is document-size with an identity map, so on a moved layer the shape landed shifted.
+- Now: `RegionApply`'s argument carries the target's `local` (`IE.regionEdit` passes `t.local`; the Engine's alpha wrapper gives identity), and `paintPath` maps the path by `invert(local)`, falling back to the old map. On target `mask` the painted surface becomes white with alpha = coverage times Rec. 709 luminance, and is laid in with `destination-out` (the coverage) then `lighter`, the same as Fill's mask branch, so black hides, white reveals, greys and gradients give their level.
+- Verified: `tsc --noEmit` clean in the engine; vitest `src/engine` 7 files, 36 passed. Not run: Fill Path on a mask in a browser.
+- Replaced, quoted exactly:
+
+```text
+export type RegionApply = (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void;
+      apply({ raster, target: t.target, rect: box, cover: cov });
+  regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void): void;
+import { invert, mul, placement, setMat, translation } from './geometry';
+  host.regionEdit(name, ({ raster, target, rect, cover }) => {
+    setMat(c, mul(translation(-rect.x, -rect.y), invert(placement(t, raster.width, raster.height))));
+    r.drawImage(s, rect.x, rect.y);
+```
+
+## Magic Wand and Copy read a targeted layer mask's own values · v2.3.4 (engine/select-ops.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/select-ops.ts` `maskRgba`, `selectedPixels`.
+- Wrong: masks are white pixels with the value in alpha. `maskRgba` filled the canvas opaque white and drew the mask `source-over`, so every alpha was 255 and `toGray` gave white everywhere: the wand on a targeted mask selected the whole canvas. `selectedPixels` with the mask targeted drew the mask on a transparent surface, so outside a placed mask's box (where it reveals) the copy was black.
+- Now: both fill white, punch the mask's box out with `destination-out` and draw the mask `source-over`, as the renderer's `cover()` does: the mask's value inside its box, white outside.
+- Verified: `tsc --noEmit` clean in the engine; vitest `src/engine` 7 files, 36 passed. Not run: a wand click in a browser.
+- Replaced, quoted exactly:
+
+```text
+    setMat(c, placement(m.placement ?? layer.transform, m.raster.width, m.raster.height));
+    c.drawImage(m.raster.canvas, 0, 0);
+        setMat(ctx, mul(shift, placement(m.placement ?? layer.transform, m.raster.width, m.raster.height)));
+        ctx.drawImage(m.raster.canvas, 0, 0);
+```
+
+## The WebGL2 display blends Shadows/Highlights, HDR Toning and Clarity layers in their own mode · v2.3.4 (gpu/gl-display.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/gl-display.ts` `GlDisplay.drawLayer` (the `chOff` uniform).
+- Why: review formvis__extensions-gpu-config F3 (fixer X1). The hood shader's `adjustBlend` reads the mode from `chOff >> 8`, but the bits were set only for `l.lut` or a Threshold layer, so a hood layer in any mode but Normal drew as Normal on the WebGL2 display while the CPU renderer, the WebGPU display (`GpuDisplay.layerPass` includes `l.hood`) and export applied the mode.
+- Change: the condition is `l.lut || l.hood || l.threshold !== undefined`.
+- Verified: `tsc --noEmit` (no error in this file). Not run: the WebGL2 path against the CPU compose (no GPU here).
+- Replaced, quoted exactly:
+
+```text
+    gl.uniform1i(u('chOff'), (l.chOff ?? 0) | (l.lut || l.threshold !== undefined ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0));
+```
+
+## Ending the composite workers mid-run no longer stalls every later composite · v2.3.4 (engine/composite-bands.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/composite-bands.ts` `endCompositePool`, `run`, `runFloat`.
+- Why: review formvis__engine-a-e F5 (fixer E2).
+- Wrong: with Composite on worker threads on, `run` and `runFloat` kept the `pool` they took before awaiting `idle()` during the upload. If the pool ended meanwhile (`setCompositeOnWorkers(false)` or a worker `onerror`), the bands went to terminated workers, which drop messages; the band promises never settled, `inTurn` stayed `turning`, and every later frame, PNG and 16-bit export, Merge Visible and Flatten queued behind it for good.
+- Now: a module `generation` counter is raised by `endCompositePool`; each run notes it beside `ensure()` and returns null (the caller composites itself) after any `idle()` that finds it changed. Nothing was removed.
+- Verified: `tsc --noEmit` no error in this file. Not run: the race needs live workers in a browser.
+
+## Colorize with a negative hue tints with that hue · v2.3.4 (engine/adjust.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/adjust.ts` `hsvAdjust`.
+- Why: review formvis__engine-a-e F4 (fixer E2).
+- Wrong: with Colorize on, `h = edited.hue % 360` kept the sign, and `rgbOf` expects 0 to 360: a Master hue of -60 (kept from the slider when Colorize is ticked in the Adjustments panel, or sent by `adjust hsv`) picked sector 0 with a negative middle value, a broken tint.
+- Now: `h = onWheel(edited.hue)`, so -60 acts as 300.
+- Verified: vitest scratch check outside the repo, `hsvAdjust` at hue -60 equals hue 300; `tsc --noEmit` no error in this file.
+- Replaced, quoted exactly:
+
+```text
+    h = edited.hue % 360;
+```
+
+## A Crop frame stays with the document it was drawn on · v2.3.4 (extensions/tools/crop.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `extensions/tools/crop.ts` `forgetOnSwitch` (new), `frameDoc` (new), `cropTool.options`.
+- Why: review formvis__extensions-gpu-config F2 (fixer X1). The frame, perspective corners, Straighten angle and level line were module state with no owner: a frame drawn on document A, then a switch to B and Enter (or Image > Crop through `commitPendingCrop`), cropped and turned B to A's rectangle in A's coordinates, and the frame showed over B meanwhile.
+- Change: when the tool first watches the engine it records the front document in `frameDoc` and listens to `projects` (which `switchTo`, `closeProject` and a new document emit). Another document in front drops the frame, corners, gesture, level line and angle and emits `overlay` and `options`; the same document (a rename, a mode change) leaves the frame alone. The `tool` listener runs after `projects` in `switchTo`, so a selection on B still starts B's own frame.
+- Verified: `tsc --noEmit` (no error in this file). Not run: the switch in a browser.
+
+## The float export draws clipped layers, clipped adjustments and artboard backgrounds as the screen does · v2.3.4 (engine/compose-float.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/compose-float.ts` `composeFloat` (`coverageOf`, `alphaOf`, `run`).
+- Why: review formvis__engine-a-e F1, F2, F3, F7 (fixer E2).
+- Wrong: `alphaOf` placed the clip base into the shared `tmp` the clipped layer had just been placed in, so the first layer clipped to a base vanished and the base was drawn again in its place (16 and 32 bit, CMYK and Lab export, the float view). A clipped adjustment layer adjusted the whole composite below (only raster layers read `clipId`). The base's own mask, vector mask, opacity and its own clip base were ignored, where renderer.ts `clipCoverage` applies them. No step drew an artboard's background, so the board exported transparent where the renderer's `backdrop` fills it.
+- Now: `alphaOf(base, depth)` places the base into its own buffer and multiplies its alpha by `base.opacity`, `coverageOf(base, true)` (own and vector mask, no folders or boards) and, recursively, the alpha of `base.clipId`'s layer. A clipped adjustment multiplies that into its coverage (`cov0`) and is refused with the clipped-layer error when the base cannot be read. The top-level `run` fills a visible artboard's background (in the document's values: Lab, ink, linear or 0 to 1) over its rounded rectangle, once, at the board's entry.
+- Verified: vitest scratch check outside the repo (first clipped layer, base at 50 percent, a two-step chain, a clipped Invert over a half base, an artboard background), 5 passed; `tsc --noEmit` no error in this file; vitest `deep.test.ts`, `deep-bands.test.ts`, `lut-read.test.ts` 14 passed. Not run: an export in a browser.
+- Replaced, quoted exactly:
+
+```text
+  const coverageOf = (l: Layer): Float32Array | null => {
+    const up = ancestors(map, l), folders = up.filter((g) => g.mask?.raster && g.mask.enabled);
+  const alphaOf = (base: Layer): Float32Array | null => {
+    if (!base.raster) return null;
+    tmp.fill(0); place(tmp, W, H, src, base.transform, 1, S);
+    a = new Float32Array(N); for (let i = 0; i < N; i++) a[i] = tmp[i * S + A];
+    const op0 = l.opacity * (drawn ? 1 : l.fill ?? 1), cov0 = coverageOf(l), adjMode = l.adjustment ? l.blend ?? 'normal' : 'normal', viaMode = adjMode !== 'normal';
+```
+
+## Cancel during a fal, ComfyUI, Align/Blend or Generate Image run discards its result · v2.3.4 (ui/panels/fal-task-dialog.ts, ui/panels/comfyui-run.ts, ui/panels/align-blend-dialog.ts, ui/panels/generate-image.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `FalTaskDialog.run`, `RunWorkflowDialog.run` (comfyui-run.ts), `AlignBlendDialog.execute` and `apply`, the `GenerateImageDialog` constructor.
+- Wrong: none checked that the dialog was still open after its awaits. Cancel or Escape during "Working on fal..." still placed the selection or the Relight layer; ComfyUI sent the job after `close()` ran, so it was never cancelled and its layers landed later; Align/Blend still moved or masked the layers and Multiband or Depth Map went into whatever document was current, and a second OK ran it twice; Generate Image closed by Escape or the close button (only Cancel set `stopped`) still added its layer.
+- Now: fal returns when `!this.isOpen` after `falRunImage`; ComfyUI calls `api.comfyuiCancel(r.job, target)` and returns when closed before `this.job` is set; `execute` takes `live: () => boolean = () => true`, read after the last await before each document change (`'Cancelled.'` is returned), and `apply` has a `busy` guard, passes `() => this.isOpen` and skips the notice when closed; Generate Image's `onClose` sets `stopped`. Added lines only; the one changed line of `apply` was `const msg = await AlignBlendDialog.execute(this.engine, this.mode, { ... spatial: this.spatial });` without the `live` argument, and its catch had no `finally`.
+- Verified: `tsc --noEmit` clean in these files. Not run against fal, ComfyUI or the engine.
+
+## Neural Filters uses only the style, colours or depth of the layer and style chosen now · v2.3.4 (ui/panels/neural-dialog.ts)
+
+- Why: review formvis__panels-g-w F2 (fixer P2, kind: fix, logged 2026-11-11). Choosing another style while Style Transfer painted the first left `ensureStyle` returning on `stylePending`, and the first result was stored and used; a depth, colour or style request that ended after Cancel and a reopen on another layer of the same size was stored for the new layer, because `run()` compared only width and height.
+- `run()`: `depth`, `color` and `styled` are used only when their `layerId` equals `pixelsKey` of the active layer now (and `styled.style` equals `this.style`). `ensureDepth`, `ensureColor`, `ensureStyle`: the key (and style) asked for is kept; a result whose key or style no longer matches the active layer when it arrives is dropped, and the method runs again from `finally` while the dialog is open, so the current one is fetched. An error or a missing model does not retry.
+- Checked: `tsc --noEmit` (exit 0). Not run: the window with the local models.
+
+## Generative Fill, Expand and Upscale: Cancel stops a run still being prepared, a second click runs nothing · v2.3.4 (ui/panels/generative-dialog.ts)
+
+- Why: review formvis__panels-g-w F3 (fixer P2, kind: fix, logged 2026-11-11). `generate` awaited `generatePrompt` (two engine calls) and, for ComfyUI and catalogue models, `chips.ordered()` before `this.close()`; Cancel, Escape or the X in that time still started the job, and a second Generate click or Ctrl+Enter started a second one (two paid fal runs). The button was never disabled.
+- `generate` is now a guard: it returns while `busy`, disables the Generate button (`go`), takes `ticket = ++this.ticket` and awaits `prepare(t)`, the former body. `onClose` and `leave()` call `release()` (bump the ticket, clear `busy`, enable the button); after each await before closing (`generatePrompt` in the local, ComfyUI and fal paths, `chips.ordered()` in `generateWith`) a press whose ticket is not current returns. Every former `this.close()` in `prepare` and `generateWith` is `this.leave()`, so a run started from the task bar without the dialog showing frees the guard too.
+- Checked: `tsc --noEmit` (exit 0). Not run: the window against a slow LLM host.
+
+## A WebAssembly plug-in's option labels are text, not markup · v2.3.4 (ui/panels/wasm-plugins-dialog.ts)
+
+- Why: review formvis__panels-g-w F1 (fixer P2, kind: fix, logged 2026-11-11). `WasmFilterDialog.section` passed a plug-in schema's select options to `selectRow`, which interpolates them into `<option value="${v}">${t}</option>` and parses the string; a label such as `</option></select><img src=x onerror=...>` (within `parseManifest`'s 60 characters) ran script in the window, with its full API, under `csp: null`.
+- `ui/panels/wasm-plugins-dialog.ts` `section`: a select row is built with `selectRow(p.label, [], ...)` and filled with one `new Option(t, v)` per `p.options` pair, so labels and values are text. The root, `panels/controls.ts` `selectRow`, is fixer U1's area and is in the handoffs file.
+- Checked: `tsc --noEmit` (exit 0). Not run: the window with a crafted manifest.
+
+## A file plug-in cannot call the window's ui_ and internal tools · v2.3.4 (plugins/host.ts)
+
+- Why: review formvis__app-automation F2 (fixer A1, logged 2026-11-11). `PluginHost`'s `'call'` request passed any tool name to `AgentBridge.run`, which has no caller check: a plug-in could press Allow on the window's own consent dialogs with `ui_dialog` (approving its own fal call or `set_settings`), type with `ui_key`, draw with `ui_pointer`, quit with `ui_window`, and reach `__open`, `__export`, `__project` and `close_document`, none of it behind Allow outside agents.
+- `plugins/host.ts` frame message handler (`case 'call': case 'getPixels': case 'putPixels'`): for a plug-in frame, a `call` whose tool starts with `ui_` or `__`, or is `close_document` or `set_settings`, is answered "<tool> is not available to a plugin." before `serve`. `apiFor('console')` (the Script Console, typed by the person) keeps the full set.
+- Verified: `tsc --noEmit` clean; vitest `src/plugins/desktop-policy.test.ts` passed. Not run: a live plug-in in the window.
+
+## A new step after an undo frees the redo steps' stored pixels · v2.3.4 (engine/history.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/history.ts` `History.end`.
+- Wrong: `end` replaced `future` with `[]` without `History.onDrop`, while `discardRedo`, `clear` and `trim` hand each dropped step to it. An undone streamed or paged step (a filter on a giant layer) followed by any other edit kept its `disk` and `paged` keys in the engine's undo store, and its tiled rasters were never released, until the engine exited.
+- Now: the old `future` is cleared, then each of its steps goes to `History.onDrop` (the engine's `dropKeys` and `releaseTiledOf`, which still counts the new step as reaching).
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: an undo-store count in a browser.
+- Replaced, quoted exactly:
+
+```text
+    this.future = [];
+```
+
+## Apply Layer Mask and Flatten All Masks keep what shows outside a placed mask · v2.3.4 (engine/layer-masks.ts, engine/file-scripts.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-masks.ts` `deleteMask`, `engine/file-scripts.ts` `bakeMasks`.
+- Wrong: a mask with its own `placement` hides only inside its box on screen (renderer `maskOf` gives `covers: false`, `cover()` fills white outside the box). Both bakes drew the mask raster with `destination-in` straight onto the layer, which cleared every layer pixel outside the box, including paint the person could see (routine since the 2.3.3 growth gives a tied mask of another size a placement). `bakeMasks` also drew `m.raster`, not `shapedMask(m)`, so density and feather were baked at full strength.
+- Now: with a placement (or, in `deleteMask`, an adjustment layer, as `maskOf` treats it), the coverage is built on a layer-size scratch as `cover()` does (white, the box punched out with `destination-out`, the shaped mask drawn `source-over`) and multiplied in with `destination-in`; a tied mask is drawn as before. `bakeMasks` draws `shapedMask(m) ?? m.raster`.
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: the pixels in a browser.
+- Replaced, quoted exactly:
+
+```text
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-in';
+      setMat(ctx, mul(toLayer, maskPlace));
+      ctx.drawImage((shapedMask(mask) ?? mask.raster).canvas, 0, 0);
+      ctx.restore();
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-in';
+      setMat(ctx, mul(toLayer, placement(m.placement ?? l.transform, m.raster.width, m.raster.height)));
+      ctx.drawImage(m.raster.canvas, 0, 0);
+      ctx.restore();
+```
+
+## Folder masks turn and warp with Arbitrary rotation, Straighten and Perspective Crop · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.rotateCanvasBy`, `straightenCrop`, `perspectiveCrop` (review formvis__engine-index.md F2).
+- Wrong: the per-layer loops skipped folders (removed lines: `if (l.isGroup) return l;` in rotateCanvasBy, `if (l.isGroup) continue;` in straightenCrop, `if (l.isGroup || !l.raster) continue;` in perspectiveCrop), so a folder's raster mask, drawn at `mask.placement ?? transform`, stayed where it was while its layers turned or warped and its vector mask moved. Every Frame is such a folder.
+- Changed: rotateCanvasBy and straightenCrop turn a folder's transform and mask placement as any layer's (straightenCrop through `followMask`). perspectiveCrop warps a folder's raster mask with `warpRaster(..., 1, true, maskEdgeTone(...))` under the same megapixel limit as layers; a placed mask gets the warped box as its placement, a tied mask gives it to the folder's transform. Folders without a raster mask keep their transform there (it draws nothing else).
+- Checked: `npx tsc --noEmit` clean; the Frame-and-rotate replay in the window not run.
+
+## Panel tabs come back to the strip when a group gets wider · v2.3.4 (ui/panel-group.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panel-group.ts` `PanelGroup` constructor, `fitTabs` (review formvis__ui-o-z.md F2).
+- Wrong: since 2.3.3 `fitTabs` counts strip plus `.cv-group-space` as the room. The strip is `flex: 0 1 auto` at its content width and the spacer `flex: 1`, so after a narrow fit (tabs `is-over` behind the chevron, or `is-compact`/`is-tight`) widening the dock grew only the spacer; the ResizeObserver on the strip never fired and the tabs stayed folded until a click, a language change or a tab move.
+- Now: one ResizeObserver watches the strip and `.cv-group-head`. The head's width follows the group's only, so the class changes in `fitTabs` cannot loop it.
+- Verified: `npx tsc --noEmit` clean. Not run: e2e/test_channels.py and a dock drag narrow then wide (window needed).
+- Replaced, quoted exactly:
+
+```text
+    new ResizeObserver(() => this.fitTabs()).observe(strip);
+```
+
+## An extension cannot write action steps; Working Files cleanup is risky · v2.3.4 (formext/extensions.ts, automation/command-meta.ts)
+
+- Why: review formvis__app-automation F1 (fixer A1, logged 2026-11-11). An extension with only the `document` permission sent `load-actions` with a menu step naming `close-document` and then `play-action`; `runStep` ran the step with `c.run()` below the risky check in `FormExtensions.op`, so the document closed with its changes gone and the action stayed in the person's list. `clean-working-files` was flagged `'m'`, so an extension could also delete every recovery copy and closed tab directly.
+- `formext/extensions.ts` `op`: after the `ext.` test, `load-actions`, `insert-action-step`, `insert-conditional` and `action-options` are refused for extensions ("cannot be run by an extension, because it writes steps into the person's actions"). Playing the person's own actions is unchanged, and `runStep` keeps running `ext.` steps the person put there.
+- `automation/command-meta.ts` `clean-working-files`: flags `'mr'`, so `op` refuses it and agents are asked first. `./formvis agents sync` was not run (needs the window), so `formvis-driving/references/commands.md` still lacks "(asks first)" on that row.
+- Verified: `tsc --noEmit` clean; vitest `src/plugins/desktop-policy.test.ts` passed. Not run: the report's scratch extension.
+
+## A replayed Hue/Saturation step applies its recorded settings · v2.3.4 (ui/panels/adjust-panel.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/adjust-panel.ts` `AdjustPanel.applySettings`, with `kernel()`.
+- Wrong: action playback of an image Hue/Saturation step (`dialogs.adjust.applySettings(kind, data, false)` in app.ts) set `kind` and `data` only, while the hsv kernel reads `this.hsv`, set by `prepare()`, which replay skips: a no-op in a fresh session, otherwise the last dialog's settings. Now an hsv step sets `this.hsv = hsvFromData(this.data)` before the kernel is built. Added line only; nothing removed.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+
+## Smart Sharpen and Shake Reduction sliders follow recalled settings · v2.3.4 (ui/panels/filter-panel.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/filter-panel.ts` `FilterPanel` constructor, the smartSharpen and shakeReduction sections.
+- Wrong: the rows captured `s.smart` and `s.shake` at construction, but `recallSettings` and the `Object.assign(this.s, ...)` in the show, ask and smart filter paths replace those objects. The sliders then showed and wrote a stale object: old values shown, preview unchanged when moved, and OK applied the recalled values. Now `ss()` and `sh()` return the current objects, as the Develop rows' views do, in every callback, `angleOn` and both section syncs.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    const ss = s.smart;
+    const ssAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { ss.amount = v; this.schedule(); }, { def: d.smart.amount });
+    const ssRadius = sliderRow('Radius (px)', 0.1, 64, 0.1, (v) => { ss.radius = v; this.schedule(); }, { def: d.smart.radius });
+    const ssNoise = sliderRow('Reduce Noise (%)', 0, 100, 1, (v) => { ss.noise = v; this.schedule(); }, { def: d.smart.noise });
+    const ssAngle = sliderRow('Angle (°)', -90, 90, 1, (v) => { ss.angle = v; this.schedule(); }, { def: d.smart.angle });
+    const angleOn = (): void => { const off = ss.remove !== 'motion'; ssAngle.el.classList.toggle('is-off', off); for (const i of ssAngle.el.querySelectorAll('input')) i.disabled = off; };
+    const ssRemove = selectRow('Remove', [['gaussian', 'Gaussian Blur'], ['lens', 'Lens Blur'], ['motion', 'Motion Blur']], (v) => { ss.remove = v as SharpenRemove; angleOn(); this.schedule(); });
+    const ssShadows = sliderRow('Shadows fade (%)', 0, 100, 1, (v) => { ss.shadows = v; this.schedule(); }, { def: d.smart.shadows });
+    const ssHighlights = sliderRow('Highlights fade (%)', 0, 100, 1, (v) => { ss.highlights = v; this.schedule(); }, { def: d.smart.highlights });
+      ssAmount.set(ss.amount); ssRadius.set(ss.radius); ssNoise.set(ss.noise); ssRemove.set(ss.remove); ssAngle.set(ss.angle); angleOn(); ssShadows.set(ss.shadows); ssHighlights.set(ss.highlights);
+    const sh = s.shake;
+    const shAngle = sliderRow('Trace angle (°)', -90, 90, 1, (v) => { sh.angle = v; this.schedule(); }, { def: d.shake.angle });
+    const shLength = sliderRow('Trace length (px)', 1, 100, 1, (v) => { sh.length = v; this.schedule(); }, { max: 300, def: d.shake.length });
+    const shSmooth = sliderRow('Smoothing (%)', 0, 100, 1, (v) => { sh.smoothing = v; this.schedule(); }, { def: d.shake.smoothing });
+    const shAmount = sliderRow('Amount (%)', 1, 300, 1, (v) => { sh.amount = v; this.schedule(); }, { def: d.shake.amount });
+    this.section('shakeReduction', [this.shakeNote, shAngle.el, shLength.el, shSmooth.el, shAmount.el, shEstimate], () => { shAngle.set(sh.angle); shLength.set(sh.length); shSmooth.set(sh.smoothing); shAmount.set(sh.amount); });
+```
+
+## A Relight session ends in its own document when you switch · v2.3.4 (ui/relight-session.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/relight-session.ts` `RelightSession.follow` (new), `begin`, `commit`, `end` (review formvis__ui-o-z.md F1).
+- Wrong: the session kept only `layerId`, and `Engine.setRelight`, `dropNewRelight` and `previewRelight` act on `this.current`. After New Relight Layer (or Edit Lighting) in A and a click on B's tab, Done found no layer in B and lost the lights with no notice, Cancel undid nothing, and A kept an empty "Relight Layer N" with its "New Relight Layer" step; a Marigold commit awaiting `relightSplit` hit the same.
+- Now: `project` is kept from `begin` to `end`. On `projects` or `active`, `follow()` cancels a running session (not while `busy`) whose document is no longer current: a new layer is dropped in its own document (`switchTo` there, `cancel()`, `switchTo` back to the document picked), an edited one only loses its preview; a closed document just ends the session. `commit` switches to its document for `setRelight` and back, and skips the write when that document was closed.
+- Verified: `npx tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+import type { Engine, ID, ToolId } from '../engine';
+    this.layerId = null; this.isNew = false; this.full = null; this.proxy = null;
+      this.engine.setRelight(id, structuredClone(this.content), new ImageData(new Uint8ClampedArray(px), f.w, f.h), this.isNew);
+```
+
+## Group Layers keeps a folder's layers together; Bring Forward drops none · v2.3.4 (engine/layer-structure.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-structure.ts` `groupLayers`, `stepSibling`.
+- Wrong: `groupLayers` re-parented the selected roots in place and put the folder after the highest one, so an unselected layer between them (A, X, B with A and B grouped) or a nested root's old folder stayed inside the new folder's span of the flat array. `stepSibling` keeps only the two siblings' subtrees of the slice it swaps, so the next Bring Forward or Send Backward deleted X or the old folder with its children.
+- Now: the selected roots' subtrees are lifted out (`block`), the roots re-parented, and the block then the folder go where the highest root's top-level ancestor was, as `moveLayers` does. `stepSibling` returns null when its slice holds a layer of neither subtree, so a split folder from any other path refuses the step instead of losing layers.
+- Verified: node on a scratch copy of both functions: `A X B` grouped gives `X A<F B<F F`, Bring Forward of A keeps X; B in G with A outside gives `C<G G B<F A<F F`; a split list refuses the step. `tsc --noEmit` clean in the engine.
+- Replaced, quoted exactly:
+
+```text
+    const re = layers.map((l) => (set.has(l.id) ? { ...l, parentId: folder.id } : l));
+    const next = [...re.slice(0, top + 1), folder, ...re.slice(top + 1)];
+```
+
+## The native renderer frees its blend uniforms after each frame · v2.3.4 (native/formvis-render/src/composite.rs)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `native/formvis-render/src/composite.rs` `Blender::cover`, `Blender::hood_blur`, `Blender::render_tile_in`.
+- Wrong: `cover` and `hood_blur` gathered their uniform buffers in `keep` and ended with `std::mem::forget(keep)`, so no buffer was ever dropped. With the native canvas on, every present leaked buffers per tile for each layer in a masked folder or a clip chain, and six per Hood adjustment (Shadows/Highlights, HDR Toning, Clarity), since the Hood is rebuilt on every present. Now `hood_blur` drops `keep` after its own submit; `cover` returns `(Option<wgpu::Texture>, Vec<wgpu::Buffer>)` and `render_tile_in` extends `uniforms` with the buffers, which drop after the tile's submit.
+- Verified: `cargo check --locked --all-targets` in `native/formvis-render` clean. Not run: a memory watch of the native canvas (no GPU window here).
+- Replaced, quoted exactly:
+
+```text
+        std::mem::forget(keep);
+        let out = pair[(n - 1) % 2].clone();
+    fn cover(&self, gpu: &Gpu, enc: &mut wgpu::CommandEncoder, l: &Stack, base: Option<&wgpu::Texture>, base_mask: Option<&wgpu::Texture>, base_mask_at: Place, tx: u32, ty: u32, grouped: bool) -> Option<wgpu::Texture> {
+        std::mem::forget(keep);
+        acc
+            let cover = if l.folders.is_empty() && !chained { None } else { self.cover(gpu, &mut enc, l, base, base_mask.as_ref(), base_mask_at, tx, ty, grouped) };
+```
+
+## Color Range chosen again while open no longer leaves a canvas listener · v2.3.4 (ui/panels/color-range-dialog.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/color-range-dialog.ts` `ColorRangeDialog.show`, its pointerdown handler.
+- Wrong: `show()` had no open guard. The scrim lets pointers through, so Select > Color Range (or Depth Range) could be chosen again while it was open: `open()` returned early, but a second window capture handler was added and `this.handler` overwritten; `close()` removed only the second, and the first then called `preventDefault` and `stopPropagation` on every left press on the stage for the session. Now `show()` returns when `this.isOpen`, and the handler returns when the dialog is not open.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    if (!this.engine.current) return;
+      if (e.button !== 0 || !stage || e.target !== stage || !p) return;
+```
+
+## A queued undo or redo lands on the document it was asked in · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.historyOps`, `historyOp`, `drainHistory`, `undoNow`, `redoNow` (review formvis__engine-index.md F1).
+- Wrong: the queue held only `'undo' | 'redo'`; `drainHistory` read `this.current` before awaiting `bringBack` and `undoNow`/`redoNow` read it again after, so a tab switch while paged tiles came back undid the other document's step (writing its 1x1 placeholder `before` images when that step was paged too). Removed lines: `const p = this.current, op = this.historyOps[0];`, `if (!p) { this.historyOps.length = 0; break; }`, `if (op === 'undo') this.undoNow(); else this.redoNow();`, and in both `undoNow` and `redoNow` `const p = this.current;` and `this.settle();`.
+- Changed: each queued item is `{ p, op }`; the drain skips a document closed before or during the fetch and calls `undoNow(p)`/`redoNow(p)`, which take the document (default the current one) and settle pending edits only when it is the current one.
+- Checked: `npx tsc --noEmit` clean; the delayed-store replay in the window not run.
+
+## The colour view never keeps the previous document's transform after a switch · v2.3.4 (ui/colour.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/colour.ts` `ColourView.refresh`.
+- Wrong: the early return for a document that needs no transform came before `++this.seq`, so a `colourLut` or `rgbCmykLut` request still in flight for the previous profiled or proofed document passed `n === this.seq` when it arrived and tinted the plain one; `this.key` already matched, so the wrong view stayed. Also the document and profile were read before `await this.chosenMonitor(...)`, so an older call resuming late could win. Now the counter advances right after `this.key = vkey`, and the monitor profile is awaited before `engine.current` is read.
+- Verified: `tsc --noEmit` clean. Not run: a slow-engine switch in a window.
+- Replaced, quoted exactly:
+
+```text
+    const c = loadPrefs().colour, chosen = c.useDisplay && c.monitor !== 'system' ? await this.chosenMonitor(c.monitor) : null;
+    if (!p || (!pv && (raw || (!prof && !proofing && !monitor)))) { this.engine.setViewTransform(null); return; }
+    const n = ++this.seq;
+```
+
+## The History panel's pick belongs to the document it was made in · v2.3.4 (ui/history.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/history.ts` `HistoryPanel.sync`, the row click.
+- Wrong: `picked` and `pickedStep` were panel state; `sync()` kept the step when the new document had that many steps. Trigger: pick row N in document A, switch to B, press Delete: `deleteHistoryState(N)` ran on B, reverting it and dropping its redo (New Document from State copied B at N). Now `pickedIn` holds the project of the pick; `sync()` clears both picks when `engine.current` differs, before its hidden-body return, and the row click sets `pickedIn`.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+import type { Engine } from '../engine';
+```
+
+## Every item left open, fixed: masks, float export, hints, Layers pointers, extension panels, demo builds · v2.3.3 (engine/paint-ops.ts, engine/compose-float.ts, engine/index.ts, ui/layers.ts, app.ts, ui/commands.ts, ui/dock.ts, ui/panel-group.ts, formext/extensions.ts, demos/index.ts, demos/paint.ts, three e2e files)
+
+- Why: the owner's "investigate/test/fix all of the errors/bugs ... fix ALL of them in this turn". Six agents investigated and runtime-tested the open items in isolated copies (git archive of HEAD, own Vite ports) and fixed the real ones there; every edit was then landed by hand on this tree. Six fresh-context reviewers read the landed diff; their confirmed defects and the suspicions worth closing were landed too.
+- Refuted, no product change: painting video and relight layers (both are raster layers; the paint shows, video paint is stored per frame); the History Brush on a layer newer than its source (it refuses with a notice, not silently); `e2e/test_cover_auto_mcp_layers.py` (11 passed with the engine up; the earlier timeout was the dev server on a port the engine's LocalGuard does not allow, `window_origins()` in backend/app/core/config.py takes only 5190 and 5191).
+- `engine/paint-ops.ts`: in `growLayer` and `growPlaced`, a tied mask (`placement === null`) whose raster size differs from the layer's (`apart`) is given `placement: { ...t }`, the box it is drawn in now, and the layer grows; the mask raster is not touched. Linked or not: `toggleMaskLink` already freezes an unlinked mask with its own box, so a tied unlinked mask was an odd state. `growMask` hands a placement that is not one-to-one to `padPlacedMask` (new), which pads the mask raster in its own pixels, white (revealing), and recomputes the placement as `growPlaced` does for layers.
+- `engine/index.ts` `reachMask`: after `growLayer`, a mask that now has a placement is grown by `growMask` in the same stroke. `followMask`: a linked mask with its own box whose rotation equals the layer's (mod 360) is carried through a size, rotation or flip change: centre by `boxChange(t, next)`, size by the layer's scale change, rotation to the layer's, flips toggled with the layer's.
+- `engine/compose-float.ts` `maskCoverage` and `coverageOf`: `apart` (own placement, adjustment layer, or a folder's mask) fills white outside and black inside the mask's box before drawing it, as the renderer's `cover()` does for `covers: false`; the mask drawn is `shapedMask(m) ?? m.raster` (density, feather); `imageSmoothingEnabled` follows `sampling`; vector masks (`vectorCoverage`, alpha read by `alphaCoverage`, new) of the layer and its folders and artboard rectangles of its folders multiply in, as `vectorOf` and `folderMasks` do on screen.
+- `engine/index.ts` hints: `target(p, at, hint = false)`; only `beginStroke`, the Background Eraser and `beginRetouchStroke` pass true, and `paintBucket` calls `hintTarget` itself before its region search; filters, Fill, Clear, gradients, warps and read-only samples stay silent. `hintTarget` adds a Relight case and records a key only when `notice()` would emit (not while `quiet` or within the lock window); `closeProject` drops the closed document's keys. `pixelsOnly` returns false for `shape` and live type layers too. The History Brush's state-source refusal names the remedy.
+- `ui/layers.ts`: a pointerdown is ignored while a started drag, effect drag or swipe belongs to another pointer (`'started' in g ? g.started : true`; an unstarted press of another pointer type does not block); `render()` re-places the drop line on a started drag's target (`showDrop(d.target)`); a pointermove with no buttons ends a swipe; the pan ends when `!(e.buttons & 4)`; window blur ends both.
+- `formext/extensions.ts` `openPanel`: a throwing `host.open` removes the dock group before rethrowing. `app.ts` `extDock.show`: a host group is activated by its dock id (`dockIdOfGroup`), which shows it and opens a collapsed column; the own-group case uses `dock.activate` too. `extDock.setLabel`: the tab, the group's aria-label, the registry label and the command (`commands.relabel`, new, with description and when-words) take the new name, then `dock.refresh()`. `ui/dock.ts` strip buttons read labels from `ALL_PANELS` (escaped), so extension panels show by name.
+- `demos/index.ts` `pinned(e, made)`: projects that appear during a builder's own synchronous call are the demo's (`made`, and `mine` the latest); an async call adopts nothing, so a document the person makes during an await is never taken. `pin()` and the `switchTo` wrapper throw when the switch did not happen (`switchTo` refuses during a stroke), so the build stops instead of writing elsewhere. `app.ts` `openDemo` closes only `made` projects, retrying for about 2 s while the engine is busy. `demos/paint.ts` `type()` awaits `ensureBundledFont` first, as `design.ts` does, so `createTextLayer` reads the current document without a font load in between.
+- `ui/panel-group.ts` `fitTabs`: the header's empty spacer is now `span.cv-group-space`, and its width joins the room the tabs may use, so a group whose tabs fit once that space is counted (Channels beside Layers and Paths in the shards' 1400 px window) no longer folds its last tab behind the chevron. Found by `e2e/test_channels.py` (2 failures, 8 passed with the neighbouring panel tests after the fix).
+- e2e, stale since the README overhaul (#11): the desktop entry `Name` and the native app submenu say FormVis (`e2e/desktop/test_linux_desktop_packaging.py`, `e2e/test_native_menus.py`). `e2e/test_cover_rest_variable_axes.py` counted ink with 90,000 `compositePixel` renders, 12 to 22 s per poll under SwiftShader on two cores, longer than its 10 s `wait_for_function`; it failed the same way on 2.2.0. It now reads `flattened()` once per poll, the suite's usual idiom. A replay that measured once per step showed the product path was right: wght 700 gave 1.58x the base ink, `variations` was `{ wght: 700 }`, history said Edit Type, and wght 400 gave back the exact base count.
+- Known, not changed: `sampleOriginal` (pixel-move) still creates a tied mask's raster through `target()` without a history step (visually identical, pre-existing); a stale `ext-` id stays in the saved dock order after an extension is gone (kept on purpose so its place survives a reinstall).
+- Verified: `tsc --noEmit`; vitest 48 files, 222 tests; backend pytest 316 passed, 9 skipped (models, macOS), 1 environment failure in an archive copy without `.git`; scratch Playwright at 4x CPU throttle on this tree: the 2.3.0 set (27), the 2.3.1 set (18), the 2.3.2 set (8), the 2.3.3 sets (11 and 9): odd-size tied mask, linked placed mask through a numeric resize, float parity outside a placed mask, Ctrl+N during a demo, failed demo with the person's new documents, Relight notice, hidden host group shown, rename everywhere, Fill silent and brush once on a hidden layer; MCP e2e files 11 and 5 passed with the engine up. The full e2e suite in four shards: see the release commit.
+- Replaced, quoted exactly:
+
+```text
+    const had = new Set(engine.projects.map((pr) => pr.id)), was = engine.current?.id ?? null;
+      await buildDemo(id, engine);
+      for (const pr of [...engine.projects]) if (!had.has(pr.id)) engine.closeProject(pr.id);
+      if (host && host.id !== id) { host.setMinimised(false); host.show(`${id}-tab`); return; }
+      if (!dock.isShown(id)) dock.toggle(id);
+    setLabel: (id, label) => PanelGroup.renameTab(`${id}-tab`, label),
+export function buildDemo(id: string, e: Engine): Promise<void> | null {
+  return d ? d.build(pinned(e), shippedMedia(d.id)) : null;
+function pinned(e: Engine): Engine {
+  const known = new Set(e.projects.map((p) => p.id));
+  const adopt = (): void => { for (const p of e.projects) if (!known.has(p.id)) { known.add(p.id); mine = p.id; } };
+      if (k === 'switchTo') return (id: string): void => { mine = id; t.switchTo(id); };
+        adopt();
+        return out instanceof Promise ? out.then((r: unknown) => { adopt(); return r; }) : out;
+function maskCoverage(mask: { raster: { canvas: CanvasImageSource; width: number; height: number }; placement: import('./types').Transform }, W: number, H: number): Float32Array {
+  g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    const folders = ancestors(map, l).filter((g) => g.mask?.raster && g.mask.enabled);
+    if (!own && !folders.length) return null;
+      if (!c) { c = maskCoverage({ raster: m.mask.raster, placement: m.mask.placement ?? m.transform }, W, H); covers.set(key, c); }
+  if (t.w !== next.w || t.h !== next.h || t.rotation !== next.rotation || t.flipX !== next.flipX || t.flipY !== next.flipY) return m;
+    return (p.layer(layer.id) as Layer).mask?.raster ?? r;
+  private target(p: Project, at?: Pt): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
+    this.hintTarget(p, l, target);
+    const hidden = !this.shownInDoc(p, l), key = `${p.id}:${l.id}:${hidden ? 'hidden' : target}`;
+    if ((!hidden && (target !== 'mask' || l.adjustment || l.fillContent)) || this.hinted.has(key)) return;
+    this.notice(hidden ? `"${l.name}" is hidden, so changes to it show when it is turned on again.` : `Working on the mask of "${l.name}": white shows the layer and black hides it. Click the layer thumbnail to work on its pixels.`);
+    if (!l || l.adjustment || l.fillContent || l.smart || l.vector) return false;
+      : this.target(p, pt) as NonNullable<ReturnType<Engine['target']>>;
+    const pick = this.target(p);
+        if (!state) { this.notice('This layer did not exist at the history state chosen as the source.'); return false; }
+    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+  if (m && mr && m.placement === null && (mr.width !== r.width || mr.height !== r.height)) return r;
+  if (m && mr && m.placement === null) {
+  const t = layer.transform, m = layer.mask, mr = m?.raster ?? null, tied = !!m && !!mr && m.placement === null;
+  if (tied && mr && (mr.width !== r.width || mr.height !== r.height)) return r;
+  if (tied && m && mr) {
+  if (t.rotation !== 0 || t.flipX || t.flipY || t.w !== mr.width || t.h !== mr.height) return mr;
+    const frame = await this.host.open(r, body, { onResize: resize });
+      const s = this.section(id), label = DOCK_PANELS.find((p) => p.id === id)?.label ?? id;
+    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><span class="cv-group-grip" title="Drag to move the group" aria-hidden="true">${icon('grip', 14)}</span><div class="cv-group-tabs" role="tablist"></div><button class="cv-group-over" type="button" title="More tabs" aria-label="More tabs" aria-haspopup="menu" hidden>${icon('chevronDown', 12)}</button><span></span><button class="cv-group-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu" hidden>${icon('more3', 16)}</button><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimize" aria-label="Minimize">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
+    const full = strip.clientWidth + (chev.hidden ? 0 : chev.offsetWidth + 6);
+    assert entry["Type"] == "Application" and entry["Name"] == "formvis" and entry["Terminal"] == "false"
+    for name in ["formvis", "File", "Edit", "Image", "Layer", "Select", "Filter", "View", "Window", "Help"]:
+INK = """() => { const e = window.formvis.engine; let n = 0;
+  for (let y = 0; y < 300; y++) for (let x = 0; x < 300; x++) { if (e.compositePixel({ x, y }).r < 128) n++; }
+export const VERSION = '2.3.2';
+  "version": "2.3.2",
+  "version": "2.3.2",
+      "version": "2.3.2",
+```
+
+## A demo builds only into its own documents; workspaces keep extension panels · v2.3.2 (demos/index.ts, ui/dock.ts)
+
+- Why: the two items 2.3.1 left open, on the owner's "proceed - fix the still open".
+- `demos/index.ts` `pinned(e)` (new), used by `buildDemo`: a Proxy over the engine. `known` holds the project ids open when the build starts; after every method call (and when a returned promise settles) `adopt()` takes any new project id as `mine`; the builder's own `switchTo(id)` sets `mine`. Before any property read or method call, `pin()` switches back to `mine` when the current document is another one, and throws when `mine` was closed, which rejects the build so `openDemo`'s catch closes the rest and restores the tools. Getters are read with the engine as receiver and methods are applied to the engine, so `this` inside the engine is never the Proxy. Writes go straight through. Before the first document exists `mine` is null and nothing is pinned (the builders only load media then). A document the person creates mid-build (Ctrl+N during an await) would be taken as the demo's; accepted, since Home is held over the canvas while a demo builds.
+- `ui/dock.ts` `arrange` (workspace choice): after the workspace's dock order, each `ext-` id of the previous order is put back after the nearest earlier id that is still in the order (or first), so consecutive extension panels keep their sequence; `side` keeps the previous `ext-` ids after the default side panels; `hidden` keeps the previous `ext-` ids. Built-in panels follow the workspace as before. `reset()` (Reset Workspace) is unchanged and forgets extension panels too. Floats were already kept (`kept` skips only dock and side panels).
+- Verified: `tsc --noEmit`; vitest 48 files, 222 tests; scratch Playwright at 4x CPU throttle: the retouching demo built while a 15 ms timer kept switching to the person's document (person's document unchanged, demo documents and layer lists identical to an undisturbed build); the demo's portrait closed mid-build (build stopped with "The demo could not open.", demo documents closed, person's document unchanged); two probe extension panels, one open and one closed and hidden, through the Pixel Art workspace (both after Extensions, the open one shown, the closed one hidden); the 2.3.0 and 2.3.1 scratch checks again (27 of 27, 7 of 7 for demos and Home). e2e on a stable dev server: test_cover_set3_view_workspaces, test_cover_set2_arrange_tiles, test_cover_set4_prefs_toggles, test_preferences_sections, test_demos_in_app, test_home_screen, test_extension_dock_panel, test_dock, test_docking, test_dock_collapse, test_dock_layers, test_panel_menus, test_no_flash, test_no_layout_shift pass.
+- Replaced, quoted exactly:
+
+```text
+  return d ? d.build(e, shippedMedia(d.id)) : null;
+    this.state = { order: o, hidden: [...hidden, ...extra].filter((id) => ALL_PANELS.some((p) => p.id === id)), side: [...DEFAULT_SIDE] };
+export const VERSION = '2.3.1';
+  "version": "2.3.1",
+  "version": "2.3.1",
+      "version": "2.3.1",
+```
+
+## Smudge and the rasterize question, Shift-click ranges, the drop line, demos that leave your tools, extension panels that keep their place · v2.3.1 (engine/index.ts, engine/transform-entry.ts, engine/layer-structure.ts, ui/layers.ts, styles/panels.css, app.ts, ui/home.ts, ui/dock.ts, ui/panel-group.ts; docs/MANUAL.md)
+
+- Why: the 2.3.0 known items and the review findings, taken up by the owner's "proceed". Six read-only traces (range selection, the drop-line shift, demo state, extension panel place, Smudge and the rasterize retry, Home during a demo build) came before any edit.
+- `engine/transform-entry.ts` `EntryHost.pixelsOnly` (new member, built in `index.ts` `entryHost` from the engine's `pixelsOnly`): `beginWarp` refuses only when the active layer has a mask, the mask is targeted, and `pixelsOnly` says no (adjustment, fill, smart, vector). Before, any `maskTarget` refused, with or without a mask.
+- `engine/index.ts` `paintable(l, allowTiled, retry?)`: after OK to `askRasterize` and `rasterizeLayer()`, `retry` runs (passed on through the folder hand-over). `redEye` and `magicErase` pass themselves with their arguments. `paintBucket` now asks at its start, before the sample and the region search, when the target is a type, smart, shape or fill layer's pixels (not with Quick Mask, an alpha channel targeted, or the mask targeted), and passes itself; the old route asked from `regionEdit` after the search and dropped the click. Strokes keep no retry: the pointer is gone by the time the question is answered.
+- `engine/layer-structure.ts` `selectLayer(host, id, how, among?)`: `anchors`, a WeakMap from project to the last plain or Ctrl-added layer. A range starts there while that layer is still selected and listed, else at the active layer, and runs over `among` (the rows in display order) or, with none, the full `hierarchy` as before. The range keeps the anchor. `index.ts` passes `among` through; `ui/layers.ts` Shift-click passes `this.rows` children's ids, which are the filtered, isolated and collapsed rows the panel shows. No other caller uses `range`.
+- `ui/layers.ts` `showDrop` and `styles/panels.css` `.cv-drop-line`: the line sits at `top: 0` and moves by `transform: translateY(...)` with `will-change: transform`. Moving it by `top` recorded one layout-shift entry per row drag (about 0.00005, no sources, the line hidden again when the entry was built); an override test showed the line alone caused it. Measured after: 0 over row drags and footer drags.
+- `app.ts` `openDemo`: snapshots `brush`, `brushDynamics`, `brushShape`, `brushMode`, `retouch`, `cloneSource`, `cloneSlots`, `tool`, `fg`, `bg` and the open project ids. In `finally` it puts back the brush (with `tip`, which `setBrush` takes only when named), dynamics, shape, mode, retouch settings (keeping the demo's `spotSampleAll` when the build finished, since the retouching demo ends on Spot Healing over a layered portrait), the clone source and slots; on a failed build also the tool and colours. The catch closes each project the build opened (`closeProject`, no prompt; it refuses while a stroke or engine task runs) and switches back to the person's document.
+- `ui/home.ts`: covers carry `data-src`; `covers()` swaps them in once with `swapMedia` (decoded off-screen, one write, failures leave the reserved 16:9 box) on the first `sync()` that shows Home. Back to Canvas is disabled while `building` (attribute only, no layout change) and Esc waits too. `holdForDemo` calls `fill()` when it switches a shown Home to Start.
+- `ui/dock.ts` `removePanel(id, forget = true)`: `forget` false only applies the layout, so the order, column, hidden and float entries stay; `extDock.remove` passes false. `load()` keeps saved `ext-` ids that are not registered yet (extension panels register after the dock is built), so the place survives a restart; layout code skips ids with no section. `ui/panel-group.ts` `saveHomes` starts from the stored map and keeps the entries of absent `ext-` tabs; built-in tabs are rebuilt from the groups as before.
+- Known, not changed: a demo build still awaits frames while menus and tabs work, so switching documents mid-build sends later steps to the wrong document; the arrange (workspace) code still drops floats and hidden entries of absent extension panels.
+- Verified: `tsc --noEmit`; vitest 48 files, 222 tests; scratch Playwright runs outside the tree at 4x CPU throttle: Shift-click with the Kind filter on (hidden adjustment left out), anchor kept, range from a New Layer; Smudge on a targeted mask; bucket on a type layer, Rasterize, the click carried out; covers not fetched with Home hidden at launch, all three loaded on first show; Back disabled during the design demo; the retouching demo restores brush 33 / 0.4 / 0.8 and Clone and Heal sampling, keeps Spot Healing and its Sample All; a simulated failure inside the painting demo closes its documents and keeps brush and mode; an extension panel's saved place kept on remove, after a reload, and its tab home kept through a tab save; layout shift 0 over row and footer drags; the drop line at the row edges; 26 of 26, no page errors. e2e on a stable dev server: see the release commit's body.
+- Replaced, quoted exactly:
+
+```text
+      commands.remove(`panel-${id}`); dock.removePanel(id); unregisterPanel(id); dock.refresh();
+  selectLayer(id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void { LS.selectLayer(this.structHost, id, how); }
+  private paintable(l: Layer | null, allowTiled = false): l is Layer {   // allowTiled: the plain stroke (1.62.5)
+      if (p && inner) { this.focus(p, inner.id); return this.paintable(inner, allowTiled); }
+        void this.askRasterize(l.name, kind).then((ok) => { this.asking = false; if (ok && this.current?.activeLayer?.id === id) this.rasterizeLayer(); });
+    if (!p || !this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return; }
+    if (!p0 || !this.paintable(l0) || !l0?.raster) { this.notice('Select a pixel layer first.'); return; }
+export function selectLayer(host: StructHost, id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void {
+    const act = p.activeLayer;
+    if (act) {
+      const rows = hierarchy(p.doc, true, p.collapsed).map((r) => r.layer.id);
+      const a = rows.indexOf(act.id);
+      const b = rows.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        const span = rows.slice(Math.min(a, b), Math.max(a, b) + 1);
+        p.selectedIds = new Set([...span, id]);
+      }
+  if (p.activeLayer && p.maskTarget) {
+    const side = Array.isArray(r.side) ? r.side.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT_SIDE];
+    const order = Array.isArray(r.order) ? r.order.filter((id): id is string => ids.includes(id as string) && !side.includes(id as string)) : [];
+  removePanel(id: string): void { if (this.floats[id]) { delete this.floats[id]; this.saveFloats(); } this.state = { ...this.state, side: this.state.side.filter((x) => x !== id), order: this.state.order.filter((x) => x !== id), hidden: this.state.hidden.filter((x) => x !== id) }; this.save(); }
+import { el, setClass, setHidden, setText } from './dom';
+    const demos = DEMOS.map((d) => `<button class="cv-home-demo" type="button" data-demo-open="${d.id}" aria-busy="false"><span class="cv-home-demo-pic"><img src="${demoCover(d)}" alt="" width="320" height="180" decoding="async" draggable="false"></span><span class="cv-home-demo-title">${d.title}</span><span>${d.blurb}</span></button>`).join('');
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.forced && d.engine.projects.length) { this.forced = false; this.sync(); } });
+      if (this.page !== 'start') { this.page = 'start'; this.paint(); }
+      else if (e.shiftKey && !t.closest('.cv-layer-mask, .cv-layer-vmask')) this.engine.selectLayer(id, 'range');
+    const homes: Record<string, string> = {};
+    line.style.top = `${top}px`;
+.cv-drop-line { position: absolute; left: var(--space-2); right: var(--space-2); height: 2px; border-radius: var(--radius-pill); background: var(--accent-color); pointer-events: none; visibility: hidden; z-index: var(--z-raised); }
+export const VERSION = '2.3.0';
+  "version": "2.3.0",
+  "version": "2.3.0",
+      "version": "2.3.0",
+```
+
+## Paint tools work on the layer they are on; layers drop onto the Layers footer · v2.3.0 (engine/paint-ops.ts, engine/index.ts, engine/layer-structure.ts, ui/layers.ts, styles/panels.css, app.ts; docs/MANUAL.md)
+
+- Why: the owner's report, "paint buckets brushes etc. only really work when you open up a new layer ... every function should just work on any layer the user is on", and "drag and drop a layer or group or multiple-selected layers over the bottom group/delete/duplicate buttons ... should do what the buttons do".
+- Root cause of the first: `PO.growLayer` grows a layer to the canvas before a pixel edit (`ensurePixels` asks for the canvas rect, `reachMask` for the same), but returned the raster unchanged for any layer that was not one-to-one (scaled, turned, flipped, off whole pixels) and for any layer whose mask had a placement of its own. Every tool that writes through `target()` (`beginStroke`, `regionEdit` for the Paint Bucket and Fill, `PO.beginGradient`, `beginRetouchStroke`, the Background Eraser, `pixel-move`) was then clipped to the layer's own box, silently. `insertImages` scales an image larger than the canvas to fit (`SOB.fitTransform`), so a dropped photograph was such a layer from the start; a New Layer has no raster, so `ensurePixels` makes it canvas-sized and it always worked.
+- `engine/paint-ops.ts` `growPlaced` (new, called where `growLayer` returned `r` for a placed layer): maps the wanted rect's corners into the layer's own pixels (`invert(placement(t, w, h))`, values within 1e-6 of a whole number snapped so a layer that already covers the canvas does not gain a pixel each time), unions that with the raster, and pads the raster to the union with the old pixels copied 1:1 at the offset (no resampling). The new transform keeps rotation, flips, sampling and the scale `t.w / raster.width`, and puts the new box's centre at the old placement of the new raster's centre, so every old pixel lands where it was. A mask tied to the pixels (`placement === null`, same size) is padded the same way, white outside; a tied mask of another size still refuses (rare; it would need resampling). LIMITS still refuse. Undo restores the old raster and transform from the snapshot. The axis-aligned path is unchanged except that a mask with its own `placement` no longer stops the growth: that mask keeps its box and is not touched, as `reachMask` already treats it.
+- `engine/index.ts` `paintBucket`: with a folder chosen and Sample All Layers off, `paintable()` runs first, so the folder hands over to its top visible pixel layer (`topPaintableIn`) before the sample is drawn. Before, the folder's empty raster was sampled, the region was the whole canvas, and `regionEdit` then filled all of the inner layer.
+- `engine/index.ts` `hintTarget` (new, from `target()`): one notice per document, layer and case when a tool works on a layer's mask (not for adjustment or fill layers, whose target is always the mask) or on a hidden layer (`shownInDoc`). `pixelsOnly` (new): when the mask is targeted and the layer is a plain pixel layer, it targets the pixels (`setMaskTarget(false)`) with a notice and returns true; for adjustment, fill, smart and vector layers it returns false and the old refusal stands. Used by `beginRetouchStroke` (all kinds but blur), both Patch entry points, the Content-Aware Move entry and the Background Eraser (before `target()`, so its refusal now meets only adjustment layers). The rasterize prompt for type, shape, fill and smart layers, locks, Lock Transparency and Quick Mask are unchanged.
+- `ui/layers.ts`, the footer drop: `FOOT_DROPS` (`new-folder`, `duplicate`, `delete-layer-ask`), `footAt` (the footer button under a point, this page's only), `dropOnFoot`. The row drag's state has `foot`; `pointermove` marks the button under the pointer with `is-layer-drop` (only while the current document is the drag's own, never for an Alt-drag of a mask) and clears the drop line, tab and stage marks while it is there; `finish` clears the mark and, on a started drag, runs `dropOnFoot`: New Folder runs `groupLayers`, Duplicate `duplicateLayers` (whole layers, not Layer via Copy's selected pixels), Delete the app's `deleteSelected` hook (`deleteLayersWithChoice`, no confirm, so the live-mask choice still asks). A single dragged layer that is not the selection is selected first; a drag that did not start on a mask thumbnail targets the pixels first, so Delete removes the layer and not its mask. `app.ts` sets `layers.deleteSelected`; `styles/panels.css` gives `.is-layer-drop` the trash highlight's rule.
+- `ui/layers.ts`, drag fixes found in review: `pointermove` with no button down drops a press that never started (released outside the rows before capture); `lostpointercapture` and Escape (document keydown, capture phase, only while a drag or effect drag has started) finish as a cancel; a list scroll clears a started drag's target; `underDragged` keeps the drop line off a dragged folder's own descendants (the engine refused those drops silently); a tab key equal to the drag's source is no target, so springing back to it ends in `switchTo(d.src)`; a Ctrl or Cmd press that toggles a row out of the selection makes no drag; a press while renaming blurs the name field (commit) and carries on.
+- `engine/layer-structure.ts` `moveLayers` duplicate branch: copies each moving head's whole subtree with parent and clip ids remapped (as `duplicateLayers` does) and focuses the last head's copy. Before, it filtered folders out and their contents were not in `moving`, so an Alt-drag of a folder copied nothing and returned false.
+- `app.ts` `openDemo`: keeps the "Opening the demo..." toast's dismiss and calls it before the success or failure notice.
+- Known, not changed: the Shift-click range in Layers ignores the panel's filters and has no separate anchor (`selectLayer(id, 'range')`); the demos leave the brush, colours and retouch sampling as they set them; an extension panel's place is forgotten on Reload Extensions (`dock.removePanel`). Recorded in the sidecar's BUILD_NOTES.
+- Verified: `tsc --noEmit`; a scratch Playwright run (outside the tree) at 4x CPU throttle against the dev page: drops on Duplicate, New Folder (layer and folder) and Delete (two selected layers, no dialog, one Undo brings both back), the button mark set and cleared, Escape over Delete and during a reorder; Paint Bucket outside a 2x layer's box (raster 100 to 200 x 150, scale still 2, red kept), brush outside a 30 degree flipped layer's box (pixels in place, Undo back to 120 x 80), bucket with a folder chosen fills only the inner layer's region, Dodge on a targeted mask paints pixels with the notice, the mask and hidden notices once each, Alt-drag copy of a folder with its layer; 25 of 25, no page errors. e2e files re-run on a stable dev server: `test_layers_group.py`, `test_cover_layers_ops.py`, `test_cover_layers_polyline.py`, `test_cover_paint2_mask_view.py`, `test_cover_misc_fill_layers.py`, `test_cover_fx_fill_layers.py` pass.
+- Replaced, quoted exactly:
+
+```text
+  if (!isAxisAligned(t, r.width, r.height) || t.rotation !== 0 || t.w !== r.width || t.h !== r.height) return r;
+  if (m && mr && (m.placement !== null || mr.width !== r.width || mr.height !== r.height)) return r;
+  if (m && mr) {
+    if (onMask && kind !== 'blur') { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
+    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Content-Aware Move works on layer pixels. Click the layer thumbnail to target them.'); return; }
+      const copies = moving
+        .filter((m) => !m.isGroup)
+        .map((m) => {
+          const c = cloneLayer(m, { name: `${m.name} copy`.slice(0, NAME_MAX), parentId: dest });
+          if (m.link) c.link = renewLinks(links, m);
+      if (!copies.length) return false;
+      host.focus(p, copies[copies.length - 1].id);
+  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; onMask: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null; src: string } | null = null;
+      if (!row || e.button !== 0 || this.renaming) return;
+      this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, onMask: !!t.closest('.cv-layer-mask') && !e.shiftKey, target: null, maskFrom, tabTarget: null, src: p.id };
+      const key = d.maskFrom ? null : slot ? 'new' : away && over !== d.src ? cur : over && over !== cur ? over : null;
+      if (!row?.dataset.id || d.ids.includes(row.dataset.id)) { d.target = null; this.showDrop(null); return; }
+.cv-panel-foot .is-fx-trash { color: var(--text-primary); background: var(--bg-hover); outline: 1px solid var(--accent-color); }
+    toast('Opening the demo...', 'info');
+export const VERSION = '2.2.0';
+  "version": "2.2.0",
+  "version": "2.2.0",
+      "version": "2.2.0",
+```
+
 ## The three demos open in the app · v2.2.0 (demos/ new, ui/home.ts, app.ts, automation/command-meta.ts, styles/shell.css, ui/i18n.ts, ui/i18n/demos.ts new, public/demos/ new; demo/src, demos/retouch/src, demos/design/src; scripts/demo-media.py new; e2e/test_demos_in_app.py new)
 
 - Why: the owner's rule is that every Form app opens all of its demos from inside the app (FormWav 2.26.0 is the model). FormVis had them only as `file://` pages in the repository, which the installed app cannot open.

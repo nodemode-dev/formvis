@@ -446,8 +446,9 @@ export class AgentBridge {
         case 'fill': {
           const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(str('color'));
           if (!m) return fail('color must be #rrggbb.');
+          const was = e.fg;
           e.fg = { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
-          e.fill('fg');
+          try { e.fill('fg'); } finally { e.fg = was; }
           return text(`Filled ${p.selection ? 'the selection' : 'the layer'} with ${str('color')}.`);
         }
         case 'add_adjustment': {
@@ -731,10 +732,11 @@ export class AgentBridge {
           if ((a.fill !== undefined && !fill) || (a.stroke !== undefined && !stroke)) return fail('fill and stroke must be #rrggbb.');
           if (!fill && !stroke) return fail('Give a fill, a stroke, or both.');
           const x = num('x', 0), y = num('y', 0), w = Math.max(1, num('width', 1)), h = Math.max(1, num('height', 1));
+          const was = { fg: e.fg, bg: e.bg, shape: { ...e.shapeSettings } };
           if (fill) e.fg = fill;
           if (stroke) e.bg = stroke;
           Object.assign(e.shapeSettings, { kind: str('kind') || 'rectangle', mode: 'shape', fill: fill ? 'fg' : 'none', stroke: stroke ? 'bg' : 'none', strokeWidth: num('stroke_width', 3) });
-          e.drawShape({ x, y }, { x: x + w, y: y + h }, { x, y, w, h });
+          try { e.drawShape({ x, y }, { x: x + w, y: y + h }, { x, y, w, h }); } finally { e.fg = was.fg; e.bg = was.bg; Object.assign(e.shapeSettings, was.shape); }
           return text(`Drew ${e.activeLayer?.name} (id ${e.activeLayer?.id}).`, { id: e.activeLayer?.id });
         }
         // Selecting.
@@ -927,6 +929,8 @@ export class AgentBridge {
           }
           const bmp = await createImageBitmap(blob), r = new Raster(p.doc.width, p.doc.height);
           r.ctx.drawImage(bmp, 0, 0, p.doc.width, p.doc.height); bmp.close(); r.touch();
+          if (e.current !== p && e.projects.includes(p)) e.switchTo(p.id);
+          if (e.current !== p) return fail(`${p.name} was closed or could not be brought forward while the picture was generated; nothing was added.`);
           e.insertRasterLayer(r, 'Generated Image', 0, 0, generation ? { generation } : {}, 'Generate Image');
           return text(`Generated with ${used}; the result is a new layer (id ${e.activeLayer?.id}).${notice}`, { id: e.activeLayer?.id });
         }

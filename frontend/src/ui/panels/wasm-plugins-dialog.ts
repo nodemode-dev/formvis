@@ -62,8 +62,9 @@ export class WasmFilterDialog extends Dialog {
     const set = (key: string, v: WasmValue): void => { const cur = this.values.get(id); if (cur) cur[key] = v; this.schedule(); };
     for (const p of entry.manifest.params) {
       const row = p.kind === 'range' ? sliderRow(p.label, p.min, p.max, p.step, (v) => set(p.key, v), { def: p.def })
-        : p.kind === 'select' ? selectRow(p.label, p.options, (v) => set(p.key, v))
+        : p.kind === 'select' ? selectRow(p.label, [], (v) => set(p.key, v))
           : checkRow(p.label, (v) => set(p.key, v));
+      if (p.kind === 'select') for (const [v, t] of p.options) q<HTMLSelectElement>(row.el, 'select').add(new Option(t, v));
       rows.set(p.key, row as unknown as Row<never>);
       node.append(row.el);
     }

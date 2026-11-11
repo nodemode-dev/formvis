@@ -3,6 +3,7 @@ import { LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, t
 import { Raster, createSurface, type Surface } from './surface';
 import { integral, intersectRect, invert, placement, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import type { Project } from './project';
+import { movedVector } from './vector-mask';
 
 export interface StructHost {
   readonly current: Project | null;
@@ -58,7 +59,9 @@ function sameStructure(a: readonly Layer[], b: readonly Layer[]): boolean {
   return a.every((l, i) => l.id === b[i].id && l.parentId === b[i].parentId && l.clipId === b[i].clipId);
 }
 
-export function selectLayer(host: StructHost, id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void {
+const anchors = new WeakMap<object, ID>();
+
+export function selectLayer(host: StructHost, id: ID, how: 'replace' | 'toggle' | 'range' = 'replace', among?: readonly ID[]): void {
   const p = host.current;
   if (!p || host.busy || !p.layer(id)) return;
   host.settle();
@@ -70,23 +73,23 @@ export function selectLayer(host: StructHost, id: ID, how: 'replace' | 'toggle' 
     } else {
       sel.add(id);
       p.activeId = id;
+      anchors.set(p, id);
     }
     p.selectedIds = sel;
   } else if (how === 'range') {
-    const act = p.activeLayer;
-    if (act) {
-      const rows = hierarchy(p.doc, true, p.collapsed).map((r) => r.layer.id);
-      const a = rows.indexOf(act.id);
-      const b = rows.indexOf(id);
-      if (a >= 0 && b >= 0) {
-        const span = rows.slice(Math.min(a, b), Math.max(a, b) + 1);
-        p.selectedIds = new Set([...span, id]);
-      }
+    const rows = among ?? hierarchy(p.doc, true, p.collapsed).map((r) => r.layer.id);
+    const from = anchors.get(p), act = p.activeLayer;
+    const a = from && p.selectedIds.has(from) && rows.includes(from) ? rows.indexOf(from) : act ? rows.indexOf(act.id) : -1;
+    const b = rows.indexOf(id);
+    if (a >= 0 && b >= 0) {
+      const span = rows.slice(Math.min(a, b), Math.max(a, b) + 1);
+      p.selectedIds = new Set([...span, id]);
     }
     p.activeId = id;
   } else {
     p.selectedIds = new Set([id]);
     p.activeId = id;
+    anchors.set(p, id);
     const layer = p.layer(id);
     if (layer) for (const a of ancestors(byId(p.doc), layer)) p.collapsed.delete(a.id);
   }
@@ -206,7 +209,10 @@ export function duplicateLayers(host: StructHost, name?: string): void {
         }
         return out;
       });
-      copiesAfter.set(rootId, fixed);
+      let k = layers.findIndex((l) => l.id === rootId);
+      while (k + 1 < layers.length && layers[k + 1].clipId === rootId) k++;
+      const anchor = layers[k].id;
+      copiesAfter.set(anchor, [...(copiesAfter.get(anchor) ?? []), ...fixed]);
     }
     const next: Layer[] = [];
     for (const l of layers) {
@@ -316,18 +322,27 @@ export function moveLayers(
 
     if (duplicate) {
       const links = new Map<ID, ID>();
-      const copies = moving
-        .filter((m) => !m.isGroup)
-        .map((m) => {
-          const c = cloneLayer(m, { name: `${m.name} copy`.slice(0, NAME_MAX), parentId: dest });
-          if (m.link) c.link = renewLinks(links, m);
+      let head: ID | null = null;
+      const copies = moving.flatMap((m) => {
+        const set = subtree(layers, m.id), originals = layers.filter((l) => set.has(l.id)), remap = new Map<ID, ID>();
+        const made = originals.map((o) => {
+          const c = cloneLayer(o, o.id === m.id ? { name: `${m.name} copy`.slice(0, NAME_MAX), parentId: dest } : {});
+          if (o.link) c.link = renewLinks(links, o);
+          remap.set(o.id, c.id);
+          if (o.id === m.id) head = c.id;
           return c;
         });
-      if (!copies.length) return false;
+        return made.map((c, i) => {
+          const o = originals[i];
+          if (o.id === m.id) return c;
+          return { ...c, parentId: o.parentId ? remap.get(o.parentId) ?? c.parentId : c.parentId, clipId: o.clipId && remap.has(o.clipId) ? remap.get(o.clipId) as ID : c.clipId };
+        });
+      });
+      if (!copies.length || !head) return false;
       const pos = slot(layers);
       if (where === 'inside') p.collapsed.delete(target.id);
       p.setLayers(normalizeClips([...layers.slice(0, pos), ...copies, ...layers.slice(pos)]));
-      host.focus(p, copies[copies.length - 1].id);
+      host.focus(p, head);
       return;
     }
 
@@ -360,6 +375,7 @@ function stepSibling(layers: readonly Layer[], id: ID, by: 1 | -1, stuck: Readon
   const start = layers.findIndex((l) => loSet.has(l.id));
   const end = layers.findIndex((l) => l.id === hi.id);
   const seg = layers.slice(start, end + 1);
+  if (seg.some((l) => !loSet.has(l.id) && !hiSet.has(l.id))) return null;
   return [
     ...layers.slice(0, start),
     ...seg.filter((l) => hiSet.has(l.id)),
@@ -408,8 +424,12 @@ export function groupLayers(host: StructHost, name?: string): void {
     }
     const folder = newLayer(cleanName(name, freeName(layers, 'Folder')), p.doc, { isGroup: true, parentId: common });
     const set = new Set(rootIds);
-    const re = layers.map((l) => (set.has(l.id) ? { ...l, parentId: folder.id } : l));
-    const next = [...re.slice(0, top + 1), folder, ...re.slice(top + 1)];
+    const block = new Set<ID>();
+    for (const id of rootIds) for (const x of subtree(layers, id)) block.add(x);
+    const moved = layers.filter((l) => block.has(l.id)).map((l) => (set.has(l.id) ? { ...l, parentId: folder.id } : l));
+    const rest = layers.filter((l) => !block.has(l.id));
+    const pos = rest.filter((l) => layers.indexOf(l) <= top).length;
+    const next = [...rest.slice(0, pos), ...moved, folder, ...rest.slice(pos)];
     p.setLayers(normalizeClips(next));
     host.focus(p, folder.id);
   });
@@ -481,6 +501,7 @@ function insertCopies(host: StructHost, included: readonly Layer[], roots: reado
     if (c.mask && c.mask.placement) {
       c.mask = { ...c.mask, placement: { ...c.mask.placement, x: c.mask.placement.x + dx, y: c.mask.placement.y + dy } };
     }
+    if (c.vectorMask && (dx || dy)) c.vectorMask = movedVector(c.vectorMask, (x, y) => ({ x: x + dx, y: y + dy }));
     return { ...c, id: ids.get(l.id)! };
   });
   host.switchTo(target.id);

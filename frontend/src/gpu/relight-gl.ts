@@ -319,9 +319,11 @@ function rgba(src: Float32Array, n: number, alpha?: Float32Array | null): Float3
 }
 
 export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, content: RelightContent, steps = 24, shade: Float32Array | null = null, split: SplitMaps | null = null): Uint8ClampedArray {
-  const st = init(), w = geo.width, h = geo.height;
+  let st = init();
+  if (st && st.gl.isContextLost()) { state = undefined; forgetRelightUploads(); st = init(); }
+  const w = geo.width, h = geo.height;
   const maxTex = st ? st.gl.getParameter(st.gl.MAX_TEXTURE_SIZE) as number : 0;
-  if (!st || w > maxTex || h > maxTex) return shadeRelight(base, geo, content, { shadowSteps: Math.min(steps, 16), shade, split });
+  if (!st || st.gl.isContextLost() || w > maxTex || h > maxTex) return shadeRelight(base, geo, content, { shadowSteps: Math.min(steps, 16), shade, split });
   const { gl, canvas, prog, loc } = st;
   canvas.width = w; canvas.height = h;
   gl.viewport(0, 0, w, h);
@@ -383,6 +385,7 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   const out = new Uint8ClampedArray(w * h * 4);
   gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, out);
+  if (gl.isContextLost()) { state = undefined; forgetRelightUploads(); return shadeRelight(base, geo, content, { shadowSteps: Math.min(steps, 16), shade, split }); }
   return out;
 }
 

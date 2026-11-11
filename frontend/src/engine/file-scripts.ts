@@ -5,6 +5,7 @@ import { invert, mul, placement, setMat } from './geometry';
 import { visibleBounds } from './distort';
 import { renderDoc, type Renderer } from './renderer';
 import { vectorCoverage } from './vector-mask';
+import { shapedMask } from './layer-masks';
 
 /** File > Scripts (DEV_PLAN 30.1): Delete All Empty Layers, Flatten All Layer Effects and Flatten All
  *  Masks as pure planners over a document. Each returns the layer changes; the engine applies them as one step. */
@@ -58,7 +59,7 @@ export function bakeEffects(doc: Doc, work: Renderer, only?: ReadonlySet<ID>): {
     r.ctx.drawImage(out as CanvasImageSource, 0, 0);
     r.touch();
     if (l.text || l.vector || l.shape || l.fillContent) rasterized++;
-    patches.set(l.id, { ...PLAIN, raster: r, transform: docTransform(r.width, r.height), effects: null, fill: 1 });
+    patches.set(l.id, { ...PLAIN, raster: r, transform: docTransform(r.width, r.height), effects: null, fill: 1, ...(l.mask && l.mask.placement === null ? { mask: { ...l.mask, placement: { ...l.transform } } } : {}) });
   }
   return { patches, rasterized };
 }
@@ -74,10 +75,24 @@ export function bakeMasks(doc: Doc): { patches: Map<ID, Partial<Layer>>; masks: 
     const src = l.raster as Raster, out = src.clone(), ctx = out.ctx, toLayer = invert(placement(l.transform, out.width, out.height));
     const m = l.mask, v = l.vectorMask;
     if (m?.raster && m.enabled) {
+      const place = mul(toLayer, placement(m.placement ?? l.transform, m.raster.width, m.raster.height)), shape = (shapedMask(m) ?? m.raster).canvas;
       ctx.save();
       ctx.globalCompositeOperation = 'destination-in';
-      setMat(ctx, mul(toLayer, placement(m.placement ?? l.transform, m.raster.width, m.raster.height)));
-      ctx.drawImage(m.raster.canvas, 0, 0);
+      if (m.placement) {
+        const k = new Raster(out.width, out.height), kc = k.ctx;
+        kc.fillStyle = '#fff';
+        kc.fillRect(0, 0, out.width, out.height);
+        setMat(kc, place);
+        kc.globalCompositeOperation = 'destination-out';
+        kc.fillRect(0, 0, m.raster.width, m.raster.height);
+        kc.globalCompositeOperation = 'source-over';
+        kc.drawImage(shape, 0, 0);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(k.canvas as CanvasImageSource, 0, 0);
+      } else {
+        setMat(ctx, place);
+        ctx.drawImage(shape, 0, 0);
+      }
       ctx.restore();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
     }

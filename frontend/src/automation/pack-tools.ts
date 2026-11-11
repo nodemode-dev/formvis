@@ -203,6 +203,7 @@ async function placedOf(p: NonNullable<Engine['current']>, id: string): Promise<
 
 async function glbTool(e: Engine, name: string, a: Record<string, unknown>): Promise<McpResult> {
   const p = e.current as NonNullable<Engine['current']>, str = (k: string): string => (typeof a[k] === 'string' ? a[k] as string : '');
+  const back = (): boolean => { if (e.current !== p && e.projects.includes(p)) e.switchTo(p.id); return e.current === p; }, gone = (): string => `${p.name} was closed or could not be brought forward while the model was drawn`;
   try {
     if (name === 'glb_info') {
       if (str('id')) {
@@ -220,6 +221,7 @@ async function glbTool(e: Engine, name: string, a: Record<string, unknown>): Pro
       const bytes = bytesOf(str('data')), model = await loadModel(bytes), view = cleanView(GLB_VIEW, patchOf(a)), label = str('name') || 'Model';
       const canvas = await renderModel(model, view, W, H), r = new Raster(W, H);
       r.ctx.drawImage(canvas, 0, 0, W, H); r.touch();
+      if (!back()) return fail(`${gone()}; nothing was placed.`);
       let id = '', depthId = '';
       e.edit('Place 3D Model', (pp) => {
         e.insertRasterLayer(r, `3D: ${label}`, 0, 0, {}, 'Place 3D Model');
@@ -229,6 +231,7 @@ async function glbTool(e: Engine, name: string, a: Record<string, unknown>): Pro
       if (a.depth === true) {
         const dc = await renderModel(model, view, W, H, 'depth'), d = new Raster(W, H);
         d.ctx.drawImage(dc, 0, 0, W, H); d.touch();
+        if (!back()) return fail(`${gone()}; the model is layer ${id || 'not placed'}, without its depth map.`);
         e.insertRasterLayer(d, 'Depth Map', 0, 0, {}, 'Place 3D Depth');
         depthId = e.activeLayer?.id ?? '';
         if (id) e.selectLayer(id);
@@ -245,6 +248,7 @@ async function glbTool(e: Engine, name: string, a: Record<string, unknown>): Pro
     const img = new Raster(W, H);
     img.ctx.drawImage(canvas, 0, 0, W, H);
     const data = img.ctx.getImageData(0, 0, W, H);
+    if (!back()) return fail(`${gone()}; it was not re-posed.`);
     let ok = false;
     e.edit('Edit 3D Model', (pp) => {
       ok = e.replaceLayerPixels(id, data, 'Edit 3D Model');
@@ -255,6 +259,7 @@ async function glbTool(e: Engine, name: string, a: Record<string, unknown>): Pro
     if (a.depth === true) {
       const dc = await renderModel(model, view, W, H, 'depth'), d = new Raster(W, H);
       d.ctx.drawImage(dc, 0, 0, W, H); d.touch();
+      if (!back()) return fail(`${gone()}; it was re-posed, without its depth map.`);
       if (g.depthId && p.layer(g.depthId)) e.replaceLayerPixels(g.depthId, d.ctx.getImageData(0, 0, W, H), 'Edit 3D Depth');
       else { e.insertRasterLayer(d, 'Depth Map', 0, 0, {}, 'Place 3D Depth'); g.depthId = e.activeLayer?.id ?? ''; e.selectLayer(id); }
     }

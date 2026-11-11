@@ -16,6 +16,7 @@ is started (1.53.3).
 
 The server declares tools.listChanged, and tells the client (notifications/tools/list_changed) when the engine's tool count
 changes or the engine comes back."""
+from __future__ import annotations
 
 import json
 import os
@@ -24,7 +25,7 @@ import threading
 import urllib.error
 import urllib.request
 
-URL = os.environ.get("FORMVIS_MCP_URL", "http://127.0.0.1:8190/mcp")
+URL = os.environ.get("FORMVIS_MCP_URL", f"http://127.0.0.1:{os.environ.get('FORMVIS_PORT', '').lstrip('0') or 8190}/mcp")
 PORT_FILE = os.environ.get("FORMVIS_PORT_FILE", "")   # the packaged app (its `mcp` mode): the engine keeps its own port here while it runs
 ATTACH = os.environ.get("FORMVIS_MCP_ATTACH", "0") == "1"
 _down = False   # attach mode: the engine did not answer the last request
@@ -39,6 +40,8 @@ _session = ""   # the engine's Mcp-Session-Id from initialize, which ties later 
 ROOTS: list[str] = []   # --root: folders the file tools may read and write
 READ_ROOTS: list[str] = []   # --read-root: folders they may only read
 WRITES = {"save_project", "export_image", "export_mask", "export_layer", "timeline_render"}   # tools whose path is written; output_path always is
+CONTROL = {"app.open": "open_file", "app.save": "save_project", "app.export": "export_image", "ui.menu.list": "ui_menu_list", "ui.menu.invoke": "ui_menu_invoke"}
+MENUS = {"ui_menu_list", "ui_menu_invoke"}
 _out = threading.Lock()
 _watching = False
 
@@ -65,12 +68,17 @@ def outside_roots(msg: dict) -> str | None:
     if not (ROOTS or READ_ROOTS) or msg.get("method") != "tools/call":
         return None
     params = msg.get("params") or {}
-    args = params.get("arguments") or {}
+    name, args = params.get("name"), params.get("arguments") or {}
+    if name == "control_call" and isinstance(args, dict):
+        method, inner = str(args.get("method")), args.get("params")
+        name, args = CONTROL.get(method, method), inner if isinstance(inner, dict) else {}
+    if name in ("save_project", "export_image") and not (isinstance(args.get("path"), str) and args["path"].strip()):
+        return f"{name} with no path writes back to the file the document came from, which may be outside the folders this server may write: give a path inside {', '.join(ROOTS) or 'a --root folder'}."
     for key in ("path", "output_path"):
         value = args.get(key)
-        if not isinstance(value, str) or not value.strip():
+        if not isinstance(value, str) or not value.strip() or (key == "path" and name in MENUS):
             continue
-        writing = key == "output_path" or params.get("name") in WRITES
+        writing = key == "output_path" or name in WRITES
         if not inside(value, ROOTS if writing else ROOTS + READ_ROOTS):
             return f"{key} {value} is outside the folders this server may {'write' if writing else 'read'} ({', '.join(ROOTS if writing else ROOTS + READ_ROOTS) or 'none'})."
     return None
@@ -123,6 +131,8 @@ def forward(line: str) -> str | None:
         msg = json.loads(line)
     except ValueError:
         return json.dumps({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
+    if not isinstance(msg, dict) or not isinstance(msg.get("params") or {}, dict):
+        return json.dumps({"jsonrpc": "2.0", "id": msg.get("id") if isinstance(msg, dict) else None, "error": {"code": -32600, "message": "Invalid Request"}})
     refused = outside_roots(msg)
     if refused:
         return json.dumps({"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": refused}], "isError": True}}) if msg.get("id") is not None else None
@@ -282,7 +292,8 @@ def main() -> None:
             ATTACH = True
         elif flag == "--where":
             launcher = (os.environ.get("FORMVIS_LAUNCHER") if PORT_FILE else None) or os.path.join(root, "formvis.bat" if os.name == "nt" else "formvis")
-            print(json.dumps({"launcher": launcher, "script": os.path.abspath(__file__), "url": URL, "claude_desktop": {"mcpServers": {"formvis": {"command": launcher, "args": ["mcp"]}}}}, indent=2))
+            command, cargs = (sys.executable, [os.path.abspath(__file__)]) if os.name == "nt" and not PORT_FILE else (launcher, ["mcp"])
+            print(json.dumps({"launcher": launcher, "script": os.path.abspath(__file__), "url": URL, "claude_desktop": {"mcpServers": {"formvis": {"command": command, "args": cargs}}}}, indent=2))
             return
         elif flag == "--version":
             import re

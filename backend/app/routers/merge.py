@@ -164,13 +164,13 @@ def hdr(images: list[bytes], align: bool = True, times: list[float] | None = Non
     elif all(e for e in exif):
         times, source = np.array(exif, np.float32), "EXIF"
     else:
-        base = int(np.argsort([float(np.median(l)) for l in lin])[len(lin) // 2])
+        ref = int(np.argsort([float(np.median(l)) for l in lin])[len(lin) // 2])
         times = np.ones(len(lin), np.float32)
         for k, l in enumerate(lin):
-            if k == base:
+            if k == ref:
                 continue
-            ok = (l > 0.05) & (l < 0.85) & (lin[base] > 0.05) & (lin[base] < 0.85)
-            times[k] = float(np.median(l[ok] / lin[base][ok])) if ok.sum() > 100 else 1.0
+            ok = (l > 0.05) & (l < 0.85) & (lin[ref] > 0.05) & (lin[ref] < 0.85)
+            times[k] = float(np.median(l[ok] / lin[ref][ok])) if ok.sum() > 100 else 1.0
         source = "estimated from the photos"
     response = cv2.createCalibrateDebevec().process(imgs, times)
     radiance = cv2.createMergeDebevec().process(imgs, times, response)   # BGR, as the photos are here
@@ -202,6 +202,8 @@ async def panorama_route(file: list[UploadFile] = File(...), layout: str = Form(
         return Response(json.dumps(made), media_type="application/json")
     try:
         png, kept, notes = await run_in_threadpool(panorama, data, layout, crop, distortion, vignette)
+    except ModuleNotFoundError as exc:
+        raise HTTPException(501, f"Photomerge {layout} needs the {exc.name} package, which this install of the engine does not include.") from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return Response(png, media_type="image/png", headers={"X-Photos-Stitched": f"{kept}/{len(data)}", "X-Photomerge-Notes": json.dumps(notes)})
@@ -215,6 +217,8 @@ async def hdr_route(file: list[UploadFile] = File(...), align: bool = Form(True)
     try:
         given = [float(t) for t in times.split(",") if t.strip()] if times.strip() else None
         raw, head = await run_in_threadpool(hdr, data, align, given, ghost, base)
+    except ModuleNotFoundError as exc:
+        raise HTTPException(501, f"Merge to HDR with Remove Ghosts needs the {exc.name} package, which this install of the engine does not include.") from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     h = json.dumps(head).encode()

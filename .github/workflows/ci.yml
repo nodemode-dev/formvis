@@ -58,7 +58,7 @@ jobs:
           pip install pyyaml
           python -c "import glob, yaml; [yaml.safe_load(open(f, encoding='utf-8')) for f in sorted(glob.glob('.github/workflows/*.yml'))]; print('workflows parse')"
       - name: Release notes script reads the changelog
-        run: python setup/release_notes.py "v$(sed -n 's/^## \([0-9][0-9.]*\) .*/\1/p' CHANGELOG.md | head -1)" | head -5
+        run: python setup/release_notes.py "v$(sed -n 's/^## \([0-9][0-9.]*\) .*/\1/p' CHANGELOG.md | head -1)"
 
   backend:
     runs-on: ubuntu-latest

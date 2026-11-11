@@ -88,6 +88,7 @@ export class RunWorkflowDialog extends Dialog {
       const controls = await controlPictures(this.engine, this.refs.fitValue());
       const parts = [...await Promise.all(imgs.map(async (x, i) => ({ name: `${i}.png`, blob: await toPng(x.surface) }))), ...refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob })), ...controls.map((c) => ({ name: `control-${c.role}.png`, blob: c.blob }))];
       const r = await api.comfyuiRun(target, w.json, [...imgs.map((x) => x.item), ...refs.map((x) => ({ name: x.name, kind: 'reference' })), ...controls.map((c) => ({ name: c.name, kind: `control ${c.role}` }))], parts, this.prompt.value.trim() ? this.prompt.value.trim() : null);
+      if (!this.isOpen) { void api.comfyuiCancel(r.job, target); return; }
       this.job = r.job;
       setClass(this.bar, 'is-wait', true);
       this.fill.style.width = '';

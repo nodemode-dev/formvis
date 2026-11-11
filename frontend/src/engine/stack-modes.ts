@@ -56,6 +56,7 @@ function statistic(mode: StackMode, v: number[]): number {
  *  colour channel is the statistic over the samples that are not fully transparent. Results clamp to 0..255. */
 export function computeStack(layers: ImageData[], mode: StackMode): ImageData {
   const first = layers[0], out = new ImageData(first.width, first.height), o = out.data, n = layers.length, px = first.width * first.height;
+  if (mode === 'none') return new ImageData(new Uint8ClampedArray(layers[n - 1].data), first.width, first.height);
   const ch: number[][] = [[], [], []];
   for (let i = 0; i < px; i++) {
     let a = 0;

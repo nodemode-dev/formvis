@@ -180,19 +180,19 @@ impl TiledLayer {
     /// Puts straight RGBA8 pixels (w by h, rows packed) at (x, y), premultiplied into the tiles they fall in; transparent
     /// runs allocate nothing new.
     pub fn write(&mut self, gpu: &Gpu, x: u32, y: u32, w: u32, h: u32, rgba: &[u8]) {
-        assert_eq!(rgba.len(), (w * h * 4) as usize);
+        assert_eq!(rgba.len(), (w as usize) * (h as usize) * 4);
         for ty in y / TILE..=(y + h - 1) / TILE {
             for tx in x / TILE..=(x + w - 1) / TILE {
                 let (ox, oy) = (tx * TILE, ty * TILE);
                 let (x0, y0, x1, y1) = (x.max(ox), y.max(oy), (x + w).min(ox + TILE), (y + h).min(oy + TILE));
-                let any = (y0..y1).any(|py| (x0..x1).any(|px| rgba[(((py - y) * w + (px - x)) * 4 + 3) as usize] > 0));
+                let any = (y0..y1).any(|py| (x0..x1).any(|px| rgba[(((py - y) as usize) * w as usize + (px - x) as usize) * 4 + 3] > 0));
                 if !any && !self.tiles.contains_key(&(tx, ty)) {
                     continue;
                 }
                 let mut tile = if self.tiles.contains_key(&(tx, ty)) { read_tile(gpu, &self.tiles[&(tx, ty)]) } else { vec![0u8; (TILE * TILE * 4) as usize] };
                 for py in y0..y1 {
                     for px in x0..x1 {
-                        let s = (((py - y) * w + (px - x)) * 4) as usize;
+                        let s = (((py - y) as usize) * w as usize + (px - x) as usize) * 4;
                         let d = (((py - oy) * TILE + (px - ox)) * 4) as usize;
                         let a = rgba[s + 3] as u32;
                         for c in 0..3 {
@@ -287,7 +287,7 @@ impl TiledLayer {
 
     /// The layer's pixels in a rectangle, straight (not premultiplied) RGBA8; transparent where there is no tile.
     pub fn read(&self, gpu: &Gpu, x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
-        let mut out = vec![0u8; (w * h * 4) as usize];
+        let mut out = vec![0u8; (w as usize) * (h as usize) * 4];
         for ty in y / TILE..=(y + h - 1) / TILE {
             for tx in x / TILE..=(x + w - 1) / TILE {
                 let Some(tex) = self.tiles.get(&(tx, ty)) else { continue };
@@ -303,7 +303,7 @@ impl TiledLayer {
                             continue;
                         }
                         let s = ((py * TILE + qx) * 4) as usize;
-                        let d = (((ly - y) * w + (lx - x)) * 4) as usize;
+                        let d = (((ly - y) as usize) * w as usize + (lx - x) as usize) * 4;
                         let a = px[s + 3] as f32 / 255.0;
                         for c in 0..3 {
                             out[d + c] = if a > 0.0 { ((px[s + c] as f32 / 255.0 / a) * 255.0).round().min(255.0) as u8 } else { 0 };

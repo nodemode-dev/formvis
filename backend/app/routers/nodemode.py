@@ -63,20 +63,21 @@ def _upload(base: str, name: str, blob: bytes) -> str:
 
 
 @router.post("/send")
-async def send(target: str = Form(...), title: str = Form("formvis"), items: str = Form(...), files: list[UploadFile] = File(...)) -> dict:
+def send(target: str = Form(...), title: str = Form("formvis"), items: str = Form(...), files: list[UploadFile] = File(...)) -> dict:
     """Uploads `files` to NodeMode and announces them. `items` is JSON, one entry per file in order: its name, kind
     (image, layer or mask), size, and for a mask the index of the image it belongs to."""
     base = _base(target)
     try:
         meta = json.loads(items)
         assert isinstance(meta, list) and len(meta) == len(files) and 0 < len(files) <= 64
+        assert all(isinstance(m, dict) and all(isinstance(m.get(k, 0), (int, float)) for k in ("width", "height")) for m in meta)
     except (ValueError, AssertionError):
         raise HTTPException(status_code=422, detail="Nothing to send, or the list of what is sent did not match the files.")
     sent = []
     try:
         for m, f in zip(meta, files):
             name = str(m.get("name") or "image")[:120].replace("/", "_").replace("\\", "_") + ".png"
-            sent.append({"url": _upload(base, name, await f.read()), "filename": name, "fileType": "image",
+            sent.append({"url": _upload(base, name, f.file.read()), "filename": name, "fileType": "image",
                          "kind": m.get("kind", "image"), "width": int(m.get("width", 0)), "height": int(m.get("height", 0)),
                          **({"maskOf": int(m["maskOf"])} if isinstance(m.get("maskOf"), int) else {})})
     except urllib.error.HTTPError as exc:

@@ -155,7 +155,11 @@
      section 6.2.2) so a companion surface embedded next to the app never
      collides. Component CSS uses var(--z-*) only. Never a raw number,
      never 9999. */
+  --z-under: -1;          /* a backdrop drawn under its own element's content */
   --z-base: 0;
+  --z-local-2: 2;         /* local stacking inside one panel: comment popover, dock split */
+  --z-local-4: 4;         /* the open Properties column over its neighbours */
+  --z-local-5: 5;         /* the Properties resize edge over the open column */
   --z-raised: 8;          /* hovered card lift (the app's .node:hover) */
   --z-selected: 9;        /* selected card (the app's .node.selected) */
   --z-rail: 10;           /* mini icon rail */

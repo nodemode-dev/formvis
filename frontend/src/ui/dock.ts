@@ -69,15 +69,16 @@ function load(): DockState {
   try {
     const r = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<DockState>;
     const ids = ALL_PANELS.map((p) => p.id), dockIds = DOCK_PANELS.map((p) => p.id);
+    const kept = (id: unknown): id is string => typeof id === 'string' && (ids.includes(id) || id.startsWith('ext-'));
     // The side column's panels as saved (a saved arrangement from before panels could move has none: the default).
-    const side = Array.isArray(r.side) ? r.side.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT_SIDE];
-    const order = Array.isArray(r.order) ? r.order.filter((id): id is string => ids.includes(id as string) && !side.includes(id as string)) : [];
+    const side = Array.isArray(r.side) ? r.side.filter(kept) : [...DEFAULT_SIDE];
+    const order = Array.isArray(r.order) ? r.order.filter((id): id is string => kept(id) && !side.includes(id)) : [];
     // A panel missing from both takes its default column and place, not the end.
     for (const id of ids) if (!order.includes(id) && !side.includes(id)) {
       if (DEFAULT_SIDE.includes(id) && !Array.isArray(r.side)) side.push(id);
       else order.splice(Math.min(Math.max(0, dockIds.indexOf(id)), order.length), 0, id);
     }
-    const hidden = Array.isArray(r.hidden) ? r.hidden.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT.hidden];
+    const hidden = Array.isArray(r.hidden) ? r.hidden.filter(kept) : [...DEFAULT.hidden];
     // A panel newer than the saved arrangement (the Info panel, 1.49.6) starts as it comes: hidden if it comes hidden.
     const known = new Set([...(Array.isArray(r.order) ? r.order : []), ...(Array.isArray(r.side) ? r.side : [])]);
     if (Array.isArray(r.hidden)) for (const id of DEFAULT.hidden) if (!known.has(id) && !hidden.includes(id)) hidden.push(id);
@@ -130,7 +131,7 @@ export class Dock {
     });
     head.addEventListener('pointermove', (e) => this.move(e));
     head.addEventListener('pointerup', () => this.drop());
-    head.addEventListener('pointercancel', () => { this.drag = null; setHidden(this.marker, true); });
+    head.addEventListener('pointercancel', () => this.cancelDrag());
     // A drag ends with a click on the header; it must not also fold or unfold the panel.
     head.addEventListener('click', (e) => { if (this.suppressClick) { e.stopPropagation(); e.preventDefault(); this.suppressClick = false; } }, true);
   }
@@ -252,7 +253,7 @@ export class Dock {
       if (!f) continue;
       setHidden(f, !on);
       if (!on || !r || !s) continue;
-      if (s.parentElement !== f) { f.appendChild(s); s.classList.remove('is-sized'); s.style.height = ''; }
+      if (s.parentElement !== f) { if (typeof f.moveBefore === 'function' && s.isConnected && f.isConnected) f.moveBefore(s, null); else f.appendChild(s); s.classList.remove('is-sized'); s.style.height = ''; }
       const title = f.querySelector('.cv-float-title') as HTMLElement;
       if (title.textContent !== p.label) title.textContent = p.label;
       const q = fit(r);
@@ -284,9 +285,15 @@ export class Dock {
     const ids = DOCK_PANELS.map((p) => p.id);
     const o = order.filter((id) => ids.includes(id));
     for (const id of ids) if (!o.includes(id)) o.push(id);
+    const was = this.state, ext = (id: string): boolean => id.startsWith('ext-');
+    was.order.forEach((id, i) => {
+      if (!ext(id) || o.includes(id)) return;
+      const prev = was.order.slice(0, i).reverse().find((x) => o.includes(x));
+      o.splice(prev ? o.indexOf(prev) + 1 : 0, 0, id);
+    });
     // A panel the workspace does not name (the Info panel, newer than the workspaces) keeps its default: hidden if it comes hidden.
     const named = new Set([...order, ...hidden]), extra = DEFAULT.hidden.filter((id) => !named.has(id));
-    this.state = { order: o, hidden: [...hidden, ...extra].filter((id) => ALL_PANELS.some((p) => p.id === id)), side: [...DEFAULT_SIDE] };
+    this.state = { order: o, hidden: [...[...hidden, ...extra].filter((id) => ALL_PANELS.some((p) => p.id === id) && !ext(id)), ...was.hidden.filter(ext)], side: [...DEFAULT_SIDE, ...was.side.filter(ext)] };
     this.save();
   }
 
@@ -341,7 +348,7 @@ export class Dock {
     strip.appendChild(expand);
     const ICONS: Record<string, string> = { navigator: 'panelNav', swatches: 'swatchGrid', layers: 'layers', timeline: 'film', history: 'history', generate: 'generate' };
     for (const id of this.dockIds().filter((x) => this.present(x))) {
-      const s = this.section(id), label = DOCK_PANELS.find((p) => p.id === id)?.label ?? id;
+      const s = this.section(id), label = (ALL_PANELS.find((p) => p.id === id)?.label ?? id).replace(/[<>&"]/g, '');
       if (!s) continue;
       const b = el<HTMLButtonElement>(`<button class="cv-strip-btn" type="button" title="${label}" aria-label="${label}">${icon(ICONS[id] ?? 'panelProps', 18)}</button>`);
       b.dataset.group = id;
@@ -378,11 +385,11 @@ export class Dock {
     // Each panel in its column, in order; moved only when the order differs, never rebuilt.
     const want = this.dockIds().map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
     const current = Array.from(this.dock.children).filter((c) => want.includes(c as HTMLElement));
-    if (want.some((s, i) => current[i] !== s)) for (const s of want) this.dock.insertBefore(s, this.marker);
+    if (want.some((s, i) => current[i] !== s)) for (const s of want) { if (typeof this.dock.moveBefore === 'function' && s.isConnected && this.dock.isConnected) this.dock.moveBefore(s, this.marker); else this.dock.insertBefore(s, this.marker); }
     if (this.side) {
       const sideWant = this.state.side.filter((id) => !this.floats[id]).map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
       const sideNow = Array.from(this.side.children).filter((c) => sideWant.includes(c as HTMLElement));
-      if (sideWant.some((s, i) => sideNow[i] !== s)) for (const s of sideWant) this.side.appendChild(s);
+      if (sideWant.some((s, i) => sideNow[i] !== s)) for (const s of sideWant) { if (typeof this.side.moveBefore === 'function' && s.isConnected && this.side.isConnected) this.side.moveBefore(s, null); else this.side.appendChild(s); }
       for (const s of sideWant) { s.classList.remove('is-sized'); s.style.height = ''; }   // sizes are the dock's
     }
     for (const p of ALL_PANELS) { const s = this.section(p.id); if (s) setHidden(s, !this.visible(p.id)); }
@@ -444,7 +451,7 @@ export class Dock {
     const d = this.drag;
     if (!d) return;
     // A drag whose button was let go elsewhere is over: hovering a header must not revive it (the stray marker).
-    if ((e.buttons & 1) === 0) { this.drag = null; setHidden(this.marker, true); return; }
+    if ((e.buttons & 1) === 0) { this.cancelDrag(); return; }
     if (!d.moving && Math.abs(e.clientY - d.startY) < 5) return;
     d.moving = true;
     d.x = e.clientX; d.y = e.clientY;
@@ -513,9 +520,10 @@ export class Dock {
     this.state = { ...this.state, side, order };
     this.save();
   }
-  removePanel(id: string): void { if (this.floats[id]) { delete this.floats[id]; this.saveFloats(); } this.state = { ...this.state, side: this.state.side.filter((x) => x !== id), order: this.state.order.filter((x) => x !== id), hidden: this.state.hidden.filter((x) => x !== id) }; this.save(); }
+  removePanel(id: string, forget = true): void { if (!forget) { this.apply(); return; } if (this.floats[id]) { delete this.floats[id]; this.saveFloats(); } this.state = { ...this.state, side: this.state.side.filter((x) => x !== id), order: this.state.order.filter((x) => x !== id), hidden: this.state.hidden.filter((x) => x !== id) }; this.save(); }
 
   private readonly docMove = (e: PointerEvent): void => { if (this.drag) this.move(e); else document.removeEventListener('pointermove', this.docMove, true); };
+  private cancelDrag(): void { this.drag = null; this.ghost?.remove(); this.ghost = null; document.removeEventListener('pointermove', this.docMove, true); setHidden(this.marker, true); this.floatHint(null, 0, ''); }
 
   private drop(): void {
     const d = this.drag;

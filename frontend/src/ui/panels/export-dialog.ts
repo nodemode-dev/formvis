@@ -148,6 +148,7 @@ export class ExportDialog extends Dialog {
     this.setTitle(layers ? 'Export Layer As' : 'Export As');
     const kept = this.engine.current.doc.meta?.jpegQuality, id = this.engine.current.doc.id;
     if (kept && !this.offered.has(id)) { this.offered.add(id); this.s = clampSettings({ ...this.s, format: 'jpg', quality: kept }); }
+    this.s = { ...this.s, fileName: undefined };
     this.load();
     this.sync();
     this.open();

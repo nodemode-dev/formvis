@@ -78,7 +78,7 @@ class _Reader:
 
     def number(self) -> int:
         t = self.token()
-        if not t.isdigit():
+        if not t.isdigit() or len(t) > 9:
             raise PnmError(f"Expected a number in the header, found {t[:12]!r}.")
         return int(t)
 
@@ -146,7 +146,7 @@ def read(data: bytes) -> tuple[np.ndarray, int]:
         return _rgba(1 - bits, 1, 1)
     if kind in (2, 3):
         words = re.sub(rb"#[^\r\n]*", b"", data[rd.pos:]).split()
-        if len(words) < count or not all(w.isdigit() for w in words[:count]):
+        if len(words) < count or not all(w.isdigit() and len(w) <= 9 for w in words[:count]):
             raise PnmError("The text pixel data is short or holds something other than numbers.")
         arr = np.array(list(map(int, words[:count])), dtype=np.int64).astype(np.uint32).reshape(height, width, depth)
     else:

@@ -18,7 +18,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.core import config
-from app.services import secrets
+from app.services import outbound, secrets
 
 FILL_MODEL = "fal-ai/flux-pro/v1/fill"
 ERASE_MODEL = "fal-ai/flux-pro/v1/erase"
@@ -132,7 +132,7 @@ def _post(model: str, body: dict, key: str) -> dict:
         headers={"Authorization": f"Key {key}", "Content-Type": "application/json", "Accept": "application/json"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:
+        with outbound.opener.open(request, timeout=180) as response:
             _refused.pop(_print(key), None)
             return json.loads(response.read())
     except urllib.error.HTTPError as exc:

@@ -50,18 +50,25 @@ def _num(cards: dict[str, str], key: str, default: float | None = None) -> float
             raise FitsError(f"The FITS header has no {key} card.")
         return default
     try:
-        return float(cards[key].replace("D", "E").replace("d", "e"))
+        value = float(cards[key].replace("D", "E").replace("d", "e"))
     except ValueError as exc:
         raise FitsError(f"The FITS {key} card is not a number.") from exc
+    if not np.isfinite(value):
+        raise FitsError(f"The FITS {key} card is not a finite number.")
+    return value
 
 
 def _data_size(cards: dict[str, str]) -> int:
     """Bytes of an HDU's data block, padded to whole 2880 byte blocks."""
     naxis = int(_num(cards, "NAXIS"))
+    axes = [int(_num(cards, f"NAXIS{i}")) for i in range(1, naxis + 1)]
+    gcount, pcount = int(_num(cards, "GCOUNT", 1)), int(_num(cards, "PCOUNT", 0))
+    if naxis < 0 or gcount < 0 or pcount < 0 or any(n < 0 for n in axes):
+        raise FitsError("The FITS header gives a negative size.")
     count = 1 if naxis else 0
-    for i in range(1, naxis + 1):
-        count *= int(_num(cards, f"NAXIS{i}"))
-    size = abs(int(_num(cards, "BITPIX"))) // 8 * int(_num(cards, "GCOUNT", 1)) * (count + int(_num(cards, "PCOUNT", 0)))
+    for n in axes:
+        count *= n
+    size = abs(int(_num(cards, "BITPIX"))) // 8 * gcount * (count + pcount)
     return size + (-size % BLOCK)
 
 

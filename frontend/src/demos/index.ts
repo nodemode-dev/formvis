@@ -24,7 +24,34 @@ export const DEMOS: readonly DemoDef[] = [
 
 export const demoCover = (d: DemoDef): string => `${import.meta.env.BASE_URL}demos/${d.id}/${d.cover}`;
 
-export function buildDemo(id: string, e: Engine): Promise<void> | null {
+export function buildDemo(id: string, e: Engine, made: Set<string> = new Set()): Promise<void> | null {
   const d = DEMOS.find((x) => x.id === id);
-  return d ? d.build(e, shippedMedia(d.id)) : null;
+  return d ? d.build(pinned(e, made), shippedMedia(d.id)) : null;
+}
+
+function pinned(e: Engine, made: Set<string>): Engine {
+  let mine: string | null = null;
+  const pin = (): void => {
+    if (!mine || e.current?.id === mine) return;
+    if (!e.projects.some((p) => p.id === mine)) throw new Error('the demo document was closed while it was being built');
+    e.switchTo(mine);
+    if (e.current?.id !== mine) throw new Error('the demo could not go back to its own document');
+  };
+  return new Proxy(e, {
+    get(t, k) {
+      if (k === 'switchTo') return (id: string): void => { t.switchTo(id); if (t.current?.id !== id) throw new Error('the demo could not switch to its document'); mine = id; };
+      if (k === 'projects') return t.projects;
+      pin();
+      const v = Reflect.get(t, k, t) as unknown;
+      if (typeof v !== 'function') return v;
+      return (...a: unknown[]): unknown => {
+        pin();
+        const before = new Set(t.projects.map((p) => p.id));
+        const out = (v as (...x: unknown[]) => unknown).apply(t, a);
+        for (const p of t.projects) if (!before.has(p.id)) { made.add(p.id); mine = p.id; }
+        return out;
+      };
+    },
+    set(t, k, v) { return Reflect.set(t, k, v, t); },
+  });
 }

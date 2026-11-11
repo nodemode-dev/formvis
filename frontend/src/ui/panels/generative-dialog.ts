@@ -114,7 +114,8 @@ export class GenerativeDialog extends Dialog {
     this.body.appendChild(this.state);
     this.forget = this.button('Forget key', 'ghost', () => void this.forgetKey());
     this.button('Cancel', 'ghost', () => this.close());
-    this.button('Generate', 'primary', () => void this.generate());
+    this.go = this.button('Generate', 'primary', () => void this.generate());
+    this.onClose = () => this.release();
     this.remember();   // the model, influence and expand margins, each mode under its own title
   }
 
@@ -132,6 +133,9 @@ export class GenerativeDialog extends Dialog {
    *  run begins at once without the dialog showing; otherwise the dialog opens with the prompt in place and says what is missing. */
   /** A run started from the task bar (Generate, Again): it never takes the current layer's seed, so Again varies. */
   private starting = false;
+  private busy = false;
+  private ticket = 0;
+  private readonly go: HTMLButtonElement;
 
   async show(mode: Mode = 'fill', scale = 2, start?: { prompt: string }): Promise<void> {
     this.starting = !!start;
@@ -318,7 +322,7 @@ export class GenerativeDialog extends Dialog {
   }
 
   /** A catalogue model's run through the engine's /fal/run: the picture (and the selection's mask when the model has a mask key) go by the schema's image keys, the options set go as inputs, and the answer lands the way the dialog's own results do. */
-  private async generateWith(cat: FalModel): Promise<void> {
+  private async generateWith(cat: FalModel, t: number): Promise<void> {
     const prompt = this.prompt.value.trim(), mode = this.mode, scale = this.scale, e = this.engine, scope = this.scope.value, extra = this.fal.values();
     const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
     // The words go to the model's own key (1.96.2): prompt for most, instruction or text_prompt for some (FIBO edit).
@@ -335,7 +339,8 @@ export class GenerativeDialog extends Dialog {
     // Pre-flight (1.96.3): nothing is uploaded until fal has a key.
     if (this.status && !this.status.configured) { setText(this.state, 'fal has no key yet: paste yours in Preferences > Plugins > API keys, then Generate again.'); return; }
     const withPrompt = (): Record<string, unknown> => ({ ...(takesPrompt && prompt ? { [promptKey]: prompt } : {}), ...extra });
-    this.close();
+    if (this.ticket !== t) return;
+    this.leave();
     if (mode === 'upscale') { await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable(async () => (await falRunImage(cat, extra, image)).blob))); return; }
     if (mode === 'expand') {
       // No margins typed and a border selected (1.96.4): the margins are the border's own.
@@ -366,10 +371,22 @@ export class GenerativeDialog extends Dialog {
   }
 
   private async generate(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    this.go.disabled = true;
+    const t = ++this.ticket;
+    try { await this.prepare(t); } finally { if (this.ticket === t) this.release(); }
+  }
+
+  private release(): void { this.ticket++; this.busy = false; this.go.disabled = false; }
+
+  private leave(): void { this.close(); this.release(); }
+
+  private async prepare(t: number): Promise<void> {
     if (this.lamaHere) {
       const e = this.engine, mode = this.mode, prompt = this.prompt.value;
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
-      this.close();
+      this.leave();
       const lama = stoppableFill(() => cappedFill(localInpaint()));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, lama));
       else await e.task(() => e.generativeFill(prompt, lama));
@@ -377,13 +394,13 @@ export class GenerativeDialog extends Dialog {
     }
     if (this.upscaleHere) {
       const e = this.engine, scale = this.scale, scope = this.scope.value, file = this.upscaleFile;
-      this.close();
+      this.leave();
       await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable((stopped) => localUpscale(scale, undefined, stopped, file)(image))));
       return;
     }
     if (this.comfyUpscaleHere) {
       const e = this.engine, scale = this.scale, scope = this.scope.value, file = this.model.value.slice('comfy-file:'.length), target = loadPrefs().comfyuiUrl;
-      this.close();
+      this.leave();
       await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable((stopped) => comfyUpscale(target, file, image, (_text, _run, p) => e.reportProgress(p?.value ?? 0, p?.max ?? 0), stopped))));
       return;
     }
@@ -392,7 +409,8 @@ export class GenerativeDialog extends Dialog {
       const prompt = this.prompt.value, mode = this.mode, e = this.engine, refine = this.refine.checked, influence = Math.max(refine ? 0.85 : 0, Number(this.influence.value) / 100), { seed, negative, steps, guidance } = this.opts.request();
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       const sent = await generatePrompt(prompt, local.id);
-      this.close();
+      if (this.ticket !== t) return;
+      this.leave();
       const fill = stoppableFill((stopped) => cappedFill(localFill(local.id, sent, influence, (r) => this.heard(r), undefined, { seed, negative, steps, guidance, refine, cancelled: stopped, onSeed: (s) => this.opts.used(s) })));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
@@ -406,7 +424,8 @@ export class GenerativeDialog extends Dialog {
       const refs = await this.chips.ordered();
       let said: string;
       try { checkReferenceCount(recipe.name, recipe.json, refs.length); said = await generatePrompt(resolveReferenceTokens(prompt, refs.length, recipe.refs), 'comfyui'); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'A reference token could not be read.'); return; }
-      this.close();
+      if (this.ticket !== t) return;
+      this.leave();
       const fill = stoppableFill((stopped) => withCropStitch(cappedFill(comfyGenerator(target, recipe, said, refs, stopped))));
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
@@ -421,11 +440,12 @@ export class GenerativeDialog extends Dialog {
       this.sync();
     }
     const cat = this.falModel;
-    if (cat) { await this.generateWith(cat); return; }
+    if (cat) { await this.generateWith(cat, t); return; }
     const prompt = this.prompt.value, mode = this.mode, scale = this.scale, e = this.engine, scope = this.scope.value, { seed } = this.opts.request();
     const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
     const sent = await generatePrompt(prompt, 'fal');
-    this.close();
+    if (this.ticket !== t) return;
+    this.leave();
     if (seed !== undefined && mode !== 'upscale') this.opts.used(seed);
     const fill = stoppableFill(() => withCropStitch(cappedFill((image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, sent, seed))));
     if (mode === 'upscale') await e.task(() => this.upscaleBy(scope, scale, (image) => stoppable(() => api.upscale(image, scale))));

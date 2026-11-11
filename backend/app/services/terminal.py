@@ -3,6 +3,7 @@ buffer and a set of subscribers; the window attaches over a WebSocket, takes the
 read-only Claude session has no process: Claude Code's bash calls are written into it."""
 
 import asyncio
+import json
 import os
 import shutil
 import threading
@@ -74,12 +75,26 @@ def login_shell() -> list[str]:
     return [shell, "-l"]
 
 
+def engine_port() -> str:
+    """The port this engine listens on: FORMVIS_PORT, or with port 0 (the desktop app's free port) the one this process
+    wrote to engine.port once it was listening."""
+    port = os.environ.get("FORMVIS_PORT") or str(config.BACKEND_PORT)
+    if port == "0":
+        try:
+            known = json.loads((config.data_dir() / "engine.port").read_text(encoding="utf-8"))
+            if known.get("pid") == os.getpid() and int(known["port"]) > 0:
+                return str(int(known["port"]))
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            pass
+    return port
+
+
 def base_env() -> dict:
     env = dict(os.environ)
     env["TERM"] = "xterm-256color"
     env["COLORTERM"] = "truecolor"
     env["FORMVIS_TERMINAL"] = "1"
-    env["FORMVIS_ENGINE_URL"] = f"http://127.0.0.1:{os.environ.get('FORMVIS_PORT', config.BACKEND_PORT)}"
+    env["FORMVIS_ENGINE_URL"] = f"http://127.0.0.1:{engine_port()}"
     env["PATH"] = str(config.REPO_DIR) + os.pathsep + env.get("PATH", "")
     return env
 

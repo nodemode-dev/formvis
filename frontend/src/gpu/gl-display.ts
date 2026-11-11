@@ -415,7 +415,7 @@ export class GlDisplay {
     gl.uniform4f(u('biT'), ...(l.blendIf?.thisLayer ?? [0, 0, 255, 255]));
     gl.uniform4f(u('biU'), ...(l.blendIf?.underlying ?? [0, 0, 255, 255]));
     gl.uniform1i(u('biCh'), l.blendIf?.channel ?? 0);
-    gl.uniform1i(u('chOff'), (l.chOff ?? 0) | (l.lut || l.threshold !== undefined ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0));
+    gl.uniform1i(u('chOff'), (l.chOff ?? 0) | (l.lut || l.hood || l.threshold !== undefined ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0));
     gl.uniform1f(u('ko'), l.ko ? Math.min(1, Math.max(0, l.ko.opacity)) : 0);
     gl.activeTexture(gl.TEXTURE2);
     if (l.mask) {

@@ -80,6 +80,8 @@ export class NeuralFiltersDialog extends Dialog {
     const l = this.engine.current?.activeLayer;
     if (this.kind !== 'depthBlur' || !l?.raster || this.depth?.layerId === pixelsKey(l) || this.depthPending) return;
     this.depthPending = true;
+    const key = pixelsKey(l), moved = (): boolean => { const now = this.engine.current?.activeLayer; return !now || pixelsKey(now) !== key; };
+    let stale = false;
     try {
       if (!(await depthReady())) { setText(this.note, 'Depth Blur needs Depth Anything V2 Small (99 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
       const p = this.engine.current;
@@ -88,7 +90,8 @@ export class NeuralFiltersDialog extends Dialog {
         if (!shared) setText(this.note, 'Reading the depth of this document...');
         const d = shared ?? await this.engine.ensureDocDepth(localDepthValues);
         if (d) {
-          this.depth = { layerId: pixelsKey(l), map: new Uint8ClampedArray(depthBytes(d, d.w, d.h)) };
+          if (moved()) { stale = true; return; }
+          this.depth = { layerId: key, map: new Uint8ClampedArray(depthBytes(d, d.w, d.h)) };
           this.showRows();
           this.schedule();
           return;
@@ -100,11 +103,12 @@ export class NeuralFiltersDialog extends Dialog {
       const g = c.getContext('2d') as CanvasRenderingContext2D; g.drawImage(bmp, 0, 0);
       const d = g.getImageData(0, 0, c.width, c.height).data, map = new Uint8ClampedArray(c.width * c.height);
       for (let i = 0, j = 0; i < d.length; i += 4, j++) map[j] = d[i];
-      this.depth = { layerId: pixelsKey(l), map };
+      if (moved()) { stale = true; return; }
+      this.depth = { layerId: key, map };
       this.showRows();
       this.schedule();
     } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The depth could not be read.'); }
-    finally { this.depthPending = false; }
+    finally { this.depthPending = false; if (stale && this.isOpen) void this.ensureDepth(); }
   }
 
   private showRows(): void {
@@ -119,7 +123,9 @@ export class NeuralFiltersDialog extends Dialog {
   }
 
   private run(): (src: ImageData) => ImageData {
-    const s = { ...this.s }, back = this.backdrop, depth = this.depth?.map ?? null, color = this.color?.pixels ?? null, styled = this.styled?.pixels ?? null;
+    const l = this.engine.current?.activeLayer, key = l ? pixelsKey(l) : null;
+    const s = { ...this.s }, back = this.backdrop, depth = this.depth?.layerId === key ? this.depth.map : null, color = this.color?.layerId === key ? this.color.pixels : null;
+    const styled = this.styled?.layerId === key && this.styled.style === this.style ? this.styled.pixels : null;
     return this.kind === 'harmonize' ? (src) => (back ? harmonize(src, back, s.amount / 100) : src)
       : this.kind === 'skinSmooth' ? (src) => skinSmooth(src, s.smooth / 100, s.radius)
       : this.kind === 'jpeg' ? (src) => deblock(src, s.strength / 100)
@@ -136,16 +142,20 @@ export class NeuralFiltersDialog extends Dialog {
     const l = this.engine.current?.activeLayer;
     if (this.kind !== 'colorize' || !l?.raster || this.color?.layerId === pixelsKey(l) || this.colorPending) return;
     this.colorPending = true;
+    const key = pixelsKey(l);
+    let stale = false;
     try {
       if (!(await colorizeReady())) { setText(this.note, 'Colorize needs DDColor-tiny (135 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
       setText(this.note, 'Coloring this layer...');
       const png = await localColorize(await toBlob(l.raster.canvas)), bmp = await createImageBitmap(png), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
       const g = c.getContext('2d') as CanvasRenderingContext2D; g.drawImage(bmp, 0, 0);
-      this.color = { layerId: pixelsKey(l), pixels: g.getImageData(0, 0, c.width, c.height) };
+      const now = this.engine.current?.activeLayer;
+      if (!now || pixelsKey(now) !== key) { stale = true; return; }
+      this.color = { layerId: key, pixels: g.getImageData(0, 0, c.width, c.height) };
       this.showRows();
       this.schedule();
     } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The color could not be read.'); }
-    finally { this.colorPending = false; }
+    finally { this.colorPending = false; if (stale && this.isOpen) void this.ensureColor(); }
   }
 
   /** The layer in the chosen preset style from the engine (1.55.1), fetched once per layer and style. */
@@ -156,16 +166,20 @@ export class NeuralFiltersDialog extends Dialog {
     const l = this.engine.current?.activeLayer;
     if (this.kind !== 'style' || !l?.raster || (this.styled?.layerId === pixelsKey(l) && this.styled.style === this.style) || this.stylePending) return;
     this.stylePending = true;
+    const key = pixelsKey(l), style = this.style;
+    let stale = false;
     try {
       if (!(await styleReady())) { setText(this.note, 'Style Transfer needs the five preset models (34 MB, BSD-3-Clause): download them in Preferences > Plugins > Local models.'); return; }
       setText(this.note, 'Painting this layer in the style...');
-      const png = await localStyle(await toBlob(l.raster.canvas), this.style), bmp = await createImageBitmap(png), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+      const png = await localStyle(await toBlob(l.raster.canvas), style), bmp = await createImageBitmap(png), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
       const g = c.getContext('2d') as CanvasRenderingContext2D; g.drawImage(bmp, 0, 0);
-      this.styled = { layerId: pixelsKey(l), style: this.style, pixels: g.getImageData(0, 0, c.width, c.height) };
+      const now = this.engine.current?.activeLayer;
+      if (!now || pixelsKey(now) !== key || this.style !== style) { stale = true; return; }
+      this.styled = { layerId: key, style, pixels: g.getImageData(0, 0, c.width, c.height) };
       this.showRows();
       this.schedule();
     } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The style could not be read.'); }
-    finally { this.stylePending = false; }
+    finally { this.stylePending = false; if (stale && this.isOpen) void this.ensureStyle(); }
   }
 
   private schedule(): void {

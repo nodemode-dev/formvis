@@ -3,6 +3,8 @@ import { deepFromRaster, linearToSrgb, place, srgbToLinear, transferOf } from '.
 import { transferLut } from './transfer-pow';
 import { hierarchy, byId, ancestors, descendantIds, groupIsolated } from './tree';
 import { placement, setMat } from './geometry';
+import { shapedMask } from './layer-masks';
+import { vectorCoverage } from './vector-mask';
 import { applyLut4, inkOf, type Lut3x4, type Lut4 } from './colour-lut';
 import { encodeLab, labFloatToRgb, renderLab, srgbToLab } from './lab';
 import { paramValues } from './adjust-params';
@@ -166,14 +168,25 @@ function rgbOfInk(lut: Lut4, d: Float32Array, i: number): [number, number, numbe
 }
 
 /** A mask raster's coverage at document size, 0 to 1 (white shows), through its placement. */
-function maskCoverage(mask: { raster: { canvas: CanvasImageSource; width: number; height: number }; placement: import('./types').Transform }, W: number, H: number): Float32Array {
+function maskCoverage(mask: { raster: { canvas: CanvasImageSource; width: number; height: number }; placement: import('./types').Transform; apart?: boolean }, W: number, H: number): Float32Array {
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d') as CanvasRenderingContext2D;
-  g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+  g.fillStyle = mask.apart ? '#fff' : '#000'; g.fillRect(0, 0, W, H);
   setMat(g, placement(mask.placement, mask.raster.width, mask.raster.height));
+  g.imageSmoothingEnabled = mask.placement.sampling !== 'nearest';
+  if (mask.apart) { g.fillStyle = '#000'; g.fillRect(0, 0, mask.raster.width, mask.raster.height); }
   g.drawImage(mask.raster.canvas, 0, 0);
   const d = g.getImageData(0, 0, W, H).data, out = new Float32Array(W * H);
   for (let i = 0, j = 0; j < out.length; i += 4, j++) out[j] = d[i] / 255;
+  return out;
+}
+
+function alphaCoverage(s: CanvasImageSource, W: number, H: number): Float32Array {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d') as CanvasRenderingContext2D;
+  g.drawImage(s, 0, 0);
+  const d = g.getImageData(0, 0, W, H).data, out = new Float32Array(W * H);
+  for (let i = 3, j = 0; j < out.length; i += 4, j++) out[j] = d[i] / 255;
   return out;
 }
 
@@ -184,28 +197,41 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
   const layers = doc.layers.map((l) => (l.parentId === undefined ? { ...l, parentId: null } : l)), walked = { ...doc, layers };
   const map = byId(walked), covers = new Map<string, Float32Array>(), clipAlpha = new Map<ID, Float32Array>();
   const toValue = paperWhite ? (v: number): number => 1 - v : (v: number): number => v, fromValue = toValue;
-  const coverageOf = (l: Layer): Float32Array | null => {
-    const folders = ancestors(map, l).filter((g) => g.mask?.raster && g.mask.enabled);
+  const coverageOf = (l: Layer, alone = false): Float32Array | null => {
+    const up = alone ? [] : ancestors(map, l), folders = up.filter((g) => g.mask?.raster && g.mask.enabled);
     const own = l.mask?.raster && l.mask.enabled ? l : null;
-    if (!own && !folders.length) return null;
+    const vectors = [l, ...up].filter((x) => x.vectorMask?.enabled), boards = up.filter((g) => g.artboard);
+    if (!own && !folders.length && !vectors.length && !boards.length) return null;
     const cov = new Float32Array(N).fill(1);
     for (const m of [own, ...folders]) {
       if (!m?.mask?.raster) continue;
       const key = m.id;
       let c = covers.get(key);
-      if (!c) { c = maskCoverage({ raster: m.mask.raster, placement: m.mask.placement ?? m.transform }, W, H); covers.set(key, c); }
+      if (!c) { c = maskCoverage({ raster: shapedMask(m.mask) ?? m.mask.raster, placement: m.mask.placement ?? m.transform, apart: m !== own || !!m.mask.placement || !!m.adjustment }, W, H); covers.set(key, c); }
       for (let i = 0; i < N; i++) cov[i] *= c[i];
+    }
+    for (const x of vectors) {
+      const key = `v:${x.id}`;
+      let c = covers.get(key);
+      if (!c) { const v = x.vectorMask ? vectorCoverage(x.vectorMask, W, H) : null; if (v) { c = alphaCoverage(v.surface as CanvasImageSource, W, H); covers.set(key, c); } }
+      if (c) for (let i = 0; i < N; i++) cov[i] *= c[i];
+    }
+    for (const g of boards) {
+      const a = g.artboard as NonNullable<Layer['artboard']>, x0 = Math.max(0, Math.round(a.x)), y0 = Math.max(0, Math.round(a.y)), x1 = Math.min(W, Math.round(a.x + a.w)), y1 = Math.min(H, Math.round(a.y + a.h));
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (x < x0 || x >= x1 || y < y0 || y >= y1) cov[y * W + x] = 0;
     }
     return cov;
   };
-  const alphaOf = (base: Layer): Float32Array | null => {
-    if (!base.raster) return null;
+  const alphaOf = (base: Layer, depth = 0): Float32Array | null => {
+    if (!base.raster || depth > 256) return null;
     let a = clipAlpha.get(base.id);
     if (a) return a;
     const src = base.channels ?? deepFromRaster(base.raster);
     if (src.n !== n) return null;
-    tmp.fill(0); place(tmp, W, H, src, base.transform, 1, S);
-    a = new Float32Array(N); for (let i = 0; i < N; i++) a[i] = tmp[i * S + A];
+    const buf = new Float32Array(N * S); place(buf, W, H, src, base.transform, 1, S);
+    const own = coverageOf(base, true), under = base.clipId ? map.get(base.clipId) : undefined, inner = under ? alphaOf(under, depth + 1) : null;
+    if (under && !inner) return null;
+    a = new Float32Array(N); for (let i = 0; i < N; i++) a[i] = buf[i * S + A] * base.opacity * (own ? own[i] : 1) * (inner ? inner[i] : 1);
     clipAlpha.set(base.id, a);
     return a;
   };
@@ -268,6 +294,13 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
   for (const { layer: l, visible } of hierarchy(walked)) {
     const held = flush();
     if (held) return held;
+    if (visible && l.isGroup && l.artboard?.background && !only && !handled.size) {
+      const a = l.artboard, bg = a.background as NonNullable<typeof a.background>;
+      const f = doc.mode === 'lab' ? encodeLab(...srgbToLab(bg.r, bg.g, bg.b)) : n === 4 ? (luts ? inkOf({ r: bg.r, g: bg.g, b: bg.b }, luts.in) : null) : linear ? [srgbToLinear(bg.r / 255), srgbToLinear(bg.g / 255), srgbToLinear(bg.b / 255)] : [bg.r / 255, bg.g / 255, bg.b / 255];
+      if (!f) return { error: `"${l.name}" has a background that needs the document's color tables, which load with the document.` };
+      const x0 = Math.max(0, Math.round(a.x)), y0 = Math.max(0, Math.round(a.y)), x1 = Math.min(W, Math.round(a.x + a.w)), y1 = Math.min(H, Math.round(a.y + a.h));
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const i = (y * W + x) * S; for (let c = 0; c < A; c++) out[i + c] = f[c]; out[i + A] = 1; }
+    }
     if (!visible || l.isGroup) continue;
     if (only && !only.has(l.id)) continue;
     // A layer in an isolated folder: the folder's layers composite on a clear buffer, blended in once, at the first.
@@ -287,7 +320,10 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     const name = `"${l.name}"`;
     const drawn = effectsActive(l.effects) && !l.adjustment && l.raster ? styleDrawer?.(doc, l) ?? null : null;
     if (effectsActive(l.effects) && !l.adjustment && !drawn) return { error: `${name} has a layer style, which this mode's compositor cannot draw here.` };
-    const op0 = l.opacity * (drawn ? 1 : l.fill ?? 1), cov0 = coverageOf(l), adjMode = l.adjustment ? l.blend ?? 'normal' : 'normal', viaMode = adjMode !== 'normal';
+    const adjBase = l.adjustment && l.clipId ? map.get(l.clipId) : undefined, adjClip = adjBase ? alphaOf(adjBase) : null;
+    if (l.adjustment && l.clipId && !adjClip) return { error: `${name} is clipped to a layer this compositor cannot read.` };
+    const own0 = coverageOf(l), cov0 = adjClip ? (own0 ? own0.map((v, i) => v * adjClip[i]) : adjClip.slice()) : own0;
+    const op0 = l.opacity * (drawn ? 1 : l.fill ?? 1), adjMode = l.adjustment ? l.blend ?? 'normal' : 'normal', viaMode = adjMode !== 'normal';
     // An adjustment in a mode of its own runs at full strength and is blended back in that mode at the next layer.
     const op = viaMode ? 1 : op0, cov = viaMode ? null : cov0;
     if (viaMode) {

@@ -104,8 +104,8 @@ def _finish(s: dict) -> None:
 
 def _write(s: dict, body: bytes) -> None:
     row = s["w"] * 4
-    if len(body) % row:
-        raise HTTPException(400, "Not a whole number of rows.")
+    if not body or len(body) % row:
+        raise HTTPException(400, "No rows, or not a whole number of rows.")
     n = len(body) // row
     if s["rows"] + n > s["h"]:
         raise HTTPException(400, "More rows than the picture has.")
@@ -150,10 +150,14 @@ async def read_open(session: str, file: str) -> dict[str, str | int]:
     if f.read(8) != b"\x89PNG\r\n\x1a\n":
         f.close()
         raise HTTPException(400, "Not a PNG.")
-    n, kind = struct.unpack(">I4s", f.read(8))
-    head = f.read(n)
-    f.read(4)
-    w, h, depth, ctype, _c, _f, interlace = struct.unpack(">IIBBBBB", head)
+    try:
+        n, kind = struct.unpack(">I4s", f.read(8))
+        head = f.read(n)
+        f.read(4)
+        w, h, depth, ctype, _c, _f, interlace = struct.unpack(">IIBBBBB", head)
+    except struct.error:
+        f.close()
+        raise HTTPException(400, "The PNG's header is cut short.") from None
     if kind != b"IHDR" or depth != 8 or ctype not in (2, 6) or interlace:
         f.close()
         raise HTTPException(400, "Only 8-bit RGB or RGBA, not interlaced, is read in bands.")

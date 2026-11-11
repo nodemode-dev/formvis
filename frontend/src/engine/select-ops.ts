@@ -137,6 +137,9 @@ function maskRgba(layer: Layer, w: number, h: number): Uint8ClampedArray {
   c.fillRect(0, 0, w, h);
   if (m?.raster) {
     setMat(c, placement(m.placement ?? layer.transform, m.raster.width, m.raster.height));
+    c.globalCompositeOperation = 'destination-out';
+    c.fillRect(0, 0, m.raster.width, m.raster.height);
+    c.globalCompositeOperation = 'source-over';
     c.drawImage(m.raster.canvas, 0, 0);
     setMat(c, [1, 0, 0, 1, 0, 0]);
   }
@@ -213,7 +216,12 @@ export function selectedPixels(host: SelectHost, merged: boolean): { surface: Su
     if (p.maskTarget) {
       const m = layer.mask;
       if (m && m.raster) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, region.w, region.h);
         setMat(ctx, mul(shift, placement(m.placement ?? layer.transform, m.raster.width, m.raster.height)));
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillRect(0, 0, m.raster.width, m.raster.height);
+        ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(m.raster.canvas, 0, 0);
         setMat(ctx, [1, 0, 0, 1, 0, 0]);
       } else {

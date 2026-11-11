@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="version 2.2.0" src="https://img.shields.io/badge/version-2.2.0-eef0f4?style=flat-square">
+  <img alt="version 2.3.4" src="https://img.shields.io/badge/version-2.3.4-eef0f4?style=flat-square">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Vite-3178c6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="Python" src="https://img.shields.io/badge/Python-FastAPI-3776ab?style=flat-square">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
@@ -104,7 +104,7 @@ formvis hosts Form extensions (the Form Extension Contract, API 1): FormPortal i
 - **Engine:** a FastAPI service for decoding, colour, PSD and the local models on ONNX Runtime.
 - **Editor:** vanilla TypeScript and Vite, with a DOM-free document engine; a Tauri 2 shell starts the engine as a sidecar.
 - **Drawing:** WebGPU or WebGL2, falling back to the CPU per document.
-- **Size:** about 166,800 lines of TypeScript, 2,400 of CSS, 22,500 of Python and 6,700 of Rust (product code, tests excluded; `./formvis counts --check` verifies it).
+- **Size:** about 166,800 lines of TypeScript, 2,400 of CSS, 22,500 of Python and 6,200 of Rust (product code, tests excluded; `./formvis counts --check` verifies it).
 - **Tested:** unit, backend and browser suites, run with `./formvis test`.
 
 ## Download

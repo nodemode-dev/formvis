@@ -287,6 +287,8 @@ export class PluginHost {
           return;
         }
         case 'call': case 'getPixels': case 'putPixels': {
+          const tool = m.op === 'call' ? String(m.args?.tool ?? '') : '';
+          if (/^(ui_|__)/.test(tool) || tool === 'close_document' || tool === 'set_settings') { reply(undefined, `${tool} is not available to a plugin.`); return; }
           const out = await this.serve(m.op, m.args ?? {}, p.label);
           if ('error' in out) reply(undefined, out.error); else reply(out.result);
           return;

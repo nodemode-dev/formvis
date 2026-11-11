@@ -9,6 +9,7 @@ export class Preview32Dialog extends Dialog {
   private readonly gamma = el<HTMLInputElement>('<input class="cv-input" type="number" min="0.01" max="10" step="0.05" value="1" aria-label="Gamma">');
   private readonly method = el<HTMLSelectElement>('<select class="cv-input" aria-label="Method"><option value="gamma">Exposure and Gamma</option><option value="compress">Highlight Compression</option></select>');
   private before: { exposure: number; gamma: number; method: 'gamma' | 'compress' } = { exposure: 0, gamma: 1, method: 'gamma' };
+  private kept = false;
   constructor(private readonly colour: ColourView) {
     super('32-bit Preview Options', 380);
     const row = (label: string, c: HTMLElement): HTMLElement => { const r = el('<label class="cv-dialog-row"><span></span></label>'); setText(r.querySelector('span') as HTMLElement, label); r.append(c); return r; };
@@ -17,8 +18,9 @@ export class Preview32Dialog extends Dialog {
     this.body.append(note, row('Method', this.method), row('Exposure', this.exposure), row('Gamma', this.gamma));
     for (const i of [this.exposure, this.gamma, this.method]) i.addEventListener('input', () => this.apply());
     this.button('Reset', 'ghost', () => { this.exposure.value = '0'; this.gamma.value = '1'; this.method.value = 'gamma'; this.apply(); });
-    this.button('Cancel', 'ghost', () => { this.colour.setPreview(this.before.exposure, this.before.gamma, this.before.method); this.close(); });
-    this.button('OK', 'primary', () => this.close());
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('OK', 'primary', () => { this.kept = true; this.close(); });
+    this.onClose = () => { if (!this.kept) this.colour.setPreview(this.before.exposure, this.before.gamma, this.before.method); this.kept = false; };
     this.remember();
   }
   show(): void {

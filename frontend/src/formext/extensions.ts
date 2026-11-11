@@ -206,7 +206,8 @@ export class FormExtensions {
     }
     const body = this.deps.dock.add(key, title);
     if (!body) throw new HostError(ERR.UNAVAILABLE, `${title} could not be placed in the dock`);
-    const frame = await this.host.open(r, body, { onResize: resize });
+    let frame: Frame | null;
+    try { frame = await this.host.open(r, body, { onResize: resize }); } catch (e) { this.deps.dock.remove(key); throw e; }
     if (!frame) { this.deps.dock.remove(key); throw new HostError(ERR.PERMISSION, `${r.name} was not allowed to open`); }
     this.open.set(key, { frame, key });
     this.deps.dock.show(key);
@@ -285,6 +286,7 @@ export class FormExtensions {
       return r.isError ? { ok: false, error: said || `${name} failed` } : { ok: true, result: r.structuredContent ?? { message: said } };
     }
     if (command.startsWith('ext.')) return { ok: false, error: 'an extension cannot run another extension\'s command' };
+    if (['load-actions', 'insert-action-step', 'insert-conditional', 'action-options'].includes(command)) return { ok: false, error: `${command} cannot be run by an extension, because it writes steps into the person's actions` };
     const entry = this.deps.catalogue.describeCommand(command);
     if (entry?.risky) return { ok: false, error: `${entry.label} cannot be run by an extension, because undo cannot reverse it` };
     return this.deps.catalogue.runCommand(command, args);

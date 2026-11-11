@@ -30,7 +30,7 @@ Generated from the window's command catalogue (1674 commands) by `./formvis agen
 | `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack, with halo control and an optional depth map layer, or a multiband (pyramid) blend into a new layer; Seamless Tones follows how the tone difference changes across the overlap (a smooth gain field, spatial false for one gain per layer). (changes the picture) |
 | `cancel-edit` | Cancel Pending Edit | Escape | Cancels what the tool in use is holding, as Escape does. Bound to Escape and movable in Keyboard Shortcuts. |
 | `cancel-job` | Cancel Background Job |  | Stops the running background job, such as a filter on a large layer, and keeps the document as it was. (changes the picture) |
-| `clean-working-files` | Working Files |  | Deletes the stored recovery copies of documents that are no longer open and the closed tabs kept for Reopen Closed Tab, and says how much space came back. (changes the picture) |
+| `clean-working-files` | Working Files |  | Deletes the stored recovery copies of documents that are no longer open and the closed tabs kept for Reopen Closed Tab, and says how much space came back. (changes the picture) (asks first) |
 | `clear` | Clear Selection Pixels |  | Erases the pixels inside the selection. (changes the picture) |
 | `clear-history-log` | Clear History Log |  | Empties the history log. |
 | `clone-source-overlay` | Clone Source: Overlay |  | Sets the Clone Source overlay: show, opacity, clipped to the brush, auto hide while painting, and invert. |

@@ -200,8 +200,9 @@ export function commitWarpStroke(host: CommitHost, w: WarpInput): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'destination-out';
   ctx.drawImage(areaL, 0, 0);
-  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalCompositeOperation = 'lighter';
   ctx.drawImage(resultL, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
   raster.touch();
   const after = raster.read();
   p.history.addPatch({ raster, x: 0, y: 0, before, after });

@@ -507,8 +507,11 @@ def encode_cmyk_psd(meta: str = Form(...), file: UploadFile = File(...)) -> Resp
     from psd_tools.api.layers import PixelLayer
     from psd_tools.constants import BlendMode, Resource
     from psd_tools.psd.image_resources import ImageResource
-    m = json.loads(meta)
-    W, H, raw = int(m["width"]), int(m["height"]), file.file.read()
+    try:
+        m = json.loads(meta)
+        W, H, raw = int(m["width"]), int(m["height"]), file.file.read()
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail="The document's description could not be read.") from exc
     if W <= 0 or H <= 0 or W * H > config.MAX_PIXELS:
         raise HTTPException(status_code=422, detail="The document's size is out of range.")
     at = W * H * 5
@@ -554,8 +557,11 @@ def encode_lab_psd(meta: str = Form(...), file: UploadFile = File(...)) -> Respo
     from psd_tools import PSDImage
     from psd_tools.api.layers import PixelLayer
     from psd_tools.constants import BlendMode, ColorMode
-    m = json.loads(meta)
-    W, H, raw = int(m["width"]), int(m["height"]), file.file.read()
+    try:
+        m = json.loads(meta)
+        W, H, raw = int(m["width"]), int(m["height"]), file.file.read()
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail="The document's description could not be read.") from exc
     if W <= 0 or H <= 0 or W * H > config.MAX_PIXELS:
         raise HTTPException(status_code=422, detail="The document's size is out of range.")
     at = W * H * 3

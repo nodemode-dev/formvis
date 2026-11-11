@@ -192,20 +192,20 @@ export class ColourView {
 
   async refresh(): Promise<void> {
     this.onProof?.(this.engine.current ? this.proofLabel() : null);
+    const c = loadPrefs().colour, chosen = c.useDisplay && c.monitor !== 'system' ? await this.chosenMonitor(c.monitor) : null;
     // CMYK and Lab documents (1.57.8): the canvas shows their sRGB rendition, so that is the source proofed.
-    const p = this.engine.current, rendered = p?.doc.mode === 'cmyk' || p?.doc.mode === 'lab', prof = rendered ? undefined : p?.doc.profile, kind = this.proof ? this.preset : null;
+    const p =this.engine.current, rendered = p?.doc.mode === 'cmyk' || p?.doc.mode === 'lab', prof = rendered ? undefined : p?.doc.profile, kind = this.proof ? this.preset : null;
     const plate = kind === 'cyan' || kind === 'magenta' || kind === 'yellow' || kind === 'black' || kind === 'cmy', cvd = kind === 'protanopia' || kind === 'deuteranopia';
     const device = kind ? DEVICE[kind] : undefined;
     const s = kind === 'cmyk' ? ({ id: this.work?.id ?? '', name: 'Working CMYK', intent: 'relative', bpc: true } as ProofSetup) : device ? ({ id: device, name: PROOF_KINDS.find(([k]) => k === kind)?.[1] ?? '', intent: 'relative', bpc: true } as ProofSetup) : kind ? null : this.setup, proofing = this.proof && (!!s || !!kind);
-    const c = loadPrefs().colour, chosen = c.useDisplay && c.monitor !== 'system' ? await this.chosenMonitor(c.monitor) : null;
-    const monitor = c.useDisplay && c.monitor === 'system' ? (this.display?.icc && !this.display.managed ? this.display.icc : null) : chosen, terms = proofing && s ? proofTerms(s) : null;
+    const monitor =c.useDisplay && c.monitor === 'system' ? (this.display?.icc && !this.display.managed ? this.display.icc : null) : chosen, terms = proofing && s ? proofTerms(s) : null;
     const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s && terms ? `${s.id}:${terms.intent}:${terms.bpc}` : ''}|${kind ?? ''}:${c.cmyk}|${proofing && this.gamut ? this.gamutDelta : false}|${monitor ? `${monitor.length}:${monitor.slice(-64)}:${c.intent}:${c.bpc}` : ''}` : '';
     const squash = this.method === 'compress', lutExposure = squash ? 0 : this.exposure;
     const pv = p?.doc.depth === 32 && p.doc.mode !== 'lab' && p.doc.mode !== 'cmyk' && (lutExposure !== 0 || this.gamma !== 1), vkey = pv ? `${key}|p${lutExposure}:${this.gamma}` : key, raw = kind === 'monitor';
     if (vkey === this.key) return;
     this.key = vkey;
-    if (!p || (!pv && (raw || (!prof && !proofing && !monitor)))) { this.engine.setViewTransform(null); return; }
     const n = ++this.seq;
+    if (!p || (!pv && (raw || (!prof && !proofing && !monitor)))) { this.engine.setViewTransform(null); return; }
     try {
       const work = kind === 'cmyk' || plate ? await this.working(c.cmyk) : null;
       if (n !== this.seq) return;

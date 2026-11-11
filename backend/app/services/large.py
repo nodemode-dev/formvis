@@ -25,14 +25,24 @@ class LargeError(Exception):
         self.status = status
 
 
+_raised = {"count": 0, "old": None}
+_raised_lock = threading.Lock()
+
+
 @contextmanager
 def _unbounded():
-    old = Image.MAX_IMAGE_PIXELS
-    Image.MAX_IMAGE_PIXELS = LARGEST * LARGEST
+    with _raised_lock:
+        if _raised["count"] == 0:
+            _raised["old"] = Image.MAX_IMAGE_PIXELS
+            Image.MAX_IMAGE_PIXELS = LARGEST * LARGEST
+        _raised["count"] += 1
     try:
         yield
     finally:
-        Image.MAX_IMAGE_PIXELS = old
+        with _raised_lock:
+            _raised["count"] -= 1
+            if _raised["count"] == 0:
+                Image.MAX_IMAGE_PIXELS = _raised["old"]
 
 
 def _dir() -> Path:

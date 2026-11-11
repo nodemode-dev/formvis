@@ -201,7 +201,12 @@ export function stripExt(name: string): string { return name.replace(/\.[A-Za-z0
 function followMask(l: Layer, next: Transform): Mask | null {
   const m = l.mask, t = l.transform;
   if (!m || !m.linked || !m.placement) return m;
-  if (t.w !== next.w || t.h !== next.h || t.rotation !== next.rotation || t.flipX !== next.flipX || t.flipY !== next.flipY) return m;
+  if (t.w !== next.w || t.h !== next.h || t.rotation !== next.rotation || t.flipX !== next.flipX || t.flipY !== next.flipY) {
+    const P = m.placement;
+    if (((P.rotation % 360) + 360) % 360 !== ((t.rotation % 360) + 360) % 360 || !(t.w > 0) || !(t.h > 0)) return m;
+    const c = applyMat(boxChange(t, next), P.x + P.w / 2, P.y + P.h / 2), w = P.w * (next.w / t.w), h = P.h * (next.h / t.h);
+    return { ...m, placement: { ...P, x: c.x - w / 2, y: c.y - h / 2, w, h, rotation: next.rotation, flipX: P.flipX !== (t.flipX !== next.flipX), flipY: P.flipY !== (t.flipY !== next.flipY) } };
+  }
   return { ...m, placement: { ...m.placement, x: m.placement.x + (next.x - t.x), y: m.placement.y + (next.y - t.y) } };
 }
 
@@ -1318,6 +1323,10 @@ export class Engine {
     if (this.transformEdit && this.transformEdit.project === this.projects[i]) { this.transformEdit = null; this.pendingTransform = false; }
     if (this.floatSel && this.floatSel.project === this.projects[i]) this.floatSel = null;
     const closing = this.projects[i];
+    if (this.meshWarpEdit?.project === closing) this.dropMeshWarp();
+    if (this.puppetEdit?.project === closing) this.dropPuppet();
+    if (this.perspectiveEdit?.project === closing) this.dropPerspective();
+    for (const k of [...this.hinted]) if (k.startsWith(`${id}:`)) this.hinted.delete(k);
     this.projects.splice(i, 1);
     this.docViews.closeAllOf(id);   // the document's further views go with it (36.16)
     if (this.currentId === id) this.currentId = (this.projects[i] ?? this.projects[this.projects.length - 1])?.id ?? null;
@@ -1489,6 +1498,9 @@ export class Engine {
 
   settle(keepFloating = false): void {
     if (this.distortEdit) this.applyDistort();
+    if (this.meshWarpEdit) this.applyMeshWarp();
+    if (this.puppetEdit) this.applyPuppetWarp();
+    if (this.perspectiveEdit) this.applyPerspectiveWarp();
     if (this.pathTransform) this.applyPathTransform(false);
     if (this.gradient) this.commitGradient();
     if (this.transformEdit) this.endTransform();
@@ -1602,14 +1614,14 @@ export class Engine {
 
   /** Undo and redo in the order asked (1.60.8, DEV_PLAN 26.3): at once when the step is in the window and nothing
    *  waits; else queued, each step's tiles brought back from the undo store before it is applied. */
-  private readonly historyOps: Array<'undo' | 'redo'> = [];
+  private readonly historyOps: Array<{ p: Project; op: 'undo' | 'redo' }> = [];
   private draining = false;
   private historyOp(op: 'undo' | 'redo'): void {
     const p = this.current;
     if (!p || this.stroke || this.waiting()) return;
     const next = op === 'undo' ? p.history.peekUndo() : p.history.peekRedo();
     if (!this.historyOps.length && !this.needsBack(next, op)) { if (op === 'undo') this.undoNow(); else this.redoNow(); return; }
-    this.historyOps.push(op);
+    this.historyOps.push({ p, op });
     void this.drainHistory();
   }
   private async drainHistory(): Promise<void> {
@@ -1617,12 +1629,13 @@ export class Engine {
     this.draining = true;
     try {
       while (this.historyOps.length) {
-        const p = this.current, op = this.historyOps[0];
-        if (!p) { this.historyOps.length = 0; break; }
+        const { p, op } = this.historyOps[0];
+        if (!this.projects.includes(p)) { this.historyOps.shift(); continue; }
         const next = op === 'undo' ? p.history.peekUndo() : p.history.peekRedo();
         if (next && this.needsBack(next, op)) await this.bringBack(next, op);   // tiles and rasters (1.61.3)
         this.historyOps.shift();
-        if (op === 'undo') this.undoNow(); else this.redoNow();
+        if (!this.projects.includes(p)) continue;
+        if (op === 'undo') this.undoNow(p); else this.redoNow(p);
       }
     } catch {
       this.historyOps.length = 0;
@@ -1632,10 +1645,9 @@ export class Engine {
     }
   }
 
-  private undoNow(): void {
-    const p = this.current;
+  private undoNow(p = this.current): void {
     if (!p || this.stroke) return;
-    this.settle();
+    if (p === this.current) this.settle();
     const e = p.history.undo();
     if (!e) return;
     for (let i = e.streamed ? -1 : e.patches.length - 1; i >= 0; i--) {   // a streamed step's are already in (1.62.7)
@@ -1653,10 +1665,9 @@ export class Engine {
   /** Edit > Toggle Last State (1.65.7): undoes the last step, or redoes the one just undone. */
   toggleLastState(): void { if (this.current?.history.canRedo) this.redo(); else this.undo(); }
 
-  private redoNow(): void {
-    const p = this.current;
+  private redoNow(p = this.current): void {
     if (!p || this.stroke) return;
-    this.settle();
+    if (p === this.current) this.settle();
     const e = p.history.redo();
     if (!e) return;
     if (!e.streamed) for (const q of e.patches) q.raster.write(q.redo ? q.redo() : q.after, q.x, q.y);   // a recipe's after is worked out again (36.18); a streamed step's are already in (1.62.7)
@@ -3184,8 +3195,9 @@ export class Engine {
     if (!p) return 0;
     const boxes = p.doc.layers.filter((l) => l.vector && /^Redaction \d+$/.test(l.name));
     if (!boxes.length) { this.notice('No redaction boxes: draw them with the Markup tool set to Redact.'); return 0; }
-    const ids = new Set(boxes.map((l) => l.id)), rects = boxes.map((l) => ({ x: l.transform.x, y: l.transform.y, w: l.transform.w, h: l.transform.h }));
-    const under = (l: Layer): boolean => !ids.has(l.id) && !!l.raster && rects.some((r) => r.x < l.transform.x + l.transform.w && r.x + r.w > l.transform.x && r.y < l.transform.y + l.transform.h && r.y + r.h > l.transform.y);
+    const order = new Map(hierarchy(p.doc).map((e, i) => [e.layer.id, i] as const)), below = (l: Layer, at: number): boolean => (order.get(l.id) ?? Infinity) < at;
+    const ids = new Set(boxes.map((l) => l.id)), rects = boxes.map((l) => ({ x: l.transform.x, y: l.transform.y, w: l.transform.w, h: l.transform.h, at: order.get(l.id) ?? -1 }));
+    const under = (l: Layer): boolean => !ids.has(l.id) && !!l.raster && rects.some((r) => below(l, r.at) && r.x < l.transform.x + l.transform.w && r.x + r.w > l.transform.x && r.y < l.transform.y + l.transform.h && r.y + r.h > l.transform.y);
     const skewed = p.doc.layers.filter((l) => under(l) && (l.transform.rotation || l.transform.flipX || l.transform.flipY || Math.abs(l.transform.w - (l.raster?.width ?? 0)) > 0.5 || Math.abs(l.transform.h - (l.raster?.height ?? 0)) > 0.5));
     if (skewed.length) { this.notice(`Rasterize ${skewed.map((l) => l.name).join(', ')} first (rotated or scaled beneath a redaction), then apply again.`, 'error'); return 0; }
     let burned = 0;
@@ -3194,7 +3206,7 @@ export class Engine {
         if (!under(l) || !l.raster) continue;
         const copy = Raster.from(l.raster.canvas as CanvasImageSource, l.raster.width, l.raster.height);   // a new raster: undo keeps the old
         copy.ctx.fillStyle = '#000';
-        for (const r of rects) copy.ctx.fillRect(r.x - l.transform.x, r.y - l.transform.y, r.w, r.h);
+        for (const r of rects) if (below(l, r.at)) copy.ctx.fillRect(r.x - l.transform.x, r.y - l.transform.y, r.w, r.h);
         copy.touch();
         q.updateLayer(l.id, { raster: copy, text: null, vector: null, shape: null, smart: null, fillContent: null });
         burned += 1;
@@ -3765,7 +3777,7 @@ export class Engine {
     };
   }
 
-  selectLayer(id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void { LS.selectLayer(this.structHost, id, how); }
+  selectLayer(id: ID, how: 'replace' | 'toggle' | 'range' = 'replace', among?: readonly ID[]): void { LS.selectLayer(this.structHost, id, how, among); }
 
   /** Select > All Layers (Alt+Ctrl+A), or with `all` false Deselect Layers; not history steps. */
   selectAllLayers(all = true): void {
@@ -4208,8 +4220,8 @@ export class Engine {
     if (!p || !l) return;
     const up = new Set<ID>([id, ...ancestors(byId(p.doc), l).map((a) => a.id)]), inside = new Set<ID>(l.isGroup ? descendantIds(p.doc.layers, id) : []);
     const back = this.soloed.get(p.id), before = new Map(p.doc.layers.map((x) => [x.id, x.visible] as const));
-    const restoring = !!back && back.id === id;
-    this.edit(restoring ? 'Show All Layers' : 'Show Only This Layer', (q) => {
+    const restoring = !!back && back.id === id && p.doc.layers.some((x) => (back.visible.get(x.id) ?? x.visible) !== x.visible);
+    const done = this.edit(restoring ? 'Show All Layers' : 'Show Only This Layer', (q) => {
       let changed = false;
       for (const x of q.doc.layers) {
         const want = restoring ? back.visible.get(x.id) ?? x.visible : up.has(x.id) ? true : inside.has(x.id) ? x.visible : false;
@@ -4217,6 +4229,7 @@ export class Engine {
       }
       return changed;
     });
+    if (!done) return;
     if (restoring) this.soloed.delete(p.id);
     else this.soloed.set(p.id, { id, visible: before });
   }
@@ -4258,7 +4271,7 @@ export class Engine {
   beginVisibilitySwipe(id: ID): boolean | null {
     const p = this.current;
     const l = p?.layer(id);
-    if (!p || !l || this.stroke) return null;
+    if (!p || !l || this.stroke || this.waiting()) return null;
     this.settle();
     const next = !l.visible;
     const many = p.selectedIds.size > 1 && p.selectedIds.has(id);
@@ -4291,7 +4304,7 @@ export class Engine {
 
   beginOpacityEdit(): void {
     const p = this.current;
-    if (!p || this.stroke || this.opacityOpen) return;
+    if (!p || this.stroke || this.opacityOpen || this.waiting()) return;
     this.settle();
     p.history.begin('Layer Opacity', p.snapshot());
     this.opacityOpen = p;
@@ -4331,7 +4344,7 @@ export class Engine {
    *  layers' fill as the slider moves, end closes it, so a whole drag is one undo step. */
   beginFillEdit(): void {
     const p = this.current;
-    if (!p || this.stroke || this.fillOpen) return;
+    if (!p || this.stroke || this.fillOpen || this.waiting()) return;
     this.settle();
     p.history.begin('Layer Fill', p.snapshot());
     this.fillOpen = p;
@@ -4784,7 +4797,7 @@ export class Engine {
    *  resampled, so this works at every depth and in every mode. */
   rotateCanvas(quarters: 1 | 2 | 3): void {
     const name = quarters === 1 ? 'Rotate 90° Clockwise' : quarters === 2 ? 'Rotate 180°' : 'Rotate 90° Counter Clockwise';
-    this.edit(name, (p) => {
+    const ok = this.edit(name, (p) => {
       const { width: W, height: H } = p.doc, deg = quarters * 90;
       const turn = (t: Transform): Transform => {
         const cx = t.x + t.w / 2, cy = t.y + t.h / 2;
@@ -4809,7 +4822,7 @@ export class Engine {
     // The turned document stays centred where it was on screen (1.85.2): a quarter turn swaps the sides, so the view
     // moves by half their difference instead of leaving the document hanging off one edge.
     const p = this.current;
-    if (p && quarters !== 2 && p.doc.width !== p.doc.height) {
+    if (ok && p && quarters !== 2 && p.doc.width !== p.doc.height) {
       const z = p.viewport.zoom, dw = (p.doc.height - p.doc.width) / 2 * z;
       this.pan(dw, -dw);
     }
@@ -4854,7 +4867,6 @@ export class Engine {
         return { ...t, x: c.x + lx * cs - ly * sn - t.w / 2 + dx, y: c.y + lx * sn + ly * cs - t.h / 2 + dy, rotation: t.rotation + turn, ...(sampling ? { sampling } : {}) };
       };
       const layers = p.doc.layers.map((l) => {
-        if (l.isGroup) return l;
         const t = turned(l.transform), moved = { ...l, transform: t, mask: l.mask?.placement ? { ...l.mask, placement: turned(l.mask.placement) } : l.mask };
         if (l.id !== bg?.id || !l.raster || l.mask || l.channels || l.smart || l.vector) return moved;
         const r = Raster.filled(W2, H2, rgbCss(fill));
@@ -5094,13 +5106,13 @@ export class Engine {
     return null;
   }
 
-  private paintable(l: Layer | null, allowTiled = false): l is Layer {   // allowTiled: the plain stroke (1.62.5)
+  private paintable(l: Layer | null, allowTiled = false, retry?: () => void): l is Layer {   // allowTiled: the plain stroke (1.62.5)
     if (!l) return false;
     if (l.isGroup) {
       // A folder chosen in Layers (1.96.3, the owner: its warning was a nuisance): the work goes to the topmost visible
       // pixel layer inside it, which becomes the current layer; only a folder with none says so.
       const p = this.current, inner = p && l.id === p.activeId ? this.topPaintableIn(p, l) : null;
-      if (p && inner) { this.focus(p, inner.id); return this.paintable(inner, allowTiled); }
+      if (p && inner) { this.focus(p, inner.id); return this.paintable(inner, allowTiled, retry); }
       this.notice(`"${l.name}" has no visible pixel layer to work on.`); this.lockedAt = performance.now(); return false;
     }
     // A layer past 268 MP, kept in tiles (1.62.3): painting it had given it a full-size canvas the browser cannot make.
@@ -5113,7 +5125,7 @@ export class Engine {
       if (!this.asking && this.askRasterize) {
         this.asking = true;
         const id = l.id;
-        void this.askRasterize(l.name, kind).then((ok) => { this.asking = false; if (ok && this.current?.activeLayer?.id === id) this.rasterizeLayer(); });
+        void this.askRasterize(l.name, kind).then((ok) => { this.asking = false; if (ok && this.current?.activeLayer?.id === id) { this.rasterizeLayer(); retry?.(); } });
       }
       return false;
     }
@@ -5154,10 +5166,11 @@ export class Engine {
     if (m.placement) return PO.growMask(p, layer, canvas) ?? r;
     if (!layer.raster || liveText(layer) || layer.smart || layer.vector || layer.shape || layer.fillContent) return r;
     this.growLayer(p, layer, canvas);
-    return (p.layer(layer.id) as Layer).mask?.raster ?? r;
+    const grown = p.layer(layer.id) as Layer;
+    return grown.mask?.placement ? PO.growMask(p, grown, canvas) ?? r : grown.mask?.raster ?? r;
   }
 
-  private target(p: Project, at?: Pt): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
+  private target(p: Project, at?: Pt, hint = false): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
     if (!this.paintable(p.activeLayer)) return null;
     const l0 = p.activeLayer;   // read after the check: a chosen folder hands over to the layer inside it
     // An adjustment layer paints its mask (made, revealing all, when it has none).
@@ -5165,8 +5178,25 @@ export class Engine {
     const la = p.layer(l0.id) as Layer, target: Target = la.adjustment || (p.maskTarget && la.mask) ? 'mask' : 'pixels';
     const raster = target === 'mask' ? this.ensureMask(p, la, at) : this.ensurePixels(p, la);
     const l = p.layer(l0.id) as Layer;
+    if (hint) this.hintTarget(p, l, target);
     const t = target === 'mask' ? (l.mask?.placement ?? l.transform) : l.transform;
     return { layer: l, target, raster, local: placement(t, raster.width, raster.height) };
+  }
+
+  private readonly hinted = new Set<string>();
+  private hintTarget(p: Project, l: Layer, target: Target): void {
+    const hidden = !this.shownInDoc(p, l);
+    const why = hidden ? 'hidden' : target === 'mask' && !l.adjustment && !l.fillContent ? 'mask' : target === 'pixels' && l.relight ? 'relight' : null, key = `${p.id}:${l.id}:${why}`;
+    if (!why || this.hinted.has(key) || this.quiet || (this.lockedAt && performance.now() - this.lockedAt < 50)) return;
+    this.hinted.add(key);
+    this.notice(why === 'hidden' ? `"${l.name}" is hidden, so changes to it show when it is turned on again.` : why === 'mask' ? `Working on the mask of "${l.name}": white shows the layer and black hides it. Click the layer thumbnail to work on its pixels.` : `"${l.name}" is a Relight layer: what you paint on it is replaced when its light is edited again.`);
+  }
+
+  private pixelsOnly(p: Project, what: string): boolean {
+    const l = p.activeLayer;
+    if (!l || l.adjustment || l.fillContent || l.smart || l.vector || l.shape || liveText(l)) return false;
+    if (p.maskTarget && l.mask) { this.setMaskTarget(false); this.notice(`${what} works on layer pixels, so the pixels of "${l.name}" are targeted now.`); }
+    return true;
   }
 
   /** opts (1.49.5, the owner's tool list): aliased paints hard pixel-exact dabs (the Pencil); autoErase paints the
@@ -5201,7 +5231,7 @@ export class Engine {
     const al = p.activeLayer as Layer;
     const pick: { layer: Layer; target: Target; raster: Raster | TiledRaster; local: Mat } = lt
       ? { layer: al, target: 'pixels', raster: lt, local: placement(al.transform, lt.width, lt.height) }
-      : this.target(p, pt) as NonNullable<ReturnType<Engine['target']>>;
+      : this.target(p, pt, true) as NonNullable<ReturnType<Engine['target']>>;
     const white = pick.target === 'mask' && ((this.maskPaint === 'follow' ? luminance(this.fg) >= 0.5 : this.maskPaint === 'white') !== (this.brushMode === 'erase'));
     // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
     // colour, since it may not make pixels transparent.
@@ -5651,7 +5681,8 @@ export class Engine {
     this.settle();
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return false; }
     if (this.smartLocked(p)) return false;
-    const pick = this.target(p);
+    this.pixelsOnly(p, 'The Background Eraser');
+    const pick = this.target(p, undefined, true);
     if (!pick || pick.target !== 'pixels') { this.notice('The Background Eraser works on a layer\'s pixels, not its mask.'); return false; }
     p.history.begin('Background Eraser', p.snapshot());
     this.bgErase = { p, raster: pick.raster, local: pick.local, full: pick.raster.ctx.getImageData(0, 0, pick.raster.width, pick.raster.height), touched: null, sample: null, last: pt, opts };
@@ -5737,7 +5768,7 @@ export class Engine {
    *  selection left as it was; one step. */
   magicErase(pt: Pt, settings: { tolerance: number; contiguous: boolean; sampleAll: boolean; antialias?: boolean; opacity?: number }): Promise<void> | void {
     const p = this.current;
-    if (!p || !this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return; }
+    if (!p || !this.paintable(p.activeLayer, false, () => void this.magicErase(pt, settings))) { this.notice('Select a pixel layer to erase.'); return; }
     const before = p.selection, wand = this.wand;
     const { opacity = 1, ...found } = settings;
     this.wand = { ...wand, ...found };
@@ -6304,9 +6335,12 @@ export class Engine {
     const x = Math.floor(pt.x), y = Math.floor(pt.y);
     if (x < 0 || y < 0 || x >= W || y >= H) return;
     if (!this.quickMask && p.selection && p.selection.valueAt(x, y) <= 0) { this.notice('Click inside the selection to fill; the Paint Bucket fills only there.'); return; }
+    const al = p.activeLayer;
+    if (!this.quickMask && !this.alphaTargeted() && al && !(p.maskTarget && al.mask) && (liveText(al) || al.smart || al.vector || al.shape || al.fillContent) && !this.paintable(al, false, () => this.paintBucket(pt))) return;
     let surface: Surface;
     if (this.bucket.sampleAll) surface = renderDoc(this.work, p.doc);
     else {
+      if (!this.quickMask && p.activeLayer?.isGroup && !this.paintable(p.activeLayer)) return;
       const l = p.activeLayer;
       if (!l) { this.notice('Select a layer first.'); return; }
       if (l.tiled && (W * H > CANVAS_PIXELS || W > CANVAS_SIDE || H > CANVAS_SIDE)) { this.notice('The Paint Bucket works on a layer kept in tiles while the picture fits one canvas (268 megapixels); a larger one comes in a later release.'); return; }
@@ -6320,6 +6354,8 @@ export class Engine {
         l.tiled.drawTo(ctxOf(surface), placement(l.transform, l.tiled.width, l.tiled.height));
       }
     }
+    const hl = p.activeLayer;
+    if (hl && !this.quickMask && !this.alphaTargeted()) this.hintTarget(p, hl, hl.adjustment || (p.maskTarget && hl.mask) ? 'mask' : 'pixels');
     const data = ctxOf(surface).getImageData(0, 0, W, H).data;
     const tol = this.bucket.tolerance, contiguous = this.bucket.contiguous, soft = this.bucket.antiAlias;
     if (W * H >= WAND_FROM && !this.waiting()) {
@@ -8213,7 +8249,7 @@ export class Engine {
 
   beginLive(name: string): boolean {
     const p = this.current;
-    if (!p || this.stroke || this.liveOpen) return false;
+    if (!p || this.stroke || this.liveOpen || this.waiting()) return false;
     this.settle();
     p.history.begin(name, p.snapshot());
     this.liveOpen = p;
@@ -8809,8 +8845,8 @@ export class Engine {
     lc.drawImage(l.raster.canvas, 0, 0);
     const ld = lc.getImageData(0, 0, W, H).data;
     // The picture without this layer and what is above it.
-    const at = p.doc.layers.findIndex((x) => x.id === l.id), hidden = new Map<ID, LayerOverride>();
-    p.doc.layers.forEach((x, i) => { if (i >= at && x.id !== l.parentId) hidden.set(x.id, { hidden: true }); });
+    const order = new Map(hierarchy(p.doc).map((e, i) => [e.layer.id, i] as const)), at = order.get(l.id) ?? -1, hidden = new Map<ID, LayerOverride>();
+    p.doc.layers.forEach((x) => { if ((order.get(x.id) ?? Infinity) >= at && x.id !== l.parentId) hidden.set(x.id, { hidden: true }); });
     const chosen = tune.source && (tune.source.doc || tune.source.layer) ? tune.source : null;
     let rd: Uint8ClampedArray, srcMask: Uint8Array | null = null;
     if (chosen) {
@@ -8940,10 +8976,10 @@ export class Engine {
   /** The document drawn without layer `id` and every layer above it (for plugins), at the document's size. */
   renderBelow(id: ID): Surface {
     const p = this.current, s = createSurface(p?.doc.width ?? 1, p?.doc.height ?? 1);
-    const at = p ? p.doc.layers.findIndex((l) => l.id === id) : -1;
+    const order = new Map(p ? hierarchy(p.doc).map((e, i) => [e.layer.id, i] as const) : []), at = order.get(id) ?? -1;
     if (!p || at < 0) return s;
     const overrides = new Map<ID, LayerOverride>();
-    p.doc.layers.forEach((l, i) => { if (i >= at) overrides.set(l.id, { hidden: true }); });
+    p.doc.layers.forEach((l) => { if ((order.get(l.id) ?? Infinity) >= at) overrides.set(l.id, { hidden: true }); });
     this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
     return s;
   }
@@ -8952,14 +8988,14 @@ export class Engine {
    *  above it hidden: what an adjustment layer does to the layers below it, as a picture at the document's size. */
   renderThrough(id: ID): Surface {
     const p = this.current, s = createSurface(p?.doc.width ?? 1, p?.doc.height ?? 1);
-    const at = p ? p.doc.layers.findIndex((l) => l.id === id) : -1;
+    const order = new Map(p ? hierarchy(p.doc).map((e, i) => [e.layer.id, i] as const) : []), at = order.get(id) ?? -1;
     if (!p || at < 0) return s;
     const keep = new Set<ID>([id]);
-    for (let a = p.doc.layers[at]!.parentId; a; a = p.layer(a)?.parentId ?? null) keep.add(a);
+    for (let a = p.layer(id)?.parentId ?? null; a; a = p.layer(a)?.parentId ?? null) keep.add(a);
     const overrides = new Map<ID, LayerOverride>();
-    p.doc.layers.forEach((l, i) => {
+    p.doc.layers.forEach((l) => {
       if (keep.has(l.id)) overrides.set(l.id, { hidden: false, opacity: 1, ...(l.id === id ? { blend: 'normal' as BlendMode } : {}) });
-      else if (i > at) overrides.set(l.id, { hidden: true });
+      else if ((order.get(l.id) ?? Infinity) > at) overrides.set(l.id, { hidden: true });
     });
     this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
     return s;
@@ -9303,8 +9339,8 @@ export class Engine {
     return true;
   }
 
-  insertRasterLayer(raster: Raster, name: string, x: number | null, y: number | null, extra: Partial<Layer> = {}, undoName = 'Paste'): void {
-    this.edit(undoName, (p) => {
+  insertRasterLayer(raster: Raster, name: string, x: number | null, y: number | null, extra: Partial<Layer> = {}, undoName = 'Paste'): boolean {
+    return this.edit(undoName, (p) => {
       const base = newLayer(name, p.doc, { raster, parentId: this.parentForNew(p) });
       const tx = x ?? Math.floor((p.doc.width - raster.width) / 2), ty = y ?? Math.floor((p.doc.height - raster.height) / 2);
       this.insertAboveActive(p, { ...base, transform: { ...docTransform(raster.width, raster.height), x: tx, y: ty }, ...extra });
@@ -9423,7 +9459,6 @@ export class Engine {
       if (turn) {
         const a = (turn * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a);
         for (const l of p.doc.layers) {
-          if (l.isGroup) continue;
           const t = l.transform, lx = t.x + t.w / 2 - c.x, ly = t.y + t.h / 2 - c.y;
           const next = { ...t, x: c.x + lx * cs - ly * sn - t.w / 2, y: c.y + lx * sn + ly * cs - t.h / 2, rotation: t.rotation + turn };
           p.updateLayer(l.id, { transform: next, mask: followMask(l, next) });
@@ -9521,7 +9556,16 @@ export class Engine {
     const toOut = (q: Pt): Pt => { const u = project(back, q.x, q.y); return { x: u.x * W, y: u.y * H }; };
     const moved = new Map<ID, Partial<Layer>>();
     for (const l of p0.doc.layers) {
-      if (l.isGroup || !l.raster) continue;
+      if (l.isGroup) {
+        const m = l.mask, mt = m?.placement ?? l.transform, mq = cornersOf(mt).map(toOut);
+        if (!m?.raster || !distortUsable(mq)) continue;
+        const mb = boundsOf(mq);
+        if (mb.w * mb.h > LIMITS.pixels) { this.notice(`That perspective would stretch a layer past the ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit. Pull the corners in a little.`, 'error'); return false; }
+        const wm = warpRaster(m.raster, mt, mq, 1, true, maskEdgeTone(m.raster));
+        if (wm) moved.set(l.id, m.placement ? { mask: { ...m, raster: wm.raster, placement: wm.t } } : { transform: wm.t, mask: { ...m, raster: wm.raster } });
+        continue;
+      }
+      if (!l.raster) continue;
       const nq = cornersOf(l.transform).map(toOut);
       if (!distortUsable(nq)) continue;
       const b = boundsOf(nq);
@@ -10074,6 +10118,7 @@ export class Engine {
       busy: !!this.stroke,
       settle: (keep) => this.settle(keep),
       notice: (m) => this.notice(m),
+      pixelsOnly: (p, what) => this.pixelsOnly(p, what),
       emit: (what) => this.emit(what, null),
       refresh: () => this.refresh(),
       edit: (label, fn) => this.edit(label, fn),
@@ -10455,7 +10500,7 @@ export class Engine {
     const l0 = p.activeLayer;
     if (this.smartLocked(p)) return false;
     const onMask = !!p.maskTarget && !!l0.mask;
-    if (onMask && kind !== 'blur') { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
+    if (onMask && kind !== 'blur' && !this.pixelsOnly(p, 'This tool')) { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
     let texture: { surface: Surface; dx: number; dy: number } | null = null;
     if (kind === 'clone' || kind === 'healBrush') {
       // Source: Pattern (the Healing Brush) heals from the chosen pattern tiled over the document; no source to set.
@@ -10524,7 +10569,7 @@ export class Engine {
       const src = snap?.kind === 'merged' ? snap.state.doc.layers[0] : snap?.state.doc.layers.find((l) => l.id === l0.id);
       if (this.historyBrushFromState && this.historySourceIndex !== null) {
         const state = this.historySource(p);
-        if (!state) { this.notice('This layer did not exist at the history state chosen as the source.'); return false; }
+        if (!state) { this.notice('This layer did not exist at the history state chosen as the source: choose a later state in the History panel, or take a snapshot after making the layer.'); return false; }
         texture = { surface: kind === 'artHistory' ? this.artHistoryTexture(p, l0, state) : state, dx: 0, dy: 0 };
       } else {
         if (!snap) { this.notice('The History Brush paints from a snapshot or a history state: take a snapshot in the History panel (New Snapshot) or mark a state in its source column.'); return false; }
@@ -10534,7 +10579,7 @@ export class Engine {
       }
     }
     p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush', artHistory: 'Art History Brush', patternStamp: 'Pattern Stamp', colorReplace: 'Color Replacement' }[kind], p.snapshot());
-    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+    const pick = this.target(p, undefined, true) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     // The Clone Stamp's Flow and Mode (1.50.6, the tool audit), from the options bar; Lock Transparency keeps precedence.
     const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : kind === 'clone' ? { ...this.brush, color: white, flow: this.retouch.cloneFlow } : { ...this.brush, color: white };
@@ -10628,10 +10673,10 @@ export class Engine {
 
   /** Current & Below: every layer above `l` hidden, but for the groups holding it. */
   private belowOverrides(p: Project, l: Layer): Map<ID, LayerOverride> {
-    const layers = p.doc.layers, at = layers.findIndex((x) => x.id === l.id), ancestors = new Set<ID>();
+    const layers = p.doc.layers, order = new Map(hierarchy(p.doc).map((e, i) => [e.layer.id, i] as const)), at = order.get(l.id) ?? -1, ancestors = new Set<ID>();
     for (let a = l.parentId; a; a = layers.find((x) => x.id === a)?.parentId ?? null) ancestors.add(a);
     const overrides = new Map<ID, LayerOverride>();
-    layers.forEach((x, i) => { if (i > at && !ancestors.has(x.id)) overrides.set(x.id, { hidden: true }); });
+    layers.forEach((x) => { if ((order.get(x.id) ?? Infinity) > at && !ancestors.has(x.id)) overrides.set(x.id, { hidden: true }); });
     return overrides;
   }
 
@@ -10707,7 +10752,7 @@ export class Engine {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Make a selection, then choose Use Pattern.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
-    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask && !this.pixelsOnly(p0, 'Patch')) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
     this.edit('Patch', () => {
       this.regionEdit('Patch', ({ raster, target, rect }) => {
         if (target !== 'pixels') return;
@@ -10736,7 +10781,7 @@ export class Engine {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Make a selection, then drag it onto the area to copy from.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
-    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask && !this.pixelsOnly(p0, 'Patch')) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
     const opts = this.retouch, dest = opts.patchFrom === 'destination';
     this.edit('Patch', (pp) => {
       const sel = pp.selection as SelectionMask;
@@ -11118,12 +11163,13 @@ export class Engine {
     if (!this.upscaleFits(p.doc.width, p.doc.height, scale)) return false;
     let result: Blob;
     try { result = await run(await toBlob(view)); } catch (err) { this.notice(err instanceof Error ? err.message : 'Upscale failed.', 'error'); return false; }
-    if (this.current !== p) { this.notice(`${p.name} changed while upscaling, so the enlarged picture was not placed.`, 'error'); return false; }
     const bitmap = await createImageBitmap(result), raster = new Raster(W, H);
     raster.ctx.imageSmoothingQuality = 'high';
     raster.ctx.drawImage(bitmap, 0, 0, W, H);
     bitmap.close();
     raster.touch();
+    while (this.stroke || this.busyWith) await new Promise<void>((r) => setTimeout(r, 100));
+    if (this.current !== p) { this.notice(`${p.name} changed while upscaling, so the enlarged picture was not placed.`, 'error'); return false; }
     const pixelLayers = p.doc.layers.filter((l) => !l.isGroup);
     const only = pixelLayers.length === 1 && p.doc.layers.length === 1 && pixelLayers[0].raster && !pixelLayers[0].adjustment && !pixelLayers[0].text && !pixelLayers[0].shape && !pixelLayers[0].smart ? pixelLayers[0] : null;
     return this.edit(`Upscale ${scale}x`, (pp) => {
@@ -11148,7 +11194,6 @@ export class Engine {
     area.ctx.drawImage(view, -x0, -y0);
     let result: Blob;
     try { result = await run(await toBlob(area.canvas)); } catch (err) { this.notice(err instanceof Error ? err.message : 'Upscale failed.', 'error'); return false; }
-    if (this.current !== p) { this.notice(`${p.name} changed while upscaling, so the enlarged area was not placed.`, 'error'); return false; }
     const W = w * scale, H = h * scale, bitmap = await createImageBitmap(result), layer = new Raster(W, H), cover = new Raster(W, H);
     layer.ctx.imageSmoothingQuality = 'high';
     layer.ctx.drawImage(bitmap, 0, 0, W, H);
@@ -11157,8 +11202,9 @@ export class Engine {
     cover.ctx.imageSmoothingQuality = 'high';
     cover.ctx.drawImage(sel.surface(), (sel.x - x0) * scale, (sel.y - y0) * scale, sel.w * scale, sel.h * scale);
     cover.touch();
-    this.insertRasterLayer(layer, `Upscale ${scale}x: selection`, x0, y0, { transform: { ...docTransform(w, h), x: x0, y: y0 }, mask: { raster: cover, enabled: true, linked: true, placement: null } }, `Upscale ${scale}x`);
-    return true;
+    while (this.stroke || this.busyWith) await new Promise<void>((r) => setTimeout(r, 100));
+    if (this.current !== p) { this.notice(`${p.name} changed while upscaling, so the enlarged area was not placed.`, 'error'); return false; }
+    return this.insertRasterLayer(layer, `Upscale ${scale}x: selection`, x0, y0, { transform: { ...docTransform(w, h), x: x0, y: y0 }, mask: { raster: cover, enabled: true, linked: true, placement: null } }, `Upscale ${scale}x`);
   }
 
   /** Compute Depth Map: what the document shows, read by `run` (near bright, far dark), added as a grey layer 'Depth Map'
@@ -11172,14 +11218,14 @@ export class Engine {
     if (!view) return false;
     let result: Blob;
     try { result = await run(await toBlob(view)); } catch (err) { this.notice(err instanceof Error ? err.message : 'The depth could not be read.', 'error'); return false; }
-    if (this.current !== p) return false;
     const bitmap = await createImageBitmap(result), raster = new Raster(p.doc.width, p.doc.height);
     raster.ctx.drawImage(bitmap, 0, 0, p.doc.width, p.doc.height);
     bitmap.close();
     raster.touch();
+    while (this.stroke || this.busyWith) await new Promise<void>((r) => setTimeout(r, 100));
+    if (this.current !== p) return false;
     if (old) return this.replaceLayerPixels(old.id, raster.read(), 'Recompute Depth Map');
-    this.insertRasterLayer(raster, 'Depth Map', 0, 0, {}, opts.layer ? 'Depth Map from Layer' : 'Compute Depth Map');
-    return true;
+    return this.insertRasterLayer(raster, 'Depth Map', 0, 0, {}, opts.layer ? 'Depth Map from Layer' : 'Compute Depth Map');
   }
 
   /** What the shared depth map is read from: the document with its Depth Map and Relight layers hidden. */
@@ -11441,13 +11487,14 @@ export class Engine {
       this.notice(err instanceof Error ? err.message : `${undoName} failed.`, 'error');
       return false;
     }
-    // The result goes into the document it was made for (1.87.3, D11): back to its tab when another was chosen meanwhile.
-    if (this.current !== p) {
-      if (!this.projects.includes(p)) { this.notice(`${p.name} was closed while generating, so the ${undoName} result was not placed.`, 'error'); return false; }
-      this.switchTo(p.id);
-      this.notice(`The ${undoName} result was placed in ${p.name}, the document it was made for.`);
-    }
     const bitmap = await createImageBitmap(result);
+    while (this.stroke || this.busyWith) await new Promise<void>((r) => setTimeout(r, 100));
+    // The result goes into the document it was made for (1.87.3, D11): back to its tab when another was chosen meanwhile.
+    const elsewhere = this.current !== p;
+    if (elsewhere) {
+      if (!this.projects.includes(p)) { bitmap.close(); this.notice(`${p.name} was closed while generating, so the ${undoName} result was not placed.`, 'error'); return false; }
+      this.switchTo(p.id);
+    }
     const layer = new Raster(w, h);
     layer.ctx.imageSmoothingQuality = 'high';
     layer.ctx.drawImage(bitmap, 0, 0, w, h);
@@ -11483,7 +11530,8 @@ export class Engine {
     // layer that shows, so it is seen and the hidden ones stay hidden.
     const a = p.activeLayer;
     if (a && !this.shownInDoc(p, a)) this.focus(p, [...p.doc.layers].reverse().find((x) => !x.isGroup && this.shownInDoc(p, x))?.id ?? null);
-    this.insertRasterLayer(layer, name, x0, y0, { mask: { raster: edge, enabled: true, linked: true, placement: null } }, undoName);
+    if (!this.insertRasterLayer(layer, name, x0, y0, { mask: { raster: edge, enabled: true, linked: true, placement: null } }, undoName)) { this.notice(`The ${undoName} result could not be placed in ${p.name}.`, 'error'); return false; }
+    if (elsewhere) this.notice(`The ${undoName} result was placed in ${p.name}, the document it was made for.`);
     return true;
   }
 
@@ -11536,9 +11584,10 @@ export class Engine {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Make a selection, then drag it where it should go.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
-    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Content-Aware Move works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask && !this.pixelsOnly(p0, 'This tool')) { this.notice('Content-Aware Move works on layer pixels. Click the layer thumbnail to target them.'); return; }
     const sel0 = p0.selection;
-    this.regionEdit('Content-Aware Move', ({ raster }) => {
+    let landed = false;
+    this.edit('Content-Aware Move', () => { this.regionEdit('Content-Aware Move', ({ raster }) => {
       const p = this.current as Project, l = p.activeLayer as Layer, W = raster.width, H = raster.height;
       const cov = this.coverageFor(p, l, 'pixels', W, H);
       if (!cov) return;
@@ -11632,8 +11681,9 @@ export class Engine {
         }
       }
       raster.ctx.putImageData(out, 0, 0);
+      landed = true;
     }, null);
-    if (this.current === p0 && p0.selection === sel0) {
+    if (landed && this.current === p0 && p0.selection === sel0) {
       if (xf && (xf.scale !== 100 || xf.angle % 360)) {
         // After a transform the selection is the box the moved pixels fill.
         const k = Math.min(1000, Math.max(1, xf.scale)) / 100, r = (xf.angle * Math.PI) / 180, c = Math.abs(Math.cos(r)), s = Math.abs(Math.sin(r));
@@ -11642,6 +11692,7 @@ export class Engine {
       } else p0.selection = SelectionMask.cropped(sel0.x + dx, sel0.y + dy, sel0.w, sel0.h, sel0.data);
       this.emit('selection', null);
     }
+    });
   }
 
   /** Red Eye (J; 1.49.9, the owner's tool list): at a click near a red pupil, the red area joined to it
@@ -11649,7 +11700,7 @@ export class Engine {
    *  neutral by Darken Amount. One step; nothing red near the click leaves the image as it was. */
   redEye(pt: Pt, pupil = 50, darken = 50): void {
     const p0 = this.current, l0 = p0?.activeLayer ?? null;
-    if (!p0 || !this.paintable(l0) || !l0?.raster) { this.notice('Select a pixel layer first.'); return; }
+    if (!p0 || !this.paintable(l0, false, () => this.redEye(pt, pupil, darken)) || !l0?.raster) { this.notice('Select a pixel layer first.'); return; }
     // Found first, so a click with nothing red near it records no step.
     if (!this.redEyeArea(l0.raster, l0.transform, pt, pupil)) { this.notice('No red pupil near the click: click the red part of the eye.'); return; }
     this.regionEdit('Red Eye', ({ raster }) => {

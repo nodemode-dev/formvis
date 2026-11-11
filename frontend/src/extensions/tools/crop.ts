@@ -250,6 +250,17 @@ function nearRing(ctx: ToolContext, p: ToolPointer): boolean {
 
 /** Choosing the tool with a selection open starts the frame on the selection's bounds. */
 let watching: Engine | null = null;
+/** The document the open frame was drawn on; another document coming to the front drops the frame. */
+let frameDoc: string | null = null;
+function forgetOnSwitch(e: Engine): void {
+  const id = e.current?.id ?? null;
+  if (id === frameDoc) return;
+  frameDoc = id;
+  if (!frame && !quad && !drag && !line && !leveling && !angle) return;
+  frame = null; quad = null; cornerDrag = -1; drag = null; line = null; leveling = false; angle = 0;
+  e.emit('overlay', null);
+  e.emit('options', null);
+}
 function startFromSelection(e: Engine): void {
   const s = e.current?.selection;
   if (e.tool !== 'crop' || frame || quad || !s) return;
@@ -468,7 +479,7 @@ export const cropTool: Tool = {
     g.restore();
   },
   options: (e) => {
-    if (watching !== e) { watching = e; e.on('tool', () => startFromSelection(e)); queueMicrotask(() => startFromSelection(e)); }
+    if (watching !== e) { watching = e; frameDoc = e.current?.id ?? null; e.on('projects', () => forgetOnSwitch(e)); e.on('tool', () => startFromSelection(e)); queueMicrotask(() => startFromSelection(e)); }
     return cropOptions(e);
   },
 };

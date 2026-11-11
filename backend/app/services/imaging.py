@@ -5,6 +5,7 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -387,18 +388,22 @@ def frames(data: bytes, filename: str) -> dict | None:
         raise DecodeError(f"Could not read {filename or 'the animation'}: {exc}") from exc
 
 
+_truncated_lock = threading.Lock()
+
+
 def _truncated_jpeg(data: bytes) -> "tuple[bytes, int, int] | None":
     """The rows of a JPEG whose stream ends early, the rest left grey; None when nothing can be read."""
     from PIL import ImageFile
-    ImageFile.LOAD_TRUNCATED_IMAGES = True
-    try:
-        with Image.open(io.BytesIO(data)) as image:
-            _plausible(image, len(data))
-            return _png(image)
-    except Exception:
-        return None
-    finally:
-        ImageFile.LOAD_TRUNCATED_IMAGES = False
+    with _truncated_lock:
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
+        try:
+            with Image.open(io.BytesIO(data)) as image:
+                _plausible(image, len(data))
+                return _png(image)
+        except Exception:
+            return None
+        finally:
+            ImageFile.LOAD_TRUNCATED_IMAGES = False
 
 
 def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str = "auto", wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False, develop: dict | None = None) -> tuple[bytes, int, int]:

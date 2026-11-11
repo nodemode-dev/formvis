@@ -403,7 +403,7 @@ def terminal_argv(path: str, port: int, prompt: str | None, resume: str | None) 
     if resume:
         cmd += ["--strict-mcp-config", "--resume", resume]
     if prompt:
-        cmd.append(prompt)
+        cmd += ["--", prompt]
     if os.name == "nt":
         return cmd
     return terminal.login_shell() + ["-c", "exec " + shlex.join(cmd)]

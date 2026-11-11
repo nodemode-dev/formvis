@@ -64,9 +64,10 @@ export function sliderRow(label: string, min: number, max: number, step: number,
 
 /** With `onHover`, the choices show as the hover-preview menu: the value under the pointer or arrow keys, null when it closes. */
 export function selectRow(label: string, options: ReadonlyArray<readonly [string, string]>, onChange: (v: string) => void, onHover?: (v: string | null) => void): Row<string> {
-  const root = el(`<label class="cv-field"><span></span><select class="cv-input">${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`);
+  const root = el('<label class="cv-field"><span></span><select class="cv-input"></select></label>');
   setText(q(root, 'span'), label);
   const sel = q(root, 'select') as HTMLSelectElement;
+  for (const [v, t] of options) sel.add(new Option(t, v));
   sel.addEventListener('change', () => onChange(sel.value));
   if (onHover) enhanceSelect(sel, { onHover });
   return { el: root, set(v) { if (sel.value !== v) sel.value = v; } };

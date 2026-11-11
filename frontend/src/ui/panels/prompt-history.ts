@@ -19,8 +19,8 @@ export class PromptHistory {
     const keys = (e: KeyboardEvent): void => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const k = e.key.toLowerCase();
-      if (k === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
-      else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); this.redo(); }
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); this.undo(); }
+      else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); e.stopPropagation(); this.redo(); }
     };
     field.addEventListener('keydown', keys as EventListener);
   }

@@ -45,16 +45,31 @@ def watch_parent() -> None:
     with it gone this process does."""
     if os.name != "posix":
         return
+    shell = os.environ.get("FORMVIS_SHELL_PID", "")
+    watched = int(shell) if shell.isdigit() and int(shell) > 0 else 0
     parent = os.getppid()
-    if parent <= 1:
+    if not watched and parent <= 1:
         return
     import shutil
     import threading
     import time
 
+    def alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
     def run() -> None:
-        while os.getppid() == parent:
-            time.sleep(2)
+        if watched:
+            while alive(watched):
+                time.sleep(2)
+        else:
+            while os.getppid() == parent:
+                time.sleep(2)
         unpacked = getattr(sys, "_MEIPASS", "")
         if os.path.basename(unpacked).startswith("_MEI"):
             shutil.rmtree(unpacked, ignore_errors=True)

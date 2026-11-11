@@ -103,8 +103,14 @@ export class BrushSettingsDialog extends Dialog {
     heading('Texture', 'texture');
     check('Protect Texture (keep it when a preset is chosen)', () => !!s().protectTexture, (v) => put({ protectTexture: v }));
     check('Texture',() => s().texture.on, (v) => put({ texture: { ...s().texture, on: v, pattern: s().texture.pattern || allPatterns()[0]?.id || '' } }));
-    const patterns = allPatterns().map((p) => [p.id, p.name] as const);
-    if (patterns.length) pick('Pattern', patterns, () => s().texture.pattern || patterns[0][0], (v) => put({ texture: { ...s().texture, pattern: v } }));
+    const patternRow = selectRow('Pattern', allPatterns().map((p) => [p.id, p.name] as const), (v) => put({ texture: { ...s().texture, pattern: v } }));
+    this.body.append(patternRow.el);
+    this.rows.push({ el: patternRow.el, sync: () => {
+      const list = allPatterns(), sel = patternRow.el.querySelector('select') as HTMLSelectElement;
+      while (sel.options.length > list.length) sel.remove(sel.options.length - 1);
+      list.forEach((pt, i) => { const o = sel.options[i] ?? sel.appendChild(document.createElement('option')); if (o.value !== pt.id) o.value = pt.id; if (o.textContent !== pt.name) o.textContent = pt.name; });
+      patternRow.set(s().texture.pattern || list[0]?.id || '');
+    } });
     slide('Scale (%)', 1, 1000, 1, () => s().texture.scale, (v) => put({ texture: { ...s().texture, scale: v } }));
     slide('Depth (%)', 0, 100, 1, () => s().texture.depth, (v) => put({ texture: { ...s().texture, depth: v } }));
     slide('Brightness', -100, 100, 1, () => s().texture.brightness ?? 0, (v) => put({ texture: { ...s().texture, brightness: v } }));

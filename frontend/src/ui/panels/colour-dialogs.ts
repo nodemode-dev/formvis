@@ -80,6 +80,7 @@ export class AssignProfileDialog extends Dialog {
   private readonly sel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Profile"></select>');
   private readonly note = el('<p class="cv-note" role="status"></p>');
   private readonly file = el<HTMLInputElement>('<input type="file" accept=".icc,.icm" hidden data-role="assign-load-profile">');
+  private busy = false;
   constructor(private readonly engine: Engine, private readonly tables: CmykTables, private readonly convert: () => Promise<void>) {
     super('Assign Profile', 460);
     const load = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Load Profile...</button>');
@@ -107,6 +108,8 @@ export class AssignProfileDialog extends Dialog {
     try { const p = await api.addColourProfile(f); await this.list(`id:${p.id}`); setText(this.note, `Added ${p.name}.`); } catch (err) { setText(this.note, msg(err)); }
   }
   private async ok(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
     try {
       if (this.sel.value === 'none' && this.engine.current?.doc.mode !== 'cmyk') { this.engine.assignProfile(null); this.close(); return; }
       const profile = await profileOf(this.sel.value, this.sel.selectedOptions[0]?.textContent ?? '');
@@ -117,7 +120,7 @@ export class AssignProfileDialog extends Dialog {
         this.engine.assignCmykProfile(profile, t.out, t.in);
       } else this.engine.assignProfile(profile);
       this.close();
-    } catch (err) { setText(this.note, msg(err)); }
+    } catch (err) { setText(this.note, msg(err)); } finally { this.busy = false; }
   }
 }
 
@@ -129,6 +132,7 @@ export class ConvertProfileDialog extends Dialog {
   private readonly dither = el<HTMLInputElement>('<input type="checkbox" aria-label="Use Dither">');
   private readonly note = el('<p class="cv-note" role="status"></p>');
   private readonly spaces = new Map<string, Space>();
+  private busy = false;
   constructor(private readonly engine: Engine, private readonly tables: CmykTables | null = null) {
     super('Convert to Profile', 460);
     options(this.intent, INTENTS); this.intent.value = 'relative';
@@ -154,6 +158,8 @@ export class ConvertProfileDialog extends Dialog {
     return (mode === 'cmyk' ? [cmyk, rgb, gray, lab] : [rgb, cmyk, gray, lab]).flat();
   }
   private async ok(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
     const src = this.engine.current?.doc.profile, space = this.spaces.get(this.sel.value) ?? 'rgb';
     try {
       setText(this.note, 'Converting...');
@@ -188,7 +194,7 @@ export class ConvertProfileDialog extends Dialog {
       const lut = await api.colourLut({ source: src ? { icc: src.icc } : null, dest: target ? { icc: target.icc } : null, intent: this.intent.value, bpc: this.bpc.checked });
       this.engine.convertToProfile(target, lut);
       this.close();
-    } catch (err) { setText(this.note, msg(err)); }
+    } catch (err) { setText(this.note, msg(err)); } finally { this.busy = false; }
   }
 }
 
@@ -205,6 +211,7 @@ export class ModeConvertDialog extends Dialog {
   private readonly from = el('<p class="cv-note cv-convert-from"></p>');
   private readonly note = el('<p class="cv-note" role="status"></p>');
   private lists: Record<Space, Array<[string, string]>> = { rgb: [], cmyk: [], gray: [], lab: [['lab', 'Lab Color (D50)']] };
+  private busy = false;
   /** Runs the conversion; resolves to a message when it failed, or null when the document changed. */
   onApply: ((a: ModeConvertAnswer) => Promise<string | null>) | null = null;
   constructor(private readonly engine: Engine) {
@@ -237,6 +244,8 @@ export class ModeConvertDialog extends Dialog {
     if (list.some(([v]) => v === ref)) this.sel.value = ref;
   }
   private async ok(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
     const space = this.mode.value as Space;
     try {
       setText(this.note, 'Converting...');
@@ -244,7 +253,7 @@ export class ModeConvertDialog extends Dialog {
       const err = await this.onApply?.({ space, choice: this.sel.value, target, intent: this.intent.value, bpc: this.bpc.checked, dither: this.dither.checked });
       if (err) { setText(this.note, err); return; }
       this.close();
-    } catch (err) { setText(this.note, msg(err)); }
+    } catch (err) { setText(this.note, msg(err)); } finally { this.busy = false; }
   }
 }
 

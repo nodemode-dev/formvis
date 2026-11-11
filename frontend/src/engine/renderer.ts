@@ -1292,15 +1292,20 @@ export class Renderer {
     const only = new Set<ID>();
     if (!group) { const bottom = job.doc.layers.find((l) => l.raster && !l.isGroup && !l.adjustment); if (bottom && bottom.id !== layer.id) only.add(bottom.id); }
     else { const gi = job.doc.layers.indexOf(group); for (const [i, l] of job.doc.layers.entries()) if (i < gi && !ancestors(map, l).some((g) => g.id === group.id)) only.add(l.id); }
-    const back = this.slot(2, W, H);
-    back.c.setTransform(1, 0, 0, 1, 0, 0); back.c.clearRect(0, 0, W, H);
-    if (only.size) this.render({ ...job, target: back.s, only, overrides: job.overrides, quality: job.quality });
+    const keep = createSurface(W, H);
+    ctxOf(keep).drawImage(a.s, 0, 0);
+    const bs = createSurface(W, H), back = { s: bs, c: ctxOf(bs) };
+    if (only.size) {
+      this.render({ ...job, target: back.s, only, overrides: job.overrides, quality: job.quality });
+      this.prepare(a, W, H);
+      a.c.drawImage(keep, 0, 0);
+    }
     back.c.globalCompositeOperation = 'destination-in';
-    back.c.drawImage(a.s, 0, 0);
+    back.c.drawImage(keep, 0, 0);
     back.c.globalCompositeOperation = 'source-over';
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = opacity; ctx.globalCompositeOperation = 'source-over';
     // Clear the silhouette to the backdrop: destination-out by the silhouette, then the backdrop under it.
-    ctx.globalCompositeOperation = 'destination-out'; ctx.drawImage(a.s, 0, 0);
+    ctx.globalCompositeOperation = 'destination-out'; ctx.drawImage(keep, 0, 0);
     ctx.globalCompositeOperation = 'destination-over'; ctx.globalAlpha = 1; ctx.drawImage(back.s, 0, 0);
     ctx.restore();
   }

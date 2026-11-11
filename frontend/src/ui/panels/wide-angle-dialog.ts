@@ -85,7 +85,9 @@ export class WideAngleDialog extends Dialog {
     this.model.set(this.s.model); this.orient.set(this.lines[this.lines.length - 1].orient);
     this.focalRow.set(this.lensMm); this.cropRow.set(this.crop);
     this.syncRows();
+    const want = { ...this.s };
     this.open();
+    if (o) { this.s = want; this.model.set(want.model); this.strength.set(Math.round(want.strength * 100)); this.syncRows(); }
     this.drawView();
     this.schedule();
   }

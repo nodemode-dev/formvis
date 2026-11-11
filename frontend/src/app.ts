@@ -274,7 +274,7 @@ import { GEN_CHANGED, genPrefs } from './io/gen-prefs';
 import { FalTaskDialog } from './ui/panels/fal-task-dialog';
 import { ColorPickerDialog } from './ui/panels/color-picker';
 import { LiveMaskDialog } from './ui/panels/live-mask-dialog';
-import { Commands, comboOf, type Command, type CommandParam } from './ui/commands';
+import { Commands, Told, comboOf, type Command, type CommandParam } from './ui/commands';
 import { anyDialogOpen, askSaveChanges, askSaveChangesAll, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
 import { icon } from './ui/icons';
@@ -636,6 +636,7 @@ export function startApp(): void {
   const swatches = new SwatchesPanel(q(root, '.cv-layers'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
   layers.docPoint = (x, y) => stage.docPoint(x, y);
+  layers.deleteSelected = () => void deleteLayersWithChoice();
   new PathsPanel(q(root, '.cv-layers'), engine);
   layers.adoptPaths(q(root, '.cv-paths'));
   layers.adoptChannels(new ChannelsPanel(engine, q(root, '.cv-stage'), (id) => commands.run('channel-options', { channel: id })));   // the Channels tab (Phase 21)
@@ -901,16 +902,39 @@ export function startApp(): void {
     if (demoOpening) { toast('A demo is still opening.', 'info'); return false; }
     demoOpening = id;
     home.holdForDemo(id);
-    toast('Opening the demo...', 'info');
+    const opening = toast('Opening the demo...', 'info');
+    const made = new Set<string>(), was = engine.current?.id ?? null;
+    const kept = { brush: { ...engine.brush }, dynamics: structuredClone(engine.brushDynamics), shape: structuredClone(engine.brushShape), mode: engine.brushMode, retouch: { ...engine.retouch }, clone: engine.cloneSource ? { ...engine.cloneSource } : null, slots: engine.cloneSlots.map((s) => (s ? { ...s } : null)), tool: engine.tool, fg: { ...engine.fg }, bg: { ...engine.bg }, preset: engine.brushPresetId, flow: engine.brushFlow, blend: engine.brushBlend, toolOptions: loadPrefs().toolOptions };
+    let built = false;
     try {
-      await buildDemo(id, engine);
+      await buildDemo(id, engine, made);
+      built = true;
+      opening();
       toast('The demo is open. Save it to keep your changes.', 'info');
       return true;
     } catch (err) {
       console.error('demo', id, message(err));
+      opening();
+      for (let i = 0; i < 40 && engine.projects.some((pr) => made.has(pr.id)); i++) {
+        for (const pr of [...engine.projects]) if (made.has(pr.id)) engine.closeProject(pr.id);
+        if (engine.projects.some((pr) => made.has(pr.id))) await new Promise((r) => setTimeout(r, 50));
+      }
+      if (was && engine.current?.id !== was && engine.projects.some((pr) => pr.id === was)) engine.switchTo(was);
       toast('The demo could not open.', 'error');
       return false;
     } finally {
+      engine.brushDynamics = kept.dynamics;
+      engine.brushShape = kept.shape;
+      engine.brushPresetId = kept.preset;
+      engine.brushFlow = kept.flow;
+      engine.brushBlend = kept.blend;
+      engine.setBrush({ ...kept.brush, tip: kept.brush.tip ?? null });
+      engine.setBrushMode(kept.mode);
+      Object.assign(engine.retouch, kept.retouch, built ? { spotSampleAll: engine.retouch.spotSampleAll } : {});
+      engine.cloneSource = kept.clone;
+      engine.cloneSlots = kept.slots;
+      if (!built) { engine.setTool(kept.tool); engine.setColors(kept.fg, kept.bg); }
+      updatePrefs({ toolOptions: kept.toolOptions });
       demoOpening = null;
       home.holdForDemo(null);
     }
@@ -2338,13 +2362,14 @@ export function startApp(): void {
     return engine.resizeCanvas(w, h, s.dx, s.dy, s.fill);
   }
 
-  async function playAction(x: Action, from = 0): Promise<void> {
-    if (!engine.current) { toast('Open a document to play an action on.'); return; }
+  async function playAction(x: Action, from = 0): Promise<Awaited<ReturnType<typeof actions.play>> | null> {
+    if (!engine.current) { toast('Open a document to play an action on.'); return null; }
     engine.settle();
     const r = await actions.play(x, (s) => runStep(s, !!x.relative), from);
     if (r.stopped) toast(`"${x.name}" stopped at step ${r.done + 1}.`);
     else if (r.failed) toast(`"${x.name}" stopped at step ${r.done + 1}, ${r.failed}, which could not run here.`, 'error');
     else toast(`Played "${x.name}", ${r.done} step${r.done === 1 ? '' : 's'}.`);
+    return r;
   }
 
   /** Batch: each file opens as a document, plays the action, is exported and closed; the results download as one zip. */
@@ -2353,10 +2378,12 @@ export function startApp(): void {
       const out: Array<{ name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
       let count = 0;
       for (const f of files) {
+        let id = '';
         try {
           const p = engine.openImage(await decodeImage(f, f.name));
+          id = p.id;
           const r = await actions.play(x, (s) => (s.kind === 'save' ? true : runStep(s, !!x.relative)));
-          if (r.stopped) { engine.closeProject(p.id); problems.push(`stopped at ${f.name}`); break; }
+          if (r.stopped) { problems.push(`stopped at ${f.name}`); break; }
           if (r.failed) problems.push(`${f.name} stopped at ${r.failed}`);
           engine.settle();
           let blob: Blob | null;
@@ -2372,8 +2399,7 @@ export function startApp(): void {
           for (let k = 2; used.has(name); k++) name = `${base} ${k}.${ext}`;
           used.add(name);
           if (blob) out.push({ name, blob });
-          engine.closeProject(p.id);
-        } catch (err) { problems.push(`${f.name}: ${message(err)}`); }
+        } catch (err) { problems.push(`${f.name}: ${message(err)}`); } finally { if (id) engine.closeProject(id); }
       }
       if (out.length) { if (folder) await writeFolder(folder, out); else await deliver(await zipFiles(out), `${x.name} batch.zip`); }
       if (problems.length) toast(`Batch finished ${out.length} of ${files.length}. ${problems.join('. ')}.`, 'error');
@@ -2387,10 +2413,11 @@ export function startApp(): void {
     await engine.task(async () => {
       const out: Array<{ name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
       for (const f of files) {
+        let id = '';
         try {
-          const p = engine.openImage(await decodeImage(f, f.name));
+          id = engine.openImage(await decodeImage(f, f.name)).id;
           const done = await dialogs.filter.applySettings('lensCorrection', { distortion: o.distortion, lensFix: structuredClone(o.lensFix) });
-          if (!done) { problems.push(`${f.name} could not be corrected`); engine.closeProject(p.id); continue; }
+          if (!done) { problems.push(`${f.name} could not be corrected`); continue; }
           engine.settle();
           const jpg = o.format === 'jpg' || (o.format === 'same' && /\.jpe?g$/i.test(f.name));
           const blob = await engine.exportBlob(jpg ? 'image/jpeg' : 'image/png', o.quality / 100);
@@ -2399,8 +2426,7 @@ export function startApp(): void {
           for (let k = 2; used.has(name); k++) name = `${base} ${k}.${ext}`;
           used.add(name);
           if (blob) out.push({ name, blob });
-          engine.closeProject(p.id);
-        } catch (err) { problems.push(`${f.name}: ${message(err)}`); }
+        } catch (err) { problems.push(`${f.name}: ${message(err)}`); } finally { if (id) engine.closeProject(id); }
       }
       if (out.length) { if (o.out) await writeFolder(o.out, out); else await deliver(await zipFiles(out), 'Lens Correction batch.zip'); }
       if (problems.length) toast(`Lens Correction finished ${out.length} of ${files.length}. ${problems.join('. ')}.`, 'error');
@@ -3157,11 +3183,14 @@ export function startApp(): void {
     }
     await rememberClosed(p);
     engine.closeProject(id);
-    return !engine.projects.includes(p);
+    if (!engine.projects.includes(p)) return true;
+    if (closedTabs[closedTabs.length - 1]?.id === id) closedTabs.pop();
+    return false;
   }
 
   /** The last few documents closed, kept whole in memory so File > Reopen Closed Tab brings one back as it was. */
-  const closedTabs: RecoveryRecord[] = [];
+  type KeptRecord = RecoveryRecord & { filePath?: string | null; libraryVersion?: string | null };
+  const closedTabs: KeptRecord[] = [];
   /** Next Document and Previous Document walk the tab strip, wrapping at the ends. */
   function stepDocument(by: number): void {
     const list = engine.projects, n = list.length;
@@ -3200,7 +3229,7 @@ export function startApp(): void {
     if (p.doc.layers.some((l) => l.tiled)) return;
     try {
       const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-      closedTabs.push({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName });
+      closedTabs.push({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName, filePath: p.filePath, libraryVersion: p.libraryVersion });
       while (closedTabs.length > 5) closedTabs.shift();
     } catch { /* the tab just cannot be reopened */ }
   }
@@ -3453,7 +3482,7 @@ export function startApp(): void {
     selectionTransform: new SelectionTransformDialog(engine),
     layerTransform: new SelectionTransformDialog(engine, true),
     actions: new ActionsDialog(actions, {
-      play: (x) => playAction(x), save: (b, n) => deliver(b, n),
+      play: async (x) => { await playAction(x); }, save: (b, n) => deliver(b, n),
       menu: () => commands.all().filter((c) => c.id !== 'play-action').map((c) => ({ id: c.id, label: commands.label(c) })).sort((a, b) => a.label.localeCompare(b.label)),
       run: (id, params) => commands.get(id)?.run(params),
       keyTaken: (combo) => { const c = commands.forCombo(combo); return c ? commands.label(c) : ''; },
@@ -3550,7 +3579,7 @@ export function startApp(): void {
     contentFill: new ContentFillDialog(engine),
     gradientEditor: new GradientEditor(engine),
   };
-  actionsPanel.bind(actions, { play: (x) => playAction(x), options: () => dialogs.actions.show() });
+  actionsPanel.bind(actions, { play: async (x) => { await playAction(x); }, options: () => dialogs.actions.show() });
   dialogs.presetManager.onSettings = ({ shortcuts }) => {
     commands.resetKeys();
     for (const [id, keys] of Object.entries(shortcuts)) commands.setKeys(id, keys);
@@ -3708,7 +3737,7 @@ export function startApp(): void {
     drop: (id) => earlier.drop(id),
     open: async (set) => {
       let n = 0;
-      for (const r of set.records) if (await reopen(r, `${r.name} (earlier)`)) n++;
+      for (const r of set.records) if (await reopen({ ...r, filePath: null }, `${r.name} (earlier)`)) n++;
       engine.emit('projects', null);
       if (n) toast(tn(n, 'Opened the document from {where}.', 'Opened {n} documents from {where}.').replace('{where}', t(set.kind === 'crash' ? 'a crash set' : 'an earlier session')), 'info');
       return n;
@@ -3738,15 +3767,22 @@ export function startApp(): void {
     show: (id) => {
       // Its tab may live in another group (dragged there): that group opens on it.
       const host = PanelGroup.ofTab(`${id}-tab`);
-      if (host && host.id !== id) { host.setMinimised(false); host.show(`${id}-tab`); return; }
-      if (!dock.isShown(id)) dock.toggle(id);
+      if (host && host.id !== id) { const hd = dockIdOfGroup(host.id) ?? host.id; dock.activate(hd); host.setMinimised(false); host.show(`${id}-tab`); return; }
+      dock.activate(id);
       PanelGroup.all.get(id)?.setMinimised(false);
     },
-    setLabel: (id, label) => PanelGroup.renameTab(`${id}-tab`, label),
+    setLabel: (id, label) => {
+      PanelGroup.renameTab(`${id}-tab`, label);
+      PanelGroup.all.get(id)?.root.setAttribute('aria-label', label.replace(/[<>&"]/g, ''));
+      const p = ALL_PANELS.find((x) => x.id === id);
+      if (p) p.label = label;
+      commands.relabel(`panel-${id}`, label, { description: `Shows or hides the ${label} extension panel.`, when: `Use when you want the ${label} panel in view.` });
+      dock.refresh();
+    },
     remove: (id) => {
       PanelGroup.dropTab(`${id}-tab`);
       PanelGroup.all.get(id)?.remove();
-      commands.remove(`panel-${id}`); dock.removePanel(id); unregisterPanel(id); dock.refresh();
+      commands.remove(`panel-${id}`); dock.removePanel(id, false); unregisterPanel(id); dock.refresh();
     },
   };
   const formExt = new FormExtensions({
@@ -4305,7 +4341,9 @@ export function startApp(): void {
         if (!x) throw new Error(`There is no action named "${String(a?.name ?? '')}".`);
         const from = a?.from === undefined ? 1 : Number(a.from);
         if (!Number.isInteger(from) || from < 1 || from > Math.max(1, x.steps.length)) throw new Error(`from must be a step number from 1 to ${Math.max(1, x.steps.length)}.`);
-        await playAction(x, from - 1);
+        const r = await playAction(x, from - 1);
+        if (!r) throw new Told('Open a document to play an action on.');
+        if (r.stopped || r.failed) throw new Told(`"${x.name}" stopped at step ${r.done + 1}${r.stopped ? '' : `, ${r.failed}, which could not run here`}; play-action with from ${r.done + 1} resumes there.`);
         return { played: true, from };
       },
     },
@@ -4326,7 +4364,8 @@ export function startApp(): void {
       run: async (a) => {
         const want = a?.id === undefined || a.id === '' ? engine.current : engine.projects.find((q) => q.id === String(a.id));
         if (!want) throw new Error(`There is no open document with the id ${String(a?.id ?? '')}: call get_document for the ids.`);
-        await requestClose(want.id, 'discard');
+        if (want.modified && want.doc.layers.some((l) => l.tiled)) throw new Error(`${want.name} has unsaved changes in a layer kept in tiles, which Reopen Closed Tab cannot bring back: save it first with save_project, or ask the person to close it.`);
+        if (!(await requestClose(want.id, 'discard'))) throw new Error(`${want.name} did not close: a stroke or a long job is still running. Try again in a moment.`);
         return { closed: want.id };
       },
     },
@@ -6560,7 +6599,7 @@ export function startApp(): void {
     const whole = loadPrefs().restoreSession;
     for (const p of engine.projects) {
       if (!p.modified && !whole) { if (keptAt.delete(p.id)) await recovery.drop(p.id); continue; }
-      const key = `${p.history.revision}:${p.modified}:${p.libraryName ?? ''}:${p.name}`;
+      const key = `${p.history.revision}:${p.modified}:${p.libraryName ?? ''}:${p.libraryVersion ?? ''}:${p.filePath ?? ''}:${p.name}`;
       if (keptAt.get(p.id) === key) continue;
       const store = giantTiles.store, giants = p.doc.layers.filter((l) => l.tiled && !l.isGroup);
       if (giants.length && !store) continue;   // tiles are written through the engine's bands
@@ -6569,7 +6608,8 @@ export function startApp(): void {
       try {
         const doc = copies.size ? { ...p.doc, layers: p.doc.layers.map((l) => (copies.has(l.id) ? { ...l, tiled: copies.get(l.id) } : l)) } : p.doc;
         const { manifest, files } = await serialize(doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        if (await recovery.keep({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName })) { keptAt.set(p.id, key); if (copies.size) tiledKeptAt.set(p.id, Date.now()); }
+        const rec: KeptRecord = { id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName, filePath: p.filePath, libraryVersion: p.libraryVersion };
+        if (await recovery.keep(rec)) { keptAt.set(p.id, key); if (copies.size) tiledKeptAt.set(p.id, Date.now()); }
       } catch (err) { errorLog.add('Recovery copy', message(err)); }
       finally { if (store) for (const c of copies.values()) c.release(store); }
     }
@@ -6594,7 +6634,7 @@ export function startApp(): void {
   }
   engine.on('history', keepSoon);
   engine.on('projects', keepSoon);
-  async function reopen(r: RecoveryRecord, name: string): Promise<ReturnType<typeof engine.addProject> | null> {
+  async function reopen(r: KeptRecord, name: string): Promise<ReturnType<typeof engine.addProject> | null> {
     try {
       const byName = new Map(r.files.map((f) => [f.name, f.blob]));
       const giant = (Array.isArray(r.manifest.layers) ? r.manifest.layers : []).some((x) => !!(x as { tiled?: unknown } | null)?.tiled);   // a copy with layers kept in tiles is read back by the engine, a band at a time (1.91.0)
@@ -6606,6 +6646,8 @@ export function startApp(): void {
       if (timeline) engine.setTimelineFor(p, timeline);
       if (r.modified !== false) p.history.markUnsaved();
       p.libraryName = r.libraryName ?? null;
+      p.filePath = r.filePath ?? null;
+      p.libraryVersion = r.libraryVersion ?? null;
       return p;
     } catch (err) { toast(`${r.name}: ${message(err)}`, 'error'); return null; }
   }

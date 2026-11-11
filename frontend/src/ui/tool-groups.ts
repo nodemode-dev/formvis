@@ -66,7 +66,8 @@ export function slotTool(g: ToolGroup, active: ToolId): Tool {
 /** Remembers the active tool as its group's choice; called whenever the tool changes. */
 export function rememberTool(engine: Engine): void {
   const t = toolList().find((x) => x.id === engine.tool);
-  if (!t || last.get(t.key) === t.id) return;
-  last.set(t.key, t.id);
+  const k = t ? t.group ?? t.key : '';
+  if (!t || last.get(k) === t.id) return;
+  last.set(k, t.id);
   try { localStorage.setItem(STORE, JSON.stringify(Object.fromEntries(last))); } catch { /* kept for the session */ }
 }

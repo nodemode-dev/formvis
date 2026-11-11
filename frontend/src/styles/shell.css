@@ -467,7 +467,7 @@ html[dir='rtl'] .cv-stage { direction: ltr; }
 .cv-taskbar[hidden] { display: none; }
 /* Only the pill's own box takes the pointer (D24): the box is one hit area behind the controls, so the canvas around it is the canvas's. */
 .cv-taskbar > *, .cv-taskbar::before { pointer-events: auto; }
-.cv-taskbar::before { content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; }
+.cv-taskbar::before { content: ''; position: absolute; inset: -1px; z-index: var(--z-under); border-radius: inherit; }
 /* The sets share one cell and a hidden one keeps its width, so the bar is as wide as its widest set and the More button stays
    where it is as the mode changes, a document opening included (D25); a hidden set is not seen, hit or focused. */
 .cv-tb-set[hidden] { visibility: hidden; }
