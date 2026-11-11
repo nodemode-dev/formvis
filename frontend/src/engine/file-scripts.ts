@@ -59,7 +59,7 @@ export function bakeEffects(doc: Doc, work: Renderer, only?: ReadonlySet<ID>): {
     r.ctx.drawImage(out as CanvasImageSource, 0, 0);
     r.touch();
     if (l.text || l.vector || l.shape || l.fillContent) rasterized++;
-    patches.set(l.id, { ...PLAIN, raster: r, transform: docTransform(r.width, r.height), effects: null, fill: 1 });
+    patches.set(l.id, { ...PLAIN, raster: r, transform: docTransform(r.width, r.height), effects: null, fill: 1, ...(l.mask && l.mask.placement === null ? { mask: { ...l.mask, placement: { ...l.transform } } } : {}) });
   }
   return { patches, rasterized };
 }

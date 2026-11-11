@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Flatten All Layer Effects and Rasterize Layer Style keep a tied mask over its old box · v2.3.4 (engine/file-scripts.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/file-scripts.ts` `bakeEffects`.
+- Wrong: the patch gives the layer a document-size raster and `docTransform`, and kept the mask as it was. A tied mask (`placement === null`) is drawn through the layer's transform, so it was stretched over the whole canvas.
+- Now: a tied mask gets `placement: { ...l.transform }`, its old box, as 2.3.3's `growLayer` does, so it stays where it was; outside that box it reveals (the renderer's `covers: false`), which keeps the baked effects that showed outside the layer before. The finding suggested a document-size redraw transparent outside the box; that would hide those effects, so it was not used.
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: the flatten in a browser.
+- Replaced, quoted exactly:
+
+```text
+    patches.set(l.id, { ...PLAIN, raster: r, transform: docTransform(r.width, r.height), effects: null, fill: 1 });
+```
+
 ## Opened and saved files reach the system's recent documents · v2.3.4 (src-tauri/build.rs, src-tauri/capabilities/default.json)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/build.rs` `APP_COMMANDS` and `src-tauri/capabilities/default.json` `permissions`, for `note_recent_document` (main.rs) called by `app.ts` `noteRecent`; review formvis__native-tauri-packaging F1.
