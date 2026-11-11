@@ -76,7 +76,10 @@ export class FillDialog extends Dialog {
     this.setTitle(mode === 'path' ? 'Fill Path' : 'Fill');
     // Content-Aware works on the selection, not on a path.
     if (mode === 'path' && this.contents === 'contentAware') this.contents = 'fg';
-    if (!this.patternId) this.patternId = allPatterns()[0]?.id ?? '';
+    const patterns = allPatterns(), patternSel = this.patternRow.el.querySelector('select') as HTMLSelectElement;
+    while (patternSel.options.length > patterns.length) patternSel.remove(patternSel.options.length - 1);
+    patterns.forEach((pt, i) => { const o = patternSel.options[i] ?? patternSel.appendChild(document.createElement('option')); if (o.value !== pt.id) o.value = pt.id; if (o.textContent !== pt.name) o.textContent = pt.name; });
+    if (!patterns.some((pt) => pt.id === this.patternId)) this.patternId = patterns[0]?.id ?? '';
     this.contentsRow.set(this.contents);
     this.patternRow.set(this.patternId);
     this.scaleRow.set(this.patternScale);

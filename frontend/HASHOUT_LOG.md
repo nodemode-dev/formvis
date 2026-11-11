@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Fill and Brush Settings list patterns defined or loaded after start-up · v2.3.4 (ui/panels/fill-dialog.ts, ui/panels/brush-settings.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `FillDialog.show` and the `BrushSettings` constructor's Texture section.
+- Wrong: both Pattern selects were filled once from `allPatterns()` at construction, before kept patterns load (app.ts after the dialogs are built) and before any Define Pattern, so user patterns could not be chosen and a remembered one was skipped on restore; Brush Settings built the row only when patterns existed. Now Fill refills its select in place on each show (extra options removed, others updated by index), before `open()` restores, and falls back to the first pattern when its id is gone; Brush Settings always builds the row and refills it in its row sync, which runs on each show.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    if (!this.patternId) this.patternId = allPatterns()[0]?.id ?? '';
+    const patterns = allPatterns().map((p) => [p.id, p.name] as const);
+    if (patterns.length) pick('Pattern', patterns, () => s().texture.pattern || patterns[0][0], (v) => put({ texture: { ...s().texture, pattern: v } }));
+```
+
 ## Export As and Artboards to PDF start from the current document's name · v2.3.4 (ui/panels/export-dialog.ts, ui/panels/artboard-pdf-dialog.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ExportDialog.show` and `ArtboardPdfDialog.show`.
