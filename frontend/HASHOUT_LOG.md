@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Open SVG as Layers reads arcs whose flags have no separators · v2.3.4 (io/svg-layers.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/svg-layers.ts` `pathSegments`, the tokenizer and `flag`.
+- Wrong: the large-arc and sweep flags were read as general numbers, so in `M0 0a5 5 0 015 5L20 20` the token `015` became 15, the end point became NaN and the parse stopped, dropping the shape. Trigger: minified SVG path data opened as layers.
+- Now: the tokenizer keeps each number's source text (`raw`); `flag` takes the first character of a token that starts with 0 or 1 and is longer than one character, leaving the rest as the next token. `tokens` is typed `string | number` so the rest can be put back.
+- Verified: `tsc --noEmit` clean; a node copy: compact, spaced, comma-separated and `10.5.5` flags all give the right flags and end points.
+- Replaced, quoted exactly:
+
+```text
+  const tokens = [...d.matchAll(/([a-zA-Z])|([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)/g)].map((m) => m[1] ?? Number(m[2]));
+  const flag = (): boolean => num() !== 0;
+```
+
 ## A Save for Web slice message stays a string in the HTML page · v2.3.4 (io/sfw-html.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/sfw-html.ts` `slicesHtml`, the `link` helper.
