@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Picking a brush marks its tile in place and keeps focus · v2.3.4 (ui/properties.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/properties.ts` `PropertiesColumn.brushes`, its `fill` and tile click (review formvis__ui-o-z.md F12).
+- Wrong: the cache key `k` held `e.brushPresetId` and the tile click set `key = ''`, so every pick rebuilt every folder head, tile and thumbnail (each imported tip re-rasterised) and focus fell to the body. Now the key leaves the preset out; `tiles` (preset id to tile, cleared with `thumbs` on a rebuild) has `is-on` toggled in place on every call, and the click calls `fill()` without clearing the key.
+- Verified: `npx tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => `${p.id}:${brushGroupOf(p)}:${p.name}`).join(',')].join('|');
+          tile.addEventListener('click', () => { e.applyBrushPreset(p); key = ''; fill(); });
+```
+
 ## Switching theme drops a skin's extra colour tokens · v2.3.4 (ui/themes.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/themes.ts` `applyTheme`, `lastVars` (new) (review formvis__ui-o-z.md F11).

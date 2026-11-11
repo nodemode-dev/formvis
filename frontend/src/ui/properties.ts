@@ -472,16 +472,19 @@ export class PropertiesColumn {
       return c;
     };
     let key = '', inkSeen = '', dragId: string | null = null;
+    const tiles = new Map<string, HTMLElement>();
     const fill = (): void => {
       const q0 = search.value.trim().toLowerCase(), imported = new Set(importedBrushPresets.map((p) => p.id));
-      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => `${p.id}:${brushGroupOf(p)}:${p.name}`).join(',')].join('|');
+      const k = [view, q0, [...shut].join(','), allBrushPresets().map((p) => `${p.id}:${brushGroupOf(p)}:${p.name}`).join(',')].join('|');
       const inkNow = ink().join(',');
       if (k === key) {
+        for (const [id, tile] of tiles) tile.classList.toggle('is-on', id === e.brushPresetId);
         if (inkNow !== inkSeen) { inkSeen = inkNow; for (const [c, p] of thumbs) paintThumb(c, p); }   // a new theme's ink repaints the tiles in place
         return;
       }
       key = k; inkSeen = inkNow;
       thumbs.clear();
+      tiles.clear();
       for (const b of body.querySelectorAll<HTMLElement>('[data-view]')) b.classList.toggle('is-on', b.dataset.view === view);
       folders.textContent = '';
       const byGroup = new Map<string, BrushPreset[]>();
@@ -525,7 +528,8 @@ export class PropertiesColumn {
           tile.title = `${p.name} · ${p.diameter} px`;
           tile.setAttribute('aria-label', p.name);
           tile.classList.toggle('is-on', e.brushPresetId === p.id);
-          tile.addEventListener('click', () => { e.applyBrushPreset(p); key = ''; fill(); });
+          tiles.set(p.id, tile);
+          tile.addEventListener('click', () => { e.applyBrushPreset(p); fill(); });
           if (imported.has(p.id)) {
             tile.draggable = true;
             tile.title += ' · drag to reorder or move to a folder · double-click to rename';
