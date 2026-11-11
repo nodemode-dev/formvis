@@ -47,6 +47,8 @@ def read(data: bytes) -> tuple[np.ndarray, dict]:
     else:
         line_bytes = per_line * 2
     stride = line_bytes + line_pad
+    if line_pad > len(data):
+        raise CinError("This Cineon file's line padding is larger than the file.")
     if offset + stride * (h - 1) + line_bytes > len(data):
         raise CinError("This Cineon file is shorter than its header says.")
     block = data[offset : offset + stride * h] if offset + stride * h <= len(data) else data[offset:] + bytes(stride * h - (len(data) - offset))

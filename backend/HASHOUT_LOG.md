@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A DPX or Cineon line padding larger than the file is refused · _v2.3.4 (app/services/dpx.py read; app/services/cin.py read)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F3.
+- Why: both readers pad the pixel block to `stride * h` before the reshape and trusted the header's end-of-line padding; for a one-row picture the length check leaves the padding out, so a 2 KB file with padding 0xFFFFFFF0 allocated gigabytes of zeros (MemoryError or the OOM killer).
+- Now: right after `stride` is set, `eol > len(data)` raises DpxError and `line_pad > len(data)` raises CinError. For two rows or more the existing length check already bounds the padding. No line was removed.
+- Checked: a 2,051-byte DPX with padding 0xFFFFFFF0 or 300,000,000 raises DpxError at once (peak RSS 37 MB), and a Cineon with 0xFFFFFFF0 raises CinError; both still decode with padding 0.
+
 ## Window commands over HTTP pass the agent gate; the command line is known by its connection · _v2.3.4 (app/routers/commands.py run; app/routers/mcp.py _agent_call, _from_cli new, _stream_call, mcp)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F2, and the orchestrator's handoff from formvis__backend-services (the formvis-cli name).

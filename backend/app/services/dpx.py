@@ -120,6 +120,8 @@ def read(data: bytes) -> tuple[np.ndarray, dict]:
     else:
         line_bytes = per_line * 2
     stride = line_bytes + eol
+    if eol > len(data):
+        raise DpxError("This DPX file's line padding is larger than the file.")
     if offset + stride * (h - 1) + line_bytes > len(data):
         raise DpxError("This DPX file is shorter than its header says.")
     block = data[offset : offset + stride * h] if offset + stride * h <= len(data) else data[offset:] + bytes(stride * h - (len(data) - offset))
