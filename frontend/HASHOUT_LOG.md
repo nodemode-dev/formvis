@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The History panel's pick belongs to the document it was made in · v2.3.4 (ui/history.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/history.ts` `HistoryPanel.sync`, the row click.
+- Wrong: `picked` and `pickedStep` were panel state; `sync()` kept the step when the new document had that many steps. Trigger: pick row N in document A, switch to B, press Delete: `deleteHistoryState(N)` ran on B, reverting it and dropping its redo (New Document from State copied B at N). Now `pickedIn` holds the project of the pick; `sync()` clears both picks when `engine.current` differs, before its hidden-body return, and the row click sets `pickedIn`.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+import type { Engine } from '../engine';
+```
+
 ## Every item left open, fixed: masks, float export, hints, Layers pointers, extension panels, demo builds · v2.3.3 (engine/paint-ops.ts, engine/compose-float.ts, engine/index.ts, ui/layers.ts, app.ts, ui/commands.ts, ui/dock.ts, ui/panel-group.ts, formext/extensions.ts, demos/index.ts, demos/paint.ts, three e2e files)
 
 - Why: the owner's "investigate/test/fix all of the errors/bugs ... fix ALL of them in this turn". Six agents investigated and runtime-tested the open items in isolated copies (git archive of HEAD, own Vite ports) and fixed the real ones there; every edit was then landed by hand on this tree. Six fresh-context reviewers read the landed diff; their confirmed defects and the suspicions worth closing were landed too.

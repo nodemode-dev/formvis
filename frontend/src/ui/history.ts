@@ -1,4 +1,4 @@
-import type { Engine } from '../engine';
+import type { Engine, Project } from '../engine';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
 
@@ -15,6 +15,7 @@ export class HistoryPanel {
   private readonly remove: HTMLButtonElement;
   private picked: string | null = null;
   private pickedStep: number | null = null;
+  private pickedIn: Project | null = null;
   private readonly fromState: HTMLButtonElement;
 
   constructor(root: HTMLElement, private readonly engine: Engine) {
@@ -63,6 +64,7 @@ export class HistoryPanel {
       if ((e.target as HTMLElement).closest('.cv-history-edit')) return;
       if (row.dataset.snap) { this.picked = row.dataset.snap; this.pickedStep = null; this.engine.revertToSnapshot(row.dataset.snap); this.sync(); return; }
       this.picked = null;
+      this.pickedIn = this.engine.current;
       this.pickedStep = Number(row.dataset.index);
       this.engine.jumpHistory(this.pickedStep);
       this.sync();
@@ -73,6 +75,7 @@ export class HistoryPanel {
 
   private sync(): void {
     const p = this.engine.current, { names, current } = this.engine.historySteps;
+    if (p !== this.pickedIn) { this.picked = null; this.pickedStep = null; this.pickedIn = p; }
     setText(this.count, p ? `${current} of ${names.length}` : '');
     if (this.body.hidden) return;
     const snaps: Row[] = this.engine.snapshots.map((x) => ({ key: `snap:${x.id}`, name: x.name, index: -1, snap: x.id, bytes: x.bytes }));
