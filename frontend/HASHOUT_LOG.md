@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A Save for Web slice message stays a string in the HTML page · v2.3.4 (io/sfw-html.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/sfw-html.ts` `slicesHtml`, the `link` helper.
+- Wrong: the message went into `onmouseover="window.status='...'"` HTML-escaped only; the parser decodes `&#39;` to a quote before the script runs, so `x';alert(1);//` ended the string and ran as code on hover. Trigger: a slice message typed or read from a .fvd project, then Save for Web with HTML.
+- Now: the message is escaped for a JavaScript string (backslash, quote, CR, LF, U+2028, U+2029 as a space) and then passed through `esc` for the attribute.
+- Verified: `tsc --noEmit` clean; a node check that decodes the attribute and runs it gives back the same plain strings for three hostile messages.
+- Replaced, quoted exactly:
+
+```text
+      const link = (inner: string): string => (c.url ? `<a href="${esc(c.url)}"${c.target ? ` target="${esc(c.target)}"` : ''}${c.message ? ` title="${esc(c.message)}" onmouseover="window.status='${esc(c.message).replace(/'/g, '&#39;')}';return true" onmouseout="window.status='';return true"` : ''}>${inner}</a>` : inner);
+```
+
 ## OpenRaster export keeps vector masks, Fill, Blend If, clipping, folder masks and folder modes · v2.3.4 (io/ora.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/ora.ts` `writeOra`, `plain` and the group branch.
