@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Paragraph text breaks long words between whole characters, emoji included · v2.3.4 (engine/text.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/text.ts` `wrapLines`, the character break of a word wider than the line.
+- Wrong: the break used UTF-16 indices, so a run of emoji or other astral characters could be cut inside a surrogate pair; both halves drew as replacement boxes. A single such character wider than the box was split too. Trigger: box text holding a long run of emoji.
+- Now: the loop runs only while the word has more than one code point (`[...w].length > 1`), and a break that falls after a high surrogate steps back one unit (or forward over the whole first character when it would be the only one).
+- Verified: `tsc --noEmit` clean; a node copy of the loop with a width per code point: ten emoji in 40 and 50 px, three in 10 px, one in 5 px and mixed text break with no lone surrogate and join back unchanged.
+- Replaced, quoted exactly (and one line added after the inner `while`):
+
+```text
+      while (w.length > 1 && lineWidth(c, t, w, wAt) > max) {
+```
+
 ## Add Smart Filter Mask on a warped smart object no longer lands offset · v2.3.4 (engine/smart-ops.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/smart-ops.ts` `addSmartFilterMask`.

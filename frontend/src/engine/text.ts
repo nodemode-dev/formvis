@@ -422,10 +422,11 @@ export function wrapLines(c: CanvasRenderingContext2D | OffscreenCanvasRendering
       if (cut) { out.push({ text: `${cur ? `${cur}${join}` : ''}${w.slice(0, cut)}-`, last: false }); w = w.slice(cut); wAt += cut; cur = ''; }
       if (cur) { out.push({ text: cur, last: false }); cur = ''; }
       max = out.length === from ? lim.first : lim.wide;
-      while (w.length > 1 && lineWidth(c, t, w, wAt) > max) {
+      while ([...w].length > 1 && lineWidth(c, t, w, wAt) > max) {
         const dash = t.hyphenate && !SPACELESS.test(w) ? '-' : '';
         let k = w.length - 1;
         while (k > 1 && lineWidth(c, t, w.slice(0, k) + dash, wAt) > max) k -= 1;
+        if (/[\uD800-\uDBFF]/.test(w[k - 1])) k += k > 1 ? -1 : 1;
         out.push({ text: w.slice(0, k) + dash, last: false });
         w = w.slice(k);
         wAt += k;
