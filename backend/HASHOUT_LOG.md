@@ -2,6 +2,15 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## formvis.bat passes every argument and runs the Python commands · _v2.3.4 (formvis.bat; setup/mcp_stdio.py main --where)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F3.
+- Why: formvis.bat forwarded only `%~2`, so `counts --commands --check` dropped `--check` and always exited 0 and `bench --frames 30` lost its value; `mcp`, `cli`, `agents`, `headless`, `perf`, `corpus` and `version` were unknown commands, while `mcp --where` under Windows Python offered `formvis.bat mcp` as the client config.
+- formvis.bat: `set REST=%*` then `call set REST=%%REST:*%1=%%` (the command line less its first word, quoting as typed) goes to install, counts, bench, verify-local and clean. `mcp cli agents headless perf corpus` jump to `:py` before `cd /d "%~dp0"` and run `backend\venv\Scripts\python.exe` (else `python`) on `setup\<name>.py` (`mcp_stdio.py` for mcp) with REST; `version` runs `mcp_stdio.py --version`; the usage lists them. test.bat and desktop_build.bat take no arguments and stay as they were.
+- `--where` on Windows outside the packaged app gives `sys.executable` with `[mcp_stdio.py]` as the client's command (as `agents install` registers), since a client cannot start a .bat without a shell.
+- Replaced, quoted exactly: `cd /d "%~dp0"` as line 3 (now after the Python jump), `%ARG%` in the install, counts, bench, verify-local and clean lines, and in --where `{"command": launcher, "args": ["mcp"]}`.
+- Not run on Windows; reasoned from cmd's parsing rules. CRLF kept on every line.
+
 ## Sends to ComfyUI and NodeMode run off the event loop · _v2.3.4 (app/routers/comfyui.py send, run, upscale; app/routers/nodemode.py send)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F3.

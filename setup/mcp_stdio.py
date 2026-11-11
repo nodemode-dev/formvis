@@ -289,7 +289,8 @@ def main() -> None:
             ATTACH = True
         elif flag == "--where":
             launcher = (os.environ.get("FORMVIS_LAUNCHER") if PORT_FILE else None) or os.path.join(root, "formvis.bat" if os.name == "nt" else "formvis")
-            print(json.dumps({"launcher": launcher, "script": os.path.abspath(__file__), "url": URL, "claude_desktop": {"mcpServers": {"formvis": {"command": launcher, "args": ["mcp"]}}}}, indent=2))
+            command, cargs = (sys.executable, [os.path.abspath(__file__)]) if os.name == "nt" and not PORT_FILE else (launcher, ["mcp"])
+            print(json.dumps({"launcher": launcher, "script": os.path.abspath(__file__), "url": URL, "claude_desktop": {"mcpServers": {"formvis": {"command": command, "args": cargs}}}}, indent=2))
             return
         elif flag == "--version":
             import re
