@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Exported color lookup tables leave out adjustments in hidden folders · v2.3.4 (engine/lut-export.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/lut-export.ts` `hasVisibleAdjustment`, `sampleLut`.
+- Wrong: both tested `l.visible` alone, so a visible adjustment inside a hidden folder went into the .cube, .3dl or .csp.
+- Now: `shown` requires the layer and every ancestor (`tree.ancestors` over the LutDoc's layers) to be visible. With the dialog's selected-only scope the folders are not in the LutDoc, so there only the layer's own eye counts, as before.
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: the export dialog.
+- Replaced, quoted exactly:
+
+```text
+export const hasVisibleAdjustment = (doc: LutDoc): boolean => doc.layers.some((l) => l.adjustment && l.visible);
+    if (!l.adjustment || !l.visible) continue;
+```
+
 ## Picking a brush marks its tile in place and keeps focus · v2.3.4 (ui/properties.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/properties.ts` `PropertiesColumn.brushes`, its `fill` and tile click (review formvis__ui-o-z.md F12).
