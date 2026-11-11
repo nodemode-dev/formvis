@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## cli stack, contact, fit, photomerge and hdr run on the engine's Python · _v2.3.4 (formvis py, cli branch)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F7.
+- Why: `setup/cli_offline.py` needs numpy, Pillow and OpenCV from backend/venv, but the launcher ran `python3 setup/cli.py`, so `./formvis cli fit ...` stopped with `ModuleNotFoundError: No module named 'numpy'`.
+- `formvis`: `py` is backend/venv/bin/python, else backend/venv/Scripts/python.exe, else python3 (as setup/counts and setup/bench pick); the cli branch uses it for `stack|contact|fit|photomerge|hdr` and keeps python3 for the rest. perf, headless and cli's --headless stay on python3, where the manual has Playwright installed. serve's `image.*` methods still run on python3.
+- Replaced, quoted exactly: `  cli) exec python3 "$here/setup/cli.py" "$@" ;;`.
+- Checked in a scratch tree with a numpy and Pillow venv as backend/venv: `cli fit some.png --width 100 --height 100` wrote some-fit.png in the caller's folder.
+
 ## Merge to HDR keeps the chosen ghost base with estimated times · _v2.3.4 (app/routers/merge.py hdr)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F7.
