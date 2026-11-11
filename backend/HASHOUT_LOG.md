@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## clean --all on Windows removes the venv on its own · _v2.3.4 (setup/clean.bat)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F12.
+- Why: in `if exist A rmdir A & if exist B rmdir B` the second command belongs to the first `if`, so with frontend\node_modules already gone backend\venv was kept.
+- Each `if exist ... rmdir` is now in its own parentheses inside the `--all` block. Replaced, quoted exactly: `if /i "%~1"=="--all" ( if exist frontend\node_modules rmdir /s /q frontend\node_modules & if exist backend\venv rmdir /s /q backend\venv )`.
+- Not run on Windows; reasoned from cmd's parsing. CRLF kept.
+
 ## Store manifests list every release and name the FormVis bundles · _v2.3.4 (packaging/linux/ai.nodemode.formvis.metainfo.xml, packaging/flatpak/ai.nodemode.formvis.yml, packaging/homebrew/formvis.rb)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to the metainfo `<releases>`, the Flatpak deb sources and their `x-checker-data`, the cask `url` and `app`; review formvis__native-tauri-packaging F10.
