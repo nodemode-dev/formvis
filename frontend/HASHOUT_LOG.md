@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## play-action fails when the action stopped or a step could not run · v2.3.4 (app.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `app.ts` `playAction`, command `play-action`, the Actions dialog and panel `play` callbacks. Review formvis__app-automation F12 (fixer A1).
+- Wrong: `playAction` toasted the outcome and returned nothing, so `play-action` answered `{ played: true }` for a run that stopped or failed partway; agents, scripts and `--action` at launch took it as done.
+- Now: `playAction` returns the `actions.play` result (`null` with no document); the command throws "<name> stopped at step N, <step>, which could not run here; play-action with from N resumes there" (or the stopped form, or "Open a document ..."). The two UI callers wrap it as `async (x) => { await playAction(x); }` to keep their `Promise<void>` type.
+- Verified: `tsc --noEmit` clean. Not run: run_command play-action on an action with a disabled step.
+
 ## Generate, Select by Text and 3D tools write into the document they started on · v2.3.4 (automation/agent-bridge.ts, automation/fal-tools.ts, automation/pack-tools.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `agent-bridge.ts` `generate_image`, `fal-tools.ts` `falGenerate` and `falSelectByText`, `pack-tools.ts` `glbTool` (`glb_place`, `glb_edit`). Review formvis__app-automation F10 (fixer A1).

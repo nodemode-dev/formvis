@@ -2362,13 +2362,14 @@ export function startApp(): void {
     return engine.resizeCanvas(w, h, s.dx, s.dy, s.fill);
   }
 
-  async function playAction(x: Action, from = 0): Promise<void> {
-    if (!engine.current) { toast('Open a document to play an action on.'); return; }
+  async function playAction(x: Action, from = 0): Promise<Awaited<ReturnType<typeof actions.play>> | null> {
+    if (!engine.current) { toast('Open a document to play an action on.'); return null; }
     engine.settle();
     const r = await actions.play(x, (s) => runStep(s, !!x.relative), from);
     if (r.stopped) toast(`"${x.name}" stopped at step ${r.done + 1}.`);
     else if (r.failed) toast(`"${x.name}" stopped at step ${r.done + 1}, ${r.failed}, which could not run here.`, 'error');
     else toast(`Played "${x.name}", ${r.done} step${r.done === 1 ? '' : 's'}.`);
+    return r;
   }
 
   /** Batch: each file opens as a document, plays the action, is exported and closed; the results download as one zip. */
@@ -3481,7 +3482,7 @@ export function startApp(): void {
     selectionTransform: new SelectionTransformDialog(engine),
     layerTransform: new SelectionTransformDialog(engine, true),
     actions: new ActionsDialog(actions, {
-      play: (x) => playAction(x), save: (b, n) => deliver(b, n),
+      play: async (x) => { await playAction(x); }, save: (b, n) => deliver(b, n),
       menu: () => commands.all().filter((c) => c.id !== 'play-action').map((c) => ({ id: c.id, label: commands.label(c) })).sort((a, b) => a.label.localeCompare(b.label)),
       run: (id, params) => commands.get(id)?.run(params),
       keyTaken: (combo) => { const c = commands.forCombo(combo); return c ? commands.label(c) : ''; },
@@ -3578,7 +3579,7 @@ export function startApp(): void {
     contentFill: new ContentFillDialog(engine),
     gradientEditor: new GradientEditor(engine),
   };
-  actionsPanel.bind(actions, { play: (x) => playAction(x), options: () => dialogs.actions.show() });
+  actionsPanel.bind(actions, { play: async (x) => { await playAction(x); }, options: () => dialogs.actions.show() });
   dialogs.presetManager.onSettings = ({ shortcuts }) => {
     commands.resetKeys();
     for (const [id, keys] of Object.entries(shortcuts)) commands.setKeys(id, keys);
@@ -4340,7 +4341,9 @@ export function startApp(): void {
         if (!x) throw new Error(`There is no action named "${String(a?.name ?? '')}".`);
         const from = a?.from === undefined ? 1 : Number(a.from);
         if (!Number.isInteger(from) || from < 1 || from > Math.max(1, x.steps.length)) throw new Error(`from must be a step number from 1 to ${Math.max(1, x.steps.length)}.`);
-        await playAction(x, from - 1);
+        const r = await playAction(x, from - 1);
+        if (!r) throw new Error('Open a document to play an action on.');
+        if (r.stopped || r.failed) throw new Error(`"${x.name}" stopped at step ${r.done + 1}${r.stopped ? '' : `, ${r.failed}, which could not run here`}; play-action with from ${r.done + 1} resumes there.`);
         return { played: true, from };
       },
     },
