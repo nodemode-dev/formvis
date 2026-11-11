@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The native renderer frees its blend uniforms after each frame · v2.3.4 (native/formvis-render/src/composite.rs)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `native/formvis-render/src/composite.rs` `Blender::cover`, `Blender::hood_blur`, `Blender::render_tile_in`.
+- Wrong: `cover` and `hood_blur` gathered their uniform buffers in `keep` and ended with `std::mem::forget(keep)`, so no buffer was ever dropped. With the native canvas on, every present leaked buffers per tile for each layer in a masked folder or a clip chain, and six per Hood adjustment (Shadows/Highlights, HDR Toning, Clarity), since the Hood is rebuilt on every present. Now `hood_blur` drops `keep` after its own submit; `cover` returns `(Option<wgpu::Texture>, Vec<wgpu::Buffer>)` and `render_tile_in` extends `uniforms` with the buffers, which drop after the tile's submit.
+- Verified: `cargo check --locked --all-targets` in `native/formvis-render` clean. Not run: a memory watch of the native canvas (no GPU window here).
+- Replaced, quoted exactly:
+
+```text
+        std::mem::forget(keep);
+        let out = pair[(n - 1) % 2].clone();
+    fn cover(&self, gpu: &Gpu, enc: &mut wgpu::CommandEncoder, l: &Stack, base: Option<&wgpu::Texture>, base_mask: Option<&wgpu::Texture>, base_mask_at: Place, tx: u32, ty: u32, grouped: bool) -> Option<wgpu::Texture> {
+        std::mem::forget(keep);
+        acc
+            let cover = if l.folders.is_empty() && !chained { None } else { self.cover(gpu, &mut enc, l, base, base_mask.as_ref(), base_mask_at, tx, ty, grouped) };
+```
+
 ## Color Range chosen again while open no longer leaves a canvas listener · v2.3.4 (ui/panels/color-range-dialog.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/color-range-dialog.ts` `ColorRangeDialog.show`, its pointerdown handler.
