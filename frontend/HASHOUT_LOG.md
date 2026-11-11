@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The WebGL2 display blends Shadows/Highlights, HDR Toning and Clarity layers in their own mode · v2.3.4 (gpu/gl-display.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/gl-display.ts` `GlDisplay.drawLayer` (the `chOff` uniform).
+- Why: review formvis__extensions-gpu-config F3 (fixer X1). The hood shader's `adjustBlend` reads the mode from `chOff >> 8`, but the bits were set only for `l.lut` or a Threshold layer, so a hood layer in any mode but Normal drew as Normal on the WebGL2 display while the CPU renderer, the WebGPU display (`GpuDisplay.layerPass` includes `l.hood`) and export applied the mode.
+- Change: the condition is `l.lut || l.hood || l.threshold !== undefined`.
+- Verified: `tsc --noEmit` (no error in this file). Not run: the WebGL2 path against the CPU compose (no GPU here).
+- Replaced, quoted exactly:
+
+```text
+    gl.uniform1i(u('chOff'), (l.chOff ?? 0) | (l.lut || l.threshold !== undefined ? blendIndex(l.blend) << 8 : 0) | (extra?.ko ? KO_FLAG : 0) | (extra?.screen ? SCREEN_FLAG : 0));
+```
+
 ## Ending the composite workers mid-run no longer stalls every later composite · v2.3.4 (engine/composite-bands.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/composite-bands.ts` `endCompositePool`, `run`, `runFloat`.
