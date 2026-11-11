@@ -8845,8 +8845,8 @@ export class Engine {
     lc.drawImage(l.raster.canvas, 0, 0);
     const ld = lc.getImageData(0, 0, W, H).data;
     // The picture without this layer and what is above it.
-    const at = p.doc.layers.findIndex((x) => x.id === l.id), hidden = new Map<ID, LayerOverride>();
-    p.doc.layers.forEach((x, i) => { if (i >= at && x.id !== l.parentId) hidden.set(x.id, { hidden: true }); });
+    const order = new Map(hierarchy(p.doc).map((e, i) => [e.layer.id, i] as const)), at = order.get(l.id) ?? -1, hidden = new Map<ID, LayerOverride>();
+    p.doc.layers.forEach((x) => { if ((order.get(x.id) ?? Infinity) >= at && x.id !== l.parentId) hidden.set(x.id, { hidden: true }); });
     const chosen = tune.source && (tune.source.doc || tune.source.layer) ? tune.source : null;
     let rd: Uint8ClampedArray, srcMask: Uint8Array | null = null;
     if (chosen) {
@@ -8976,10 +8976,10 @@ export class Engine {
   /** The document drawn without layer `id` and every layer above it (for plugins), at the document's size. */
   renderBelow(id: ID): Surface {
     const p = this.current, s = createSurface(p?.doc.width ?? 1, p?.doc.height ?? 1);
-    const at = p ? p.doc.layers.findIndex((l) => l.id === id) : -1;
+    const order = new Map(p ? hierarchy(p.doc).map((e, i) => [e.layer.id, i] as const) : []), at = order.get(id) ?? -1;
     if (!p || at < 0) return s;
     const overrides = new Map<ID, LayerOverride>();
-    p.doc.layers.forEach((l, i) => { if (i >= at) overrides.set(l.id, { hidden: true }); });
+    p.doc.layers.forEach((l) => { if ((order.get(l.id) ?? Infinity) >= at) overrides.set(l.id, { hidden: true }); });
     this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
     return s;
   }
@@ -8988,14 +8988,14 @@ export class Engine {
    *  above it hidden: what an adjustment layer does to the layers below it, as a picture at the document's size. */
   renderThrough(id: ID): Surface {
     const p = this.current, s = createSurface(p?.doc.width ?? 1, p?.doc.height ?? 1);
-    const at = p ? p.doc.layers.findIndex((l) => l.id === id) : -1;
+    const order = new Map(p ? hierarchy(p.doc).map((e, i) => [e.layer.id, i] as const) : []), at = order.get(id) ?? -1;
     if (!p || at < 0) return s;
     const keep = new Set<ID>([id]);
-    for (let a = p.doc.layers[at]!.parentId; a; a = p.layer(a)?.parentId ?? null) keep.add(a);
+    for (let a = p.layer(id)?.parentId ?? null; a; a = p.layer(a)?.parentId ?? null) keep.add(a);
     const overrides = new Map<ID, LayerOverride>();
-    p.doc.layers.forEach((l, i) => {
+    p.doc.layers.forEach((l) => {
       if (keep.has(l.id)) overrides.set(l.id, { hidden: false, opacity: 1, ...(l.id === id ? { blend: 'normal' as BlendMode } : {}) });
-      else if (i > at) overrides.set(l.id, { hidden: true });
+      else if ((order.get(l.id) ?? Infinity) > at) overrides.set(l.id, { hidden: true });
     });
     this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
     return s;
@@ -10673,10 +10673,10 @@ export class Engine {
 
   /** Current & Below: every layer above `l` hidden, but for the groups holding it. */
   private belowOverrides(p: Project, l: Layer): Map<ID, LayerOverride> {
-    const layers = p.doc.layers, at = layers.findIndex((x) => x.id === l.id), ancestors = new Set<ID>();
+    const layers = p.doc.layers, order = new Map(hierarchy(p.doc).map((e, i) => [e.layer.id, i] as const)), at = order.get(l.id) ?? -1, ancestors = new Set<ID>();
     for (let a = l.parentId; a; a = layers.find((x) => x.id === a)?.parentId ?? null) ancestors.add(a);
     const overrides = new Map<ID, LayerOverride>();
-    layers.forEach((x, i) => { if (i > at && !ancestors.has(x.id)) overrides.set(x.id, { hidden: true }); });
+    layers.forEach((x) => { if ((order.get(x.id) ?? Infinity) > at && !ancestors.has(x.id)) overrides.set(x.id, { hidden: true }); });
     return overrides;
   }
 

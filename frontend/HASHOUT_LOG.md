@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Color Match, Current and Below and the plug-in renders hide by stack order · v2.3.4 (engine/index.ts colorMatch, renderBelow, renderThrough, belowOverrides)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `colorMatch` (the reference picture), `renderBelow`, `renderThrough` and `belowOverrides` (handoff from E1, formvis__engine-index.md outside-area note 1).
+- Wrong: each hid "this layer and what is above it" by the index in `doc.layers`. A folder may come before or after its children in that list (a Frame folder comes after), so the hidden set could take in a folder holding layers below, hiding them, or miss one above.
+- Changed: each ranks layers with `order = new Map(hierarchy(p.doc).map((e, i) => [e.layer.id, i]))`, the renderer's stacking order (bottom first, folder before children), as `applyRedactions` does since be7bf2f; a layer not in the hierarchy ranks as above (`?? Infinity`). `renderThrough` walks folders from `p.layer(id)`.
+- Old lines: `const at = p.doc.layers.findIndex((x) => x.id === l.id), hidden = new Map<ID, LayerOverride>();` with `p.doc.layers.forEach((x, i) => { if (i >= at && x.id !== l.parentId) ...`; `const at = p ? p.doc.layers.findIndex((l) => l.id === id) : -1;` (twice) with `if (i >= at)` and `else if (i > at)`; `for (let a = p.doc.layers[at]!.parentId; ...`; `const layers = p.doc.layers, at = layers.findIndex((x) => x.id === l.id), ancestors = new Set<ID>();` with `if (i > at && !ancestors.has(x.id))`.
+- Checked: `npx tsc --noEmit` clean; a scratch node run of `hierarchy` with a folder stored after its children: renderBelow of the top child now hides only it and the layer above (before, the folder too, so its lower child vanished). The window was not run.
+
 ## Reordering the dock keeps an extension panel's frame alive where the browser can · v2.3.4 (ui/dock.ts Dock.apply, the float frame loop)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/dock.ts` `apply` and the float-frame loop above it (handoff from X1, formvis__extensions-gpu-config.md F1 part 1 of 3).
