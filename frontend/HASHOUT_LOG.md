@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Develop Geometry keeps a layer one pixel high or wide · v2.3.4 (engine/develop.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/develop.ts` `geometryPass`.
+- Why: review formvis__engine-a-e F9 (fixer E2).
+- Wrong: the keystone terms divided by `cy = (h - 1) / 2` and `cx = (w - 1) / 2`, which are 0 on a layer one pixel high or wide; `kv * NaN` stays NaN even when `kv` is 0, so every sample was NaN, stored as 0, and the layer came out transparent under any Geometry change.
+- Now: the two divisors are `Math.max(0.5, cy)` and `Math.max(0.5, cx)`; larger layers are unchanged.
+- Verified: node check of the expression on a copy, a 10 by 1 image rotated 1 degree: 10 non-finite samples before, 0 after; `tsc --noEmit` no error in this file.
+- Replaced, quoted exactly:
+
+```text
+    const pu = u / Math.max(0.1, 1 + kv * (v / cy)), pv = v / Math.max(0.1, 1 + kh * (u / cx));
+```
+
 ## A demo leaves the saved tool options and the brush preset as they were · v2.3.4 (app.ts)
 
 - Why: review formvis__app-automation F4 (fixer A1, logged 2026-11-11). While a demo built (`await settle(e, 700)` and the rest), option memory's rAF capture wrote the active tool's options to Preferences: Clone Stamp's Sample All Layers, size 150 and hardness 20, Spot Healing's Sample All, the painting demo's brush preset. The 2.3.1 restore in `openDemo`'s `finally` covered the in-memory brush and retouch values only, so the Clone Stamp keys stayed in `prefs.toolOptions` and came back at the next launch, and `brushPresetId`, `brushFlow` and `brushBlend` (set by `applyBrushPreset`) were not kept at all.

@@ -980,7 +980,7 @@ function geometryPass<T extends Px>(src: T, g: GeometryState): T {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     let u = (x - cx - ox) * s, v = (y - cy - oy) * s;
     [u, v] = [u * ca - v * sa, u * sa + v * ca];
-    const pu = u / Math.max(0.1, 1 + kv * (v / cy)), pv = v / Math.max(0.1, 1 + kh * (u / cx));
+    const pu = u / Math.max(0.1, 1 + kv * (v / Math.max(0.5, cy))), pv = v / Math.max(0.1, 1 + kh * (u / Math.max(0.5, cx)));
     const i = (y * w + x) * 4;
     for (let c = 0; c < 4; c++) { const val = sampleChannel(d, w, h, cx + pu, cy + pv, c); o[i + c] = val < 0 ? 0 : val; }
   }
