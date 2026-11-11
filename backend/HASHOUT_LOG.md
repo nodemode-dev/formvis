@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A model downloaded after a Relight is used on the next one · _v2.3.4 (app/localgen/relight_split.py _split)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F8.
+- Why: the split cache key held only selfie-multiclass and YuNet readiness, from the old classic split; `_scene_split` now depends on U2-Net, Depth Anything and MoGe-2 with its runtime, so a download of one of them did not change the cached result for the same picture.
+- Now: the key adds `ready("u2net-onnx")`, `ready("depth-anything-v2-small")` and `relight_scene.moge_ready()`.
+- Checked: with a stub cv2 and a counting `_scene_split`: the same picture splits once; after depth-anything is ready it splits again.
+- Replaced, quoted exactly: `    key = hashlib.sha1(data).hexdigest() + engine + str(model_manager.ready(PARTS)) + str(model_manager.ready("yunet-face"))`
+
 ## FLUX.2 [klein] cannot be installed where it never runs · _v2.3.4 (app/localgen/klein.py start_install; app/localgen/model_manager.py start_download)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F9.

@@ -287,7 +287,10 @@ def _scene_split(rgb: np.ndarray) -> tuple:
 
 
 def _split(data: bytes, rgb: np.ndarray, engine: str) -> tuple:
-    key = hashlib.sha1(data).hexdigest() + engine + str(model_manager.ready(PARTS)) + str(model_manager.ready("yunet-face"))
+    from . import relight_scene
+
+    models = (PARTS, "yunet-face", "u2net-onnx", "depth-anything-v2-small")
+    key = hashlib.sha1(data).hexdigest() + engine + str([model_manager.ready(m) for m in models]) + str(relight_scene.moge_ready())
     with _lock:
         if key in _cache:
             _cache.move_to_end(key)
