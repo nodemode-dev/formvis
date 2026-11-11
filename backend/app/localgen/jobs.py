@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
+from .media import forget
 from .orchestration import publish
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -69,6 +70,8 @@ def submit(kind: str, operation) -> dict:
                     job["status"] = "cancelled"
                     if result.get("file"):
                         Path(result["file"]).unlink(missing_ok=True)
+                    for item in result.get("media") or []:
+                        forget(item["id"])
                 else:
                     job.update(status="done", progress=1, result=result)
             publish("job", job=job_id, job_kind=kind, status=_jobs[job_id]["status"], progress=1.0, file=(result or {}).get("file"))

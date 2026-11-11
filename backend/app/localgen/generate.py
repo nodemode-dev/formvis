@@ -623,15 +623,20 @@ def _generate_local(body: GenerateBody):
     if body.options.get("continuous") and slot["runner"] == "krea-2":
         return _continuous(body, slot, name, prompt, stack, sampling, width, height, steps, notes)
 
+    leftovers: list[Path] = [Path(sampling["image"][0])] if sampling.get("image") else []
+    made: list[dict] = []
+
     def operation(job_id, report, cancelled):
         STAGING.mkdir(parents=True, exist_ok=True)
-        made = []
         timings = []
         extras: dict = {}  # what a model's licence sends with its pictures (Krea 2: its notice, the filter's warning)
         batch: list | None = None  # Krea 2: every seed in one run of mflux, the model loaded once
         seeds_used: list[int] = []
         for index in range(count):
+            if cancelled():
+                raise InterruptedError("Cancelled")
             staged = STAGING / f"{uuid.uuid4().hex}{extension}"
+            leftovers.append(staged)
 
             def each(f, message=None, i=index, **fields):
                 label = message if count == 1 or message is None else f"Picture {i + 1} of {count}: {message}"
@@ -645,6 +650,7 @@ def _generate_local(body: GenerateBody):
 
                 if batch is None:
                     paths = [staged] + [STAGING / f"{uuid.uuid4().hex}{extension}" for _ in range(count - 1)]
+                    leftovers.extend(paths)
                     seeds = [(int(seed) + i) if seed is not None else None for i in range(count)]
                     batch = generate_many(
                         prompt,
@@ -709,6 +715,8 @@ def _generate_local(body: GenerateBody):
                 recipe = _recipe(prompt, result, steps, stack, sampling, slot)
                 _stamp(staged, recipe["parameters"])
                 seeds_used.append(result["seed"])
+            if cancelled():
+                raise InterruptedError("Cancelled")
             try:
                 made.append(
                     ingest_path(
@@ -739,7 +747,27 @@ def _generate_local(body: GenerateBody):
             **extras,
         }
 
-    return jobs.submit("generate", operation)
+    def guarded(job_id, report, cancelled):
+        from .media import forget
+
+        try:
+            return operation(job_id, report, cancelled)
+        except BaseException:
+            for item in made:
+                forget(item["id"])
+            raise
+        finally:
+            for path in leftovers:
+                path.unlink(missing_ok=True)
+                for part in path.parent.glob(f"{path.stem}-*.png"):
+                    part.unlink(missing_ok=True)
+
+    try:
+        return jobs.submit("generate", guarded)
+    except HTTPException:
+        for path in leftovers:
+            path.unlink(missing_ok=True)
+        raise
 
 
 @router.get("/pictures/{picture}")

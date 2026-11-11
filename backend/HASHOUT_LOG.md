@@ -2,6 +2,16 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A cancelled or failed local generation leaves nothing behind · _v2.3.4 (app/localgen/generate.py _generate_local: leftovers new, made, operation, guarded new; app/localgen/jobs.py run)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F2 and F3.
+- Why: the image-to-image source copy, each staged picture and mflux's `<stem>-<seed>.png` files at the top of `data/generated` were removed only on success, and Local files' Clean never looks there. A cancel did not stop the operation from copying its pictures into `generated/pictures`, and `jobs.run` then dropped the result; a batch that failed part way left its first pictures there too.
+- Now: `leftovers` holds the source copy and every staged path (the Krea 2 batch paths too); `made` moved out of `operation` so `guarded`, the function the job runs, can see it. `guarded` removes every leftover and any `<stem>-*.png` beside it in a `finally`, and on any exception forgets the pictures already ingested. `operation` raises InterruptedError when cancelled at the top of each picture and right before `ingest_path`. A 429 (or any HTTPException) from `jobs.submit` removes the source copy. `jobs.run` forgets the result's `media` items when the job was cancelled after the operation returned.
+- Checked: a fake command slot, count 4, temporary data folder: done gives 4 library pictures and no top-level files; cancel during picture 2 gives "cancelled", empty library, no top-level files; a failure at picture 3 gives "error" and nothing left.
+- Replaced, quoted exactly:
+  - `operation`: `        made = []`
+  - `_generate_local`: `    return jobs.submit("generate", operation)`
+
 ## formvis.bat test passes without Rust · _v2.3.4 (setup/test.bat native step)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F6.
