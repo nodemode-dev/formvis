@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Group Layers keeps a folder's layers together; Bring Forward drops none · v2.3.4 (engine/layer-structure.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-structure.ts` `groupLayers`, `stepSibling`.
+- Wrong: `groupLayers` re-parented the selected roots in place and put the folder after the highest one, so an unselected layer between them (A, X, B with A and B grouped) or a nested root's old folder stayed inside the new folder's span of the flat array. `stepSibling` keeps only the two siblings' subtrees of the slice it swaps, so the next Bring Forward or Send Backward deleted X or the old folder with its children.
+- Now: the selected roots' subtrees are lifted out (`block`), the roots re-parented, and the block then the folder go where the highest root's top-level ancestor was, as `moveLayers` does. `stepSibling` returns null when its slice holds a layer of neither subtree, so a split folder from any other path refuses the step instead of losing layers.
+- Verified: node on a scratch copy of both functions: `A X B` grouped gives `X A<F B<F F`, Bring Forward of A keeps X; B in G with A outside gives `C<G G B<F A<F F`; a split list refuses the step. `tsc --noEmit` clean in the engine.
+- Replaced, quoted exactly:
+
+```text
+    const re = layers.map((l) => (set.has(l.id) ? { ...l, parentId: folder.id } : l));
+    const next = [...re.slice(0, top + 1), folder, ...re.slice(top + 1)];
+```
+
 ## The native renderer frees its blend uniforms after each frame · v2.3.4 (native/formvis-render/src/composite.rs)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `native/formvis-render/src/composite.rs` `Blender::cover`, `Blender::hood_blur`, `Blender::render_tile_in`.

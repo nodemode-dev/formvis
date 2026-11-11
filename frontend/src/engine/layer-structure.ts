@@ -371,6 +371,7 @@ function stepSibling(layers: readonly Layer[], id: ID, by: 1 | -1, stuck: Readon
   const start = layers.findIndex((l) => loSet.has(l.id));
   const end = layers.findIndex((l) => l.id === hi.id);
   const seg = layers.slice(start, end + 1);
+  if (seg.some((l) => !loSet.has(l.id) && !hiSet.has(l.id))) return null;
   return [
     ...layers.slice(0, start),
     ...seg.filter((l) => hiSet.has(l.id)),
@@ -419,8 +420,12 @@ export function groupLayers(host: StructHost, name?: string): void {
     }
     const folder = newLayer(cleanName(name, freeName(layers, 'Folder')), p.doc, { isGroup: true, parentId: common });
     const set = new Set(rootIds);
-    const re = layers.map((l) => (set.has(l.id) ? { ...l, parentId: folder.id } : l));
-    const next = [...re.slice(0, top + 1), folder, ...re.slice(top + 1)];
+    const block = new Set<ID>();
+    for (const id of rootIds) for (const x of subtree(layers, id)) block.add(x);
+    const moved = layers.filter((l) => block.has(l.id)).map((l) => (set.has(l.id) ? { ...l, parentId: folder.id } : l));
+    const rest = layers.filter((l) => !block.has(l.id));
+    const pos = rest.filter((l) => layers.indexOf(l) <= top).length;
+    const next = [...rest.slice(0, pos), ...moved, folder, ...rest.slice(pos)];
     p.setLayers(normalizeClips(next));
     host.focus(p, folder.id);
   });
