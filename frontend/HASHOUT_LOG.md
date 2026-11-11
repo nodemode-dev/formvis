@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Copied layers keep their vector masks; a duplicated clip base keeps its clipped layers · v2.3.4 (engine/layer-structure.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-structure.ts` `insertCopies`, `duplicateLayers`.
+- Wrong: `insertCopies` moved a copy's transform and placed mask by (dx, dy) but not its vector mask, whose path is in document pixels, so after Duplicate Layer to another document (centred) or a paste between sizes the mask cut the wrong area. `duplicateLayers` put a root's copies straight after it, so the copy of a clip base sat inside its clip chain and `normalizeClips` unclipped every layer clipped to the original.
+- Now: `insertCopies` moves `c.vectorMask` with `movedVector` by the same offset. `duplicateLayers` files a root's copies after the run of layers right after it whose `clipId` is the root (concatenated when two roots share that spot). `addLayer` with a base active still inserts inside the chain (the owner may want a new layer there to join the group): not changed.
+- Verified: node on a scratch copy of the placement and `normalizeClips`: `base c1 c2` duplicated gives `base c1 c2 base'` with both clips kept; a clipped layer's own copy stays clipped. `tsc --noEmit` clean.
+- Replaced, quoted exactly:
+
+```text
+      copiesAfter.set(rootId, fixed);
+```
+
 ## Flatten All Layer Effects and Rasterize Layer Style keep a tied mask over its old box · v2.3.4 (engine/file-scripts.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/file-scripts.ts` `bakeEffects`.

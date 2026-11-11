@@ -3,6 +3,7 @@ import { LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, t
 import { Raster, createSurface, type Surface } from './surface';
 import { integral, intersectRect, invert, placement, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import type { Project } from './project';
+import { movedVector } from './vector-mask';
 
 export interface StructHost {
   readonly current: Project | null;
@@ -208,7 +209,10 @@ export function duplicateLayers(host: StructHost, name?: string): void {
         }
         return out;
       });
-      copiesAfter.set(rootId, fixed);
+      let k = layers.findIndex((l) => l.id === rootId);
+      while (k + 1 < layers.length && layers[k + 1].clipId === rootId) k++;
+      const anchor = layers[k].id;
+      copiesAfter.set(anchor, [...(copiesAfter.get(anchor) ?? []), ...fixed]);
     }
     const next: Layer[] = [];
     for (const l of layers) {
@@ -497,6 +501,7 @@ function insertCopies(host: StructHost, included: readonly Layer[], roots: reado
     if (c.mask && c.mask.placement) {
       c.mask = { ...c.mask, placement: { ...c.mask.placement, x: c.mask.placement.x + dx, y: c.mask.placement.y + dy } };
     }
+    if (c.vectorMask && (dx || dy)) c.vectorMask = movedVector(c.vectorMask, (x, y) => ({ x: x + dx, y: y + dy }));
     return { ...c, id: ids.get(l.id)! };
   });
   host.switchTo(target.id);
