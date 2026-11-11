@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Cancel during a fal, ComfyUI, Align/Blend or Generate Image run discards its result · v2.3.4 (ui/panels/fal-task-dialog.ts, ui/panels/comfyui-run.ts, ui/panels/align-blend-dialog.ts, ui/panels/generate-image.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `FalTaskDialog.run`, `ComfyuiRunDialog.run`, `AlignBlendDialog.execute` and `apply`, the `GenerateImageDialog` constructor.
+- Wrong: none checked that the dialog was still open after its awaits. Cancel or Escape during "Working on fal..." still placed the selection or the Relight layer; ComfyUI sent the job after `close()` ran, so it was never cancelled and its layers landed later; Align/Blend still moved or masked the layers and Multiband or Depth Map went into whatever document was current, and a second OK ran it twice; Generate Image closed by Escape or the close button (only Cancel set `stopped`) still added its layer.
+- Now: fal returns when `!this.isOpen` after `falRunImage`; ComfyUI calls `api.comfyuiCancel(r.job, target)` and returns when closed before `this.job` is set; `execute` takes `live: () => boolean = () => true`, read after the last await before each document change (`'Cancelled.'` is returned), and `apply` has a `busy` guard, passes `() => this.isOpen` and skips the notice when closed; Generate Image's `onClose` sets `stopped`. Added lines only; the one changed line of `apply` was `const msg = await AlignBlendDialog.execute(this.engine, this.mode, { ... spatial: this.spatial });` without the `live` argument, and its catch had no `finally`.
+- Verified: `tsc --noEmit` clean in these files. Not run against fal, ComfyUI or the engine.
+
 ## Neural Filters uses only the style, colours or depth of the layer and style chosen now · v2.3.4 (ui/panels/neural-dialog.ts)
 
 - Why: review formvis__panels-g-w F2 (fixer P2, kind: fix, logged 2026-11-11). Choosing another style while Style Transfer painted the first left `ensureStyle` returning on `stylePending`, and the first result was stored and used; a depth, colour or style request that ended after Cancel and a reopen on another layer of the same size was stored for the new layer, because `run()` compared only width and height.

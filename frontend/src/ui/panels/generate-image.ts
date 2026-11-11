@@ -448,6 +448,7 @@ export class GenerateImageDialog extends Dialog {
     onGenerationChange(() => this.paintHistory());
     this.paintHistory();
     this.button('Cancel', 'ghost', () => { this.stopped = true; this.close(); });
+    this.onClose = () => { this.stopped = true; };
     this.button('Generate', 'primary', () => void this.generate());
     this.remember();   // the model chosen and the reference settings; the prompt and the key are text
   }
