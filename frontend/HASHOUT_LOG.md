@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Batch and Lens Correction batch close each file's document when a step or the encode fails · v2.3.4 (app.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `app.ts` `runBatch`, `runLensBatch`. Review formvis__app-automation F8 (fixer A1).
+- Wrong: `engine.closeProject(p.id)` ran on the success path only; a throwing action step or a failed TIFF `api.encode` went to the catch and left that file's document open as an unsaved tab, one per failing file.
+- Now: as `imageProcessor` does, `let id = ''` before the `try`, the id kept once the file opens, and `finally { if (id) engine.closeProject(id); }`; the inline closes (success, stopped, "could not be corrected") are gone, since the `finally` covers them, `break` and `continue` included.
+- Verified: `tsc --noEmit` clean. Not run: a batch with the engine stopped.
+
 ## A generation or upscale result that lands during a stroke or job waits and is placed · v2.3.4 (engine/index.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.insertRasterLayer`, `fillAreaOnce`, `upscaleInDocument`, `upscaleSelection`, `computeDepthMap` (review formvis__engine-index.md F4).

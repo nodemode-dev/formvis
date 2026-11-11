@@ -2377,10 +2377,12 @@ export function startApp(): void {
       const out: Array<{ name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
       let count = 0;
       for (const f of files) {
+        let id = '';
         try {
           const p = engine.openImage(await decodeImage(f, f.name));
+          id = p.id;
           const r = await actions.play(x, (s) => (s.kind === 'save' ? true : runStep(s, !!x.relative)));
-          if (r.stopped) { engine.closeProject(p.id); problems.push(`stopped at ${f.name}`); break; }
+          if (r.stopped) { problems.push(`stopped at ${f.name}`); break; }
           if (r.failed) problems.push(`${f.name} stopped at ${r.failed}`);
           engine.settle();
           let blob: Blob | null;
@@ -2396,8 +2398,7 @@ export function startApp(): void {
           for (let k = 2; used.has(name); k++) name = `${base} ${k}.${ext}`;
           used.add(name);
           if (blob) out.push({ name, blob });
-          engine.closeProject(p.id);
-        } catch (err) { problems.push(`${f.name}: ${message(err)}`); }
+        } catch (err) { problems.push(`${f.name}: ${message(err)}`); } finally { if (id) engine.closeProject(id); }
       }
       if (out.length) { if (folder) await writeFolder(folder, out); else await deliver(await zipFiles(out), `${x.name} batch.zip`); }
       if (problems.length) toast(`Batch finished ${out.length} of ${files.length}. ${problems.join('. ')}.`, 'error');
@@ -2411,10 +2412,11 @@ export function startApp(): void {
     await engine.task(async () => {
       const out: Array<{ name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
       for (const f of files) {
+        let id = '';
         try {
-          const p = engine.openImage(await decodeImage(f, f.name));
+          id = engine.openImage(await decodeImage(f, f.name)).id;
           const done = await dialogs.filter.applySettings('lensCorrection', { distortion: o.distortion, lensFix: structuredClone(o.lensFix) });
-          if (!done) { problems.push(`${f.name} could not be corrected`); engine.closeProject(p.id); continue; }
+          if (!done) { problems.push(`${f.name} could not be corrected`); continue; }
           engine.settle();
           const jpg = o.format === 'jpg' || (o.format === 'same' && /\.jpe?g$/i.test(f.name));
           const blob = await engine.exportBlob(jpg ? 'image/jpeg' : 'image/png', o.quality / 100);
@@ -2423,8 +2425,7 @@ export function startApp(): void {
           for (let k = 2; used.has(name); k++) name = `${base} ${k}.${ext}`;
           used.add(name);
           if (blob) out.push({ name, blob });
-          engine.closeProject(p.id);
-        } catch (err) { problems.push(`${f.name}: ${message(err)}`); }
+        } catch (err) { problems.push(`${f.name}: ${message(err)}`); } finally { if (id) engine.closeProject(id); }
       }
       if (out.length) { if (o.out) await writeFolder(o.out, out); else await deliver(await zipFiles(out), 'Lens Correction batch.zip'); }
       if (problems.length) toast(`Lens Correction finished ${out.length} of ${files.length}. ${problems.join('. ')}.`, 'error');
