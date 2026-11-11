@@ -566,8 +566,11 @@ def start_download(model: str):
         if not consent().get("licence"):
             raise HTTPException(409, "Krea 2 is installed from its own panel, once its licence is accepted")
     if str(MODELS[model].get("consent", "")).startswith("klein"):
+        from .klein import _is_apple_silicon
         from .klein import consent as klein_consent
 
+        if not _is_apple_silicon():
+            raise HTTPException(400, "FLUX.2 [klein] runs on Apple silicon only")
         variant = "flux2-" + MODELS[model]["consent"]
         if not klein_consent().get(variant, {}).get("licence"):
             raise HTTPException(409, "FLUX.2 [klein] is installed from its own card, once its licence is accepted")

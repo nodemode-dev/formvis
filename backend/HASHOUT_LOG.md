@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## FLUX.2 [klein] cannot be installed where it never runs · _v2.3.4 (app/localgen/klein.py start_install; app/localgen/model_manager.py start_download)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F9.
+- Why: on Windows and Linux the klein install and a klein model download went ahead (several GB of MLX weights and an mflux environment) although `policy()` does not offer klein there; only the licence was checked.
+- Now: both answer 400 "FLUX.2 [klein] runs on Apple silicon only" when `_is_apple_silicon()` is false, before the licence check.
+- Checked: both entry points answer 400 on this Linux machine. Not run on Apple silicon.
+- Replaced, quoted exactly: `        from .klein import consent as klein_consent` (now beside `from .klein import _is_apple_silicon`).
+
 ## "One custom address" is refused for a model of several files · _v2.3.4 (app/localgen/model_manager.py set_source)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F6.

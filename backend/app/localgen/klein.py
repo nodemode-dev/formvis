@@ -262,6 +262,8 @@ def start_install(body: InstallBody) -> dict:
     spec = VARIANTS.get(body.variant)
     if spec is None or body.build not in spec["builds"]:
         raise HTTPException(400, "Unknown model or build")
+    if not _is_apple_silicon():
+        raise HTTPException(400, "FLUX.2 [klein] runs on Apple silicon only")
     if not consent().get(body.variant, {}).get("licence"):
         raise HTTPException(409, "accept the licence first")
     return jobs.submit("klein-install", lambda _id, report, cancelled: install(body.variant, body.build, report, cancelled))
