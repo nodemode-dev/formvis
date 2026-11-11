@@ -2,6 +2,34 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Stack Mode None shows the top layer as it is · v2.3.4 (engine/stack-modes.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/stack-modes.ts` `computeStack`, reached from `engine/smart-object-ops.ts` `setStackMode`.
+- Wrong: alpha was always the mean of the stack's alphas and None only picked the colour, so lower layers showed through the top layer's holes at the mean alpha (opaque red under clear gave red at 128). Trigger: a stacked smart object switched to another mode and back to None.
+- Now: None returns a copy of the top layer's pixels, as `stackToSmartObject` shows it when the object is made.
+- Verified: `tsc --noEmit` clean. Not run: the mode switch in a browser.
+- Added (no line removed), before `const ch`:
+
+```text
+  if (mode === 'none') return new ImageData(new Uint8ClampedArray(layers[n - 1].data), first.width, first.height);
+```
+
+## Knockout keeps the knocked-out layer's own pixels when the backdrop needs scratch room · v2.3.4 (engine/renderer.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/renderer.ts` `Renderer.knockout`.
+- Wrong: `knockout` got the layer's prepared slot `a` (slot 0) and rendered the backdrop into slot 2. The nested `render` takes slot 0 for any backdrop layer off the plain path (mask, vector mask, Blend If, a pixel blend mode, per-render effects; `prepare` clears it), and a backdrop adjustment's `adjust` takes slot 2, the nested render's own target. The layer was then cut and drawn with the backdrop's pixels.
+- Now: `a.s` is copied to a fresh surface (`keep`) first; the backdrop renders into a fresh surface; after it, `a` is prepared and `keep` drawn back, and `keep` is the silhouette for the `destination-in` and `destination-out` draws.
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: renderDoc in a browser.
+- Replaced, quoted exactly:
+
+```text
+    const back = this.slot(2, W, H);
+    back.c.setTransform(1, 0, 0, 1, 0, 0); back.c.clearRect(0, 0, W, H);
+    if (only.size) this.render({ ...job, target: back.s, only, overrides: job.overrides, quality: job.quality });
+    back.c.drawImage(a.s, 0, 0);
+    ctx.globalCompositeOperation = 'destination-out'; ctx.drawImage(a.s, 0, 0);
+```
+
 ## Editing an Adaptive Wide Angle or Liquify smart filter keeps its own lens model and mesh size · v2.3.4 (ui/panels/wide-angle-dialog.ts, ui/panels/liquify-dialog.ts)
 
 - Why: review formvis__panels-g-w F5 (fixer P2, kind: fix, logged 2026-11-11). `Dialog.open()` runs `restoreRemembered()` after `show()` has loaded the filter being edited; the Correction select (not in the skip list) went back to the last-used model and fired its handler (`model` replaced, `pick` cleared), so OK saved the wrong lens; in Liquify the remembered Mesh size fired `setCell()`, which resampled the saved field to another cell size.
