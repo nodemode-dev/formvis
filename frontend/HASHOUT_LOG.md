@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A queued undo or redo lands on the document it was asked in · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.historyOps`, `historyOp`, `drainHistory`, `undoNow`, `redoNow` (review formvis__engine-index.md F1).
+- Wrong: the queue held only `'undo' | 'redo'`; `drainHistory` read `this.current` before awaiting `bringBack` and `undoNow`/`redoNow` read it again after, so a tab switch while paged tiles came back undid the other document's step (writing its 1x1 placeholder `before` images when that step was paged too). Removed lines: `const p = this.current, op = this.historyOps[0];`, `if (!p) { this.historyOps.length = 0; break; }`, `if (op === 'undo') this.undoNow(); else this.redoNow();`, and in both `undoNow` and `redoNow` `const p = this.current;` and `this.settle();`.
+- Changed: each queued item is `{ p, op }`; the drain skips a document closed before or during the fetch and calls `undoNow(p)`/`redoNow(p)`, which take the document (default the current one) and settle pending edits only when it is the current one.
+- Checked: `npx tsc --noEmit` clean; the delayed-store replay in the window not run.
+
 ## The colour view never keeps the previous document's transform after a switch · v2.3.4 (ui/colour.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/colour.ts` `ColourView.refresh`.

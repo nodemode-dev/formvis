@@ -1608,14 +1608,14 @@ export class Engine {
 
   /** Undo and redo in the order asked (1.60.8, DEV_PLAN 26.3): at once when the step is in the window and nothing
    *  waits; else queued, each step's tiles brought back from the undo store before it is applied. */
-  private readonly historyOps: Array<'undo' | 'redo'> = [];
+  private readonly historyOps: Array<{ p: Project; op: 'undo' | 'redo' }> = [];
   private draining = false;
   private historyOp(op: 'undo' | 'redo'): void {
     const p = this.current;
     if (!p || this.stroke || this.waiting()) return;
     const next = op === 'undo' ? p.history.peekUndo() : p.history.peekRedo();
     if (!this.historyOps.length && !this.needsBack(next, op)) { if (op === 'undo') this.undoNow(); else this.redoNow(); return; }
-    this.historyOps.push(op);
+    this.historyOps.push({ p, op });
     void this.drainHistory();
   }
   private async drainHistory(): Promise<void> {
@@ -1623,12 +1623,13 @@ export class Engine {
     this.draining = true;
     try {
       while (this.historyOps.length) {
-        const p = this.current, op = this.historyOps[0];
-        if (!p) { this.historyOps.length = 0; break; }
+        const { p, op } = this.historyOps[0];
+        if (!this.projects.includes(p)) { this.historyOps.shift(); continue; }
         const next = op === 'undo' ? p.history.peekUndo() : p.history.peekRedo();
         if (next && this.needsBack(next, op)) await this.bringBack(next, op);   // tiles and rasters (1.61.3)
         this.historyOps.shift();
-        if (op === 'undo') this.undoNow(); else this.redoNow();
+        if (!this.projects.includes(p)) continue;
+        if (op === 'undo') this.undoNow(p); else this.redoNow(p);
       }
     } catch {
       this.historyOps.length = 0;
@@ -1638,10 +1639,9 @@ export class Engine {
     }
   }
 
-  private undoNow(): void {
-    const p = this.current;
+  private undoNow(p = this.current): void {
     if (!p || this.stroke) return;
-    this.settle();
+    if (p === this.current) this.settle();
     const e = p.history.undo();
     if (!e) return;
     for (let i = e.streamed ? -1 : e.patches.length - 1; i >= 0; i--) {   // a streamed step's are already in (1.62.7)
@@ -1659,10 +1659,9 @@ export class Engine {
   /** Edit > Toggle Last State (1.65.7): undoes the last step, or redoes the one just undone. */
   toggleLastState(): void { if (this.current?.history.canRedo) this.redo(); else this.undo(); }
 
-  private redoNow(): void {
-    const p = this.current;
+  private redoNow(p = this.current): void {
     if (!p || this.stroke) return;
-    this.settle();
+    if (p === this.current) this.settle();
     const e = p.history.redo();
     if (!e) return;
     if (!e.streamed) for (const q of e.patches) q.raster.write(q.redo ? q.redo() : q.after, q.x, q.y);   // a recipe's after is worked out again (36.18); a streamed step's are already in (1.62.7)
