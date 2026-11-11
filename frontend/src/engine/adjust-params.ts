@@ -506,11 +506,15 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
       const sigma = n(v, 'radius') / Math.max(1e-6, ctx.unitsPerPixel);
       if (sigma < 0.4) return;
       const W = ctx.width, H = ctx.height, r = Math.max(1, Math.round((Math.sqrt(4 * sigma * sigma + 1) - 1) / 2));
+      const al = new Float32Array(W * H);
+      for (let j = 0; j < W * H; j++) al[j] = px[j * 4 + 3] / 255;
+      const wa = al.slice();
+      for (let pass = 0; pass < 3; pass++) boxBlur(wa, W, H, r);
       for (let k = 0; k < 3; k++) {
         const ch = new Float32Array(W * H);
-        for (let i = k, j = 0; j < W * H; i += 4, j++) ch[j] = px[i];
+        for (let i = k, j = 0; j < W * H; i += 4, j++) ch[j] = px[i] * al[j];
         for (let pass = 0; pass < 3; pass++) boxBlur(ch, W, H, r);
-        for (let i = k, j = 0; j < W * H; i += 4, j++) px[i] = Math.round(ch[j]);
+        for (let i = k, j = 0; j < W * H; i += 4, j++) if (wa[j] > 1e-6) px[i] = Math.round(ch[j] / wa[j]);
       }
     },
   },
@@ -524,13 +528,13 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
       const steps = Math.min(96, Math.max(2, Math.ceil(len))), a = (n(v, 'angle') * Math.PI) / 180, dx = Math.cos(a) * len / steps, dy = -Math.sin(a) * len / steps;
       const src = new Uint8ClampedArray(px);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        let r = 0, g = 0, b = 0;
+        let r = 0, g = 0, b = 0, c = 0;
         for (let s = 0; s <= steps; s++) {
-          const t = s - steps / 2, sx = Math.min(W - 1, Math.max(0, Math.round(x + dx * t))), sy = Math.min(H - 1, Math.max(0, Math.round(y + dy * t))), o = (sy * W + sx) * 4;
-          r += src[o]; g += src[o + 1]; b += src[o + 2];
+          const t = s - steps / 2, sx = Math.min(W - 1, Math.max(0, Math.round(x + dx * t))), sy = Math.min(H - 1, Math.max(0, Math.round(y + dy * t))), o = (sy * W + sx) * 4, a = src[o + 3];
+          r += src[o] * a; g += src[o + 1] * a; b += src[o + 2] * a; c += a;
         }
-        const o = (y * W + x) * 4, c = steps + 1;
-        px[o] = Math.round(r / c); px[o + 1] = Math.round(g / c); px[o + 2] = Math.round(b / c);
+        const o = (y * W + x) * 4;
+        if (c > 0) { px[o] = Math.round(r / c); px[o + 1] = Math.round(g / c); px[o + 2] = Math.round(b / c); }
       }
     },
   },
