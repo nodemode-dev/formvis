@@ -2,6 +2,45 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Gaussian and Motion Blur layers no longer darken edges next to transparency · v2.3.4 (engine/adjust-params.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/adjust-params.ts` `PARAM_ADJUSTMENTS.gaussianBlur.kernel`, `PARAM_ADJUSTMENTS.motionBlur.kernel`.
+- Why: review formvis__engine-a-e F10 (fixer E2).
+- Wrong: both kernels averaged the colour channels unweighted; transparent pixels read back from the canvas as rgb 0, so opaque pixels next to transparency took a dark fringe.
+- Now: each sample's colour is weighted by its alpha and divided by the blurred (Gaussian) or summed (Motion) alpha; a pixel whose weight is 0 keeps its colour, and every pixel keeps its own alpha. A fully opaque picture gives the same values as before (the box blur clamps at the edges, so an alpha of 1 stays 1).
+- Verified: vitest scratch check outside the repo, a 20 pixel red square on transparency keeps red edge pixels under Gaussian radius 8 and Motion distance 20; `tsc --noEmit` no error in this file.
+- Replaced, quoted exactly:
+
+```text
+      for (let k = 0; k < 3; k++) {
+        const ch = new Float32Array(W * H);
+        for (let i = k, j = 0; j < W * H; i += 4, j++) ch[j] = px[i];
+        for (let pass = 0; pass < 3; pass++) boxBlur(ch, W, H, r);
+        for (let i = k, j = 0; j < W * H; i += 4, j++) px[i] = Math.round(ch[j]);
+      }
+        let r = 0, g = 0, b = 0;
+          const t = s - steps / 2, sx = Math.min(W - 1, Math.max(0, Math.round(x + dx * t))), sy = Math.min(H - 1, Math.max(0, Math.round(y + dy * t))), o = (sy * W + sx) * 4;
+          r += src[o]; g += src[o + 1]; b += src[o + 2];
+        const o = (y * W + x) * 4, c = steps + 1;
+        px[o] = Math.round(r / c); px[o + 1] = Math.round(g / c); px[o + 2] = Math.round(b / c);
+```
+
+## A new reference image shows its name and is marked at once · v2.3.4 (ui/reference-panel.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/reference-panel.ts` `createReferencePanel`, `sync`, `fillTile` (new) (review formvis__ui-o-z.md F8).
+- Wrong: `patchList` calls `update` only for existing nodes, and `create` set neither `.cv-style-name` nor `is-active`/`aria-selected`, so an added tile stayed nameless and unmarked until the next sync. Now `create` ends with `fillTile(b, r)` and `update` is `fillTile`.
+- Verified: `npx tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+      update: (node, r) => {
+        setText(q(node, '.cv-style-name'), r.name);
+        const on = r.id === active;
+        node.classList.toggle('is-active', on);
+        node.setAttribute('aria-selected', String(on));
+      },
+```
+
 ## The options bar refits when a tool's conditional controls appear · v2.3.4 (ui/options.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/options.ts` `OptionsBar.queue` (review formvis__ui-o-z.md F7).
