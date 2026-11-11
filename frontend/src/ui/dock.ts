@@ -78,7 +78,7 @@ function load(): DockState {
       if (DEFAULT_SIDE.includes(id) && !Array.isArray(r.side)) side.push(id);
       else order.splice(Math.min(Math.max(0, dockIds.indexOf(id)), order.length), 0, id);
     }
-    const hidden = Array.isArray(r.hidden) ? r.hidden.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT.hidden];
+    const hidden = Array.isArray(r.hidden) ? r.hidden.filter(kept) : [...DEFAULT.hidden];
     // A panel newer than the saved arrangement (the Info panel, 1.49.6) starts as it comes: hidden if it comes hidden.
     const known = new Set([...(Array.isArray(r.order) ? r.order : []), ...(Array.isArray(r.side) ? r.side : [])]);
     if (Array.isArray(r.hidden)) for (const id of DEFAULT.hidden) if (!known.has(id) && !hidden.includes(id)) hidden.push(id);
@@ -131,7 +131,7 @@ export class Dock {
     });
     head.addEventListener('pointermove', (e) => this.move(e));
     head.addEventListener('pointerup', () => this.drop());
-    head.addEventListener('pointercancel', () => { this.drag = null; setHidden(this.marker, true); });
+    head.addEventListener('pointercancel', () => this.cancelDrag());
     // A drag ends with a click on the header; it must not also fold or unfold the panel.
     head.addEventListener('click', (e) => { if (this.suppressClick) { e.stopPropagation(); e.preventDefault(); this.suppressClick = false; } }, true);
   }
@@ -451,7 +451,7 @@ export class Dock {
     const d = this.drag;
     if (!d) return;
     // A drag whose button was let go elsewhere is over: hovering a header must not revive it (the stray marker).
-    if ((e.buttons & 1) === 0) { this.drag = null; setHidden(this.marker, true); return; }
+    if ((e.buttons & 1) === 0) { this.cancelDrag(); return; }
     if (!d.moving && Math.abs(e.clientY - d.startY) < 5) return;
     d.moving = true;
     d.x = e.clientX; d.y = e.clientY;
@@ -523,6 +523,7 @@ export class Dock {
   removePanel(id: string, forget = true): void { if (!forget) { this.apply(); return; } if (this.floats[id]) { delete this.floats[id]; this.saveFloats(); } this.state = { ...this.state, side: this.state.side.filter((x) => x !== id), order: this.state.order.filter((x) => x !== id), hidden: this.state.hidden.filter((x) => x !== id) }; this.save(); }
 
   private readonly docMove = (e: PointerEvent): void => { if (this.drag) this.move(e); else document.removeEventListener('pointermove', this.docMove, true); };
+  private cancelDrag(): void { this.drag = null; this.ghost?.remove(); this.ghost = null; document.removeEventListener('pointermove', this.docMove, true); setHidden(this.marker, true); this.floatHint(null, 0, ''); }
 
   private drop(): void {
     const d = this.drag;

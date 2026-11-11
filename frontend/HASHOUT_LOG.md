@@ -2,6 +2,20 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock: a cancelled header drag leaves nothing on screen; hidden extension panels stay hidden · v2.3.4 (ui/dock.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/dock.ts` `Dock.wire` (pointercancel), `Dock.move` (no button), `cancelDrag` (new), `load`.
+- Wrong (1): pointercancel on a header, or a move with no button after a release outside the window, only nulled `drag` and hid the marker; the `.cv-drag-ghost` label and the `.cv-float-hint` outline stayed and `docMove` stayed attached. Both now call `cancelDrag()`, which also removes the ghost and the listener and hides the outline.
+- Wrong (2): `load` filtered `hidden` to the registered ids; extension panels register after the Dock is built, so a hidden `ext-` panel came back shown after a restart and the next save forgot it. `hidden` now uses `kept`, as `order` and `side` do.
+- Verified: `tsc --noEmit` (no error in this file). Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    const hidden = Array.isArray(r.hidden) ? r.hidden.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT.hidden];
+    head.addEventListener('pointercancel', () => { this.drag = null; setHidden(this.marker, true); });
+    if ((e.buttons & 1) === 0) { this.drag = null; setHidden(this.marker, true); return; }
+```
+
 ## A second question never strands the first; New Document keeps focus and honours Cancel · v2.3.4 (ui/dialogs.ts, ui/app-dialogs.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/dialogs.ts` `SaveChanges.ask`, `Confirm.ask`, `Prompt.ask`; `ui/app-dialogs.ts` `UpdateDialog.ask`, `NewCanvasDialog.renderCards`, `NewCanvasDialog.create`. One commit because the three fixes share `app-dialogs.ts`.
