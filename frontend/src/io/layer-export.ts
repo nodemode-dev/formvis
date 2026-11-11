@@ -89,7 +89,7 @@ export async function encodeOne(engine: Engine, s: Surface, name: string, set: L
     r.ctx.drawImage(s as CanvasImageSource, 0, 0);
     r.touch();
     const one = newLayer(name, { width: s.width, height: s.height }, { raster: r, transform: docTransform(s.width, s.height) });
-    const { bytes } = await writePsdFile({ ...doc, width: s.width, height: s.height, layers: [one], guides: [] }, s, false, null);
+    const { bytes } = await writePsdFile({ ...doc, width: s.width, height: s.height, layers: [one], guides: [], comps: undefined, activeComp: undefined, ...(s.width !== doc.width || s.height !== doc.height ? { alphas: undefined, slices: undefined, notes: undefined } : {}) }, s, false, null);
     return new Blob([bytes], { type: 'image/vnd.adobe.photoshop' });
   }
   if (set.format === 'tiff-layers') {
@@ -97,7 +97,7 @@ export async function encodeOne(engine: Engine, s: Surface, name: string, set: L
     r.ctx.drawImage(s as CanvasImageSource, 0, 0);
     r.touch();
     const one = newLayer(name, { width: s.width, height: s.height }, { raster: r, transform: docTransform(s.width, s.height) });
-    return (await writeLayeredTiff({ ...doc, width: s.width, height: s.height, layers: [one], guides: [] }, s, null)).blob;
+    return (await writeLayeredTiff({ ...doc, width: s.width, height: s.height, layers: [one], guides: [], comps: undefined, activeComp: undefined, ...(s.width !== doc.width || s.height !== doc.height ? { alphas: undefined, slices: undefined, notes: undefined } : {}) }, s, null)).blob;
   }
   if (set.format === 'dpx') {
     if (!engineUp) throw new Error('DPX is written by the formvis engine, which is not running here. Choose PNG, JPEG or WebP.');

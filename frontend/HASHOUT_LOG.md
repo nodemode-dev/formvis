@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layers to Files as PSD or layered TIFF leaves out the document's comps, and with Trim its alphas, slices and notes · v2.3.4 (io/layer-export.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/layer-export.ts` `encodeOne`, the `psd` and `tiff-layers` branches.
+- Wrong: each file was written from `{ ...doc, width, height, layers: [one], guides: [] }`, so the comps named layers the file lacks and, with Trim, the alpha channels, slices and notes kept full-document coordinates on a file the trimmed layer's size (the alpha planes were taken from the document's top-left corner). Trigger: Layers to Files or Quick Export to PSD or TIFF with layer, Trim on, in a document with alpha channels, slices, notes or comps.
+- Now: both calls pass `comps` and `activeComp` as undefined, and `alphas`, `slices` and `notes` as undefined when the picture is not the document's size; an untrimmed export keeps them, since they still line up.
+- Verified: `tsc --noEmit` clean. Not run: Layers to Files in a browser.
+- Replaced, quoted exactly:
+
+```text
+    const { bytes } = await writePsdFile({ ...doc, width: s.width, height: s.height, layers: [one], guides: [] }, s, false, null);
+    return (await writeLayeredTiff({ ...doc, width: s.width, height: s.height, layers: [one], guides: [] }, s, null)).blob;
+```
+
 ## Open SVG as Layers reads arcs whose flags have no separators · v2.3.4 (io/svg-layers.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/svg-layers.ts` `pathSegments`, the tokenizer and `flag`.
