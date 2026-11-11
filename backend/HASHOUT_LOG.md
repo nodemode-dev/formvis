@@ -2,6 +2,16 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Window commands over HTTP pass the agent gate; the command line is known by its connection · _v2.3.4 (app/routers/commands.py run; app/routers/mcp.py _agent_call, _from_cli new, _stream_call, mcp)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F2, and the orchestrator's handoff from formvis__backend-services (the formvis-cli name).
+- Why: `POST /api/commands/{id}` called `mcp._call("run_command", ...)` directly, so any local process (an agent in a shell, or one whose MCP client was denied) ran window commands past the `WINDOW_ONLY` refusal, the Agent Connect switch and deny policy (`agents.admit`), the Ask approval for risky commands (`_risk`, `agents.approval`) and the activity feed. Trigger: `curl -X POST 127.0.0.1:8190/api/commands/terminal.new` once outside agents had been allowed.
+- Change: `run` calls `mcp._agent_call(client, "run_command", ...)`, the client named by `_client_of(request, {}, None)` as an MCP call is. The Ask-policy skip that was keyed on the client name `formvis-cli` (which any MCP client can claim in clientInfo) is now the `cli` flag of `_agent_call`, set by `_from_cli`: true only for a plain HTTP call with `X-Formvis-Client: formvis-cli` and no MCP session id or clientInfo (setup/cli.py and cli_offline.py). It covers `convert_file` and `run_command`, which the command line confirms with `--overwrite` and `--yes`.
+- Checked: a scratch app with the two routers: agents off refuses, `terminal.new` and `agent.claude.open` are refused as window-only (also from the CLI), each shows in the activity feed as denied; `_from_cli` is false with clientInfo, a session id or a User-Agent only. `tests/test_mcp.py` not run (no OpenCV in the venv).
+- Replaced, quoted exactly:
+  - `commands.py` `run`: `    task = asyncio.ensure_future(mcp._call("run_command", {"id": cid, "params": body.params if body else {}}))`
+  - `mcp.py` `_agent_call`: `        if agents.policy_of(client) == "ask" and not (client == "formvis-cli" and name == "convert_file"):   # the command line names both files and --overwrite itself`
+
 ## A key never follows a redirect to another host · _v2.3.4 (app/services/outbound.py _SameOrigin, opener, request; app/services/llm.py _call, chat_stream; app/services/generative.py _post)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-services F2.

@@ -89,7 +89,7 @@ async def run(cid: str, request: Request, body: Run | None = None) -> dict:
     found = _find(cid)
     if _state["commands"] and found is None:
         raise HTTPException(404, f"No command has the id {cid}. List them with GET /api/commands?text=word.")
-    task = asyncio.ensure_future(mcp._call("run_command", {"id": cid, "params": body.params if body else {}}))
+    task = asyncio.ensure_future(mcp._agent_call(mcp._client_of(request, {}, None)[0], "run_command", {"id": cid, "params": body.params if body else {}}, mcp._from_cli(request, {}, None)))
     if await mcp._until_gone(request, task):
         return {"ok": False, "error": "The caller hung up; the queued request was dropped."}
     out = task.result()

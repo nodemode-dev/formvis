@@ -1117,7 +1117,7 @@ async def _write_back(name: str) -> str:
     return path
 
 
-async def _agent_call(client: str, name: str, args: dict) -> dict:
+async def _agent_call(client: str, name: str, args: dict, cli: bool = False) -> dict:
     """A tool call as an outside agent's: refused when agents are off or this client is denied, held for the person's
     approval when it is risky under the Ask policy, and noted in the activity feed either way. The Claude Code the window's own
     terminal dock started (agents.INAPP_CLIENT, known by its per-run token) is not asked whether outside agents may edit."""
@@ -1148,7 +1148,7 @@ async def _agent_call(client: str, name: str, args: dict) -> dict:
         if refusal:
             agents.end(entry, "denied", refusal)
             return _fail(refusal)
-        if agents.policy_of(client) == "ask" and not (client == "formvis-cli" and name == "convert_file"):   # the command line names both files and --overwrite itself
+        if agents.policy_of(client) == "ask" and not (cli and name in ("convert_file", "run_command")):   # the command line names both files and --overwrite, and risky commands need --yes
             why = await _risk(name, args)
             if why:
                 refusal = await agents.approval(entry, why)
@@ -1182,6 +1182,12 @@ def _client_of(request: Request, params: dict, sid: str | None) -> tuple[str, st
     if agents.is_inapp(request.headers.get("x-formvis-inapp")):
         return agents.INAPP_CLIENT, version
     return (f"{name} (outside)" if name == agents.INAPP_CLIENT else name), version
+
+
+def _from_cli(request: Request, params: dict, sid: str | None) -> bool:
+    """The command line's own HTTP call: named formvis-cli by its header, with no MCP session or clientInfo, through which any agent can claim that name."""
+    info = (params.get("_meta") or {}).get("io.modelcontextprotocol/clientInfo") or params.get("clientInfo")
+    return request.headers.get("x-formvis-client") == "formvis-cli" and not info and not sid
 
 
 # Live resources: the same state the read tools give, as documents a client can attach.
@@ -1326,13 +1332,13 @@ def _budgeted(name: str, result: dict) -> dict:
     return out
 
 
-async def _stream_call(req_id, modern: bool, client: str, name: str, args: dict, token):
+async def _stream_call(req_id, modern: bool, client: str, name: str, args: dict, token, cli: bool = False):
     """One tool call answered as server-sent events: the window's progress as notifications/progress with the client's token,
     then the result. A client's notifications/cancelled or a dropped connection stops the call, and the window with it."""
     queue: asyncio.Queue = asyncio.Queue()
     mark = _sink.set(queue)
     key = (client, json.dumps(req_id))
-    task = asyncio.ensure_future(_agent_call(client, name, args))   # the task keeps the context it was made in, so its window requests report to the queue
+    task = asyncio.ensure_future(_agent_call(client, name, args, cli))   # the task keeps the context it was made in, so its window requests report to the queue
     _sink.reset(mark)
     _inflight[key] = task
     event = lambda msg: f"event: message\ndata: {json.dumps(msg)}\n\n"
@@ -1464,11 +1470,12 @@ async def mcp(request: Request) -> Response:
                 out = _ok(req_id, _fail(f"{name} was not run: this agent already has {MAX_PER_CLIENT} calls waiting. Wait for one to finish, or cancel one, then retry."), modern)
             else:
                 client = _client_of(request, params, sid)[0]
+                cli = _from_cli(request, params, sid)
                 key = (client, json.dumps(req_id))
                 token = meta.get("progressToken")
                 if token is not None and "text/event-stream" in request.headers.get("accept", ""):   # progress asked for: notifications/progress, then the result, as an event stream
-                    return StreamingResponse(_stream_call(req_id, modern, client, name, args, token), media_type="text/event-stream", headers=headers)
-                task = asyncio.ensure_future(_agent_call(client, name, args))
+                    return StreamingResponse(_stream_call(req_id, modern, client, name, args, token, cli), media_type="text/event-stream", headers=headers)
+                task = asyncio.ensure_future(_agent_call(client, name, args, cli))
                 _inflight[key] = task
                 try:
                     if await _until_gone(request, task):
