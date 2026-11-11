@@ -179,8 +179,10 @@ export class PanelGroup {
       PanelGroup.onGapHint?.(null, 0);
       document.removeEventListener('pointermove', move, true);
       document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', up, true);
       ghost?.remove();
       target?.root.classList.remove('is-tab-target', 'is-tab-full');
+      if (ev.type === 'pointercancel') return;
       if (ghost) PanelGroup.justDragged = true;
       if (ghost && target) { if (!target.full) { PanelGroup.moveTab(tid, this, target); PanelGroup.saveHomes(); } }
       else if (ghost && this.tabs.size > 1 && PanelGroup.onDetach?.(tid, this, ev.clientX, ev.clientY)) PanelGroup.saveHomes();
@@ -188,6 +190,7 @@ export class PanelGroup {
     };
     document.addEventListener('pointermove', move, true);
     document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
   }
 
   /** Moves a tab (its page, kept as it is) from one group to another; an emptied group is hidden. */

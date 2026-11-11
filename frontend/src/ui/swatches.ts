@@ -253,7 +253,7 @@ export class SwatchesPanel {
       const at = (e: PointerEvent): void => { const r = cv.getBoundingClientRect(); on(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))); };
       cv.addEventListener('pointerdown', (e) => { down = true; cv.setPointerCapture(e.pointerId); at(e); });
       cv.addEventListener('pointermove', (e) => { if (down) at(e); });
-      cv.addEventListener('pointerup', () => { down = false; });
+      for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) cv.addEventListener(ev, () => { down = false; });
     };
     drag(this.sv, (x, y) => { this.hsv = [this.hsv[0], x, 1 - y]; this.push(fromHsv(...this.hsv)); });
     drag(this.hue, (_x, y) => { this.hsv = [y * 359.99, this.hsv[1], this.hsv[2]]; this.push(fromHsv(...this.hsv)); });

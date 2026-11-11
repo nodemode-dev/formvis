@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A cancelled touch ends a tab drag and a Color panel drag · v2.3.4 (ui/panel-group.ts, ui/swatches.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panel-group.ts` `PanelGroup.tabDrag`, `ui/swatches.ts` `SwatchesPanel.bindColor` (review formvis__ui-o-z.md F10).
+- Wrong: the tab drag listened only for `pointermove`/`pointerup` on the document, so after a `pointercancel` (the browser taking the touch as a scroll) a hover showed the ghost and the next `pointerup` moved, detached or tore off the tab. The Color square and hue strip reset `down` only on `pointerup`, so after a cancel a hovering mouse changed the foreground colour. Now `up` also runs on `pointercancel` (listener removed with the others; on a cancel it clears the ghost and target and returns before any move), and the colour drags reset on `pointercancel` and `lostpointercapture` too.
+- Verified: `npx tsc --noEmit` clean. Not run: a touch drag with a dispatched pointercancel.
+- Replaced, quoted exactly:
+
+```text
+      cv.addEventListener('pointerup', () => { down = false; });
+```
+
 ## The Paper texture tiles without a seam · v2.3.4 (engine/procedural-tips.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/procedural-tips.ts` `textureGrey` ('paper').
