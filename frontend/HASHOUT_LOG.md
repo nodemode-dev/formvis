@@ -2,6 +2,25 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The last raw z-index values use the layer tokens · v2.3.4 (styles/tokens.css, styles/panels.css, styles/shell.css)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `styles/tokens.css` (the stacking scale), `styles/panels.css` `.cv-comp-comment`, `.cv-dock-split`, `.cv-props-col:not(.is-collapsed)`, `.cv-props-resize`, `styles/shell.css` `.cv-taskbar::before`.
+- Why: review formvis__extensions-gpu-config F10 (fixer X1). Five rules set z-index as plain numbers (2, 2, 4, 5 and -1), against tokens.css rule 2 and harness law 3.
+- Change: the scale gains `--z-under: -1`, `--z-local-2: 2`, `--z-local-4: 4` and `--z-local-5: 5`, and the five rules use them; the values are the same, so the stacking order does not change.
+- Verified: `grep -n "z-index" src/styles/*.css | grep -v "var(--z"` lists only comments. Not run: a visual check in the window.
+
+## 32-bit Preview Options puts the view back on every close but OK · v2.3.4 (ui/panels/preview32-dialog.ts)
+
+- Why: review formvis__panels-g-w F8 (fixer P2, kind: fix, logged 2026-11-11). The restore of `before` lived in the Cancel button's handler; Escape, the X and a click on the scrim go through `Dialog.close()`, which had no `onClose` here, so the live Exposure and Gamma change stayed although the dialog says Cancel puts it back.
+- `Preview32Dialog`: a `kept` flag set by OK before `close()`; `onClose` calls `colour.setPreview(before...)` unless `kept`, then clears it; Cancel only closes.
+- Checked: `tsc --noEmit` (no error in this file). Not run: the window.
+
+## One Ctrl+Z in Liquify or a generative prompt undoes one thing · v2.3.4 (ui/panels/liquify-dialog.ts, ui/panels/prompt-history.ts, landed in 9f0fd45)
+
+- Why: review formvis__panels-g-w F7 (fixer P2, kind: fix, logged 2026-11-11). Two Mod+Z handlers ran on one keydown: Liquify's scrim listener stepped the stroke and the Dialog base listener (registered first, same scrim) ran `DialogHistory.undo`, putting back the last settled control; `PromptHistory`'s field listener undid the prompt and the event bubbled on to the same `DialogHistory.undo`, whose skip for a field with typing of its own only applies to inputs (the prompt is a textarea), so Influence or the Model select went back too.
+- `LiquifyDialog` constructor: the Mod+Z listener is registered with `{ capture: true }` and calls `e.stopPropagation()` before `stepStroke`. `PromptHistory` `keys`: `e.stopPropagation()` beside each `e.preventDefault()`, for undo and redo. This entry lands with the next fix: 9f0fd45 instead carried the entry "The native renderer follows live previews..." (gpu/native-display.ts), another fixer's, which was in the working tree when it was committed.
+- Checked: `tsc --noEmit` (no error in these files). Not run: the window.
+
 ## The dev server's plugin worker policy closes connections · v2.3.4 (vite.config.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `vite.config.ts` `PLUGIN_WORKER_DEV_CSP`.
