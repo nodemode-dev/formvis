@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Document events reach only extensions granted the document permission · v2.3.4 (formext/host-bridge.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `formext/host-bridge.ts` `ExtensionHost.broadcast`, fed by `formext/extensions.ts` `watchEngine`. Handoff from fixer X1, formvis__extensions-gpu-config F6 (fixed by A1).
+- Wrong: `broadcast` posted `document.changed`, `document.switched`, `selection.changed` and `layer.activated` to every frame, so an extension with no permissions learned document names, sizes and selections on every change, though `document.read` needs the `document` permission.
+- Now: `broadcast` (only those four events use it; the theme goes through `setTheme` to every frame) skips a frame unless `f.ext.permissions.includes('document') && this.isGranted(f.ext)`.
+- Verified: `tsc --noEmit` clean. Not run: an extension without permissions in the window.
+
 ## A Form extension panel that reloads is shown again and its stale requests end at once · v2.3.4 (formext/host-bridge.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `formext/host-bridge.ts` `ExtensionHost.mount` (`onMessage`, `handle.activate`). Handoff from fixer X1, formvis__extensions-gpu-config F1 part 3 (fixed by A1).

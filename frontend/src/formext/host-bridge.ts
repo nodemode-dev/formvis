@@ -307,7 +307,7 @@ export class ExtensionHost {
   }
 
   broadcast(name: string, data: unknown) {
-    for (const f of this.frames) f.frame.contentWindow?.postMessage({ formext: 1, jsonrpc: '2.0', method: 'ext.event', params: { name, data } }, '*');
+    for (const f of this.frames) if (f.ext.permissions.includes('document') && this.isGranted(f.ext)) f.frame.contentWindow?.postMessage({ formext: 1, jsonrpc: '2.0', method: 'ext.event', params: { name, data } }, '*');
   }
 
   setTheme(theme: Theme) {
