@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -e
-cd "$(dirname "$0")"
+here="$(cd "$(dirname "$0")" && pwd)"
+case "${1:-}" in perf|corpus|mcp|headless|agents|cli) ;; *) cd "$here" ;; esac
 usage() {
   # The version in the first line (1.61.9): a copy that missed an update shows it at once, not as "unknown command".
   printf 'formvis %s · layered image editor\n' "$(sed -n "s/^export const VERSION = '\(.*\)';$/\1/p" frontend/src/version.ts 2>/dev/null)"
@@ -61,13 +62,13 @@ case "$cmd" in
   test) exec setup/test "$@" ;;
   counts) exec setup/counts "$@" ;;
   bench) exec setup/bench "$@" ;;
-  perf) exec python3 setup/perf.py "$@" ;;
-  corpus) exec python3 setup/corpus.py "$@" ;;
+  perf) exec python3 "$here/setup/perf.py" "$@" ;;
+  corpus) exec python3 "$here/setup/corpus.py" "$@" ;;
   verify-local) exec setup/verify_local "$@" ;;
-  mcp) exec python3 setup/mcp_stdio.py "$@" ;;
-  headless) exec python3 setup/headless.py "$@" ;;
-  agents) exec python3 setup/agents.py "$@" ;;
-  cli) exec python3 setup/cli.py "$@" ;;
+  mcp) exec python3 "$here/setup/mcp_stdio.py" "$@" ;;
+  headless) exec python3 "$here/setup/headless.py" "$@" ;;
+  agents) exec python3 "$here/setup/agents.py" "$@" ;;
+  cli) exec python3 "$here/setup/cli.py" "$@" ;;
   clean) exec setup/clean "$@" ;;
   version|--version|-V)
     printf 'formvis %s' "$(sed -n "s/^export const VERSION = '\(.*\)';$/\1/p" frontend/src/version.ts 2>/dev/null)"

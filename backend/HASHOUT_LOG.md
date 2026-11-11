@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relative paths for cli, mcp, corpus and perf mean the caller's folder · _v2.3.4 (formvis; setup/perf.py main; setup/cli.py droplet_cmd)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F4.
+- Why: `formvis` ran `cd "$(dirname "$0")"` before every command, so the Python helpers resolved relative names against the repository: `cli convert photo.jpg ...` from ~/Pictures found no file, `process`, `stack`, `contact` and the others wrote into the repository, `mcp --root .` meant the repository, and `perf --baseline base.json` found nothing and skipped the comparison (always a pass). Droplet scripts did `cd '<repo>'` before `./formvis cli process "$@"`.
+- `formvis`: `here="$(cd "$(dirname "$0")" && pwd)"`; the `cd "$here"` is skipped for perf, corpus, mcp, headless, agents and cli, which run `python3 "$here/setup/<script>.py"` (each finds the repository from `__file__`). `perf.py` stops with exit 2 when `--baseline` names no file. Droplet scripts call `'<repo>/formvis'` and `"<repo>\setup\cli.py"` without a cd, and `--to` is written as an absolute path.
+- Replaced, quoted exactly: `cd "$(dirname "$0")"`; `exec python3 setup/<name>.py "$@"` for the six commands; in droplet_cmd `exec ./formvis cli droplet ...`, `python setup\\cli.py droplet ...`, `exec ./formvis cli process ...`, `python setup\\cli.py process ...`, `cd '{root}' || exit 1\n` and `cd /d \"{root}\"\r\n`, and `flags['to']` unresolved.
+- Checked from a scratch folder: `mcp --version`, `version`, `perf --baseline nope.json` (exit 2), a written droplet (`sh -n` passes). cli against a running engine and the .cmd twin were not run.
+
 ## file_info refuses a short PSD or an odd manifest; no agent call stays running · _v2.3.4 (app/routers/mcp.py _info, _agent_call)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F4.

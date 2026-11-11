@@ -65,6 +65,8 @@ def main() -> int:
     ap.add_argument("--save", help="write this run to FILE as a baseline")
     ap.add_argument("--threshold", type=float, default=25.0, help="percent a p50 may exceed the baseline")
     a = ap.parse_args()
+    if a.baseline and not Path(a.baseline).is_file():
+        ap.error(f"--baseline {a.baseline}: no such file")
     from playwright.sync_api import sync_playwright
     names = [n for n in BUDGETS if not a.only or n in a.only.split(",")]
     out: dict = {"when": time.strftime("%Y-%m-%dT%H:%M:%S"), "machine": platform.platform(), "cpus": os.cpu_count(), "runs": a.runs, "scenarios": {}}

@@ -493,19 +493,19 @@ def droplet_cmd(args: list[str]) -> int:
         with open(target, "w", encoding="utf-8") as f:
             json.dump({"kind": DROPLET_KIND, "version": 1, "action": action, "output": output}, f, indent=2)
             f.write("\n")
-        launcher = f"exec ./formvis cli droplet '{target}' \"$@\"\n"
-        win_line = f"python setup\\cli.py droplet \"{target}\" %*\r\n"
+        launcher = f"exec '{root}/formvis' cli droplet '{target}' \"$@\"\n"
+        win_line = f"python \"{root}\\setup\\cli.py\" droplet \"{target}\" %*\r\n"
         print(f"Wrote {target}. Run it with: ./formvis cli droplet {target} <pictures or folders>")
     else:
-        extra = f"{' --quality ' + flags['quality'] if 'quality' in flags else ''}{' --out ' + chr(39) + flags['to'] + chr(39) if flags.get('to') else ''}{' --suffix ' + chr(39) + flags['suffix'] + chr(39) if flags.get('suffix') else ''}{' --recursive' if flags.get('recursive') else ''}{' --atn ' + chr(39) + os.path.abspath(os.path.expanduser(flags['atn'])) + chr(39) if flags.get('atn') else ''}"
-        launcher = f"exec ./formvis cli process \"$@\" --action {quoted} --format {fmt}{extra}\n"
-        win_line = f"python setup\\cli.py process %* --action \"{action.replace(chr(34), chr(39))}\" --format {fmt}{extra.replace(chr(39), chr(34))}\r\n"
+        extra = f"{' --quality ' + flags['quality'] if 'quality' in flags else ''}{' --out ' + chr(39) + os.path.abspath(os.path.expanduser(flags['to'])) + chr(39) if flags.get('to') else ''}{' --suffix ' + chr(39) + flags['suffix'] + chr(39) if flags.get('suffix') else ''}{' --recursive' if flags.get('recursive') else ''}{' --atn ' + chr(39) + os.path.abspath(os.path.expanduser(flags['atn'])) + chr(39) if flags.get('atn') else ''}"
+        launcher = f"exec '{root}/formvis' cli process \"$@\" --action {quoted} --format {fmt}{extra}\n"
+        win_line = f"python \"{root}\\setup\\cli.py\" process %* --action \"{action.replace(chr(34), chr(39))}\" --format {fmt}{extra.replace(chr(39), chr(34))}\r\n"
     with open(sh, "w") as f:
-        f.write(f"#!/bin/sh\n# formvis droplet for the action {action}: drop pictures onto it, or run it with file names.\ncd '{root}' || exit 1\n{launcher}")
+        f.write(f"#!/bin/sh\n# formvis droplet for the action {action}: drop pictures onto it, or run it with file names.\n{launcher}")
     os.chmod(sh, 0o755 | stat.S_IMODE(os.stat(sh).st_mode))
     twin = os.path.splitext(sh)[0] + ".cmd"
     with open(twin, "w", newline="") as f:
-        f.write(f"@echo off\r\ncd /d \"{root}\"\r\n{win_line}")
+        f.write(f"@echo off\r\n{win_line}")
     print(f"Wrote {sh} and {twin}. Drop pictures onto either, or run it with file names.")
     return 0
 
