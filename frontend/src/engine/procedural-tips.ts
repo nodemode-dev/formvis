@@ -95,7 +95,10 @@ export const PROCEDURAL_TEXTURES: ReadonlyArray<readonly [TextureKind, string, n
 /** The grey (0 dark to 255 light) of a texture at pixel (x, y) of an `n` pixel tile; each tiles without a seam. */
 export function textureGrey(kind: TextureKind, x: number, y: number, n: number): number {
   if (kind === 'grain') return 255 * cell(x, y, 21);
-  if (kind === 'paper') return 255 * Math.min(1, 0.55 + 0.35 * vnoise(x, y, 24, 31, n / 24) + 0.25 * (cell(x, y, 33) - 0.5) + 0.15 * (vnoise(x, y, 6, 35, n / 6) - 0.5));
+  if (kind === 'paper') {
+    const k1 = Math.max(1, Math.round(n / 24)), k2 = Math.max(1, Math.round(n / 6));
+    return 255 * Math.min(1, 0.55 + 0.35 * vnoise(x, y, n / k1, 31, k1) + 0.25 * (cell(x, y, 33) - 0.5) + 0.15 * (vnoise(x, y, n / k2, 35, k2) - 0.5));
+  }
   if (kind === 'canvas') {
     const p = n / 4, a = Math.sin(((x % n) / p) * Math.PI * 2) * 0.5 + 0.5, b = Math.sin(((y % n) / p) * Math.PI * 2) * 0.5 + 0.5, over = (Math.floor(x / (p / 2)) + Math.floor(y / (p / 2))) % 2 === 0;
     return 255 * (0.35 + 0.65 * (over ? a : b)) * (0.9 + 0.1 * cell(x, y, 41));

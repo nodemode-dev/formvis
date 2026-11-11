@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Paper texture tiles without a seam · v2.3.4 (engine/procedural-tips.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/procedural-tips.ts` `textureGrey` ('paper').
+- Wrong: the two value-noise lattices wrapped every `n / 24` and `n / 6` cells, 5.33 and 21.33 for the built-in 128 px tile, so the lattice did not repeat at the tile edge (and non-integer cells reached `cell()`): a seam every tile in Pattern Overlay, Fill with pattern and brush textures.
+- Now: `k1 = max(1, round(n / 24))`, `k2 = max(1, round(n / 6))` cells, feature size `n / k1` and `n / k2`, so each lattice repeats exactly at n.
+- Verified: node on a scratch copy of `vnoise` (the smooth terms): edge jump at n 128 from 67.4 to 2.6 levels (largest step inside the tile 9.7), n 64 from 16.2 to 1.6, n 96 unchanged. `tsc --noEmit` clean.
+- Replaced, quoted exactly:
+
+```text
+  if (kind === 'paper') return 255 * Math.min(1, 0.55 + 0.35 * vnoise(x, y, 24, 31, n / 24) + 0.25 * (cell(x, y, 33) - 0.5) + 0.15 * (vnoise(x, y, 6, 35, n / 6) - 0.5));
+```
+
 ## Applying a layer comp or selecting a frame carries linked masks with the layer · v2.3.4 (engine/layer-comps.ts, engine/frame-ops.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-comps.ts` `applyComp`, `engine/frame-ops.ts` `selectFrame`.
