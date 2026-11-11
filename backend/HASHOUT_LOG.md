@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## file_info refuses a short PSD or an odd manifest; no agent call stays running · _v2.3.4 (app/routers/mcp.py _info, _agent_call)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F4.
+- Why: `_info` raised `struct.error` on a `.psd` or `.psb` shorter than its header or cut inside its sections, and `AttributeError` on a `.fvd` or `.fmv` whose `manifest.json` is a list or whose layers are not objects. `_run` catches only ValueError and OSError, and `_agent_call` ended the activity entry only on CancelledError, so `/mcp` answered a bare 500 and the entry stayed "running" in Agent Connect, `jobs_list` and `formvis://jobs` for the session.
+- Change: the PSD header block is inside `try`, and `struct.error` becomes ValueError "is not a readable PSD"; the project branch also catches AttributeError and TypeError. `_agent_call` has an `except Exception` after the CancelledError clause that ends the entry as error and answers `_fail(f"{name} failed: {exc}")`.
+- Checked: a scratch script through `_agent_call`: a 6-byte PSD, a PSD cut in its sections, a list manifest and number layers each answer isError with the reason; a `_run` that raises RuntimeError answers "file_info failed: kaboom"; every entry ends as error.
+- Replaced, quoted exactly: in `_info`, the PSD block now indented one level under `try` (unchanged otherwise), and `        except (zipfile.BadZipFile, KeyError, StopIteration, ValueError) as exc:`.
+
 ## formvis.bat passes every argument and runs the Python commands · _v2.3.4 (formvis.bat; setup/mcp_stdio.py main --where)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F3.

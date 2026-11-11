@@ -820,19 +820,22 @@ def _info(args: dict) -> dict:
     suffix = src.suffix.lower()
     info: dict = {"path": str(src), "name": src.name, "bytes": src.stat().st_size, "kind": "project" if suffix in _PROJECTS else "picture"}
     if suffix in (".psd", ".psb"):
-        with open(src, "rb") as f:
-            sig, ver, _, channels, height, width, depth, mode = struct.unpack(">4sH6sHIIHH", f.read(26))
-            if sig != b"8BPS":
-                raise ValueError(f"{src.name} is not a PSD file.")
-            big = ver == 2
-            for _skip in range(2):   # the colour mode data, then the image resources
-                f.seek(struct.unpack(">I", f.read(4))[0], 1)
-            wide = 8 if big else 4
-            section = struct.unpack(">Q" if big else ">I", f.read(wide))[0]
-            layers = 0
-            if section:
-                inner = struct.unpack(">Q" if big else ">I", f.read(wide))[0]
-                layers = abs(struct.unpack(">h", f.read(2))[0]) if inner else 0
+        try:
+            with open(src, "rb") as f:
+                sig, ver, _, channels, height, width, depth, mode = struct.unpack(">4sH6sHIIHH", f.read(26))
+                if sig != b"8BPS":
+                    raise ValueError(f"{src.name} is not a PSD file.")
+                big = ver == 2
+                for _skip in range(2):   # the colour mode data, then the image resources
+                    f.seek(struct.unpack(">I", f.read(4))[0], 1)
+                wide = 8 if big else 4
+                section = struct.unpack(">Q" if big else ">I", f.read(wide))[0]
+                layers = 0
+                if section:
+                    inner = struct.unpack(">Q" if big else ">I", f.read(wide))[0]
+                    layers = abs(struct.unpack(">h", f.read(2))[0]) if inner else 0
+        except struct.error as exc:
+            raise ValueError(f"{src.name} is not a readable PSD: {exc}") from exc
         info.update(width=width, height=height, mode=_PSD_MODES.get(mode, str(mode)), depth=depth, channels=channels, layers=layers)
     elif suffix in (".fvd", ".fmv", ".ora"):
         try:
@@ -848,7 +851,7 @@ def _info(args: dict) -> dict:
                     layers = manifest.get("layers") or []
                     info.update(width=manifest.get("width"), height=manifest.get("height"), layers=len(layers), groups=sum(1 for l in layers if l.get("isGroup")),
                                 **{k: manifest[k] for k in ("mode", "depth", "profile", "resolution") if k in manifest})
-        except (zipfile.BadZipFile, KeyError, StopIteration, ValueError) as exc:
+        except (zipfile.BadZipFile, KeyError, StopIteration, ValueError, AttributeError, TypeError) as exc:
             raise ValueError(f"{src.name} is not a readable project: {exc}") from exc
     else:
         from PIL import Image
@@ -1158,6 +1161,9 @@ async def _agent_call(client: str, name: str, args: dict, cli: bool = False) -> 
     except asyncio.CancelledError:
         agents.end(entry, "error", "cancelled by the agent")
         raise
+    except Exception as exc:
+        agents.end(entry, "error", str(exc))
+        return _fail(f"{name} failed: {exc}")
     _announce(name, bool(out.get("isError")))
     first = next((c.get("text", "") for c in out.get("content", []) if c.get("type") == "text"), "")
     agents.end(entry, "error" if out.get("isError") else "ok", first)
