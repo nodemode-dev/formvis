@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Editing an Adaptive Wide Angle or Liquify smart filter keeps its own lens model and mesh size · v2.3.4 (ui/panels/wide-angle-dialog.ts, ui/panels/liquify-dialog.ts)
+
+- Why: review formvis__panels-g-w F5 (fixer P2, kind: fix, logged 2026-11-11). `Dialog.open()` runs `restoreRemembered()` after `show()` has loaded the filter being edited; the Correction select (not in the skip list) went back to the last-used model and fired its handler (`model` replaced, `pick` cleared), so OK saved the wrong lens; in Liquify the remembered Mesh size fired `setCell()`, which resampled the saved field to another cell size.
+- `WideAngleDialog.show`: `want = { ...this.s }` before `open()`; when a filter is edited (`o`), `this.s = want` after it, with `model.set`, `strength.set` (no events) and `syncRows()`. `LiquifyDialog.show`: `keep` is the saved field when it was taken; if `open()` replaced `this.liq`, the field, `this.cell` and the Mesh size select are put back and the preview redrawn. The remembered values are not changed.
+- Checked: `tsc --noEmit` (no error in these files). Not run: the window.
+
+## Each Local models card follows and cancels only its own download · v2.3.4 (ui/panels/local-models.ts, landed in 94c66b2)
+
+- Why: review formvis__panels-g-w F4 (fixer P2, kind: fix, logged 2026-11-11). `LocalModelsSection` kept one `job` field for every card: a second download replaced it, so the first card's `follow` loop exited (`this.job !== job`) with its progress frozen and its `done()` never run, and the first card's Cancel sent DELETE for the second card's job.
+- `follow` and `cancelButton`: `job` is replaced by `jobs`, a `Map` from the card's status note to the job it follows. `follow` loops while `jobs.get(note) === job`, ignores a poll answered after a Cancel, and deletes the entry when the job ends or the engine is lost; Cancel deletes and stops only `jobs.get(note)`. The call sites are unchanged, since each card already passes its own note to both. This entry was meant for 94c66b2 and lands with the next fix.
+- Checked: `tsc --noEmit` (no error in this file). Not run: two downloads against the engine.
+
 ## Smudge and Liquify no longer leave a see-through rim on opaque pixels · v2.3.4 (engine/transform-commit.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/transform-commit.ts` `commitWarpStroke`.

@@ -141,7 +141,9 @@ export class LiquifyDialog extends Dialog {
     this.meshRow.set(String(this.cell));
     this.syncTools();
     this.render();
+    const keep = this.liq === saved ? saved : null;
     this.open();
+    if (keep && this.liq !== keep) { this.cell = keep.cell; this.liq = keep; this.meshRow.set(String(keep.cell)); this.render(); }
   }
 
   /** Alt held while dragging: Push Left pushes right instead (36.4). */
