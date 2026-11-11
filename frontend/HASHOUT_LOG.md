@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A second question never strands the first; New Document keeps focus and honours Cancel · v2.3.4 (ui/dialogs.ts, ui/app-dialogs.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/dialogs.ts` `SaveChanges.ask`, `Confirm.ask`, `Prompt.ask`; `ui/app-dialogs.ts` `UpdateDialog.ask`, `NewCanvasDialog.renderCards`, `NewCanvasDialog.create`. One commit because the three fixes share `app-dialogs.ts`.
+- Wrong (1): asked again while open, each dialog overwrote `this.resolve`, so the first caller's promise never settled (Close Tab's Unsaved Changes then the quit flow; recovery then the Targa question). Each `ask()` now first settles the pending one as cancelled: `false`, `null`, `{ choice: 'cancel', all: false }`, `'later'`.
+- Wrong (2): `renderCards` cleared `this.cards` on every pick, removing the focused card; focus fell to the body and Escape no longer reached the scrim. It now records whether focus was inside the cards and afterwards focuses the `.is-on` card, else the `.cv-dialog` frame.
+- Wrong (3): Cancel or Escape while `create()` awaited `prepare` (CMYK profile) still made the document. It now returns when `!this.isOpen` after `prepare`.
+- Verified: `tsc --noEmit` (no error in these files), `vitest run src/ui` 6 passed. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+      if (!apply) return;
+```
+
 ## Select rows add their options as text · v2.3.4 (ui/panels/controls.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/controls.ts` `selectRow` (handoff from the panels review, F1).

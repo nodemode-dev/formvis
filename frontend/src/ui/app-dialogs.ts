@@ -236,6 +236,7 @@ export class NewCanvasDialog extends Dialog {
     setHidden(this.deletePreset, !this.picked || !this.savedGroup().presets.includes(this.picked));
     const q0 = this.search.value.trim().toLowerCase();
     const list = q0 ? PRESET_GROUPS.flatMap((g) => g.presets).filter((p) => p.name.toLowerCase().includes(q0)) : PRESET_GROUPS.find((g) => g.id === this.category)?.presets ?? [];
+    const had = this.cards.contains(document.activeElement);
     this.cards.textContent = '';
     for (const p of list) {
       const card = el<HTMLButtonElement>('<button class="cv-nd-card" type="button"><span class="cv-nd-thumb"><span class="cv-nd-page"></span></span><span class="cv-nd-name"></span><span class="cv-nd-spec"></span></button>');
@@ -254,6 +255,7 @@ export class NewCanvasDialog extends Dialog {
       this.cards.appendChild(card);
     }
     if (!list.length) this.cards.appendChild(el('<p class="cv-nd-none">No preset matches.</p>'));
+    if (had) (this.cards.querySelector<HTMLElement>('.cv-nd-card.is-on') ?? q<HTMLElement>(this.scrim, '.cv-dialog')).focus();
   }
 
   private sync(): void {
@@ -359,7 +361,7 @@ export class NewCanvasDialog extends Dialog {
     try {
       this.keepValues();
       const apply = await this.prepare(this.mode.value as NewMode, Number(this.depth.value) as NewDepth);
-      if (!apply) return;
+      if (!apply || !this.isOpen) return;
       const choice = this.fill.value, hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(this.fillColour.value);
       const rgb: RGB | null = choice === 'black' ? { r: 0, g: 0, b: 0 } : choice === 'custom' && hex ? { r: parseInt(hex[1], 16), g: parseInt(hex[2], 16), b: parseInt(hex[3], 16) } : null;
       const fill = rgb ?? (choice === 'custom' ? 'white' : choice as 'transparent' | 'white' | 'background');
@@ -1605,6 +1607,7 @@ export class UpdateDialog extends Dialog {
   }
 
   ask(message: string, notes: string | null): Promise<'install' | 'later' | 'skip'> {
+    this.resolve?.('later');
     setText(this.line, message);
     setText(this.notes, notes ?? '');
     setHidden(this.notes, !notes);

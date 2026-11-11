@@ -273,6 +273,7 @@ class SaveChanges extends Dialog {
     this.onClose = () => this.finish('cancel');
   }
   ask(name: string, many: boolean): Promise<{ choice: 'save' | 'discard' | 'cancel'; all: boolean }> {
+    this.resolve?.({ choice: 'cancel', all: false });
     setText(this.question.querySelector('strong') as HTMLElement, name);
     this.all.hidden = !many;
     q<HTMLInputElement>(this.all, 'input').checked = false;
@@ -324,6 +325,7 @@ class Confirm extends Dialog {
 
   /** A destructive question opens with Cancel focused, so Return alone never confirms it; the arrow keys move between the buttons. */
   ask(title: string, text: string, okLabel: string, danger: boolean, cancelLabel = 'Cancel'): Promise<boolean> {
+    this.resolve?.(false);
     this.setTitle(title);
     setText(this.note, text);
     setText(this.ok, okLabel);
@@ -359,6 +361,7 @@ class Prompt extends Dialog {
   }
 
   ask(title: string, value: string, okLabel: string): Promise<string | null> {
+    this.resolve?.(null);
     this.setTitle(title);
     setText(this.ok, okLabel);
     this.input.value = value;
