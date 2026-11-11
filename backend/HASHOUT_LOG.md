@@ -2,6 +2,16 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Sends to ComfyUI and NodeMode run off the event loop · _v2.3.4 (app/routers/comfyui.py send, run, upscale; app/routers/nodemode.py send)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F3.
+- Why: the four routes were `async def` and called `outbound.request` (plain `urllib.request.urlopen`, 20 s connect timeout, up to 64 uploads a call) and `_follow`'s `ready.wait(2)` directly, so a slow, firewalled or busy target blocked the event loop and the whole engine (bridge long poll, terminal sockets, saves) waited.
+- Change: each is a plain `def` route that FastAPI runs in its thread pool; uploads are read with `f.file.read()`, `run` calls `send(...)` and `upscale` calls `run(...)` without `await`.
+- Checked: the ComfyUI and NodeMode test files (21 tests) pass with OpenCV stubbed by a scratch pytest plugin. The blackholed-target timing check was not run.
+- Replaced, quoted exactly:
+  - `comfyui.py`: `async def send(target: str = Form(...), items: str = Form(...), files: list[UploadFile] = File(...)) -> dict:`, `            data = await f.read()`, `async def run(target: str = Form(...), workflow: str = Form(...), items: str = Form("[]"), prompt: str | None = Form(None), files: list[UploadFile] | None = File(None)) -> dict:`, `    uploaded = await send(target=target, items=items, files=files) if takes_image and files else {"files": []}   # text to image sends nothing`, `async def upscale(target: str = Form(...), model: str = Form(...), image: UploadFile = File(...)) -> dict:`, `    return await run(target=target, workflow=json.dumps(flow), items=json.dumps([{"name": "Upscale", "kind": "image"}]), prompt=None, files=[image])`
+  - `nodemode.py`: `async def send(target: str = Form(...), title: str = Form("formvis"), items: str = Form(...), files: list[UploadFile] = File(...)) -> dict:`, and `_upload(base, name, await f.read())` in its loop.
+
 ## Downloads and installs run beside generations; a waiting download cancels · _v2.3.4 (app/localgen/jobs.py _installs new, INSTALL_KINDS new, submit; app/localgen/model_manager.py download)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F1.

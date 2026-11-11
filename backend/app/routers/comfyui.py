@@ -378,7 +378,7 @@ def reupload(request: Request, target: str = Form(...), names: str = Form(...)) 
 
 
 @router.post("/send")
-async def send(target: str = Form(...), items: str = Form(...), files: list[UploadFile] = File(...)) -> dict:
+def send(target: str = Form(...), items: str = Form(...), files: list[UploadFile] = File(...)) -> dict:
     """Uploads `files` into ComfyUI's input folder. `items` is JSON, one entry per file in order: its name and kind
     (image, layer or mask). Replies with each file's name as ComfyUI's Load Image lists it."""
     base = _base(target)
@@ -391,7 +391,7 @@ async def send(target: str = Form(...), items: str = Form(...), files: list[Uplo
     try:
         for m, f in zip(meta, files):
             name = "".join(c if c.isalnum() or c in " -_." else "_" for c in str(m.get("name") or "image"))[:120].strip() or "image"
-            data = await f.read()
+            data = f.file.read()
             body, kind = outbound.multipart("image", f"{name}.png", data, {"type": "input", "subfolder": SUBFOLDER, "overwrite": "true"})
             with _request(base + "/upload/image", body, {"Content-Type": kind}, "POST") as r:
                 reply = json.loads(r.read() or b"{}")
@@ -499,7 +499,7 @@ def _follow(base: str, client: str) -> None:
 
 
 @router.post("/run")
-async def run(target: str = Form(...), workflow: str = Form(...), items: str = Form("[]"), prompt: str | None = Form(None), files: list[UploadFile] | None = File(None)) -> dict:
+def run(target: str = Form(...), workflow: str = Form(...), items: str = Form("[]"), prompt: str | None = Form(None), files: list[UploadFile] | None = File(None)) -> dict:
     """Uploads the inputs, fills the workflow and queues it. Replies with the job's id and what was filled."""
     base = _base(target)
     try:
@@ -508,7 +508,7 @@ async def run(target: str = Form(...), workflow: str = Form(...), items: str = F
         raise HTTPException(status_code=422, detail="That file is not a ComfyUI workflow (it is not JSON).")
     _fill(json.loads(workflow), None, None, None)   # its format checked before anything is uploaded
     takes_image = any(n.get("class_type") == "LoadImage" for n in flow.values())
-    uploaded = await send(target=target, items=items, files=files) if takes_image and files else {"files": []}   # text to image sends nothing
+    uploaded = send(target=target, items=items, files=files) if takes_image and files else {"files": []}   # text to image sends nothing
     image = next((f["name"] for f in uploaded["files"] if f["kind"] not in ("mask", "reference") and not str(f["kind"]).startswith("control ")), None)
     references = [f["name"] for f in uploaded["files"] if f["kind"] == "reference"]
     controls = {str(f["kind"])[len("control "):]: f["name"] for f in uploaded["files"] if str(f["kind"]).startswith("control ")}
@@ -569,7 +569,7 @@ def upscale_models(target: str) -> dict:
 
 
 @router.post("/upscale")
-async def upscale(target: str = Form(...), model: str = Form(...), image: UploadFile = File(...)) -> dict:
+def upscale(target: str = Form(...), model: str = Form(...), image: UploadFile = File(...)) -> dict:
     """Queues the picture through a chosen upscaler file on ComfyUI (Load Image, Load Upscale Model, Upscale Image (using
     Model), Save Image); follow it with /job and fetch the result with /image, at the model's own size."""
     listed = upscale_models(target)
@@ -580,7 +580,7 @@ async def upscale(target: str = Form(...), model: str = Form(...), image: Upload
     flow = {"1": {"class_type": "LoadImage", "inputs": {"image": "x"}}, "2": {"class_type": "UpscaleModelLoader", "inputs": {"model_name": model}},
             "3": {"class_type": "ImageUpscaleWithModel", "inputs": {"upscale_model": ["2", 0], "image": ["1", 0]}},
             "4": {"class_type": "SaveImage", "inputs": {"images": ["3", 0], "filename_prefix": "formvis-upscale"}}}
-    return await run(target=target, workflow=json.dumps(flow), items=json.dumps([{"name": "Upscale", "kind": "image"}]), prompt=None, files=[image])
+    return run(target=target, workflow=json.dumps(flow), items=json.dumps([{"name": "Upscale", "kind": "image"}]), prompt=None, files=[image])
 
 
 @router.get("/job/{job}")
