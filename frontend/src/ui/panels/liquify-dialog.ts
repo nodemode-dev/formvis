@@ -85,8 +85,9 @@ export class LiquifyDialog extends Dialog {
     this.scrim.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
       e.preventDefault();
+      e.stopPropagation();
       this.stepStroke(e.shiftKey);
-    });
+    }, { capture: true });
     const saveMesh = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Save Mesh...</button>');
     saveMesh.addEventListener('click', () => this.saveMesh());
     const loadMesh = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Load Mesh...</button>');

@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The native renderer follows live previews and lets go of layers it no longer draws · v2.3.4 (gpu/native-display.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/native-display.ts` `NativeDisplay.put`, `frame`, `entries` (the table branch), `shown` and `used` (new).
+- Why: review formvis__extensions-gpu-config F7 and the orchestrator's handoff from formvis__native-tauri-packaging (fixer X1). `put` skipped an image whose version equalled the one last sent; live previews on a mask or clipping base carry version -1 every frame, so the preview froze after its first frame (the WebGPU and WebGL2 displays upload every frame for a negative version). And `native_remove` was never called, so the renderer kept the tiles and tables of every replaced or deleted layer, and of documents no longer shown, for the session.
+- Change: `put` returns early only when `version >= 0` and the version matches. `frame` starts a fresh `used` map (id to object), `put` and the table branch record into it, and after `present` every id of the previous frame's `shown` that this frame did not use is sent to `native_remove({ id })` and dropped from `sent`, so it is sent again if it comes back (switching back to a document). Tables are covered too: the renderer's `Document::remove` drops both layers and tables.
+- Verified: `tsc --noEmit` (no error in this file). Not run: the desktop app (no Tauri shell or GPU here).
+- Replaced, quoted exactly:
+
+```text
+    if (this.sent.get(img) === version) return id;
+```
+
 ## Layer Comps: Last Document State stays on top; the Measurement Log's selection stays with its document · v2.3.4 (ui/layer-comps.ts, ui/measurement-log.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/layer-comps.ts` `LayerCompsPanel.sync`, `compRows` (new); `ui/measurement-log.ts` `MeasurementLogPanel.sync`, `selectedIn` (new). Two commits.
