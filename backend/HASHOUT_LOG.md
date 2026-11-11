@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Features that need scipy answer 501 naming it · _v2.3.4 (app/routers/merge.py panorama_route, hdr_route; app/routers/remove_find.py find_route)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F1.
+- Why: `panorama` (layouts Auto and Reposition), `_ghost_weight` (Merge to HDR with ghost above 0), `_distractions` and `find` import `scipy.ndimage`, and scipy is in no base requirements file (NOTICE lists it only under the frozen ML extra). On a default install the merge routes answered a bare 500 (only ValueError was mapped) and `/api/remove/find` a 500 "Finding people failed: No module named 'scipy'".
+- Change: the three routes catch `ModuleNotFoundError` before their other handlers and answer 501 with the feature and `exc.name`. Owner decision left open: add scipy to `requirements.txt` and `requirements_macos.txt` (and move its NOTICE row), or replace the four ndimage calls with OpenCV ones.
+- Checked: a scratch app with the two routers (cv2 stubbed, the workers replaced by functions that import scipy, which the venv lacks): each route answers 501 naming scipy. The real paths not run (no OpenCV in the venv).
+
 ## mcp --root and --read-root refuse a save or export with no path · _v2.3.4 (setup/mcp_stdio.py CONTROL, outside_roots)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F5.
