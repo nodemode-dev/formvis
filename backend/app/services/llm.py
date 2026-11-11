@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 
 from app.core import config
-from app.services import secrets
+from app.services import outbound, secrets
 
 RULE = "Reply with the rewritten prompt only: no preamble, no quotes, no explanation."
 
@@ -234,7 +234,7 @@ def _call(path: str, body: dict | None = None, timeout: float = 120) -> dict:
     headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {key}"} if key else {})}
     req = urllib.request.Request(s["baseUrl"] + path, data=json.dumps(body).encode() if body is not None else None, headers=headers, method="POST" if body is not None else "GET")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with outbound.opener.open(req, timeout=timeout) as r:
             if mark:
                 _refused.pop(mark, None)
             return json.loads(r.read() or b"{}")
@@ -290,7 +290,7 @@ def chat_stream(messages: list, tools: list):
         req = urllib.request.Request(s["baseUrl"] + "/chat/completions", data=json.dumps({**body, "stream": True, "stream_options": {"include_usage": True}}).encode(), method="POST",
                                      headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {key}"} if key else {})})
         try:
-            r = urllib.request.urlopen(req, timeout=180)
+            r = outbound.opener.open(req, timeout=180)
         except urllib.error.HTTPError as exc:
             if exc.code in (400, 422):
                 yield {"done": _shape(_call("/chat/completions", body, timeout=180), body)}

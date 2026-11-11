@@ -2,6 +2,18 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A key never follows a redirect to another host · _v2.3.4 (app/services/outbound.py _SameOrigin, opener, request; app/services/llm.py _call, chat_stream; app/services/generative.py _post)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F2.
+- Why: urllib's default redirect handler copies every header but Content-Length and Content-Type into the redirected request, so a 30x from the language model service, a ComfyUI proxy or a plain-http man in the middle sent `Authorization` (or ComfyUI's sign-in header) to any host it named.
+- Now: `outbound.opener` follows a redirect only when scheme, host and port stay the same; otherwise it raises HTTPError with the redirect's code, which each caller already reports as a service error. `outbound.request`, `llm._call`, `llm.chat_stream` and `generative._post` open through it. `generative._download` sends no key and still uses `urlopen`.
+- Checked: two local servers: a 302 to another port is refused and the other server sees no request; a same-origin 302 is still followed with its header.
+- Replaced, quoted exactly:
+  - `outbound.request`: `    return urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers or {}, method=method), timeout=timeout)`
+  - `llm._call`: `        with urllib.request.urlopen(req, timeout=timeout) as r:`
+  - `llm.chat_stream`: `            r = urllib.request.urlopen(req, timeout=180)`
+  - `generative._post`: `        with urllib.request.urlopen(request, timeout=180) as response:`
+
 ## agents install on Windows writes a Codex config that parses · _v2.3.4 (setup/agents.py ARGS, install_claude, install_codex, install_cursor)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F2.

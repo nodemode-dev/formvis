@@ -2,6 +2,7 @@
 and used as given, plain requests, and multipart image uploads. The engine sends rather than the page, as a page
 cannot post to another app's address unless that app allows it."""
 
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -17,8 +18,21 @@ def base(target: str, app: str, example: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
 
 
+class _SameOrigin(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect only to the same scheme, host and port, so a key in the headers never reaches another host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old, new = urllib.parse.urlparse(req.full_url), urllib.parse.urlparse(urllib.parse.urljoin(req.full_url, newurl))
+        if (old.scheme, old.hostname, old.port) != (new.scheme, new.hostname, new.port):
+            raise urllib.error.HTTPError(req.full_url, code, f"{msg}: a redirect to another address is not followed", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+opener = urllib.request.build_opener(_SameOrigin)
+
+
 def request(url: str, data: bytes | None = None, headers: dict | None = None, method: str = "GET", timeout: float = 20):
-    return urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers or {}, method=method), timeout=timeout)
+    return opener.open(urllib.request.Request(url, data=data, headers=headers or {}, method=method), timeout=timeout)
 
 
 def multipart(file_field: str, filename: str, blob: bytes, fields: dict | None = None) -> tuple[bytes, str]:
