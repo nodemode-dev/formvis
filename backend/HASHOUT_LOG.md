@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## One FLUX.2 [klein] picture withheld by the filter no longer fails the batch · _v2.3.4 (app/localgen/klein.py generate_to_file; app/localgen/generate.py _generate_local)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F4.
+- Why: klein raised ValueError for a withheld picture and the loop had no handler, so the whole batch ended in "error" and the pictures already made were lost; Krea 2 notes the picture and keeps the rest.
+- Now: klein deletes the picture and returns `{"withheld": True, "nsfw", "seed"}` like `krea2.generate_many`, and the klein branch of `_generate_local` appends the same note and continues.
+- Checked: a fake klein runner withholding call 3 of 4: "done", three pictures, one note.
+- Replaced, quoted exactly: `            raise ValueError(f"The content filter withheld this picture (NSFW score {verdict['nsfw']:.2f}).")`
+
 ## The browser window opened for an agent uses the engine's port · _v2.3.4 (app/routers/mcp.py _open_window)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F13.

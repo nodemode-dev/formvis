@@ -690,6 +690,11 @@ def _generate_local(body: GenerateBody):
                     cancelled=cancelled,
                     folder=checkpoint,
                 )
+                if result.get("withheld"):
+                    notes.append(
+                        f"picture {index + 1} (seed {result['seed']}) withheld by the content filter, NSFW score {result['nsfw']:.2f}"
+                    )
+                    continue
             elif slot["runner"] == "command":
                 result = run_command_slot(slot, body.prompt, staged, width, height, seconds, this_seed, each, cancelled)
             else:

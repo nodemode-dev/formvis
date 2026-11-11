@@ -205,7 +205,7 @@ def generate_to_file(
         verdict = content_filter.check(np.asarray(Image.open(path).convert("RGB")))
         if verdict["withheld"]:
             path.unlink(missing_ok=True)
-            raise ValueError(f"The content filter withheld this picture (NSFW score {verdict['nsfw']:.2f}).")
+            return {"withheld": True, "nsfw": verdict["nsfw"], "seed": seed}
     with Image.open(path) as picture:
         size = picture.size
     return {
