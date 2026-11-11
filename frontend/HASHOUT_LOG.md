@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Export As and Artboards to PDF start from the current document's name · v2.3.4 (ui/panels/export-dialog.ts, ui/panels/artboard-pdf-dialog.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ExportDialog.show` and `ArtboardPdfDialog.show`.
+- Wrong: the name typed in Export As stayed in `this.s.fileName` for the session (stripped only from the stored copy), so another document's Export As was prefilled with it and `exportName()` used it; Artboards to PDF kept the first document's name for every later one. Now Export As sets `fileName: undefined` before `load()` on each show, and Artboards to PDF takes the name from the current document each time.
+- Verified: `tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly (export-dialog.ts only gained a line):
+
+```text
+    this.s = { ...this.s, name: this.s.name || p.name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled' };
+```
+
 ## Duotone, Color Range and Focus Area open with the document's own state · v2.3.4 (ui/panels/duotone-dialog.ts, ui/panels/color-range-dialog.ts, ui/panels/focus-area-dialog.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to the constructors' `remember()` calls and `ColorRangeDialog.show`.
