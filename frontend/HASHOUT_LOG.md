@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Panel tabs come back to the strip when a group gets wider · v2.3.4 (ui/panel-group.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panel-group.ts` `PanelGroup` constructor, `fitTabs` (review formvis__ui-o-z.md F2).
+- Wrong: since 2.3.3 `fitTabs` counts strip plus `.cv-group-space` as the room. The strip is `flex: 0 1 auto` at its content width and the spacer `flex: 1`, so after a narrow fit (tabs `is-over` behind the chevron, or `is-compact`/`is-tight`) widening the dock grew only the spacer; the ResizeObserver on the strip never fired and the tabs stayed folded until a click, a language change or a tab move.
+- Now: one ResizeObserver watches the strip and `.cv-group-head`. The head's width follows the group's only, so the class changes in `fitTabs` cannot loop it.
+- Verified: `npx tsc --noEmit` clean. Not run: e2e/test_channels.py and a dock drag narrow then wide (window needed).
+- Replaced, quoted exactly:
+
+```text
+    new ResizeObserver(() => this.fitTabs()).observe(strip);
+```
+
 ## An extension cannot write action steps; Working Files cleanup is risky · v2.3.4 (formext/extensions.ts, automation/command-meta.ts)
 
 - Why: review formvis__app-automation F1 (fixer A1, logged 2026-11-11). An extension with only the `document` permission sent `load-actions` with a menu step naming `close-document` and then `play-action`; `runStep` ran the step with `c.run()` below the risky check in `FormExtensions.op`, so the document closed with its changes gone and the action stayed in the person's list. `clean-working-files` was flagged `'m'`, so an extension could also delete every recovery copy and closed tab directly.

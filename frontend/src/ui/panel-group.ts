@@ -76,7 +76,9 @@ export class PanelGroup {
     host.appendChild(this.root);
     // Tabs fit in steps (1.49.6, the owner's walkthrough: tabs were shortened to Chann..., Pa...): normal, then compact,
     // then tight lettering, and only then are inactive tabs shortened; again whenever the width or the tabs change.
-    new ResizeObserver(() => this.fitTabs()).observe(strip);
+    const fit = new ResizeObserver(() => this.fitTabs());
+    fit.observe(strip);
+    fit.observe(this.root.querySelector('.cv-group-head') as HTMLElement);
   }
 
   fitTabs(): void {
