@@ -164,13 +164,13 @@ def hdr(images: list[bytes], align: bool = True, times: list[float] | None = Non
     elif all(e for e in exif):
         times, source = np.array(exif, np.float32), "EXIF"
     else:
-        base = int(np.argsort([float(np.median(l)) for l in lin])[len(lin) // 2])
+        ref = int(np.argsort([float(np.median(l)) for l in lin])[len(lin) // 2])
         times = np.ones(len(lin), np.float32)
         for k, l in enumerate(lin):
-            if k == base:
+            if k == ref:
                 continue
-            ok = (l > 0.05) & (l < 0.85) & (lin[base] > 0.05) & (lin[base] < 0.85)
-            times[k] = float(np.median(l[ok] / lin[base][ok])) if ok.sum() > 100 else 1.0
+            ok = (l > 0.05) & (l < 0.85) & (lin[ref] > 0.05) & (lin[ref] < 0.85)
+            times[k] = float(np.median(l[ok] / lin[ref][ok])) if ok.sum() > 100 else 1.0
         source = "estimated from the photos"
     response = cv2.createCalibrateDebevec().process(imgs, times)
     radiance = cv2.createMergeDebevec().process(imgs, times, response)   # BGR, as the photos are here

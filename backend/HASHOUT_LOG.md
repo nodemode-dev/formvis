@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Merge to HDR keeps the chosen ghost base with estimated times · _v2.3.4 (app/routers/merge.py hdr)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F7.
+- Why: with no EXIF exposure times and none typed in, the estimation branch stored its median-bright reference in `base`, the person's chosen ghost base, so with Remove Ghosts on `pick` took the median photo and not the chosen one.
+- Change: the estimation's reference is the local `ref`; `base` reaches the ghost step unchanged (with -1 it still uses the middle exposure).
+- Checked: by reading only (hdr needs OpenCV and scipy, which the venv lacks).
+- Replaced, quoted exactly: `        base = int(np.argsort([float(np.median(l)) for l in lin])[len(lin) // 2])`, `            if k == base:`, `            ok = (l > 0.05) & (l < 0.85) & (lin[base] > 0.05) & (lin[base] < 0.85)`, `            times[k] = float(np.median(l[ok] / lin[base][ok])) if ok.sum() > 100 else 1.0`.
+
 ## ffmpeg's report read as UTF-8 · _v2.3.4 (app/routers/video.py _probe, _frames, _encode)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F6.
