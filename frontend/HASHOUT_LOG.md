@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Photomerge, Merge to HDR, Load Files into Stack, Large Picture and TIFF Pages stop on Cancel and run once · v2.3.4 (ui/panels/merge-dialog.ts, ui/panels/load-stack-dialog.ts, ui/panels/large-picture.ts, ui/panels/tiff-pages.ts)
+
+- Why: review formvis__panels-g-w F9 (fixer P2, kind: fix, logged 2026-11-11). `MergeDialog.apply`, `LoadStackDialog.apply`, `LargePictureDialog.go` and `TiffPagesDialog.go` kept OK enabled through the engine's stitch, merge, decode or region calls and never checked afterwards whether the dialog had been closed, so Cancel still opened the panorama, HDR, stack, tiles or pages, and a second OK ran the job again.
+- Each dialog has `busy` and `ticket`; `onClose` bumps the ticket and clears `busy`. The method returns at once while `busy` (Merge and Load Stack set `failed`, so `drive` throws "A merge is already running." or "Files are already loading."), takes `t = this.ticket`, and after each await returns when `this.ticket !== t`, before `close()` and before any document is opened (each tile and each page too); `finally` clears `busy` when the ticket is still `t`. `drive` runs with the dialog closed, so no close bumps its ticket. `TiffPagesDialog.go` as layers decodes every page first, then makes the document and inserts them, so a Cancel leaves no half-built document and pages cannot land in a document switched to meanwhile. In `LargePictureDialog.go` the tile loop variable is `g`, since `t` is the ticket. OK is not disabled while busy; a second press is ignored.
+- Checked: `tsc --noEmit` (0 errors). Not run: the window against the engine.
+
 ## Document events reach only extensions granted the document permission · v2.3.4 (formext/host-bridge.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `formext/host-bridge.ts` `ExtensionHost.broadcast`, fed by `formext/extensions.ts` `watchEngine`. Handoff from fixer X1, formvis__extensions-gpu-config F6 (fixed by A1).

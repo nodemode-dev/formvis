@@ -51,6 +51,7 @@ export class LoadStackDialog extends Dialog {
     this.modeRow.set('median');
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());
+    this.onClose = () => { this.ticket++; this.busy = false; };
   }
 
   show(): void { this.files = []; this.input.value = ''; this.describe(); setText(this.note, ''); this.open(); }
@@ -70,14 +71,19 @@ export class LoadStackDialog extends Dialog {
   }
 
   private failed = '';
+  private busy = false;
+  private ticket = 0;
 
   private async apply(): Promise<void> {
     if (this.files.length < 2) { this.failed = 'Choose at least two files.'; setText(this.note, this.failed); return; }
-    const files = this.files;
+    if (this.busy) { this.failed = 'Files are already loading.'; return; }
+    this.busy = true;
+    const files = this.files, t = this.ticket;
     setText(this.note, 'Loading...');
     try {
       const imgs = [];
       for (const f of files) imgs.push(await decodeImage(f, f.name));
+      if (this.ticket !== t) return;
       this.close();
       const align = this.align, made = this.engine.loadStack(imgs, align ? { smart: false, mode: 'none' } : this.statistics ? { smart: true, mode: this.mode } : { smart: this.smart, mode: 'none' });
       if (align && made) {
@@ -91,5 +97,6 @@ export class LoadStackDialog extends Dialog {
         }
       }
     } catch (err) { this.failed = err instanceof Error ? err.message : 'These files could not be loaded.'; setText(this.note, this.failed); }
+    finally { if (this.ticket === t) this.busy = false; }
   }
 }
