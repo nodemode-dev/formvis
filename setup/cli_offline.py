@@ -312,7 +312,7 @@ def hdr_cmd(argv: list[str]) -> int:
         return 2
     try:
         times = ",".join(str(eval_fraction(t)) for t in a.times.split(",") if t.strip())
-    except ValueError:
+    except (ValueError, ZeroDivisionError):
         say("--times takes numbers or fractions such as 1/60, comma separated.")
         return 2
     got = engine_call("/api/merge/hdr", files, {"align": str(not a.no_align).lower(), "times": times})

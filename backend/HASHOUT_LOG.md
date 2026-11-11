@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## cli hdr --times 1/0 prints the usage message · _v2.3.4 (setup/cli_offline.py hdr_cmd)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F13.
+- Why: `eval_fraction("1/0")` raised ZeroDivisionError, which `hdr_cmd` did not catch, so the command ended in a traceback.
+- `hdr_cmd` catches `(ValueError, ZeroDivisionError)` and prints the --times message, exit 2. Replaced, quoted exactly: `    except ValueError:` (the one after the --times parse).
+- Checked: `cli.py hdr h1.png h2.png --times 1/0` printed the message and exited 2.
+
 ## clean --all on Windows removes the venv on its own · _v2.3.4 (setup/clean.bat)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F12.
