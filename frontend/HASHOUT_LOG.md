@@ -730,12 +730,13 @@ import type { Engine } from '../engine';
       },
 ```
 
-## The options bar refits when a tool's conditional controls appear · v2.3.4 (ui/options.ts)
+## The options bar refit on conditional controls, tried and withdrawn · v2.3.4 (ui/options.ts)
 
-- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/options.ts` `OptionsBar.queue` (review formvis__ui-o-z.md F7).
-- Wrong: the `g.sig !== this.sigOf(g)` refit ran only in `show()` (tool events); controls shown by an `options` event (Clone Stamp Show Overlay, symmetry, airbrush, Shape Path mode) overflowed the bar until the next tool or width change. Now the queued frame runs `refresh()`, then the same signature check, and on a change `fit`, `paintMore` and `syncEdges`.
-- Verified: `npx tsc --noEmit` clean. Not run in a window.
-- Replaced, quoted exactly:
+- Kind: withdrawn fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/options.ts` `OptionsBar.queue` (review formvis__ui-o-z.md F7).
+- The finding: the `g.sig !== this.sigOf(g)` refit runs only in `show()` (tool events), so controls shown by an `options` event (Clone Stamp Show Overlay, symmetry, airbrush, Shape Path mode) overflow the bar and scroll behind its edge chevrons until the next tool or width change.
+- Tried: the queued frame ran `refresh()`, then the same signature check, and on a change `fit`, `paintMore` and `syncEdges`. It compiled and was not run in a window when it was committed.
+- Withdrawn in the same release, before any push, because the browser suite showed what it does to a control the user has just asked for: the refit moves the newly shown controls into the More panel in the same frame. At 1400 px, choosing W × H × Res in Crop left only Crop and Cancel on the bar with the W, H and Resolution fields in More, and the Healing Brush's Pattern list, the Patch tool's Sample All Layers, Crop's Show Cropped Area and the Move tool's transform fields were no longer where a click had put them. Five tests failed on it: `e2e/test_crop_size.py`, `e2e/test_heal_patterns.py` (the bars offer the pattern), `e2e/test_patch_sample_all.py` (the option shows in Content-Aware mode), `e2e/test_cover_doc2_layers_paint_crop.py` (Show Cropped Area) and `e2e/test_cover_misc_defect_options_bar.py` (d07, the Move tool's transform fields are on the bar).
+- `queue()` is back to its 2.3.3 line, quoted exactly below. The finding stays open for the owner: a refit that keeps the just-shown controls on the bar (moving older sections out first) would close it without this cost.
 
 ```text
     this.frame = requestAnimationFrame(() => { this.frame = 0; this.refresh(); });

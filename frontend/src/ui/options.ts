@@ -126,12 +126,7 @@ export class OptionsBar {
   /** Coalesces refresh requests into at most one per animation frame. */
   private queue(): void {
     if (this.frame) return;
-    this.frame = requestAnimationFrame(() => {
-      this.frame = 0;
-      this.refresh();
-      const g = this.groups.get(this.engine.tool);
-      if (g && g.sig !== this.sigOf(g)) { this.fit(g); this.paintMore(); this.syncEdges(); }
-    });
+    this.frame = requestAnimationFrame(() => { this.frame = 0; this.refresh(); });
   }
 
   /** Builds the hidden row for one tool; each control is created once and refreshed in place by its sync function. */
