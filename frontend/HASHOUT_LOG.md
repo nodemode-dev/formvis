@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The command reference says Clean Working Files asks first · v2.3.4 (.claude/skills/formvis-driving/references/commands.md, .agents mirror)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to the `clean-working-files` row of the generated command reference (handoff from A1 for formvis__app-automation.md F1, after 527c997 made the command `'mr'` in `automation/command-meta.ts`).
+- Wrong: the row still ended `(changes the picture) |`, so the reference did not say the command waits for the person, and `agents sync` would report drift once a catalogue exists.
+- Changed: `./formvis agents sync` cannot write commands.md here (no window has written the catalogue on this machine), so both copies gain ` (asks first)` by hand, what `commands_reference` writes for a risky command. Old line ending quoted: `and says how much space came back. (changes the picture) |`.
+- Checked: `agents sync --check` in step.
+
 ## Show Only This Layer solos again after an Undo · v2.3.4 (engine/index.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.soloLayer` (review formvis__engine-index.md F9).
