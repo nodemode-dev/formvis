@@ -2,6 +2,20 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The window's capability drops the window permissions the page never uses · v2.3.4 (src-tauri/capabilities/default.json)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/capabilities/default.json` `permissions`; review formvis__native-tauri-packaging F12.
+- Wrong: any page on `http://127.0.0.1:*` in the window got `core:window:allow-maximize`, `allow-unmaximize` and `allow-set-title`, which nothing calls (the page uses `toggle_maximize` and the shell's `set_window_title`; the native menu's items are predefined). They are removed.
+- Kept, found in use: `ui/caption-buttons.ts` calls minimize, toggle_maximize, is_maximized, close, start_dragging and set_decorations; `ui/panels/assistant.ts` request_user_attention; `gpu/native-display.ts` gains a `native_remove` call in another 2.3.4 fix; `shell:allow-open` serves tauri-plugin-shell's injected script, which sends every `target="_blank"` link through `plugin:shell|open`. Not done: tying the remote pattern to the engine's port in `on_navigation`.
+- Verified: grep of `frontend/src`, `frontend/public`, `e2e`, `backend/tests` and `setup` for each permission; `cargo check --locked` in `src-tauri` clean (the build step validates the capability). Not run: the e2e desktop packaging tests.
+- Replaced, quoted exactly:
+
+```text
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-set-title",
+```
+
 ## The AppImage launcher is valid when its path holds a dollar, quote or back tick · v2.3.4 (src-tauri/src/integration.rs exec_quote)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/src/integration.rs` `exec_quote`; review formvis__native-tauri-packaging F9.
