@@ -34,6 +34,7 @@ export function openInterpretFootage(engine: Engine): boolean {
   alpha.addEventListener('change', sync);
   sync();
   dlg.button('Cancel', 'ghost', () => dlg.close());
+  dlg.onClose = () => dlg.scrim.remove();
   dlg.button('OK', 'primary', () => {
     const a = alpha.value === 'ignore' || alpha.value === 'premultiplied' ? alpha.value : 'straight';
     const c = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(matte.value);

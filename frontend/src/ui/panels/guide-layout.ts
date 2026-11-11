@@ -41,6 +41,7 @@ export function openGuideLayout(engine: Engine): void {
   dlg.remember();
   const v = (i: HTMLInputElement): number => (Number.isFinite(i.valueAsNumber) ? Math.max(0, i.valueAsNumber) : 0);
   dlg.button('Cancel', 'ghost', () => dlg.close());
+  dlg.onClose = () => dlg.scrim.remove();
   dlg.button('OK', 'primary', () => {
     const d = engine.current?.doc, art = target.value === 'artboard' ? engine.guideArtboard?.artboard : null;
     const px = (i: HTMLInputElement, axis: 'x' | 'y'): number => (d ? v(i) * pixelsPer(units.value, d.resolution, axis === 'x' ? art?.w ?? d.width : art?.h ?? d.height) : v(i));

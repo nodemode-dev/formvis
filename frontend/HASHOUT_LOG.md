@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## New Guide Layout and Interpret Footage leave no hidden dialog behind · v2.3.4 (ui/panels/guide-layout.ts, ui/panels/interpret-footage.ts)
+
+- Why: review formvis__panels-g-w F13 (fixer P2, kind: fix, logged 2026-11-11). `openGuideLayout` and `openInterpretFootage` build a `new Dialog` per use; its constructor appends a scrim with listeners to `#overlay-root` and `close()` only hides it, so hidden scrims (and New Guide Layout's `remember` listeners) piled up for the session.
+- Both set `dlg.onClose = () => dlg.scrim.remove()`. `Dialog.close` hands focus back to where it came from after `onClose`.
+- Checked: `tsc --noEmit` (no error in these files). Not run: the window (`#overlay-root .cv-scrim` count over ten opens).
+
 ## Vanishing Point starts each open with the focal length the plane implies · v2.3.4 (ui/panels/vanishing-dialog.ts)
 
 - Why: review formvis__panels-g-w F12 (fixer P2, kind: fix, logged 2026-11-11). `show` sets `focalPx = null` (follow the plane's estimate), but `open()` restored the remembered Focal length slider and fired `setFocal`, pinning connected planes on the next picture to the last value typed; Child angle and depth were restored on a root plane too. Only the paste source select was in the skip list.
