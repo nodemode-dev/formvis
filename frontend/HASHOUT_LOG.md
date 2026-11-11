@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## fill and draw_shape leave the person's colours and Shape tool settings as they were · v2.3.4 (automation/agent-bridge.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `automation/agent-bridge.ts` `AgentBridge.run` cases `fill` and `draw_shape`. Review formvis__app-automation F11 (fixer A1).
+- Wrong: `fill` set `e.fg` to the agent's colour, and `draw_shape` set `e.fg`, `e.bg` and `Object.assign(e.shapeSettings, ...)`, none put back; the person's colours and Shape tool settings changed after an agent's or an extension's (`tool:fill`, `tool:draw_shape`) call.
+- Now: `fill` keeps `e.fg` and restores it in a `finally` around `e.fill('fg')`; `draw_shape` keeps `{ fg, bg, shape: { ...e.shapeSettings } }` and restores all three in a `finally` around `e.drawShape`. Both engine calls copy the colours synchronously, so the result is unchanged.
+- Verified: `tsc --noEmit` clean. Not run: the tools from an agent.
+
 ## Video Frames to Layers describes and trims the clip chosen last · v2.3.4 (ui/panels/video-dialog.ts)
 
 - Why: review formvis__panels-g-w F14 (fixer P2, kind: fix, logged 2026-11-11). `picked` stored whatever `api.videoProbe` returned last, so a slow probe of an earlier clip set `info`, To and the description for the newer `file`, and OK trimmed it with the other clip's duration and frame rate.
