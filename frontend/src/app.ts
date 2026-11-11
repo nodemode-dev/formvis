@@ -904,7 +904,7 @@ export function startApp(): void {
     home.holdForDemo(id);
     const opening = toast('Opening the demo...', 'info');
     const made = new Set<string>(), was = engine.current?.id ?? null;
-    const kept = { brush: { ...engine.brush }, dynamics: structuredClone(engine.brushDynamics), shape: structuredClone(engine.brushShape), mode: engine.brushMode, retouch: { ...engine.retouch }, clone: engine.cloneSource ? { ...engine.cloneSource } : null, slots: engine.cloneSlots.map((s) => (s ? { ...s } : null)), tool: engine.tool, fg: { ...engine.fg }, bg: { ...engine.bg } };
+    const kept = { brush: { ...engine.brush }, dynamics: structuredClone(engine.brushDynamics), shape: structuredClone(engine.brushShape), mode: engine.brushMode, retouch: { ...engine.retouch }, clone: engine.cloneSource ? { ...engine.cloneSource } : null, slots: engine.cloneSlots.map((s) => (s ? { ...s } : null)), tool: engine.tool, fg: { ...engine.fg }, bg: { ...engine.bg }, preset: engine.brushPresetId, flow: engine.brushFlow, blend: engine.brushBlend, toolOptions: loadPrefs().toolOptions };
     let built = false;
     try {
       await buildDemo(id, engine, made);
@@ -925,12 +925,16 @@ export function startApp(): void {
     } finally {
       engine.brushDynamics = kept.dynamics;
       engine.brushShape = kept.shape;
+      engine.brushPresetId = kept.preset;
+      engine.brushFlow = kept.flow;
+      engine.brushBlend = kept.blend;
       engine.setBrush({ ...kept.brush, tip: kept.brush.tip ?? null });
       engine.setBrushMode(kept.mode);
       Object.assign(engine.retouch, kept.retouch, built ? { spotSampleAll: engine.retouch.spotSampleAll } : {});
       engine.cloneSource = kept.clone;
       engine.cloneSlots = kept.slots;
       if (!built) { engine.setTool(kept.tool); engine.setColors(kept.fg, kept.bg); }
+      updatePrefs({ toolOptions: kept.toolOptions });
       demoOpening = null;
       home.holdForDemo(null);
     }

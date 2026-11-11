@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A demo leaves the saved tool options and the brush preset as they were · v2.3.4 (app.ts)
+
+- Why: review formvis__app-automation F4 (fixer A1, logged 2026-11-11). While a demo built (`await settle(e, 700)` and the rest), option memory's rAF capture wrote the active tool's options to Preferences: Clone Stamp's Sample All Layers, size 150 and hardness 20, Spot Healing's Sample All, the painting demo's brush preset. The 2.3.1 restore in `openDemo`'s `finally` covered the in-memory brush and retouch values only, so the Clone Stamp keys stayed in `prefs.toolOptions` and came back at the next launch, and `brushPresetId`, `brushFlow` and `brushBlend` (set by `applyBrushPreset`) were not kept at all.
+- `app.ts` `openDemo`: `kept` also holds `preset: engine.brushPresetId`, `flow: engine.brushFlow`, `blend: engine.brushBlend` and `toolOptions: loadPrefs().toolOptions`; the `finally` sets the three brush fields back before `setBrush` (whose `options` event refreshes the bar) and ends with `updatePrefs({ toolOptions: kept.toolOptions })`. A capture still pending after that reads the restored values. No pause hook in `ui/option-memory.ts` was needed.
+- Verified: `tsc --noEmit` clean. Not run: the demos in the window with a localStorage comparison.
+
 ## PSD and PSB export keeps folder masks, folder vector masks and closed folders · v2.3.4 (io/psd.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/psd.ts` `writePsdFile`, `toPsd` (the `isGroup` branch).
