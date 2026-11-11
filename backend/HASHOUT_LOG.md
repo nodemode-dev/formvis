@@ -2,6 +2,23 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Store manifests list every release and name the FormVis bundles · _v2.3.4 (packaging/linux/ai.nodemode.formvis.metainfo.xml, packaging/flatpak/ai.nodemode.formvis.yml, packaging/homebrew/formvis.rb)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to the metainfo `<releases>`, the Flatpak deb sources and their `x-checker-data`, the cask `url` and `app`; review formvis__native-tauri-packaging F10.
+- Wrong: the metainfo's newest release was 1.96.4. Tauri names the bundles after productName FormVis since 1.99.1, but the Flatpak url-queries selected `"formvis_" + $version + "_<arch>.deb"`, which never matches, and the cask named `formvis_#{version}_aarch64.dmg` and `formvis.app`. Now the metainfo lists 1.96.5 to 2.3.3 with their CHANGELOG dates, and the Flatpak deb URLs and url-queries and the cask's url and app use `FormVis`.
+- Left to the owner at release, as the 1.96.5 entry records: the version and sha256 lines of the Flatpak manifest (1.89.0), the cask (1.89.0) and the FreeBSD Makefile and distinfo (1.90.7), and the checkers that still read `nodemode-ai/formvis` releases. The metainfo is not in VERSION_SITES, so the release commit should add its newest `<release>` by hand.
+- Verified: the metainfo parses and every date matches `CHANGELOG.md`; the Flatpak manifest parses as YAML; `ruby -c` on the cask. Not run: `appstreamcli validate` (not installed), `flatpak-external-data-checker`, `brew audit`.
+- Replaced, quoted exactly:
+
+```text
+  url "https://github.com/nodemode-ai/formcompiler/releases/download/formvis-v#{version}/formvis_#{version}_aarch64.dmg"
+  app "formvis.app"
+        url: https://github.com/nodemode-ai/formcompiler/releases/download/formvis-v1.89.0/formvis_1.89.0_amd64.deb
+          url-query: .assets[] | select(.name == "formvis_" + $version + "_amd64.deb") | .browser_download_url
+        url: https://github.com/nodemode-ai/formcompiler/releases/download/formvis-v1.89.0/formvis_1.89.0_arm64.deb
+          url-query: .assets[] | select(.name == "formvis_" + $version + "_arm64.deb") | .browser_download_url
+```
+
 ## A TIFF directory cut inside an entry reads as not raw, no 500 · _v2.3.4 (app/services/raw_develop.py _ifd0, _ifd_at)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-services F8.
