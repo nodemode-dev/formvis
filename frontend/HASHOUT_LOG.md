@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The AppImage launcher is valid when its path holds a dollar, quote or back tick · v2.3.4 (src-tauri/src/integration.rs exec_quote)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/src/integration.rs` `exec_quote`; review formvis__native-tauri-packaging F9.
+- Wrong: the `'"' | '`' | '$'` arm pushed one backslash. The Desktop Entry spec unescapes the string before applying Exec quoting, so `\$` is an invalid string escape and GLib rejects the Exec value; the menu entry for an AppImage under such a path did not start the app. Now the arm pushes two backslash characters (`\\$`, `\\"`, ``\\` ``), as the spec asks; the backslash arm already wrote four.
+- Verified: `cargo check --locked` in `src-tauri` clean. Not run: `desktop-file-validate` (not installed).
+- Replaced, quoted exactly:
+
+```text
+                out.push('\\');
+```
+
 ## An update on Windows stops the engine before the installer runs · v2.3.4 (src-tauri/src/main.rs install_update)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/src/main.rs` `install_update`; review formvis__native-tauri-packaging F5.

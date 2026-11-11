@@ -34,7 +34,7 @@ fn exec_quote(path: &str) -> String {
         match c {
             '\\' => out.push_str("\\\\\\\\"),
             '"' | '`' | '$' => {
-                out.push('\\');
+                out.push_str("\\\\");
                 out.push(c);
             }
             '%' => out.push_str("%%"),
