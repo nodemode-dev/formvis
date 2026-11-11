@@ -163,6 +163,7 @@ export function fitEdges(layer: ImageData, below: ImageData): EdgeFitResult {
     bits = halveBits(bits, w, h);
     a = ha.g; b = hb.g; w = ha.w; h = hb.h;
   }
+  if (!levels.length) return { refused: 'The picture is too small to match edges.' };
   const full = levels[levels.length - 1];
   let p = [0, 0, 0, 0];
   const before = residual(full, p, 1);

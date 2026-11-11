@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Match Edges refuses a picture under 24 pixels on a side instead of throwing · v2.3.4 (engine/edge-fit.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/edge-fit.ts` `fitEdges`.
+- Why: review formvis__engine-a-e F8 (fixer E2).
+- Wrong: the pyramid loop pushes a level only while the short side is at least 24, so on a smaller document with an edge band of 200 pixels or more `levels` stayed empty and `levels[levels.length - 1]` was undefined: a TypeError instead of a refusal.
+- Now: with no level built, `fitEdges` returns `{ refused: 'The picture is too small to match edges.' }`. Nothing was removed.
+- Verified: vitest scratch check outside the repo, a 400 by 20 document is refused; `tsc --noEmit` no error in this file.
+
 ## A pending Warp, Puppet Warp or Perspective Warp is applied before other edits · v2.3.4 (engine/index.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.settle`, `closeProject` (review formvis__engine-index.md F3).
