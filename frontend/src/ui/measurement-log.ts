@@ -1,4 +1,4 @@
-import type { Engine } from '../engine';
+import type { Engine, Project } from '../engine';
 import { MEASURE_COLS_EVENT, visibleMeasureCols, type MeasureRec } from './panels/measurement-dialogs';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
@@ -12,6 +12,7 @@ export class MeasurementLogPanel {
   private readonly foot: HTMLButtonElement[];
   private readonly selected = new Set<number>();
   private anchor: number | null = null;
+  private selectedIn: Project | null = null;
   private cols: ReturnType<typeof visibleMeasureCols>;
   private colKey: string;
   private readonly headRow: HTMLElement;
@@ -71,6 +72,7 @@ export class MeasurementLogPanel {
 
   private sync(): void {
     const d = this.engine.current?.doc, list: readonly MeasureRec[] = d?.measurements ?? [];
+    if (this.engine.current !== this.selectedIn) { this.selected.clear(); this.anchor = null; this.selectedIn = this.engine.current; }
     for (const id of [...this.selected]) if (!list.some((m) => m.id === id)) this.selected.delete(id);
     const cols = visibleMeasureCols(), key = cols.map(([n]) => n).join('|');
     if (key !== this.colKey) {   // Select Data Points changed the columns: rebuild the header and rows once
