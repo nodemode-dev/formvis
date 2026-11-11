@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Colorize with a negative hue tints with that hue · v2.3.4 (engine/adjust.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/adjust.ts` `hsvAdjust`.
+- Why: review formvis__engine-a-e F4 (fixer E2).
+- Wrong: with Colorize on, `h = edited.hue % 360` kept the sign, and `rgbOf` expects 0 to 360: a Master hue of -60 (kept from the slider when Colorize is ticked in the Adjustments panel, or sent by `adjust hsv`) picked sector 0 with a negative middle value, a broken tint.
+- Now: `h = onWheel(edited.hue)`, so -60 acts as 300.
+- Verified: vitest scratch check outside the repo, `hsvAdjust` at hue -60 equals hue 300; `tsc --noEmit` no error in this file.
+- Replaced, quoted exactly:
+
+```text
+    h = edited.hue % 360;
+```
+
 ## A Crop frame stays with the document it was drawn on · v2.3.4 (extensions/tools/crop.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `extensions/tools/crop.ts` `forgetOnSwitch` (new), `frameDoc` (new), `cropTool.options`.

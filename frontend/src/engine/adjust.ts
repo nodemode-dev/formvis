@@ -180,7 +180,7 @@ export function hsvAdjust(r: number, g: number, b: number, s: HsvSettings, respo
   const edited = s.adjustments[s.range] ?? { hue: 0, saturation: 0, lightness: 0 };
   let h: number, sat: number, pull: number;
   if (s.colorize) {
-    h = edited.hue % 360;
+    h = onWheel(edited.hue);
     sat = clamp(edited.saturation / 100, 0, 1);
     pull = edited.lightness / 100;
   } else {
