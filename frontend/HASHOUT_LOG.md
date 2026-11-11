@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Vanishing Point starts each open with the focal length the plane implies · v2.3.4 (ui/panels/vanishing-dialog.ts)
+
+- Why: review formvis__panels-g-w F12 (fixer P2, kind: fix, logged 2026-11-11). `show` sets `focalPx = null` (follow the plane's estimate), but `open()` restored the remembered Focal length slider and fired `setFocal`, pinning connected planes on the next picture to the last value typed; Child angle and depth were restored on a root plane too. Only the paste source select was in the skip list.
+- `VanishingDialog` constructor: `remember` skips the selects and inputs of `source`, `focalRow`, `angleRow` and `depthRow`.
+- Checked: `tsc --noEmit` (no error in this file). Not run: the window.
+
 ## Merge to HDR takes exposure times typed as fractions · v2.3.4 (ui/panels/merge-dialog.ts)
 
 - Why: review formvis__panels-g-w F10 (fixer P2, kind: fix, logged 2026-11-11). `MergeDialog.apply` sent `Number(t.trim())` for each entry of Exposure times, so `1/250` went as NaN and the engine refused the merge; `drive` (the command path) already turned fractions into numbers.

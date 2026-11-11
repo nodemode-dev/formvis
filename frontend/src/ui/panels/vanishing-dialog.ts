@@ -80,7 +80,7 @@ export class VanishingPointDialog extends Dialog {
     this.view.addEventListener('pointerup', () => { this.drag = null; this.stroke = null; this.render(); });
     this.button('Cancel', 'ghost', () => { this.release(); this.close(); });
     this.button('OK', 'primary', () => this.apply());
-    this.remember(Array.from(this.source.el.querySelectorAll('select')));   // the layers to paste from are this document's
+    this.remember([this.source.el, this.focalRow.el, this.angleRow.el, this.depthRow.el].flatMap((r) => Array.from(r.querySelectorAll('select, input'))));   // the layers to paste from are this document's
   }
 
   show(): void {
