@@ -25,7 +25,7 @@ import threading
 import urllib.error
 import urllib.request
 
-URL = os.environ.get("FORMVIS_MCP_URL", "http://127.0.0.1:8190/mcp")
+URL = os.environ.get("FORMVIS_MCP_URL", f"http://127.0.0.1:{os.environ.get('FORMVIS_PORT', '').lstrip('0') or 8190}/mcp")
 PORT_FILE = os.environ.get("FORMVIS_PORT_FILE", "")   # the packaged app (its `mcp` mode): the engine keeps its own port here while it runs
 ATTACH = os.environ.get("FORMVIS_MCP_ATTACH", "0") == "1"
 _down = False   # attach mode: the engine did not answer the last request

@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## mcp, cli and headless find an engine on FORMVIS_PORT · _v2.3.4 (setup/mcp_stdio.py URL; setup/cli.py URL; setup/cli_offline.py URL; setup/headless.py ENGINE)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F10.
+- Why: boot_backend, serve, doctor and boot_all honour FORMVIS_PORT, but these four defaulted to 8190, so with FORMVIS_PORT=9000 the MCP autostart served on 9000 and polled 8190 for 60 s, and cli and headless said the engine was not answering.
+- The default address takes `os.environ.get('FORMVIS_PORT', '').lstrip('0') or 8190`: unset, empty and 0 (the desktop sidecar's free-port value, inherited by its terminals) keep 8190. FORMVIS_MCP_URL and FORMVIS_URL still win.
+- Replaced, quoted exactly: `URL = os.environ.get("FORMVIS_MCP_URL", "http://127.0.0.1:8190/mcp")`; `URL = os.environ.get("FORMVIS_URL", "http://127.0.0.1:8190").rstrip("/")` (cli.py, cli_offline.py); `ENGINE = os.environ.get("FORMVIS_URL", "http://127.0.0.1:8190").rstrip("/")`.
+- Checked by importing the four with FORMVIS_PORT unset, 0 and 9000, and `FORMVIS_PORT=9000 formvis cli version` against a stand-in server on 9000.
+
 ## Malformed JSON-RPC to /mcp answers a JSON-RPC error · _v2.3.4 (app/routers/mcp.py mcp)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F9.

@@ -84,7 +84,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-URL = os.environ.get("FORMVIS_URL", "http://127.0.0.1:8190").rstrip("/")
+URL = os.environ.get("FORMVIS_URL", f"http://127.0.0.1:{os.environ.get('FORMVIS_PORT', '').lstrip('0') or 8190}").rstrip("/")
 
 
 def call(method: str, path: str, body: dict | None = None) -> tuple[int, dict]:

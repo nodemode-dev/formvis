@@ -21,7 +21,7 @@ import uuid
 
 PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".psd"}
 STACK_MODES = ("mean", "median", "minimum", "maximum", "range", "stddev", "variance", "summation")
-URL = os.environ.get("FORMVIS_URL", "http://127.0.0.1:8190").rstrip("/")
+URL = os.environ.get("FORMVIS_URL", f"http://127.0.0.1:{os.environ.get('FORMVIS_PORT', '').lstrip('0') or 8190}").rstrip("/")
 
 
 def say(text: str) -> None:
