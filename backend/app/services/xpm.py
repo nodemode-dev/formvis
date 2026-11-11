@@ -56,7 +56,10 @@ def _colour(value: str) -> tuple[int, int, int, int]:
         return r, g, b, 255
     m = re.fullmatch(r"rgbi:([0-9.]+)/([0-9.]+)/([0-9.]+)", low)
     if m:
-        r, g, b = (round(min(1.0, float(p)) * 255) for p in m.groups())
+        try:
+            r, g, b = (round(min(1.0, float(p)) * 255) for p in m.groups())
+        except ValueError as exc:
+            raise XpmError(f"The colour {value} is not an rgbi colour.") from exc
         return r, g, b, 255
     rgb = _x11(low)
     return rgb[0], rgb[1], rgb[2], 255

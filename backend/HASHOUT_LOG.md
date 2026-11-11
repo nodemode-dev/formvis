@@ -2,6 +2,20 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Malformed PNM numbers, profile data and XPM rgbi colours answer 4xx · _v2.3.4 (app/services/pnm.py _Reader.number, read; app/services/colour.py _b64 new, _profile, _raw, _ref_bytes; app/services/xpm.py _colour)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F10.
+- Why: built-in exceptions escaped the parsers' own error classes, so these gave a 500: a PNM number over 4,300 digits (int string limit), `icc` that is not valid base64 or not a string, a proof ref with neither `icc` nor `id` (KeyError), and an XPM `rgbi:1..2/0/0`.
+- Now: pnm refuses a header number or a P2/P3 word longer than nine digits (PnmError); colour decodes `icc` through `_b64` (ColourError on ValueError or TypeError) and `_raw` raises ColourError when neither key is set; xpm raises XpmError when an rgbi part is not a number.
+- Checked: each input raises the module's error; a valid P2 file and `rgbi:1/0.5/0` still read.
+- Replaced, quoted exactly:
+  - `pnm._Reader.number`: `        if not t.isdigit():`
+  - `pnm.read`: `        if len(words) < count or not all(w.isdigit() for w in words[:count]):`
+  - `colour._profile`: `        data = base64.b64decode(ref["icc"])`
+  - `colour._raw`: `    return base64.b64decode(ref["icc"]) if ref.get("icc") else _find(str(ref["id"]))`
+  - `colour._ref_bytes`: `        return base64.b64decode(ref["icc"])`
+  - `xpm._colour`: `        r, g, b = (round(min(1.0, float(p)) * 255) for p in m.groups())`
+
 ## The README's line counts leave tests out · _v2.3.4 (setup/line_counts.py counts; README.md Size line)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts (outside-area note, handed to the lead).
