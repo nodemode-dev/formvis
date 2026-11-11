@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Generate, Select by Text and 3D tools write into the document they started on · v2.3.4 (automation/agent-bridge.ts, automation/fal-tools.ts, automation/pack-tools.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `agent-bridge.ts` `generate_image`, `fal-tools.ts` `falGenerate` and `falSelectByText`, `pack-tools.ts` `glbTool` (`glb_place`, `glb_edit`). Review formvis__app-automation F10 (fixer A1).
+- Wrong: each captured `p` before a long await (fal, the ask dialog, a local model, the model render) but inserted into `e.current` after it, so a tab switch meanwhile put the layer (sized for `p`), the W by H mask, or the 3D and depth layers into the other document.
+- Now: after the await, `if (e.current !== p && e.projects.includes(p)) e.switchTo(p.id)`, then a fail ("<name> was closed or could not be brought forward ...") when `e.current !== p`, before `insertRasterLayer`, `applyAutoSelection`, the 3D `e.edit` and each depth layer; `glbTool` has the two as `back()` and `gone()`, computed lazily so `glb_info` without a document still works.
+- Verified: `tsc --noEmit` clean. Not run: a tab switch during a live generation.
+
 ## fill and draw_shape leave the person's colours and Shape tool settings as they were · v2.3.4 (automation/agent-bridge.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `automation/agent-bridge.ts` `AgentBridge.run` cases `fill` and `draw_shape`. Review formvis__app-automation F11 (fixer A1).

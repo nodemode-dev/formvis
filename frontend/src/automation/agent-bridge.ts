@@ -929,6 +929,8 @@ export class AgentBridge {
           }
           const bmp = await createImageBitmap(blob), r = new Raster(p.doc.width, p.doc.height);
           r.ctx.drawImage(bmp, 0, 0, p.doc.width, p.doc.height); bmp.close(); r.touch();
+          if (e.current !== p && e.projects.includes(p)) e.switchTo(p.id);
+          if (e.current !== p) return fail(`${p.name} was closed or could not be brought forward while the picture was generated; nothing was added.`);
           e.insertRasterLayer(r, 'Generated Image', 0, 0, generation ? { generation } : {}, 'Generate Image');
           return text(`Generated with ${used}; the result is a new layer (id ${e.activeLayer?.id}).${notice}`, { id: e.activeLayer?.id });
         }
