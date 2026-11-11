@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## close_document refuses to drop unsaved tiled work and says when nothing closed · v2.3.4 (app.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `app.ts` command `close-document`, `requestClose`. Review formvis__app-automation F6 (fixer A1).
+- Wrong: the command discards unsaved changes on the promise (the MCP tool's words) that Reopen Closed Tab can bring the tab back, but `rememberClosed` keeps nothing for a document with a tiled layer and the recovery copy goes at the next `keepModified`, so the edits were lost. When `closeProject` refused (a stroke, or `waiting()`), the command still returned `{ closed: id }` and `rememberClosed` had pushed a record of a still-open document.
+- Now: the command throws, naming save_project, when `want.modified` and a layer is `tiled`, and throws when `await requestClose(...)` is false. `requestClose` pops its own record from `closedTabs` when the document did not close.
+- Verified: `tsc --noEmit` clean. Not run: an agent's close_document on a modified giant document.
+
 ## Lens Flare at 32 bits no longer dims light above white · v2.3.4 (engine/deep-fx.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/deep-fx.ts` `lensFlareDeep`.

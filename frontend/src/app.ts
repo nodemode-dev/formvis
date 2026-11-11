@@ -3181,7 +3181,9 @@ export function startApp(): void {
     }
     await rememberClosed(p);
     engine.closeProject(id);
-    return !engine.projects.includes(p);
+    if (!engine.projects.includes(p)) return true;
+    if (closedTabs[closedTabs.length - 1]?.id === id) closedTabs.pop();
+    return false;
   }
 
   /** The last few documents closed, kept whole in memory so File > Reopen Closed Tab brings one back as it was. */
@@ -4358,7 +4360,8 @@ export function startApp(): void {
       run: async (a) => {
         const want = a?.id === undefined || a.id === '' ? engine.current : engine.projects.find((q) => q.id === String(a.id));
         if (!want) throw new Error(`There is no open document with the id ${String(a?.id ?? '')}: call get_document for the ids.`);
-        await requestClose(want.id, 'discard');
+        if (want.modified && want.doc.layers.some((l) => l.tiled)) throw new Error(`${want.name} has unsaved changes in a layer kept in tiles, which Reopen Closed Tab cannot bring back: save it first with save_project, or ask the person to close it.`);
+        if (!(await requestClose(want.id, 'discard'))) throw new Error(`${want.name} did not close: a stroke or a long job is still running. Try again in a moment.`);
         return { closed: want.id };
       },
     },
