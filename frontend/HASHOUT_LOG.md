@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Generative Fill, Expand and Upscale: Cancel stops a run still being prepared, a second click runs nothing · v2.3.4 (ui/panels/generative-dialog.ts)
+
+- Why: review formvis__panels-g-w F3 (fixer P2, kind: fix, logged 2026-11-11). `generate` awaited `generatePrompt` (two engine calls) and, for ComfyUI and catalogue models, `chips.ordered()` before `this.close()`; Cancel, Escape or the X in that time still started the job, and a second Generate click or Ctrl+Enter started a second one (two paid fal runs). The button was never disabled.
+- `generate` is now a guard: it returns while `busy`, disables the Generate button (`go`), takes `ticket = ++this.ticket` and awaits `prepare(t)`, the former body. `onClose` and `leave()` call `release()` (bump the ticket, clear `busy`, enable the button); after each await before closing (`generatePrompt` in the local, ComfyUI and fal paths, `chips.ordered()` in `generateWith`) a press whose ticket is not current returns. Every former `this.close()` in `prepare` and `generateWith` is `this.leave()`, so a run started from the task bar without the dialog showing frees the guard too.
+- Checked: `tsc --noEmit` (exit 0). Not run: the window against a slow LLM host.
+
 ## A WebAssembly plug-in's option labels are text, not markup · v2.3.4 (ui/panels/wasm-plugins-dialog.ts)
 
 - Why: review formvis__panels-g-w F1 (fixer P2, kind: fix, logged 2026-11-11). `WasmFilterDialog.section` passed a plug-in schema's select options to `selectRow`, which interpolates them into `<option value="${v}">${t}</option>` and parses the string; a label such as `</option></select><img src=x onerror=...>` (within `parseManifest`'s 60 characters) ran script in the window, with its full API, under `csp: null`.
