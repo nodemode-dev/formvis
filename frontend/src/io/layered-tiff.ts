@@ -185,7 +185,7 @@ export async function writeLayeredTiff(doc: Doc, composite: Surface, paths: Path
   const list: Array<{ tag: number; type: number; count: number; value: number | Uint8Array }> = [
     { tag: 256, type: 4, count: 1, value: width }, { tag: 257, type: 4, count: 1, value: height }, { tag: 258, type: 3, count: spp, value: bpsAt }, { tag: 259, type: 3, count: 1, value: 1 },
     { tag: 262, type: 3, count: 1, value: 2 }, { tag: 273, type: 4, count: 1, value: stripAt }, { tag: 277, type: 3, count: 1, value: spp }, { tag: 278, type: 4, count: 1, value: height },
-    { tag: 279, type: 4, count: 1, value: pixels.length }, { tag: 284, type: 3, count: 1, value: 1 }, { tag: 338, type: 3, count: 1 + alphas.length, value: alphas.length ? extraAt : 2 },
+    { tag: 279, type: 4, count: 1, value: pixels.length }, { tag: 284, type: 3, count: 1, value: 1 }, { tag: 338, type: 3, count: 1 + alphas.length, value: alphas.length === 0 ? 2 : alphas.length === 1 ? Uint8Array.of(2, 0, 0, 0) : extraAt },
     { tag: TAG_IMAGE_SOURCE_DATA, type: 7, count: data.length, value: dataAt },
     ...(resources.length ? [{ tag: 34377, type: 1, count: resources.length, value: resAt }] : []),
     ...(exifTiff?.entries ?? []).map((x) => ({ tag: x.tag, type: x.type, count: x.count, value: x.value })),

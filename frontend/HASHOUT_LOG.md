@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A layered TIFF with one alpha channel writes ExtraSamples inline · v2.3.4 (io/layered-tiff.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/layered-tiff.ts` `writeLayeredTiff`, the tag 338 entry.
+- Wrong: with one alpha channel ExtraSamples is two SHORTs, four bytes, which TIFF stores in the entry; the writer stored the offset `extraAt`, so tifffile read (180, 0) and Pillow could not open the file. Trigger: "TIFF with layer" export from a document with one saved selection.
+- Now: the value is `2` with no alphas, `Uint8Array.of(2, 0, 0, 0)` (inline, copied by the existing Uint8Array branch) with one, `extraAt` with more.
+- Verified: `tsc --noEmit` clean; the reviewer's Python port with the fix: tifffile reads (2, 0), Pillow opens RGBA.
+- Replaced, quoted exactly:
+
+```text
+    { tag: 279, type: 4, count: 1, value: pixels.length }, { tag: 284, type: 3, count: 1, value: 1 }, { tag: 338, type: 3, count: 1 + alphas.length, value: alphas.length ? extraAt : 2 },
+```
+
 ## close_document refuses to drop unsaved tiled work and says when nothing closed · v2.3.4 (app.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `app.ts` command `close-document`, `requestClose`. Review formvis__app-automation F6 (fixer A1).
