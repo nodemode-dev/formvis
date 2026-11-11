@@ -720,7 +720,7 @@ fn main() {
                     .sidecar("formvis-engine")
                     .expect("the formvis engine sidecar is missing; bundle its binary"),
             };
-            let mut sidecar = engine.env("FORMVIS_PORT", "0");
+            let mut sidecar = engine.env("FORMVIS_PORT", "0").env("FORMVIS_SHELL_PID", std::process::id().to_string());
             if let Some(path) = packaged::launcher() {
                 sidecar = sidecar.env("FORMVIS_LAUNCHER", path);
             }

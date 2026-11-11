@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The engine is told the shell's own pid · v2.3.4 (src-tauri/src/main.rs engine spawn)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/src/main.rs`, the sidecar spawn in `setup`, and `backend/formvis_engine.py` `watch_parent`; review formvis__native-tauri-packaging F8.
+- Wrong: `watch_parent` exits when the server's parent is gone, but in a one-file build that parent is the PyInstaller launcher, which outlives a shell that dies without `RunEvent::Exit` (panic under `panic = "abort"`, `kill -9`, a web view crash); the server kept its port, memory and `_MEI` folder. Now the shell passes `FORMVIS_SHELL_PID` (`std::process::id()`) beside `FORMVIS_PORT`. The engine half, `watch_parent` polling that pid (`os.kill(pid, 0)` on POSIX) when it is set, is handed to the backend fixers (`fixlogs/formvis__handoffs.md`); until it lands the variable is unused.
+- Verified: `cargo check --locked` in `src-tauri` clean. Not run: a `kill -9` of the AppImage's shell.
+- Replaced, quoted exactly:
+
+```text
+            let mut sidecar = engine.env("FORMVIS_PORT", "0");
+```
+
 ## Layers to Files as PSD or layered TIFF leaves out the document's comps, and with Trim its alphas, slices and notes · v2.3.4 (io/layer-export.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/layer-export.ts` `encodeOne`, the `psd` and `tiff-layers` branches.
