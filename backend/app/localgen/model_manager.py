@@ -492,7 +492,10 @@ def download(model: str, report, cancelled):
     if model not in MODELS:
         raise ValueError("Unknown model")
     ROOT.mkdir(parents=True, exist_ok=True)
-    with _lock:
+    while not _lock.acquire(timeout=0.25):
+        if cancelled():
+            raise InterruptedError("Cancelled")
+    try:
         entries = list(MODELS[model]["files"].items())
         for i, (name, url) in enumerate(entries):
             path = ROOT / name
@@ -540,6 +543,8 @@ def download(model: str, report, cancelled):
                 )
             finally:
                 temporary.unlink(missing_ok=True)
+    finally:
+        _lock.release()
     return {"model": model, "ready": ready(model)}
 
 

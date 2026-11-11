@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Downloads and installs run beside generations; a waiting download cancels · _v2.3.4 (app/localgen/jobs.py _installs new, INSTALL_KINDS new, submit; app/localgen/model_manager.py download)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F1.
+- Why: one pool of two workers ran every job, and `download()` holds `_lock` across all files of a model, so a running download plus a second one waiting on the lock took both workers and every later job stayed queued for the whole download. Cancel was read only in the chunk loop, so a waiting download could not be cancelled.
+- Now: kinds in `INSTALL_KINDS` (model-download, krea-2-install, klein-install, lora-fetch, relight-runtime-install) go to `_installs`, a second pool of two; everything else keeps `_pool`. `download()` takes `_lock` with `acquire(timeout=0.25)` in a loop and raises InterruptedError once cancelled, then releases it in a `finally`.
+- Not changed (open): a continuous Krea 2 session still holds HEAVY with no limit, so one ordinary generation waits in the second worker; `scan` and `remove_model` still wait synchronously for a running download's `_lock` (the review's 409 on a timed acquire would need the window to show it).
+- Checked: with two download jobs running, an upscale job finished at once; a download waiting on a held `_lock` ended "cancelled" 0.05 s after its cancel.
+- Replaced, quoted exactly:
+  - `jobs.submit`: `    _pool.submit(run)`
+  - `model_manager.download`: `    with _lock:`
+
 ## Gray to the same gray profile keeps four floats a pixel · _v2.3.4 (app/services/colour.py convert_deep)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-services F5.
