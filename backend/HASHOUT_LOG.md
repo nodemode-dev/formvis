@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## mcp --root lets menu calls through · _v2.3.4 (setup/mcp_stdio.py MENUS, CONTROL, outside_roots)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F8.
+- Why: `ui_menu_invoke` and `ui_menu_list` use `path` for a menu path ("File > Save"); under any root `outside_roots` checked it as a file and refused every menu call.
+- `MENUS` (`ui_menu_list`, `ui_menu_invoke`): their `path` is skipped; `CONTROL` maps `ui.menu.list` and `ui.menu.invoke` so control_call behaves the same. Replaced, quoted exactly: `        if not isinstance(value, str) or not value.strip():`.
+- Checked with a scratch call of `outside_roots`: menu calls pass, the write-back and folder refusals still hold.
+
 ## The desktop app's terminals get the engine's real address · _v2.3.4 (app/services/terminal.py engine_port new, base_env)
 
 - Kind: fix · logged 2026-11-11 · handoff from the routers and native-tauri-packaging reviews.
