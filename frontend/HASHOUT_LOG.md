@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Drags, dialogs and Rotate 90° wait for a running job instead of slipping past it · v2.3.4 (engine/index.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.beginOpacityEdit`, `beginFillEdit`, `beginVisibilitySwipe`, `beginLive`, `rotateCanvas` (review formvis__engine-index.md F6, F7).
+- Wrong: the four begin* entry points checked only `this.stroke`, so while `busyWith` was set (a pooled or banded filter, Merge Visible or Flatten on workers, a `lockedTask` save) their `history.begin` nested into the job's open step: the change was folded into the job's step, and a cancelled job's `rollback()` left it in the document with no step. `rotateCanvas` ignored the result of `this.edit(...)` and still called `this.pan(dw, -dw)` when the turn was refused.
+- Changed: each begin* also returns early on `this.waiting()` (the notice edit() gives); `rotateCanvas` keeps `const ok = this.edit(...)` and pans only when `ok`. Old lines: `if (!p || this.stroke || this.opacityOpen) return;`, `if (!p || this.stroke || this.fillOpen) return;`, `if (!p || !l || this.stroke) return null;`, `if (!p || this.stroke || this.liveOpen) return false;`, `this.edit(name, (p) => {`, `if (p && quarters !== 2 && p.doc.width !== p.doc.height) {`.
+- Checked: `npx tsc --noEmit`, no error in this file; the window replay not run.
+
 ## Photomerge, Merge to HDR, Load Files into Stack, Large Picture and TIFF Pages stop on Cancel and run once · v2.3.4 (ui/panels/merge-dialog.ts, ui/panels/load-stack-dialog.ts, ui/panels/large-picture.ts, ui/panels/tiff-pages.ts)
 
 - Why: review formvis__panels-g-w F9 (fixer P2, kind: fix, logged 2026-11-11). `MergeDialog.apply`, `LoadStackDialog.apply`, `LargePictureDialog.go` and `TiffPagesDialog.go` kept OK enabled through the engine's stitch, merge, decode or region calls and never checked afterwards whether the dialog had been closed, so Cancel still opened the panorama, HDR, stack, tiles or pages, and a second OK ran the job again.

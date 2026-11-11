@@ -4269,7 +4269,7 @@ export class Engine {
   beginVisibilitySwipe(id: ID): boolean | null {
     const p = this.current;
     const l = p?.layer(id);
-    if (!p || !l || this.stroke) return null;
+    if (!p || !l || this.stroke || this.waiting()) return null;
     this.settle();
     const next = !l.visible;
     const many = p.selectedIds.size > 1 && p.selectedIds.has(id);
@@ -4302,7 +4302,7 @@ export class Engine {
 
   beginOpacityEdit(): void {
     const p = this.current;
-    if (!p || this.stroke || this.opacityOpen) return;
+    if (!p || this.stroke || this.opacityOpen || this.waiting()) return;
     this.settle();
     p.history.begin('Layer Opacity', p.snapshot());
     this.opacityOpen = p;
@@ -4342,7 +4342,7 @@ export class Engine {
    *  layers' fill as the slider moves, end closes it, so a whole drag is one undo step. */
   beginFillEdit(): void {
     const p = this.current;
-    if (!p || this.stroke || this.fillOpen) return;
+    if (!p || this.stroke || this.fillOpen || this.waiting()) return;
     this.settle();
     p.history.begin('Layer Fill', p.snapshot());
     this.fillOpen = p;
@@ -4795,7 +4795,7 @@ export class Engine {
    *  resampled, so this works at every depth and in every mode. */
   rotateCanvas(quarters: 1 | 2 | 3): void {
     const name = quarters === 1 ? 'Rotate 90° Clockwise' : quarters === 2 ? 'Rotate 180°' : 'Rotate 90° Counter Clockwise';
-    this.edit(name, (p) => {
+    const ok = this.edit(name, (p) => {
       const { width: W, height: H } = p.doc, deg = quarters * 90;
       const turn = (t: Transform): Transform => {
         const cx = t.x + t.w / 2, cy = t.y + t.h / 2;
@@ -4820,7 +4820,7 @@ export class Engine {
     // The turned document stays centred where it was on screen (1.85.2): a quarter turn swaps the sides, so the view
     // moves by half their difference instead of leaving the document hanging off one edge.
     const p = this.current;
-    if (p && quarters !== 2 && p.doc.width !== p.doc.height) {
+    if (ok && p && quarters !== 2 && p.doc.width !== p.doc.height) {
       const z = p.viewport.zoom, dw = (p.doc.height - p.doc.width) / 2 * z;
       this.pan(dw, -dw);
     }
@@ -8247,7 +8247,7 @@ export class Engine {
 
   beginLive(name: string): boolean {
     const p = this.current;
-    if (!p || this.stroke || this.liveOpen) return false;
+    if (!p || this.stroke || this.liveOpen || this.waiting()) return false;
     this.settle();
     p.history.begin(name, p.snapshot());
     this.liveOpen = p;
