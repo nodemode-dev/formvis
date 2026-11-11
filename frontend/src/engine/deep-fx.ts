@@ -341,7 +341,7 @@ export function lensFlareDeep(src: DeepPixels, brightness: number, cxp: number, 
       lift(Math.max(0, 1 - Math.abs(dist - gr * 0.6) / (gr * 0.6)) * 0.18, c);
     }
     const o = (y * w + x) * S;
-    for (let c = 0; c < 3; c++) out[o + c] = 1 - ((1 - out[o + c]) * (1 - Math.min(1, (add[c] * k) / 255)));
+    for (let c = 0; c < 3; c++) out[o + c] = out[o + c] + (1 - Math.min(1, out[o + c])) * Math.min(1, (add[c] * k) / 255);
   }
   return { ...src, data: out };
 }

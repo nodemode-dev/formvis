@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Lens Flare at 32 bits no longer dims light above white · v2.3.4 (engine/deep-fx.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/deep-fx.ts` `lensFlareDeep`.
+- Why: review formvis__engine-a-e F11 (fixer E2).
+- Wrong: the screen formula `1 - (1 - v) * (1 - add)` assumes 0 to 1; at 32 bits a value above 1 came out lower (v = 2 with add 0.5 gave 1.5), so the flare dimmed HDR highlights.
+- Now: `v + (1 - Math.min(1, v)) * add`, the same result below white and no loss above it.
+- Verified: vitest scratch check outside the repo, a pixel at [2, 2, 2] stays at or above 2; `tsc --noEmit` no error in this file.
+- Replaced, quoted exactly:
+
+```text
+    for (let c = 0; c < 3; c++) out[o + c] = 1 - ((1 - out[o + c]) * (1 - Math.min(1, (add[c] * k) / 255)));
+```
+
 ## A toolbar slot remembers the tool last chosen from it, Rotate View included · v2.3.4 (ui/tool-groups.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/tool-groups.ts` `rememberTool`, `slotTool` (review formvis__ui-o-z.md F9).
