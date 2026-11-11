@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## PSD and PSB export keeps folder masks, folder vector masks and closed folders · v2.3.4 (io/psd.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `io/psd.ts` `writePsdFile`, `toPsd` (the `isGroup` branch).
+- Wrong: the folder record was built inline with `opened: true` and no `maskOnto` and no `vectorMask`, so a folder's layer mask and vector mask were dropped from every PSD, PSB and layered TIFF formvis wrote, and every folder came back open. Trigger: a folder with a mask, or a closed folder, saved as PSD and opened again.
+- Now: the folder record is built as `out`, `opened` is `!(doc.collapsed ?? []).includes(l.id)`, `maskOnto(l, out)` adds the mask (placement `m.placement ?? g.transform`, as the renderer's `folderMasks` draws it), and a vector mask with outlines is written as in the pixel-layer branch (invert, notLink, disable).
+- Verified: `tsc --noEmit` clean. Not run: an export and reopen in a browser.
+- Replaced, quoted exactly:
+
+```text
+    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: true, children: build(l.id), ...(effectsPresent(l.effects) ? (() => { const e = toPsdEffects(l.effects as LayerEffects, psdPatterns); return e ? { effects: e } : {}; })() : {}), ...tag, ...toPsdArtboard(l) };
+```
+
 ## Match Edges refuses a picture under 24 pixels on a side instead of throwing · v2.3.4 (engine/edge-fit.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/edge-fit.ts` `fitEdges`.

@@ -1142,7 +1142,13 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   };
   const toPsd = (l: Layer): PsdLayer | null => {
     const tag: Pick<PsdLayer, 'layerColor'> = l.label ? { layerColor: l.label } : {};
-    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: true, children: build(l.id), ...(effectsPresent(l.effects) ? (() => { const e = toPsdEffects(l.effects as LayerEffects, psdPatterns); return e ? { effects: e } : {}; })() : {}), ...tag, ...toPsdArtboard(l) };
+    if (l.isGroup) {
+      const out: PsdLayer = { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: groupIsolated(l) ? TO_PSD[l.blend] ?? 'normal' : 'pass through', opened: !(doc.collapsed ?? []).includes(l.id), children: build(l.id), ...(effectsPresent(l.effects) ? (() => { const e = toPsdEffects(l.effects as LayerEffects, psdPatterns); return e ? { effects: e } : {}; })() : {}), ...tag, ...toPsdArtboard(l) };
+      maskOnto(l, out);
+      const gv = l.vectorMask;
+      if (gv?.path.subpaths.some((sp) => sp.anchors.length)) out.vectorMask = { paths: psdOutlines(gv.path.subpaths, 0, 0), ...(gv.inverted ? { invert: true } : {}), ...(gv.linked ? {} : { notLink: true }), ...(gv.enabled ? {} : { disable: true }) };
+      return out;
+    }
     const keptAdj = !l.adjustment && l.psdAdjustment ? restorePsdAdjustment(l.psdAdjustment) : null;
     if (keptAdj) {
       // An adjustment formvis cannot draw goes back as the file had it.
