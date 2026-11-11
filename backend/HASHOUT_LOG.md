@@ -2,6 +2,16 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A negative or non-finite FITS axis is refused, no endless loop · _v2.3.4 (app/services/fits.py _num, _data_size)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F1.
+- Why: a header with a negative NAXISn made `_data_size` negative, so `_image_extension` read the primary header again forever (one worker at full CPU, the open never answered). A NAN or INF card made `int(...)` raise ValueError or OverflowError, a 500.
+- Now: `_num` raises FitsError for a value that is not finite; `_data_size` raises FitsError ("The FITS header gives a negative size.") for a negative NAXIS, NAXISn, GCOUNT or PCOUNT.
+- Checked: the reviewer's repro on a copy of the module raises FitsError at once for both headers; a valid 2 by 2 file still reads.
+- Replaced, quoted exactly:
+  - `_num`: `        return float(cards[key].replace("D", "E").replace("d", "e"))`
+  - `_data_size`: `    count = 1 if naxis else 0` / `    for i in range(1, naxis + 1):` / `        count *= int(_num(cards, f"NAXIS{i}"))` / `    size = abs(int(_num(cards, "BITPIX"))) // 8 * int(_num(cards, "GCOUNT", 1)) * (count + int(_num(cards, "PCOUNT", 0)))`
+
 ## Version only · _v2.3.3
 
 No engine code changed in 2.3.3 (`frontend/HASHOUT_LOG.md` has the changes). The full engine suite ran on an archive copy: 316 passed, 9 skipped (u2net, lama-inpaint, ai-upscale and sam2 models not downloaded; three macOS-only layout tests), and `test_readme.py::test_the_readme_matches_the_code` failed there only because the copy had no `.git` for `git ls-files` (it passes once a repository exists). Note for e2e: the engine's LocalGuard accepts window origins on 5190 and 5191 only (`window_origins()` in `app/core/config.py`, or FORMVIS_CORS_ORIGINS), so a dev server on another port makes the agent and MCP tests time out. Removed version lines, the desktop shell's quoted too:
