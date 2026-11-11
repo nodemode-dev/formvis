@@ -2,6 +2,22 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The nginx hosting template no longer proxies to an engine that refuses it · _v2.3.4 (packaging/web/nginx.conf)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `packaging/web/nginx.conf` `location /api/`; review formvis__native-tauri-packaging F6.
+- Wrong: the block proxied `/api/` to 127.0.0.1:8190 with `Host $host`; `LocalGuard._permitted` refuses a Host that is not loopback and an Origin that is not one of `config.window_origins()`, so every request got 403. Passing the guard would mean exposing the local engine to the public site, which the guard is there to prevent. The block is removed and the template says the hosted page runs without the engine.
+- Verified: read against `app/core/local_guard.py`. Not run: `nginx -t` (nginx not installed).
+- Replaced, quoted exactly:
+
+```text
+    location /api/ {
+        proxy_pass http://127.0.0.1:8190;
+        proxy_set_header Host $host;
+        client_max_body_size 512m;
+    }
+
+```
+
 ## A failed save keeps agents.json as it was · _v2.3.4 (app/services/agents.py _save)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-services F9.
