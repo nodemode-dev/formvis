@@ -286,6 +286,7 @@ export class FormExtensions {
       return r.isError ? { ok: false, error: said || `${name} failed` } : { ok: true, result: r.structuredContent ?? { message: said } };
     }
     if (command.startsWith('ext.')) return { ok: false, error: 'an extension cannot run another extension\'s command' };
+    if (['load-actions', 'insert-action-step', 'insert-conditional', 'action-options'].includes(command)) return { ok: false, error: `${command} cannot be run by an extension, because it writes steps into the person's actions` };
     const entry = this.deps.catalogue.describeCommand(command);
     if (entry?.risky) return { ok: false, error: `${entry.label} cannot be run by an extension, because undo cannot reverse it` };
     return this.deps.catalogue.runCommand(command, args);

@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## An extension cannot write action steps; Working Files cleanup is risky · v2.3.4 (formext/extensions.ts, automation/command-meta.ts)
+
+- Why: review formvis__app-automation F1 (fixer A1, logged 2026-11-11). An extension with only the `document` permission sent `load-actions` with a menu step naming `close-document` and then `play-action`; `runStep` ran the step with `c.run()` below the risky check in `FormExtensions.op`, so the document closed with its changes gone and the action stayed in the person's list. `clean-working-files` was flagged `'m'`, so an extension could also delete every recovery copy and closed tab directly.
+- `formext/extensions.ts` `op`: after the `ext.` test, `load-actions`, `insert-action-step`, `insert-conditional` and `action-options` are refused for extensions ("cannot be run by an extension, because it writes steps into the person's actions"). Playing the person's own actions is unchanged, and `runStep` keeps running `ext.` steps the person put there.
+- `automation/command-meta.ts` `clean-working-files`: flags `'mr'`, so `op` refuses it and agents are asked first. `./formvis agents sync` was not run (needs the window), so `formvis-driving/references/commands.md` still lacks "(asks first)" on that row.
+- Verified: `tsc --noEmit` clean; vitest `src/plugins/desktop-policy.test.ts` passed. Not run: the report's scratch extension.
+
 ## A replayed Hue/Saturation step applies its recorded settings · v2.3.4 (ui/panels/adjust-panel.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/adjust-panel.ts` `AdjustPanel.applySettings`, with `kernel()`.
