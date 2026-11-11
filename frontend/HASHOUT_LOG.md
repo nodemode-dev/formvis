@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The options bar refits when a tool's conditional controls appear · v2.3.4 (ui/options.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/options.ts` `OptionsBar.queue` (review formvis__ui-o-z.md F7).
+- Wrong: the `g.sig !== this.sigOf(g)` refit ran only in `show()` (tool events); controls shown by an `options` event (Clone Stamp Show Overlay, symmetry, airbrush, Shape Path mode) overflowed the bar until the next tool or width change. Now the queued frame runs `refresh()`, then the same signature check, and on a change `fit`, `paintMore` and `syncEdges`.
+- Verified: `npx tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    this.frame = requestAnimationFrame(() => { this.frame = 0; this.refresh(); });
+```
+
 ## A second finger also ends a guide, pixel or tip drag · v2.3.4 (ui/stage.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/stage.ts` `Stage.bindTouch`, its `pointerdown` handler (review formvis__ui-o-z.md F6).
