@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Frame Trace shows the GPU time of WebGL2 filters · v2.3.4 (gpu/filters.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/filters.ts` `GlFilters.single`, `lensGather`, `timeLater` and `readTimer` (new), `waiting` (new).
+- Why: review formvis__extensions-gpu-config F8 (fixer X1). Both runs read `QUERY_RESULT_AVAILABLE` in the same task as `endQuery`; WebGL2 makes a result available only after control returns to the event loop, so `lastGpuMs` was always null and `frameTrace.noteGpu` ignored it.
+- Change: the ended query goes to `timeLater`, which first reads any query still waiting, deletes an unread older one, and keeps the new one; `readTimer` runs on a `setTimeout` (0, then every 16 ms, up to 60 tries) and at the next run, and writes `lastGpuMs` and `noteGpu` (null when the counter was disjoint), then deletes the query. The `finally` blocks delete a query only when it was not handed over (`q !== this.waiting?.q`), so a run that throws still deletes its query; a lost context drops the waiting one.
+- Verified: `tsc --noEmit` (no error in this file). Not run: the trace in a browser with `EXT_disjoint_timer_query_webgl2`.
+- Replaced, quoted exactly:
+
+```text
+        this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
+        frameTrace.noteGpu(key, this.lastGpuMs);
+      } finally { this.free(input, first); if (out !== first) this.free(out); if (fin !== first && fin !== out) this.free(fin); if (q) gl.deleteQuery(q); }
+        this.lastGpuMs = q && this.timer && gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE) && !gl.getParameter(this.timer.GPU_DISJOINT_EXT) ? Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6 : null;
+        frameTrace.noteGpu('lens', this.lastGpuMs);
+      } finally { gl.disable(gl.SCISSOR_TEST); this.free(levels, rad, tapTex, input, out); if (q) gl.deleteQuery(q); }
+```
+
 ## The native renderer follows live previews and lets go of layers it no longer draws · v2.3.4 (gpu/native-display.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/native-display.ts` `NativeDisplay.put`, `frame`, `entries` (the table branch), `shown` and `used` (new).
