@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 2.3.4: the review fixes and the version lines · v2.3.4 (CHANGELOG.md; the version sites; the three demo bundles)
+
+- Kind: release · logged: v2.3.4 · 2026-11-11. Every window change of 2.3.4 has its own entry below, one per fix, each naming the review finding it answers; the engine, setup and shell changes are in `backend/HASHOUT_LOG.md`.
+- Verified at release: `npx tsc --noEmit` clean; vitest 48 files, 222 tests passed. No browser or e2e run was made for this release; the entries below say what each fix was checked with.
+- Removed version lines:
+
+```text
+export const VERSION = '2.3.3';
+  "version": "2.3.3",
+  "version": "2.3.3",
+      "version": "2.3.3",
+```
+
 ## Color Match, Current and Below and the plug-in renders hide by stack order · v2.3.4 (engine/index.ts colorMatch, renderBelow, renderThrough, belowOverrides)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `colorMatch` (the reference picture), `renderBelow`, `renderThrough` and `belowOverrides` (handoff from E1, formvis__engine-index.md outside-area note 1).

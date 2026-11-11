@@ -4,6 +4,67 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.3.4 · 2026-11-11
+
+A review release: every fix below came from a full read of the code.
+
+- Undo and History: a queued undo or redo lands on the document it was asked in; a step picked in one document's History is never deleted in another; a new step after an undo frees the stored pixels of the redo steps; a custom scratch disk starts each session empty; undo keys and export names are checked before any file path is built, also on Windows.
+- Show Only This Layer solos again after an Undo.
+- Group Layers keeps a folder's layers together, so Bring Forward loses none of them.
+- Copied layers keep their vector masks, and a duplicated clipping base keeps its clipped layers.
+- Applying a layer comp or selecting a frame carries linked masks with their layers. Last Document State stays at the top of the Layer Comps list.
+- Folder masks turn and warp with Arbitrary rotation, Straighten and Perspective Crop.
+- Apply Layer Mask and Flatten All Masks keep what shows outside a placed mask. Flatten All Layer Effects and Rasterize Layer Style keep a tied mask over its old box.
+- Apply Redactions burns only the layers beneath each box, not a caption above it.
+- Color Match, Current and Below sampling and the pictures plug-ins ask for hide the right layers when a folder is stored after its own layers (a Frame).
+- A pending Warp, Puppet Warp or Perspective Warp is applied before any other edit; drags, dialogs and Rotate 90 deg wait for a running job instead of slipping past it.
+- A Generative Fill, generation or upscale result that arrives during a stroke or another job waits and is then placed.
+- Content-Aware Move moves the selection inside its own undo step.
+- Ending the composite workers in the middle of a run no longer stalls every later composite.
+- 16-bit, 32-bit and CMYK exports draw clipped layers, clipped adjustment layers and artboard backgrounds as the screen does.
+- Knockout keeps the knocked-out layer's own pixels when the backdrop needs extra room.
+- The WebGL2 display blends Shadows/Highlights, HDR Toning and Clarity layers in their own blend mode. Frame Trace shows the GPU time of WebGL2 filters.
+- The native renderer frees its blend settings after each frame, follows live previews, lets go of layers it no longer draws, and sizes regions of a gigapixel or more without overflow.
+- Gaussian and Motion Blur adjustment layers no longer darken edges next to transparency. Lens Flare at 32 bits no longer dims light above white.
+- Colorize with a negative hue tints with that hue; a replayed Hue/Saturation step applies its recorded settings.
+- Smart Sharpen and Shake Reduction sliders follow recalled settings. Editing an Adaptive Wide Angle or Liquify smart filter keeps the filter's own lens model and mesh size.
+- Smart objects: Reset Warp on a flipped smart object puts it back as it was; Add Smart Filter Mask on a warped smart object lands in place; Stack Mode None shows the top layer as it is.
+- Develop: Geometry keeps a layer one pixel high or wide.
+- Smudge and Liquify no longer leave a see-through rim on opaque pixels. One Ctrl+Z in Liquify or in a generative prompt undoes one thing.
+- Fill Path, Stroke Path and Pixels shapes on a mask hide in black, and land in place on an alpha channel. Magic Wand and Copy read a targeted layer mask's own values.
+- Paragraph text breaks long words between whole characters, emoji included.
+- The Paper texture tiles without a seam. Fill and Brush Settings list patterns defined or loaded after start-up.
+- Brushes: picking a brush marks its tile in place and keeps focus; Enter on a focused button in the Brush Preset picker does that button's job.
+- The toolbar remembers the tool last chosen from each slot, Rotate View included. The options bar refits when a tool's extra controls appear.
+- A trackpad pinch zooms about the fingers in a turned or flipped view; a second finger also ends a guide, pixel or tip drag; a cancelled touch ends a tab drag and a Color panel drag; a cancelled Navigator drag no longer pans on hover.
+- A Crop frame stays with the document it was drawn on. A Relight session ends in its own document when you switch, keeps drawing after the WebGL context is lost, and uses a model downloaded after the last Relight. A document switch never keeps the previous document's colour view.
+- Dialogs: a second question never strands the first; New Document keeps focus and honours Cancel; a second OK in Convert to Profile, Assign Profile or Convert Mode does nothing; Duotone, Color Range and Focus Area open with the document's own state; choosing Color Range again while it is open no longer blocks the canvas; 32-bit Preview Options puts the view back on Escape, the close button and a click outside; New Guide Layout and Interpret Footage leave no hidden dialog behind.
+- Cancel works: Cancel during a fal, ComfyUI, Align/Blend or Generate Image run discards its result; Cancel stops a Generate still being prepared and a second click runs nothing; Photomerge, Merge to HDR, Load Files into Stack, Large Picture and TIFF Pages stop on Cancel and run once.
+- Neural Filters uses only the style, colours or depth of the layer chosen now. Vanishing Point starts each open with the focal length its plane implies. Video Frames to Layers describes and trims the clip chosen last. Merge to HDR takes exposure times typed as fractions, and keeps the chosen ghost base when times are estimated.
+- Panels: tabs come back to the strip when a group gets wider; a cancelled header drag clears its ghost and hidden extension panels stay hidden; a newly added reference image shows its name at once; each Local models card follows and cancels only its own download; a selection in the Measurement Log does not follow you to another document.
+- Extension panels keep their page when their tab moves to another group or the dock reorders (in browsers that can move a frame); a panel that reloads is shown again and its stale requests end at once; document events reach only extensions granted the document permission; an extension cannot write action steps.
+- A WebAssembly plug-in's option labels, and every option list built the same way, show as text, never as markup.
+- A file plug-in cannot call the window's ui_ and internal tools.
+- Actions: renaming an action keeps the steps that play it; importing shows the imported action; play-action fails when the action stopped or a step could not run. Batch and Lens Correction batch close each file's document when a step or the encode fails.
+- Export As and Artboards to PDF start from the current document's name. Export Layers, Artboards or Comps to Files names and places files after the document it was opened for. Layers to Files as PSD or layered TIFF leaves out the document's comps, and with Trim its alphas, slices and notes.
+- Exported colour lookup tables leave out adjustments in hidden folders.
+- PSD and PSB export keeps folder masks, folder vector masks and closed folders. OpenRaster export keeps vector masks, Fill, Blend If, clipping, folder masks and folder modes. A layered TIFF with one alpha channel writes its ExtraSamples correctly.
+- Opening files: a crafted colour profile no longer freezes the window; a negative or non-finite FITS axis, a DPX or Cineon line padding larger than the file, malformed PNM numbers, colour profile data and XPM colours, and a TIFF directory cut short are refused with a message instead of hanging or failing with a server error; Open SVG as Layers reads arcs whose flags have no separators.
+- Converting a gray document to its own gray profile keeps its full precision.
+- Session restore and Reopen Closed Tab keep the file a document came from; opened and saved files reach the system's recent documents. A demo leaves your tool options and brush preset as they were, and a demo window that does not start in time is shown.
+- Agents and MCP: window commands over HTTP pass the agent approval; the command line is known by its connection, not a name it gives; fill and draw_shape leave your colours and Shape tool settings as they were; generate, Select by Text and the 3D tools write into the document they started on; close_document refuses to drop unsaved tiled work; opening and writing large files for an agent no longer holds up the engine; a short PSD or odd project file fails file_info cleanly and no agent call stays running; malformed JSON-RPC answers a JSON-RPC error; a failed save keeps your agent settings file as it was; the browser window opened for an agent uses the engine's own port.
+- The command reference agents read says Clean Working Files asks first, and the command now counts as risky.
+- `./formvis mcp`, `./formvis agents` and `./formvis cli` start on Python 3.9 (the macOS system Python). `./formvis agents install` on Windows writes a Codex config that parses and registers a server Windows can start.
+- `./formvis mcp --root` and `--read-root`: a save or export with no path is refused, so an agent cannot overwrite a file it may only read; menu calls are no longer refused as files. A JSON line that is not an object gets an error instead of ending the server.
+- Relative file names given to `./formvis cli`, `mcp --root`, `corpus` and `perf` mean the folder you are in, and droplet scripts work from any folder. `perf --baseline` stops when the file is missing. `cli stack`, `contact`, `fit`, `photomerge` and `hdr` run on the engine's Python, so numpy and Pillow are found. `cli hdr --times 1/0` prints the usage message.
+- `./formvis mcp`, `cli` and `headless` find an engine on FORMVIS_PORT, and the desktop app's terminals get the engine's real address.
+- Windows: `formvis.bat` passes every argument and runs mcp, cli, agents, headless, perf, corpus and version; `formvis.bat test` passes without Rust when the other suites pass; `clean --all` removes the venv when node_modules is already gone.
+- Local generation: downloads and installs no longer hold up generations, and a waiting download cancels; a cancelled or failed generation leaves nothing behind; one FLUX.2 [klein] picture withheld by the filter no longer fails the batch, and FLUX.2 [klein] cannot be installed where it never runs; a command slot with a random seed gets a fresh seed for each picture; "One custom address" is refused for a model of several files.
+- Engine: a key is never sent on a redirect to another host; sending to ComfyUI or NodeMode no longer stalls the engine; features that need scipy say so; Match Edges refuses a picture under 24 pixels on a side; Video Frames to Layers works with an ffmpeg older than 5.1 and reads non-Latin clip details on Windows; overlapping large-picture calls no longer leave the decompression-bomb limit raised; bad input to Assemble Tiles, the band readers and writers, the CMYK and Lab PSD encoders and Send to NodeMode answers with a message; a Claude Code prompt that starts with a dash stays the prompt; a Save for Web slice message stays text.
+- Desktop: the engine exits when the shell that started it is gone; an update on Windows stops the engine before the installer runs; the AppImage launcher works when its path holds a dollar sign, quote or back tick; the window keeps only the permissions it uses.
+- Switching theme drops a skin's extra colour tokens; the last raw stacking values use the layer tokens.
+- Packaging and build: store manifests list every release and name the FormVis bundles; the nginx hosting template no longer points at an engine that refuses it; docker build finds the manual; the dev server's plug-in worker policy closes connections; the CI release-notes step fails when its script fails; the README's code sizes leave tests out, as it says.
+
 ## 2.3.3 · 2026-11-10
 
 - Painting a layer whose mask is a different size from its pixels is no longer cut off at the layer's edge. The mask keeps every value where it shows, and painting the mask itself also reaches past its old edge, from the first stroke.

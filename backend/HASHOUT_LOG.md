@@ -2,6 +2,19 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 2.3.4: the review fixes and the version lines · _v2.3.4 (CHANGELOG.md; the version sites)
+
+- Kind: release · logged 2026-11-11. Every engine, setup, packaging and shell change of 2.3.4 has its own entry below, one per fix, each naming the review finding it answers; the frontend's are in `frontend/HASHOUT_LOG.md`. Deferred findings are listed in the fixers' logs, not here.
+- Verified at release: `npx tsc --noEmit` clean; vitest 48 files, 222 tests passed; backend pytest on this machine without OpenCV: 60 passed, 8 skipped, and every other engine test stopped at `import cv2` (OpenCV is not installed here; 8 modules not collected for the same reason); `cargo check --locked` of native/formvis-render (all targets) and native/formvis-kernels clean; `./formvis counts --check` accurate; `agents sync --check` in step. The desktop shell (src-tauri) was not built (no WebKit here).
+- Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "2.3.3"
+version = "2.3.3"
+version = "2.3.3"
+ "version": "2.3.3",
+```
+
 ## The desktop engine exits when the shell that started it is gone · _v2.3.4 (formvis_engine.py watch_parent)
 
 - Kind: fix · logged 2026-11-11 · handoff from fixer N, review formvis__native-tauri-packaging F8 (engine half).
