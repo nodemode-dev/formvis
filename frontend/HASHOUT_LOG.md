@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A Crop frame stays with the document it was drawn on · v2.3.4 (extensions/tools/crop.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `extensions/tools/crop.ts` `forgetOnSwitch` (new), `frameDoc` (new), `cropTool.options`.
+- Why: review formvis__extensions-gpu-config F2 (fixer X1). The frame, perspective corners, Straighten angle and level line were module state with no owner: a frame drawn on document A, then a switch to B and Enter (or Image > Crop through `commitPendingCrop`), cropped and turned B to A's rectangle in A's coordinates, and the frame showed over B meanwhile.
+- Change: when the tool first watches the engine it records the front document in `frameDoc` and listens to `projects` (which `switchTo`, `closeProject` and a new document emit). Another document in front drops the frame, corners, gesture, level line and angle and emits `overlay` and `options`; the same document (a rename, a mode change) leaves the frame alone. The `tool` listener runs after `projects` in `switchTo`, so a selection on B still starts B's own frame.
+- Verified: `tsc --noEmit` (no error in this file). Not run: the switch in a browser.
+
 ## The float export draws clipped layers, clipped adjustments and artboard backgrounds as the screen does · v2.3.4 (engine/compose-float.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/compose-float.ts` `composeFloat` (`coverageOf`, `alphaOf`, `run`).
