@@ -127,7 +127,7 @@ export class MergeDialog extends Dialog {
         if (kept && given && kept !== given) this.engine.notice(`${kept} of the ${given} photos could be joined; the others did not overlap enough.`);
         else if (this.distortion || this.vignette) this.engine.notice([this.distortion ? (r.notes.k1 ? `Lens distortion corrected (k1 ${r.notes.k1}).` : 'No lens distortion found.') : '', this.vignette && r.notes.vignette ? `Vignette: ${r.notes.vignette}.` : ''].filter(Boolean).join(' '));
       } else {
-        const raw = this.times.value.trim(), r = await api.mergeHdr(files, { align: this.align, times: raw ? raw.split(',').map((t) => Number(t.trim())) : [], ghost: this.ghost, base: this.ghostBase }), n =r.width * r.height, data = new Float32Array(n * 4);
+        const raw = this.times.value.trim(), r = await api.mergeHdr(files, { align: this.align, times: raw ? raw.split(',').map((t) => { const [top, bottom] = t.split('/'); return bottom ? Number(top) / Number(bottom) : Number(t.trim()); }) : [], ghost: this.ghost, base: this.ghostBase }), n =r.width * r.height, data = new Float32Array(n * 4);
         for (let j = 0; j < n; j++) { data[j * 4] = r.rgb[j * 3]; data[j * 4 + 1] = r.rgb[j * 3 + 1]; data[j * 4 + 2] = r.rgb[j * 3 + 2]; data[j * 4 + 3] = 1; }
         this.close();
         this.engine.openDeep('HDR', { mode: 'rgb', n: 3, width: r.width, height: r.height, data }, 32);

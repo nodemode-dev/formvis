@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Merge to HDR takes exposure times typed as fractions · v2.3.4 (ui/panels/merge-dialog.ts)
+
+- Why: review formvis__panels-g-w F10 (fixer P2, kind: fix, logged 2026-11-11). `MergeDialog.apply` sent `Number(t.trim())` for each entry of Exposure times, so `1/250` went as NaN and the engine refused the merge; `drive` (the command path) already turned fractions into numbers.
+- `apply` (HDR branch): each entry is `top / bottom` when it has a slash, else `Number(t.trim())`, the conversion `drive` uses.
+- Checked: `tsc --noEmit` (no error in this file); node on a copy of the parse: `1/250, 1/60, 1/15` gives 0.004, 0.01667, 0.06667 and `0.004,0.5, 2` gives 0.004, 0.5, 2.
+
 ## Export Layers, Artboards or Comps to Files fills the prefix and folder from the document it opens for · v2.3.4 (ui/panels/layer-export-dialog.ts)
 
 - Why: review formvis__panels-g-w F6 (fixer P2, kind: fix, logged 2026-11-11). `show` kept `prefix: this.s.prefix || name, folder: this.s.folder || ...` and `this.s` lives for the session, so the dialog for another document (or for the same document's artboards or comps) offered the first document's prefix and folder, and its files were named and placed after it.
