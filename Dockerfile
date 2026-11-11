@@ -3,6 +3,7 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+COPY docs/MANUAL.md /src/docs/MANUAL.md
 RUN npx vite build
 
 FROM python:3.12-slim

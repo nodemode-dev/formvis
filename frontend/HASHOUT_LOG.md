@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## docker build finds the manual the Help panel imports · v2.3.4 (Dockerfile)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `Dockerfile` stage `frontend`, for `ui/panels/help.ts` `import MANUAL from '../../../../docs/MANUAL.md?raw'`; review formvis__native-tauri-packaging F4.
+- Wrong: the stage copied only `frontend/`, so `npx vite build` could not resolve `/src/docs/MANUAL.md` and `docker build .` stopped. A scan of every non-test import under `frontend/src` finds this one leaving the folder. Now `COPY docs/MANUAL.md /src/docs/MANUAL.md` follows `COPY frontend/ ./`; `.dockerignore` does not exclude `docs/`.
+- Verified: the import scan. Not run: `docker build` (too heavy for this shared machine).
+- Nothing removed.
+
 ## Batch and Lens Correction batch close each file's document when a step or the encode fails · v2.3.4 (app.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `app.ts` `runBatch`, `runLensBatch`. Review formvis__app-automation F8 (fixer A1).
