@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A Form extension panel that reloads is shown again and its stale requests end at once · v2.3.4 (formext/host-bridge.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `formext/host-bridge.ts` `ExtensionHost.mount` (`onMessage`, `handle.activate`). Handoff from fixer X1, formvis__extensions-gpu-config F1 part 3 (fixed by A1).
+- Wrong: where `moveBefore` is missing (other engines, the Linux WebKit shell) moving a panel's frame reloads it; the new page says `host.hello` again but was never sent `ext.activate`, so the panel stayed blank, and a request in flight waited the full 30 s for an answer the old page could no longer give.
+- Now: `mount` counts `host.hello` (`hellos`) and keeps the last activation with reason `panel` (`shown`, set in `activate`). On a second or later hello it rejects every pending request with `ERR.CANCELLED` "the panel reloaded" and sends `shown` again. A command activation is never replayed, so a reload cannot run a command twice.
+- Verified: `tsc --noEmit` clean. Not run: a panel moved in the Linux WebKit shell.
+
 ## play-action fails when the action stopped or a step could not run · v2.3.4 (app.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `app.ts` `playAction`, command `play-action`, the Actions dialog and panel `play` callbacks. Review formvis__app-automation F12 (fixer A1).
