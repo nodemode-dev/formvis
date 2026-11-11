@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A command slot with a random seed gets a fresh seed per picture · _v2.3.4 (app/localgen/local_models.py run_command_slot)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F5.
+- Why: a None seed (random, the default) filled `{seed}` with "0", so every picture of a command slot batch was the same.
+- Now: a None seed becomes `int.from_bytes(os.urandom(4), "little")` for each call, and the result has `"seed"`.
+- Checked: `printf {seed} > {out}` twice with no seed wrote two different seeds matching the results; seed 42 stays 42.
+- Replaced, quoted exactly: `        "seed": str(seed if seed is not None else 0),` and `    return {"path": str(out), "model": slot["id"], "provider": "command", "seconds": round(time.time() - started, 1)}`
+
 ## One FLUX.2 [klein] picture withheld by the filter no longer fails the batch · _v2.3.4 (app/localgen/klein.py generate_to_file; app/localgen/generate.py _generate_local)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F4.
