@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The desktop engine exits when the shell that started it is gone · _v2.3.4 (formvis_engine.py watch_parent)
+
+- Kind: fix · logged 2026-11-11 · handoff from fixer N, review formvis__native-tauri-packaging F8 (engine half).
+- Why: in a one-file build the server's parent is the PyInstaller launcher, which outlives a shell killed by a panic, kill -9 or a web view crash, so watching `getppid()` never fired: the server kept its port and memory and the _MEI folder stayed.
+- Now: when FORMVIS_SHELL_PID (the shell's pid, passed since b73fbca) is a positive integer, `run()` loops while `os.kill(pid, 0)` finds it (ProcessLookupError: gone; PermissionError: alive), then removes the _MEI folder and exits as before; without it the getppid watch is unchanged. POSIX only, as before. A shell left as an unreaped zombie still counts as alive.
+- Checked: a child running `watch_parent` with the variable set to a stand-in process exited 1.1 s after that process was killed; without the variable it kept running under a live parent. Not run on a frozen build.
+- Replaced, quoted exactly: `    if parent <= 1:` and `        while os.getppid() == parent:` / `            time.sleep(2)`
+
 ## A model downloaded after a Relight is used on the next one · _v2.3.4 (app/localgen/relight_split.py _split)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-localgen F8.
