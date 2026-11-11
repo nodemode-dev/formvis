@@ -15,6 +15,14 @@ version = "2.3.3"
  "version": "2.3.3",
 ```
 
+## A window that never polled is not live on a machine that has just started · _v2.3.4 (app/routers/mcp.py _live, _open_window)
+
+- Kind: fix · logged 2026-11-11 · found in formpath, where the same line failed CI on a runner that had been up for under 30 s.
+- Why: `_seen` and `_opened_at` start at 0.0 and were compared with `time.monotonic()` as if 0.0 were long ago. That clock counts from when the machine started, so for the first 30 s after a start `_live()` was true with no window ever seen, and an agent call was queued for consent (180 s) instead of being told formvis is not open; for the first 60 s `_open_window()` held back as if a window had just been opened.
+- Now: `_live()` needs `_seen > 0` for the poll half (the `_taken` half is unchanged), and `_open_window()` only holds back when `_opened_at > 0`.
+- Checked: a scratch probe outside the repo sets the clock and reads `_live()` with nothing ever seen. Clock at 3 s: True before, False after. Clock at 100 s: False both times. Engine tests with the clock starting at 3 s: 317 passed, 9 skipped.
+- Replaced, quoted exactly: `    return now - _seen <= LIVE or any(now - t < 600 for t in _taken.values())` and, in `_open_window`, `config.is_desktop() or time.monotonic() - _opened_at < 60:`
+
 ## The desktop engine exits when the shell that started it is gone · _v2.3.4 (formvis_engine.py watch_parent)
 
 - Kind: fix · logged 2026-11-11 · handoff from fixer N, review formvis__native-tauri-packaging F8 (engine half).

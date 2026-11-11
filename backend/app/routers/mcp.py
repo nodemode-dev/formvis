@@ -653,7 +653,7 @@ def _err(req_id, code: int, message: str) -> dict:
 def _live() -> bool:
     """A window polled lately, or is working through a call it took (for as long as _ask waits, 600 s)."""
     now = time.monotonic()
-    return now - _seen <= LIVE or any(now - t < 600 for t in _taken.values())
+    return (_seen > 0 and now - _seen <= LIVE) or any(now - t < 600 for t in _taken.values())
 
 
 def _fail(text: str) -> dict:
@@ -664,7 +664,7 @@ def _open_window() -> bool:
     """formvis opened in the browser, at most once a minute; not in the desktop app (it is the window) or when
     FORMVIS_OPEN_WINDOW=0 (tests, headless machines)."""
     global _opened_at
-    if os.environ.get("FORMVIS_OPEN_WINDOW", "1") == "0" or config.is_desktop() or time.monotonic() - _opened_at < 60:
+    if os.environ.get("FORMVIS_OPEN_WINDOW", "1") == "0" or config.is_desktop() or (_opened_at > 0 and time.monotonic() - _opened_at < 60):
         return False
     _opened_at = time.monotonic()
     import webbrowser
