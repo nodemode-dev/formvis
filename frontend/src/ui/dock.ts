@@ -253,7 +253,7 @@ export class Dock {
       if (!f) continue;
       setHidden(f, !on);
       if (!on || !r || !s) continue;
-      if (s.parentElement !== f) { f.appendChild(s); s.classList.remove('is-sized'); s.style.height = ''; }
+      if (s.parentElement !== f) { if (typeof f.moveBefore === 'function' && s.isConnected && f.isConnected) f.moveBefore(s, null); else f.appendChild(s); s.classList.remove('is-sized'); s.style.height = ''; }
       const title = f.querySelector('.cv-float-title') as HTMLElement;
       if (title.textContent !== p.label) title.textContent = p.label;
       const q = fit(r);
@@ -385,11 +385,11 @@ export class Dock {
     // Each panel in its column, in order; moved only when the order differs, never rebuilt.
     const want = this.dockIds().map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
     const current = Array.from(this.dock.children).filter((c) => want.includes(c as HTMLElement));
-    if (want.some((s, i) => current[i] !== s)) for (const s of want) this.dock.insertBefore(s, this.marker);
+    if (want.some((s, i) => current[i] !== s)) for (const s of want) { if (typeof this.dock.moveBefore === 'function' && s.isConnected && this.dock.isConnected) this.dock.moveBefore(s, this.marker); else this.dock.insertBefore(s, this.marker); }
     if (this.side) {
       const sideWant = this.state.side.filter((id) => !this.floats[id]).map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
       const sideNow = Array.from(this.side.children).filter((c) => sideWant.includes(c as HTMLElement));
-      if (sideWant.some((s, i) => sideNow[i] !== s)) for (const s of sideWant) this.side.appendChild(s);
+      if (sideWant.some((s, i) => sideNow[i] !== s)) for (const s of sideWant) { if (typeof this.side.moveBefore === 'function' && s.isConnected && this.side.isConnected) this.side.moveBefore(s, null); else this.side.appendChild(s); }
       for (const s of sideWant) { s.classList.remove('is-sized'); s.style.height = ''; }   // sizes are the dock's
     }
     for (const p of ALL_PANELS) { const s = this.section(p.id); if (s) setHidden(s, !this.visible(p.id)); }

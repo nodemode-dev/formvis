@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Reordering the dock keeps an extension panel's frame alive where the browser can · v2.3.4 (ui/dock.ts Dock.apply, the float frame loop)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/dock.ts` `apply` and the float-frame loop above it (handoff from X1, formvis__extensions-gpu-config.md F1 part 1 of 3).
+- Wrong: `apply` re-inserted every section of the column with `insertBefore` (and the side column with `appendChild`) whenever the order changed, and a floating panel went into its frame with `appendChild`; moving an iframe reloads it, so an extension panel lost its state and activation when a second one opened or the workspace changed.
+- Changed: those three moves use `moveBefore` when it exists and both nodes are connected (as `panel-group.ts` attach does), else the old call. Old lines: `for (const s of want) this.dock.insertBefore(s, this.marker);`, `for (const s of sideWant) this.side.appendChild(s);`, `if (s.parentElement !== f) { f.appendChild(s); ...`.
+- Not changed: the strip's fly-out (`replaceWith` then `appendChild`) and moving only out-of-place sections; both change the order logic and need a browser check.
+- Checked: `npx tsc --noEmit` clean; not run in a browser.
+
 ## The command reference says Clean Working Files asks first · v2.3.4 (.claude/skills/formvis-driving/references/commands.md, .agents mirror)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to the `clean-working-files` row of the generated command reference (handoff from A1 for formvis__app-automation.md F1, after 527c997 made the command `'mr'` in `automation/command-meta.ts`).
