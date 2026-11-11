@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Select rows add their options as text · v2.3.4 (ui/panels/controls.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/panels/controls.ts` `selectRow` (handoff from the panels review, F1).
+- Wrong: options were interpolated into an HTML string parsed by `el()`; a WebAssembly plug-in's manifest option label (`</option></select><img src=x onerror=...>`) ran script in the window. Now the select is built empty and each pair is added with `sel.add(new Option(t, v))`, so every caller's labels and values are text.
+- Verified: `tsc --noEmit` (no error in this file), `vitest run src/ui` 6 passed. Not run: the plug-in dialog in a window.
+- Replaced, quoted exactly:
+
+```text
+  const root = el(`<label class="cv-field"><span></span><select class="cv-input">${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`);
+```
+
 ## Develop Geometry keeps a layer one pixel high or wide · v2.3.4 (engine/develop.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/develop.ts` `geometryPass`.
