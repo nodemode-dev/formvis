@@ -36,7 +36,7 @@ def tauri_conf() -> dict:
 
 def test_the_desktop_entry_names_the_app_the_category_and_every_opened_type():
     entry = desktop_entry()
-    assert entry["Type"] == "Application" and entry["Name"] == "formvis" and entry["Terminal"] == "false"
+    assert entry["Type"] == "Application" and entry["Name"] == "FormVis" and entry["Terminal"] == "false"
     assert entry["Exec"] == "formvis %F", "a file manager passes the picked files as arguments"
     assert entry["Icon"] == APP_ID and entry["StartupWMClass"] == "formvis"
     categories = entry["Categories"].rstrip(";").split(";")

@@ -1,8 +1,8 @@
 import pytest
 
 SCR = "([x, y]) => { const v = window.formvis.engine.current.viewport, s = document.querySelector('.cv-stage').getBoundingClientRect(), q = v.toScreen(x, y); return [s.left + q.x, s.top + q.y]; }"
-INK = """() => { const e = window.formvis.engine; let n = 0;
-  for (let y = 0; y < 300; y++) for (let x = 0; x < 300; x++) { if (e.compositePixel({ x, y }).r < 128) n++; }
+INK = """() => { const d = window.formvis.engine.flattened().getContext('2d').getImageData(0, 0, 300, 300).data; let n = 0;
+  for (let i = 0; i < d.length; i += 4) { if (d[i] < 128) n++; }
   return n; }"""
 
 
