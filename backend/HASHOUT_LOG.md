@@ -6,6 +6,7 @@ Living log for the engine service side, _v0.1.0. Read the map and the TOC first;
 
 - Kind: release · logged 2026-11-11. Every engine, setup, packaging and shell change of 2.3.4 has its own entry below, one per fix, each naming the review finding it answers; the frontend's are in `frontend/HASHOUT_LOG.md`. Deferred findings are listed in the fixers' logs, not here.
 - Verified at release: `npx tsc --noEmit` clean; vitest 48 files, 222 tests passed; backend pytest on this machine without OpenCV: 60 passed, 8 skipped, and every other engine test stopped at `import cv2` (OpenCV is not installed here; 8 modules not collected for the same reason); `cargo check --locked` of native/formvis-render (all targets) and native/formvis-kernels clean; `./formvis counts --check` accurate; `agents sync --check` in step. The desktop shell (src-tauri) was not built (no WebKit here).
+- Verified afterwards, on a machine with the pinned requirements: every job of `ci.yml` with its own commands (engine tests on Python 3.12: 317 passed, 9 skipped; window smoke: 2 passed); the browser suite as `e2e.yml` runs it, 12 shards, on SwiftShader. Its first pass failed six tests, all on two review fixes: the options bar refit (five tests; withdrawn, see `frontend/HASHOUT_LOG.md`) and play-action from the menu path (one test; fixed, same log). All six pass after those two changes, and nothing else failed.
 - Removed version lines, the desktop shell's quoted too:
 
 ```text
