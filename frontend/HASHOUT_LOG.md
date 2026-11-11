@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Enter on a focused button in the Brush Preset picker does that button's job · v2.3.4 (ui/brush-picker.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/brush-picker.ts` `BrushPicker` constructor (document keydown).
+- Wrong: the document-wide Enter ran `take()` before the focused button's click, so Enter on Revert found `before` cleared and kept the trial brush, and Enter on a preset row applied it after the picker closed. Enter now leaves a focused `HTMLButtonElement` inside `this.root` to act on its own.
+- Verified: `tsc --noEmit` (no error in this file). Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+    document.addEventListener('keydown', (e) => { if (!this.isOpen) return; if (e.key === 'Escape') this.revert(); else if (e.key === 'Enter' && document.activeElement !== this.find) this.take(); });
+```
+
 ## The Navigator stops panning when its drag is cancelled · v2.3.4 (ui/navigator.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/navigator.ts` `NavigatorPanel` constructor (preview drag).

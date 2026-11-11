@@ -36,7 +36,7 @@ export class BrushPicker {
     (this.root.querySelector('[data-k="use"]') as HTMLElement).addEventListener('click', () => this.take());
     (this.root.querySelector('[data-k="revert"]') as HTMLElement).addEventListener('click', () => this.revert());
     document.addEventListener('pointerdown', (e) => { if (this.isOpen && !this.root.contains(e.target as Node)) this.take(); }, true);
-    document.addEventListener('keydown', (e) => { if (!this.isOpen) return; if (e.key === 'Escape') this.revert(); else if (e.key === 'Enter' && document.activeElement !== this.find) this.take(); });
+    document.addEventListener('keydown', (e) => { if (!this.isOpen) return; if (e.key === 'Escape') this.revert(); else if (e.key === 'Enter' && document.activeElement !== this.find && !(document.activeElement instanceof HTMLButtonElement && this.root.contains(document.activeElement))) this.take(); });
   }
 
   get isOpen(): boolean { return !this.root.hidden; }
