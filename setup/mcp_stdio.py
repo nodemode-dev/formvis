@@ -40,6 +40,7 @@ _session = ""   # the engine's Mcp-Session-Id from initialize, which ties later 
 ROOTS: list[str] = []   # --root: folders the file tools may read and write
 READ_ROOTS: list[str] = []   # --read-root: folders they may only read
 WRITES = {"save_project", "export_image", "export_mask", "export_layer", "timeline_render"}   # tools whose path is written; output_path always is
+CONTROL = {"app.open": "open_file", "app.save": "save_project", "app.export": "export_image"}
 _out = threading.Lock()
 _watching = False
 
@@ -66,12 +67,17 @@ def outside_roots(msg: dict) -> str | None:
     if not (ROOTS or READ_ROOTS) or msg.get("method") != "tools/call":
         return None
     params = msg.get("params") or {}
-    args = params.get("arguments") or {}
+    name, args = params.get("name"), params.get("arguments") or {}
+    if name == "control_call" and isinstance(args, dict):
+        method, inner = str(args.get("method")), args.get("params")
+        name, args = CONTROL.get(method, method), inner if isinstance(inner, dict) else {}
+    if name in ("save_project", "export_image") and not (isinstance(args.get("path"), str) and args["path"].strip()):
+        return f"{name} with no path writes back to the file the document came from, which may be outside the folders this server may write: give a path inside {', '.join(ROOTS) or 'a --root folder'}."
     for key in ("path", "output_path"):
         value = args.get(key)
         if not isinstance(value, str) or not value.strip():
             continue
-        writing = key == "output_path" or params.get("name") in WRITES
+        writing = key == "output_path" or name in WRITES
         if not inside(value, ROOTS if writing else ROOTS + READ_ROOTS):
             return f"{key} {value} is outside the folders this server may {'write' if writing else 'read'} ({', '.join(ROOTS if writing else ROOTS + READ_ROOTS) or 'none'})."
     return None

@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## mcp --root and --read-root refuse a save or export with no path · _v2.3.4 (setup/mcp_stdio.py CONTROL, outside_roots)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F5.
+- Why: `outside_roots` checked only the `path` and `output_path` named in a call. After `open_file` on a file under `--read-root`, `export_image {}` or `save_project {}` made the engine write back to that file with `overwrite: True` (`_agent_call` and `_write_back` in app/routers/mcp.py), replacing a file the person allowed only to be read. `control_call` with `app.open`, `app.save` or `app.export` skipped the check too.
+- `CONTROL` maps those three methods to their tools; `outside_roots` checks a control_call's `params` as that tool's arguments, and while any root is set refuses save_project and export_image with no path ("give a path inside" the --root folders). With no roots nothing changes.
+- Replaced, quoted exactly: `    args = params.get("arguments") or {}` and `        writing = key == "output_path" or params.get("name") in WRITES`.
+- Checked by calling `outside_roots` from a scratch script (read-only open passes, write-back refused, control_call cases refused, odd arguments do not raise); not run against a live engine.
+
 ## A DPX or Cineon line padding larger than the file is refused · _v2.3.4 (app/services/dpx.py read; app/services/cin.py read)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-services F3.
