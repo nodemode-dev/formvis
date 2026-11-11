@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A WebAssembly plug-in's option labels are text, not markup · v2.3.4 (ui/panels/wasm-plugins-dialog.ts)
+
+- Why: review formvis__panels-g-w F1 (fixer P2, kind: fix, logged 2026-11-11). `WasmFilterDialog.section` passed a plug-in schema's select options to `selectRow`, which interpolates them into `<option value="${v}">${t}</option>` and parses the string; a label such as `</option></select><img src=x onerror=...>` (within `parseManifest`'s 60 characters) ran script in the window, with its full API, under `csp: null`.
+- `ui/panels/wasm-plugins-dialog.ts` `section`: a select row is built with `selectRow(p.label, [], ...)` and filled with one `new Option(t, v)` per `p.options` pair, so labels and values are text. The root, `panels/controls.ts` `selectRow`, is fixer U1's area and is in the handoffs file.
+- Checked: `tsc --noEmit` (exit 0). Not run: the window with a crafted manifest.
+
 ## A file plug-in cannot call the window's ui_ and internal tools · v2.3.4 (plugins/host.ts)
 
 - Why: review formvis__app-automation F2 (fixer A1, logged 2026-11-11). `PluginHost`'s `'call'` request passed any tool name to `AgentBridge.run`, which has no caller check: a plug-in could press Allow on the window's own consent dialogs with `ui_dialog` (approving its own fal call or `set_settings`), type with `ui_key`, draw with `ui_pointer`, quit with `ui_window`, and reach `__open`, `__export`, `__project` and `close_document`, none of it behind Allow outside agents.
