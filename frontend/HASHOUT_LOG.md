@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A toolbar slot remembers the tool last chosen from it, Rotate View included · v2.3.4 (ui/tool-groups.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `ui/tool-groups.ts` `rememberTool`, `slotTool` (review formvis__ui-o-z.md F9).
+- Wrong: `rememberTool` stored under `t.key` while `slotTool` reads `last.get(g.key)`, where a group's key is `group ?? key`; Rotate View (key R, group H) was never remembered in the Hand slot and a stray R entry was saved. Now it stores under `t.group ?? t.key`.
+- Verified: `npx tsc --noEmit` clean. Not run in a window.
+- Replaced, quoted exactly:
+
+```text
+  if (!t || last.get(t.key) === t.id) return;
+  last.set(t.key, t.id);
+```
+
 ## Gaussian and Motion Blur layers no longer darken edges next to transparency · v2.3.4 (engine/adjust-params.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/adjust-params.ts` `PARAM_ADJUSTMENTS.gaussianBlur.kernel`, `PARAM_ADJUSTMENTS.motionBlur.kernel`.
