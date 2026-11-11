@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Magic Wand and Copy read a targeted layer mask's own values · v2.3.4 (engine/select-ops.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/select-ops.ts` `maskRgba`, `selectedPixels`.
+- Wrong: masks are white pixels with the value in alpha. `maskRgba` filled the canvas opaque white and drew the mask `source-over`, so every alpha was 255 and `toGray` gave white everywhere: the wand on a targeted mask selected the whole canvas. `selectedPixels` with the mask targeted drew the mask on a transparent surface, so outside a placed mask's box (where it reveals) the copy was black.
+- Now: both fill white, punch the mask's box out with `destination-out` and draw the mask `source-over`, as the renderer's `cover()` does: the mask's value inside its box, white outside.
+- Verified: `tsc --noEmit` clean in the engine; vitest `src/engine` 7 files, 36 passed. Not run: a wand click in a browser.
+- Replaced, quoted exactly:
+
+```text
+    setMat(c, placement(m.placement ?? layer.transform, m.raster.width, m.raster.height));
+    c.drawImage(m.raster.canvas, 0, 0);
+        setMat(ctx, mul(shift, placement(m.placement ?? layer.transform, m.raster.width, m.raster.height)));
+        ctx.drawImage(m.raster.canvas, 0, 0);
+```
+
 ## The WebGL2 display blends Shadows/Highlights, HDR Toning and Clarity layers in their own mode · v2.3.4 (gpu/gl-display.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `gpu/gl-display.ts` `GlDisplay.drawLayer` (the `chOff` uniform).
