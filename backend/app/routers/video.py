@@ -81,6 +81,9 @@ def _frames(path: Path, out: Path, start: float, end: float, every: int, max_fra
         cmd += ["-vf", ",".join(filters)]
     cmd += ["-fps_mode", "vfr", "-frames:v", str(max_frames), str(out / "f%05d.png")]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if r.returncode != 0 and "Unrecognized option 'fps_mode'" in r.stderr:
+        cmd[cmd.index("-fps_mode")] = "-vsync"
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     pngs = sorted(out.glob("f*.png"))
     if r.returncode != 0 or not pngs:
         raise HTTPException(status_code=422, detail=f"ffmpeg could not read frames from that clip{': ' + r.stderr.strip()[-200:] if r.stderr.strip() else ''}.")

@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Video Frames to Layers with an ffmpeg older than 5.1 · _v2.3.4 (app/routers/video.py _frames)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F5.
+- Why: `-fps_mode vfr` exists from FFmpeg 5.1; the 4.x of Ubuntu 22.04 and Debian 11 exits with "Unrecognized option 'fps_mode'", so with it on the PATH (which `ffmpeg_fetch.start` and `_ffmpeg` both prefer) every clip answered 422.
+- Change: when the run fails with that message, `_frames` swaps `-fps_mode` for `-vsync` (same `vfr` value) and runs once more. No version probe; a newer ffmpeg never takes the second run.
+- Checked: a 1 s test clip, every 2nd frame, through a wrapper that refuses `-fps_mode` as 4.x does and then runs the system ffmpeg 6.1.1: 5 frames; ffmpeg 6.1.1 alone: 5 frames. A real 4.4 not run.
+
 ## Relative paths for cli, mcp, corpus and perf mean the caller's folder · _v2.3.4 (formvis; setup/perf.py main; setup/cli.py droplet_cmd)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F4.
