@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Neural Filters uses only the style, colours or depth of the layer and style chosen now · v2.3.4 (ui/panels/neural-dialog.ts)
+
+- Why: review formvis__panels-g-w F2 (fixer P2, kind: fix, logged 2026-11-11). Choosing another style while Style Transfer painted the first left `ensureStyle` returning on `stylePending`, and the first result was stored and used; a depth, colour or style request that ended after Cancel and a reopen on another layer of the same size was stored for the new layer, because `run()` compared only width and height.
+- `run()`: `depth`, `color` and `styled` are used only when their `layerId` equals `pixelsKey` of the active layer now (and `styled.style` equals `this.style`). `ensureDepth`, `ensureColor`, `ensureStyle`: the key (and style) asked for is kept; a result whose key or style no longer matches the active layer when it arrives is dropped, and the method runs again from `finally` while the dialog is open, so the current one is fetched. An error or a missing model does not retry.
+- Checked: `tsc --noEmit` (exit 0). Not run: the window with the local models.
+
 ## Generative Fill, Expand and Upscale: Cancel stops a run still being prepared, a second click runs nothing · v2.3.4 (ui/panels/generative-dialog.ts)
 
 - Why: review formvis__panels-g-w F3 (fixer P2, kind: fix, logged 2026-11-11). `generate` awaited `generatePrompt` (two engine calls) and, for ComfyUI and catalogue models, `chips.ordered()` before `this.close()`; Cancel, Escape or the X in that time still started the job, and a second Generate click or Ctrl+Enter started a second one (two paid fal runs). The button was never disabled.
