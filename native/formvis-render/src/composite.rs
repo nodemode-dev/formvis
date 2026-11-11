@@ -1306,7 +1306,7 @@ impl Blender {
 
     /// The layers blended in a rectangle of the document, read back as straight RGBA8 (for tests and export).
     pub fn blend_region(&self, gpu: &Gpu, layers: &[Stack], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
-        let mut out = vec![0u8; (w * h * 4) as usize];
+        let mut out = vec![0u8; (w as usize) * (h as usize) * 4];
         for ty in y / TILE..=(y + h - 1) / TILE {
             for tx in x / TILE..=(x + w - 1) / TILE {
                 let px = read_tile(gpu, &self.render_tile(gpu, layers, tx, ty));
@@ -1321,7 +1321,7 @@ impl Blender {
                             continue;
                         }
                         let s = ((py * TILE + qx) * 4) as usize;
-                        let d = (((ly - y) * w + (lx - x)) * 4) as usize;
+                        let d = (((ly - y) as usize) * w as usize + (lx - x) as usize) * 4;
                         out[d..d + 4].copy_from_slice(&px[s..s + 4]);
                     }
                 }

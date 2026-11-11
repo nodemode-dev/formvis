@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The native renderer sizes regions of a gigapixel or more without overflow · v2.3.4 (native/formvis-render/src/lib.rs, native/formvis-render/src/composite.rs)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `TiledLayer::write`, `TiledLayer::read` (lib.rs) and `Blender::blend_region` (composite.rs); review formvis__native-tauri-packaging F7.
+- Wrong: `w * h * 4` and the row offsets were computed in u32 before `as usize`, so a region of 2^30 pixels or more (a 33,000 by 33,000 `formvis-render composite`, allowed by the budget on a 32 GB machine) wrapped and the command panicked. Now every size is `(w as usize) * (h as usize) * 4` and every offset `(((py - y) as usize) * w as usize + (px - x) as usize) * 4`.
+- Verified: `cargo check --locked --all-targets` and `cargo test --locked` in `native/formvis-render`, 21 passed on a software adapter. Not run: a gigapixel composite.
+- Replaced, quoted exactly:
+
+```text
+        assert_eq!(rgba.len(), (w * h * 4) as usize);
+                let any = (y0..y1).any(|py| (x0..x1).any(|px| rgba[(((py - y) * w + (px - x)) * 4 + 3) as usize] > 0));
+                        let s = (((py - y) * w + (px - x)) * 4) as usize;
+        let mut out = vec![0u8; (w * h * 4) as usize];
+                        let d = (((ly - y) * w + (lx - x)) * 4) as usize;
+        let mut out = vec![0u8; (w * h * 4) as usize];
+                        let d = (((ly - y) * w + (lx - x)) * 4) as usize;
+```
+
 ## docker build finds the manual the Help panel imports · v2.3.4 (Dockerfile)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `Dockerfile` stage `frontend`, for `ui/panels/help.ts` `import MANUAL from '../../../../docs/MANUAL.md?raw'`; review formvis__native-tauri-packaging F4.
