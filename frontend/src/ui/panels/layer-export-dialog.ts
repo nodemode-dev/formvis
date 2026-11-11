@@ -28,6 +28,7 @@ export class LayerExportDialog extends Dialog {
   private readonly pickRow = el('<div class="cv-field" role="group" aria-label="Which to export"><span>Include</span><div class="cv-size-checks"></div></div>');
   private readonly pickList = this.pickRow.lastElementChild as HTMLElement;
   private left = new Set<string>();
+  private filledFor = '';
   private readonly note = el('<p class="cv-note"></p>');
 
   /** `desktop` says whether files are written to a folder by the engine (true) or downloaded as one zip (false). */
@@ -61,7 +62,9 @@ export class LayerExportDialog extends Dialog {
     const p = this.engine.current;
     if (this.isOpen || !p) return;
     const name = p.name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled', what = comps ? 'comps' : artboards ? 'artboards' : 'layers';
-    this.s = { ...this.s, artboards, comps, prefix: this.s.prefix || name, folder: this.s.folder || `${safeName(name, 60, 'Untitled')} ${what}` };
+    const fresh = this.filledFor !== `${p.id}:${what}`;
+    this.filledFor = `${p.id}:${what}`;
+    this.s = { ...this.s, artboards, comps, prefix: (!fresh && this.s.prefix) || name, folder: (!fresh && this.s.folder) || `${safeName(name, 60, 'Untitled')} ${what}` };
     this.left.clear();
     this.dir = undefined;
     this.selectedOnly = false;

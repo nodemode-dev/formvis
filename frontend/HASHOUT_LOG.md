@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Export Layers, Artboards or Comps to Files fills the prefix and folder from the document it opens for · v2.3.4 (ui/panels/layer-export-dialog.ts)
+
+- Why: review formvis__panels-g-w F6 (fixer P2, kind: fix, logged 2026-11-11). `show` kept `prefix: this.s.prefix || name, folder: this.s.folder || ...` and `this.s` lives for the session, so the dialog for another document (or for the same document's artboards or comps) offered the first document's prefix and folder, and its files were named and placed after it.
+- `LayerExportDialog`: `filledFor` holds `${p.id}:${what}` (`what` is layers, artboards or comps); when `show` opens for another key, the prefix is the document's name and the folder `${safeName(name, 60, 'Untitled')} ${what}`; for the same key the typed values stay.
+- Checked: `tsc --noEmit` (no error in this file). Not run: the window.
+
 ## The engine is told the shell's own pid · v2.3.4 (src-tauri/src/main.rs engine spawn)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/src/main.rs`, the sidecar spawn in `setup`, and `backend/formvis_engine.py` `watch_parent`; review formvis__native-tauri-packaging F8.
