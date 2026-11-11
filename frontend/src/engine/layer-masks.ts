@@ -153,10 +153,24 @@ export function deleteMask(host: MaskHost, apply: boolean): void {
       const ctx = out.ctx;
       const toLayer = invert(placement(layer.transform, out.width, out.height));
       const maskPlace = placement(mask.placement ?? layer.transform, mask.raster.width, mask.raster.height);
+      const shape = (shapedMask(mask) ?? mask.raster).canvas;
       ctx.save();
       ctx.globalCompositeOperation = 'destination-in';
-      setMat(ctx, mul(toLayer, maskPlace));
-      ctx.drawImage((shapedMask(mask) ?? mask.raster).canvas, 0, 0);
+      if (mask.placement || layer.adjustment) {
+        const k = createSurface(out.width, out.height), kc = ctxOf(k);
+        kc.fillStyle = '#fff';
+        kc.fillRect(0, 0, out.width, out.height);
+        setMat(kc, mul(toLayer, maskPlace));
+        kc.globalCompositeOperation = 'destination-out';
+        kc.fillRect(0, 0, mask.raster.width, mask.raster.height);
+        kc.globalCompositeOperation = 'source-over';
+        kc.drawImage(shape, 0, 0);
+        ctx.setTransform(...IDENTITY);
+        ctx.drawImage(k, 0, 0);
+      } else {
+        setMat(ctx, mul(toLayer, maskPlace));
+        ctx.drawImage(shape, 0, 0);
+      }
       ctx.restore();
       ctx.setTransform(...IDENTITY);
       p.updateLayer(layer.id, { raster: out, mask: null });

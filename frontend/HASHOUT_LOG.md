@@ -2,6 +2,27 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Apply Layer Mask and Flatten All Masks keep what shows outside a placed mask · v2.3.4 (engine/layer-masks.ts, engine/file-scripts.ts)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/layer-masks.ts` `deleteMask`, `engine/file-scripts.ts` `bakeMasks`.
+- Wrong: a mask with its own `placement` hides only inside its box on screen (renderer `maskOf` gives `covers: false`, `cover()` fills white outside the box). Both bakes drew the mask raster with `destination-in` straight onto the layer, which cleared every layer pixel outside the box, including paint the person could see (routine since the 2.3.3 growth gives a tied mask of another size a placement). `bakeMasks` also drew `m.raster`, not `shapedMask(m)`, so density and feather were baked at full strength.
+- Now: with a placement (or, in `deleteMask`, an adjustment layer, as `maskOf` treats it), the coverage is built on a layer-size scratch as `cover()` does (white, the box punched out with `destination-out`, the shaped mask drawn `source-over`) and multiplied in with `destination-in`; a tied mask is drawn as before. `bakeMasks` draws `shapedMask(m) ?? m.raster`.
+- Verified: `tsc --noEmit` clean; vitest `src/engine` 7 files, 36 passed. Not run: the pixels in a browser.
+- Replaced, quoted exactly:
+
+```text
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-in';
+      setMat(ctx, mul(toLayer, maskPlace));
+      ctx.drawImage((shapedMask(mask) ?? mask.raster).canvas, 0, 0);
+      ctx.restore();
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-in';
+      setMat(ctx, mul(toLayer, placement(m.placement ?? l.transform, m.raster.width, m.raster.height)));
+      ctx.drawImage(m.raster.canvas, 0, 0);
+      ctx.restore();
+```
+
 ## Folder masks turn and warp with Arbitrary rotation, Straighten and Perspective Crop · v2.3.4 (engine/index.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `engine/index.ts` `Engine.rotateCanvasBy`, `straightenCrop`, `perspectiveCrop` (review formvis__engine-index.md F2).
