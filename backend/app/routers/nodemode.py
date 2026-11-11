@@ -70,6 +70,7 @@ def send(target: str = Form(...), title: str = Form("formvis"), items: str = For
     try:
         meta = json.loads(items)
         assert isinstance(meta, list) and len(meta) == len(files) and 0 < len(files) <= 64
+        assert all(isinstance(m, dict) and all(isinstance(m.get(k, 0), (int, float)) for k in ("width", "height")) for m in meta)
     except (ValueError, AssertionError):
         raise HTTPException(status_code=422, detail="Nothing to send, or the list of what is sent did not match the files.")
     sent = []

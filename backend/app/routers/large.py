@@ -46,6 +46,7 @@ async def assemble(name: str = Form(...), width: int = Form(...), height: int = 
     try:
         where = json.loads(places)
         assert isinstance(where, list) and len(where) == len(files)
+        assert all(isinstance(w, dict) and isinstance(w.get("x"), int) and isinstance(w.get("y"), int) for w in where)
     except (ValueError, AssertionError):
         raise HTTPException(422, "Each tile needs its place.")
     parts = [(int(w["x"]), int(w["y"]), await f.read()) for w, f in zip(where, files)]

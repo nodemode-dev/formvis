@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Bad input on window routes answers 4xx, not 500 · _v2.3.4 (app/routers/large.py assemble; app/routers/bands.py _write, read_open; app/routers/io.py encode_cmyk_psd, encode_lab_psd; app/routers/nodemode.py send)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F10.
+- Why: unchecked input raised past the handlers: `assemble` read `w["x"]` from places that are not objects or lack whole-number x and y; `_write` took `rows[0]` of an empty body; `read_open` hit `struct.error` on a PNG shorter than its header and left the file open; the two PSD encoders read `json.loads(meta)` and `m["width"]` unguarded; `nodemode.send` called `m.get` on non-objects and `int()` on a non-numeric width after earlier files were uploaded.
+- Change: `assemble` asserts each place is an object with int x and y (422); `_write` refuses an empty body with its row check (400); `read_open` reads the header in a try that closes the file (400); the encoders read meta and the size in a try for ValueError, KeyError and TypeError (422); `nodemode.send` asserts every item is an object with numeric width and height before uploading (422).
+- Checked: a scratch app with the four routers (OpenCV and psd-tools stubbed): each bad input answers 422 or 400. `tests/test_nodemode.py`, `test_large.py`, `test_legacy_bands_video.py`: 22 passed (OpenCV stubbed).
+- Replaced, quoted exactly: `bands.py` `_write`: `    if len(body) % row:` and `        raise HTTPException(400, "Not a whole number of rows.")`; `read_open`'s four header lines are now indented under `try`; in each encoder `    m = json.loads(meta)` and `    W, H, raw = int(m["width"]), int(m["height"]), file.file.read()` are now under `try`.
+
 ## The nginx hosting template no longer proxies to an engine that refuses it · _v2.3.4 (packaging/web/nginx.conf)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `packaging/web/nginx.conf` `location /api/`; review formvis__native-tauri-packaging F6.
