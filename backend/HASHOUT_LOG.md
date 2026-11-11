@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Malformed JSON-RPC to /mcp answers a JSON-RPC error · _v2.3.4 (app/routers/mcp.py mcp)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F9.
+- Why: a body that is JSON but not an object, `params` that is a list or string, a non-object `params._meta`, or a list or object as the tools/call `name` raised AttributeError or TypeError in `mcp()`: an HTTP 500 with no JSON-RPC body.
+- Change: a non-object body answers -32600 and non-object `params` or `params._meta` -32602 (status 400, as the parse and batch errors); tools/call tests `isinstance(name, str)` before `name in NAMES`.
+- Checked: a scratch app with the mcp router: each malformed body answers -32600 or -32602; tools/list still answers.
+- Replaced, quoted exactly: `        if name in NAMES and isinstance(args, dict):`.
+
 ## Undo keys and export names checked before the path is built · _v2.3.4 (app/routers/undo.py _find; app/routers/large.py exported)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F11.

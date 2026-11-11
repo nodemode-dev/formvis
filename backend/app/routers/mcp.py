@@ -1423,11 +1423,15 @@ async def mcp(request: Request) -> Response:
         return Response(content=json.dumps(_err(None, -32700, "Parse error")), media_type="application/json", status_code=400)
     if isinstance(msg, list):
         return Response(content=json.dumps(_err(None, -32600, "Batches are not supported")), media_type="application/json", status_code=400)
+    if not isinstance(msg, dict):
+        return Response(content=json.dumps(_err(None, -32600, "Invalid Request: send one JSON-RPC object")), media_type="application/json", status_code=400)
     req_id, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
     if req_id is None:   # a notification
         if method == "notifications/cancelled" and isinstance(params, dict) and params.get("requestId") is not None:
             _cancel(_client_of(request, params, request.headers.get("mcp-session-id"))[0], params["requestId"])
         return Response(status_code=202)
+    if not isinstance(params, dict) or not isinstance(params.get("_meta") or {}, dict):
+        return Response(content=json.dumps(_err(req_id, -32602, "Invalid params: params and params._meta must be objects")), media_type="application/json", status_code=400)
     headers: dict[str, str] = {}
     sid = request.headers.get("mcp-session-id")
     meta = params.get("_meta") or {}
@@ -1465,7 +1469,7 @@ async def mcp(request: Request) -> Response:
         out = _ok(req_id, {"tools": [t for t in TOOLS if t["name"] in CORE] if core else TOOLS}, modern, cacheable=True)
     elif method == "tools/call":
         name, args = params.get("name"), params.get("arguments") or {}
-        if name in NAMES and isinstance(args, dict):
+        if isinstance(name, str) and name in NAMES and isinstance(args, dict):
             args = {k: v for k, v in args.items() if v is not None}   # null reads as left out
             why = _invalid(args, SCHEMAS[name], "")
             if why:
