@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Video Frames to Layers describes and trims the clip chosen last · v2.3.4 (ui/panels/video-dialog.ts)
+
+- Why: review formvis__panels-g-w F14 (fixer P2, kind: fix, logged 2026-11-11). `picked` stored whatever `api.videoProbe` returned last, so a slow probe of an earlier clip set `info`, To and the description for the newer `file`, and OK trimmed it with the other clip's duration and frame rate.
+- `picked`: keeps the file it probes (`f`), clears `info` while probing (OK then says to choose a video), and drops a result or an error that arrives when `f !== this.file`.
+- Checked: `tsc --noEmit` (no error in this file). Not run: the window.
+
 ## New Guide Layout and Interpret Footage leave no hidden dialog behind · v2.3.4 (ui/panels/guide-layout.ts, ui/panels/interpret-footage.ts)
 
 - Why: review formvis__panels-g-w F13 (fixer P2, kind: fix, logged 2026-11-11). `openGuideLayout` and `openInterpretFootage` build a `new Dialog` per use; its constructor appends a scrim with listeners to `#overlay-root` and `close()` only hides it, so hidden scrims (and New Guide Layout's `remember` listeners) piled up for the session.

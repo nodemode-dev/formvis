@@ -39,14 +39,18 @@ export class VideoImportDialog extends Dialog {
   show(): void { this.file = null; this.info = null; this.input.value = ''; setText(this.about, 'No video chosen yet.'); setText(this.note, ''); this.open(); }
 
   private async picked(): Promise<void> {
-    this.file = this.input.files?.[0] ?? null;
-    if (!this.file) return;
+    const f = this.input.files?.[0] ?? null;
+    this.file = f;
+    if (!f) return;
+    this.info = null;
     setText(this.about, 'Reading the video...');
     try {
-      this.info = await api.videoProbe(this.file);
+      const info = await api.videoProbe(f);
+      if (f !== this.file) return;
+      this.info = info;
       this.from.value = '0'; this.to.value = String(this.info.duration); this.every.value = '1';
       this.describe();
-    } catch (err) { this.info = null; setText(this.about, err instanceof Error ? err.message : 'That video could not be read.'); }
+    } catch (err) { if (f !== this.file) return; this.info = null; setText(this.about, err instanceof Error ? err.message : 'That video could not be read.'); }
   }
 
   /** An animated GIF or WebP, or several pictures in natural name order (frame2 before frame10), as the layers of a new
