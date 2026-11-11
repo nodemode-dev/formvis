@@ -45,6 +45,7 @@
     "allow-ui-zoom",
     "allow-set-window-title",
     "allow-app-ready",
-    "allow-text-edit"
+    "allow-text-edit",
+    "allow-note-recent-document"
   ]
 }

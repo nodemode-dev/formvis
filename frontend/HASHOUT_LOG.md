@@ -2,6 +2,20 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Opened and saved files reach the system's recent documents · v2.3.4 (src-tauri/build.rs, src-tauri/capabilities/default.json)
+
+- Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `src-tauri/build.rs` `APP_COMMANDS` and `src-tauri/capabilities/default.json` `permissions`, for `note_recent_document` (main.rs) called by `app.ts` `noteRecent`; review formvis__native-tauri-packaging F1.
+- Wrong: the command was registered in `generate_handler!` but missing from `APP_COMMANDS` and the capability. The window's origin is remote to Tauri, so the ACL refused the call and the page's `.catch(() => undefined)` hid it: no file ever reached the macOS Recent Items, the GTK recent list or the Windows jump list. Now `"note_recent_document"` closes `APP_COMMANDS` and `"allow-note-recent-document"` closes the permissions list.
+- Verified: `cargo check --locked` in `src-tauri` clean (the Tauri build step accepts the new permission), with an empty placeholder sidecar in `src-tauri/binaries` and a placeholder `frontend/dist`, both git-ignored and removed after. Not run: a release desktop build.
+- Replaced, quoted exactly:
+
+```text
+    "text_edit",
+];
+    "allow-text-edit"
+  ]
+```
+
 ## The last raw z-index values use the layer tokens · v2.3.4 (styles/tokens.css, styles/panels.css, styles/shell.css)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `styles/tokens.css` (the stacking scale), `styles/panels.css` `.cv-comp-comment`, `.cv-dock-split`, `.cv-props-col:not(.is-collapsed)`, `.cv-props-resize`, `styles/shell.css` `.cv-taskbar::before`.
