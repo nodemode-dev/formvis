@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A custom scratch disk starts each session empty · _v2.3.4 (app/routers/undo.py _taken new, scratch_set)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F8.
+- Why: `clear()` at the engine's start empties only `<data>/undo`; tiles in `<scratch>/formvis-undo` (Preferences > Performance, sent again by the window at every start) from earlier sessions, or a crash, were never deleted, so the folder grew without bound.
+- Change: `scratch_set` deletes the `*.z` files of a `formvis-undo` folder the first time this process takes it (after the write probe; the folder then goes into `_taken`), so a folder taken again in the same session keeps its live tiles. Like `clear()`, it assumes one engine per scratch folder at a time.
+- Checked: a scratch app with the undo router: a stale `.z` is gone after the PUT; a tile kept in folder A survives A, B, A again and reads back.
+
 ## mcp --root lets menu calls through · _v2.3.4 (setup/mcp_stdio.py MENUS, CONTROL, outside_roots)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F8.

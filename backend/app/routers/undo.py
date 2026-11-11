@@ -21,6 +21,7 @@ _MAX = 512 * 1024 * 1024   # one tile pair is at most 2 MB; this is only a guard
 
 _scratch: Path | None = None
 _before: list[Path] = []
+_taken: set[Path] = set()
 
 
 def _dir() -> Path:
@@ -62,6 +63,10 @@ def scratch_set(body: dict) -> dict:
         probe = target / ".probe"
         probe.write_bytes(b"x")
         probe.unlink()
+        if target not in _taken:
+            for p in target.glob("*.z"):
+                p.unlink(missing_ok=True)
+            _taken.add(target)
     except OSError as err:
         raise HTTPException(400, f"That folder cannot be written to: {err.strerror or err}") from err
     old = _dir()
