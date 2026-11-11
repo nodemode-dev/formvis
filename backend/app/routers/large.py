@@ -57,7 +57,7 @@ async def assemble(name: str = Form(...), width: int = Form(...), height: int = 
 def exported(file: str) -> FileResponse:
     """An assembled picture, streamed from disk as a download."""
     path = (config.data_dir() / "exports" / file)
-    if "/" in file or "\\" in file or file.startswith(".") or not path.is_file():
+    if "/" in file or "\\" in file or ":" in file or file.startswith(".") or not path.is_file():
         raise HTTPException(404, "That file is not here.")
     return FileResponse(path, media_type="image/png", filename=file)
 

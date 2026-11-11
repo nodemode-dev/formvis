@@ -32,10 +32,11 @@ def _dir() -> Path:
 
 def _find(key: str) -> Path:
     """Where `key` is kept: the scratch folder in use, or one used before it was changed."""
+    here = _path(key)
     for d in (_dir(), *_before):
         if (d / f"{key}.z").exists():
             return d / f"{key}.z"
-    return _path(key)
+    return here
 
 
 @router.get("/scratch")

@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Undo keys and export names checked before the path is built · _v2.3.4 (app/routers/undo.py _find; app/routers/large.py exported)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-routers F11.
+- Why: `_find` tested `(d / f"{key}.z").exists()` before `_path` validated the key, so on Windows `DELETE /api/undo/..%5C..%5Csomefile` (a backslash after decoding) found and deleted an existing `.z` outside the store (`get` decompressed it). `exported` refused `/` and `\` but not a drive prefix, and on Windows `Path("C:/.../exports") / "D:name.png"` is the drive-relative `D:name.png`.
+- Change: `_find` calls `_path(key)` first (400 unless 32 hex digits); `exported` also refuses `":"` (assembled names are letters, digits, space, `-` and `_`).
+- Checked: `_find` answers 400 for `..\x`, `C:x` and `../x`; the PureWindowsPath join shown above. Not run on Windows.
+- Replaced, quoted exactly: `    return _path(key)` (end of `_find`), and `    if "/" in file or "\\" in file or file.startswith(".") or not path.is_file():`.
+
 ## A JSON line that is not an object no longer ends the MCP stdio server · _v2.3.4 (setup/mcp_stdio.py forward)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F11.
