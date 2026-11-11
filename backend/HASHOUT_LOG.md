@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A Claude Code prompt that starts with a dash stays the prompt · _v2.3.4 (app/services/claude_code.py terminal_argv)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F4.
+- Why: a new Claude Code tab got the prompt as a bare argument after the options, so `- make the sky bluer` or `--help me with layers` went to Claude Code's option parser (unknown option and the tab died, or an option took effect).
+- Now: `--` comes before the prompt. Not run: Claude Code is not started here; checked by reading `terminal_argv` and its one caller `open_terminal`.
+- Replaced, quoted exactly: `        cmd.append(prompt)`
+
 ## Features that need scipy answer 501 naming it · _v2.3.4 (app/routers/merge.py panorama_route, hdr_route; app/routers/remove_find.py find_route)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-routers F1.
