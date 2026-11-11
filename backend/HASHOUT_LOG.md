@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Gray to the same gray profile keeps four floats a pixel · _v2.3.4 (app/services/colour.py convert_deep)
+
+- Kind: fix · logged 2026-11-11 · review formvis__backend-services F5.
+- Why: with the same gray profile as source and destination, the identity short cut copied the document's three channels although `values` held the one gray channel, and the `dst_space == "GRAY"` repeat then made nine colour floats a pixel; the window read four a pixel and scrambled the layer.
+- Now: the short cut copies `values`, which already match `src_kind`.
+- Checked: a 2 by 1 RGBA body, source and destination `builtin:gray-g22`: 32 bytes back (was 80), values unchanged; sRGB to sRGB unchanged.
+- Replaced, quoted exactly: `            result = px[:, :n_in].astype(np.float64)`
+
 ## A Claude Code prompt that starts with a dash stays the prompt · _v2.3.4 (app/services/claude_code.py terminal_argv)
 
 - Kind: fix · logged 2026-11-11 · review formvis__backend-services F4.

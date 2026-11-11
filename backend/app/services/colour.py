@@ -361,7 +361,7 @@ def convert_deep(raw: bytes, width: int, height: int, mode: str, source: dict | 
         if dst_space not in lcms.SPACES:
             raise ColourError(f"Profiles for {dst_space} are not supported.")
         if src_bytes == dst_bytes and src_kind == dst_space:
-            result = px[:, :n_in].astype(np.float64)
+            result = values.astype(np.float64)
         else:
             result = lcms.from_lcms(lcms.transform(lcms.to_lcms(values, src_kind), src_bytes, src_kind, dst_bytes, dst_space, intent, bpc, False, preserve_black), dst_space)
         result = lcms.quantise(result, bits, dither)
