@@ -26,6 +26,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / ".claude" / "skills"
 MIRRORS = ROOT / ".agents" / "skills"
 LAUNCH = str(ROOT / "formvis") if (ROOT / "formvis").is_file() else os.environ.get("FORMVIS_LAUNCHER") or os.environ.get("APPIMAGE") or str(ROOT / "formvis")   # a packaged app has no repository launcher: its own binary takes `mcp`
+ARGS = ["mcp"]
+if os.name == "nt" and (ROOT / "formvis").is_file():
+    LAUNCH, ARGS = sys.executable, [str(ROOT / "setup" / "mcp_stdio.py")]
 CATALOGUE = Path(os.environ.get("FORMVIS_DATA_DIR") or Path.home() / "Formvis").expanduser() / "commands-catalogue.json"
 EMOJI = re.compile("[" + "-".join(chr(c) for c in (0x1F000, 0x1FAFF)) + chr(0x2600) + "-" + chr(0x27BF) + chr(0x2B00) + "-" + chr(0x2BFF) + chr(0xFE0F) + chr(0x200D) + "]")
 GROUP_OWNER = {
@@ -262,20 +265,20 @@ def install_claude(home: Path, dry: bool, said: list) -> None:
         if have.returncode == 0 and LAUNCH in have.stdout:
             said.append("  MCP server formvis already set (user scope)")
         else:
-            said.append(f"  claude mcp add --scope user formvis -- {LAUNCH} mcp")
+            said.append(f"  claude mcp add --scope user formvis -- {subprocess.list2cmdline([LAUNCH, *ARGS])}")
             if not dry:
                 if have.returncode == 0:
                     subprocess.run([claude, "mcp", "remove", "formvis", "--scope", "user"], capture_output=True)
-                subprocess.run([claude, "mcp", "add", "--scope", "user", "formvis", "--", LAUNCH, "mcp"], check=True, capture_output=True)
+                subprocess.run([claude, "mcp", "add", "--scope", "user", "formvis", "--", LAUNCH, *ARGS], check=True, capture_output=True)
     else:
-        said.append(f"  the claude command is not installed here; once it is, run: claude mcp add --scope user formvis -- {LAUNCH} mcp")
+        said.append(f"  the claude command is not installed here; once it is, run: claude mcp add --scope user formvis -- {subprocess.list2cmdline([LAUNCH, *ARGS])}")
     _copy_skill(home / ".claude" / "skills", dry, said)
 
 
 def install_codex(home: Path, dry: bool, said: list) -> None:
     said.append("Codex:")
     cfg = Path(os.environ.get("CODEX_HOME", home / ".codex")) / "config.toml"
-    block = f'[mcp_servers.formvis]\ncommand = "{LAUNCH}"\nargs = ["mcp"]\nstartup_timeout_sec = 90\ntool_timeout_sec = 600\n'
+    block = f'[mcp_servers.formvis]\ncommand = {json.dumps(LAUNCH, ensure_ascii=False)}\nargs = {json.dumps(ARGS, ensure_ascii=False)}\nstartup_timeout_sec = 90\ntool_timeout_sec = 600\n'
     text = cfg.read_text(encoding="utf-8") if cfg.exists() else ""
     found = re.search(r"(?ms)^\[mcp_servers\.formvis\]\n.*?(?=^\[|\Z)", text)
     if found and found.group(0).strip() == block.strip():
@@ -294,7 +297,7 @@ def install_cursor(home: Path, dry: bool, said: list) -> None:
     said.append("Cursor:")
     cfg = home / ".cursor" / "mcp.json"
     data = json.loads(cfg.read_text(encoding="utf-8")) if cfg.exists() and cfg.read_text(encoding="utf-8").strip() else {}
-    entry = {"command": LAUNCH, "args": ["mcp"]}
+    entry = {"command": LAUNCH, "args": ARGS}
     if data.get("mcpServers", {}).get("formvis") == entry:
         said.append(f"  MCP server formvis already in {cfg}")
     else:

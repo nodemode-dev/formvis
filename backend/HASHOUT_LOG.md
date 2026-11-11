@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## agents install on Windows writes a Codex config that parses · _v2.3.4 (setup/agents.py ARGS, install_claude, install_codex, install_cursor)
+
+- Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F2.
+- Why: `install_codex` wrote `command = "C:\Users\..."`, a TOML basic string with raw backslashes that TOML refuses, so Codex lost its whole config.toml; from a Windows checkout every client was also given the bash script `formvis`, which Windows cannot start.
+- `ARGS` (`["mcp"]`) beside `LAUNCH`; on Windows in a checkout `LAUNCH, ARGS = sys.executable, [setup\mcp_stdio.py]`. The Codex block writes both with `json.dumps(..., ensure_ascii=False)`; Claude Code and Cursor take `LAUNCH, *ARGS`. Elsewhere the written config is the same as before.
+- Replaced, quoted exactly: `    block = f'[mcp_servers.formvis]\ncommand = "{LAUNCH}"\nargs = ["mcp"]\nstartup_timeout_sec = 90\ntool_timeout_sec = 600\n'` and `    entry = {"command": LAUNCH, "args": ["mcp"]}`.
+- Not changed: the CRLF case in the review, because `read_text` gives the regex LF lines. Checked with a scratch run over a CRLF config.toml (Windows and POSIX launchers, tomllib parses, other servers kept, a second run changes nothing); not run on Windows.
+
 ## The MCP server, agents and cli start on Python 3.9 · _v2.3.4 (setup/mcp_stdio.py, setup/agents.py, setup/cli.py, setup/cli_offline.py)
 
 - Kind: fix · logged 2026-11-11 · review formvis__setup-scripts F1.
