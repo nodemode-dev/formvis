@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The install, selection and no-key prompts in every language · after 2.3.5, unreleased (ui/model-install.ts tf, offerModel, offerRecommended; ui/panels/local-models.ts showSelection; ui/i18n/extra/*.ts)
+
+- Kind: i18n · logged 2026-11-17.
+- Convention followed: the repo's 36.32 scheme. English is the key; text the window shows as it is (the no-key section and its buttons in generative-dialog.ts) is translated where it lands by the page translator, by exact match; text assembled at run time goes through `t()` with `{name}` style holes filled after the lookup (as status.ts `Memory {used} of {total} {unit}` and properties.ts `{name} Properties`), and its entries live in part c, `ui/i18n/extra/<lang>.ts`. Menu paths use each table's own words for Preferences, Plugins and Local models, and the action names its words for Select Subject and Object Selection. Regional variants (es-MX, fr-CA) fall back to their parent, as every earlier string does.
+- Now: `tf(english, values)` in model-install.ts (exported for local-models.ts). The sentences that were joined from pieces are single keys, so each language orders them its own way. 24 keys in all 27 run-time tables; no em dash in any of them.
+- Checked: tests/install-prompts-i18n.test.ts (every key is still in the code, every table has every key with the same placeholders and no em dash).
+
 ## The ComfyUI Save graph test waits for its own note · after 2.3.5, unreleased (e2e/test_comfyui_live_mock.py keep_ran_graph, test_a_recipe_is_edited_in_comfyui_and_saved_over_or_as_new_with_versions)
 
 - Kind: test fix · logged 2026-11-17.

@@ -1,6 +1,8 @@
 import { el, setHidden, setText } from '../dom';
 import { toggleOf } from './controls';
 import { chooseSelectionModel, selectionModels, type SelectionChoice } from '../../io/selection-models';
+import { t } from '../i18n';
+import { tf } from '../model-install';
 
 /** Preferences > Plugins > Local models (1.52.9): Krea 2 Turbo and FLUX.2 [klein] 4B installed on this computer, each
  *  licence shown and accepted before anything downloads (Krea 2's content filter installed with it, as its licence
@@ -70,19 +72,23 @@ export class LocalModelsSection {
     if (!models) { this.selection.replaceChildren(); return; }
     const parts: HTMLElement[] = [el('<p class="cv-local-state">Selection models</p>')];
     for (const kind of ['subject', 'object'] as const) {
-      const s = models[kind], note = el('<p class="cv-note cv-local-note" role="status"></p>');
+      const s = models[kind], label = t(s.label), note = el('<p class="cv-note cv-local-note" role="status"></p>');
       const pick = el<HTMLSelectElement>(`<select class="cv-input" data-selection-kind="${kind}"></select>`);
-      pick.setAttribute('aria-label', `${s.label} model`);
-      for (const o of s.options) pick.append(Object.assign(document.createElement('option'), { value: o.role, textContent: `${o.name}${o.role === 'recommended' ? ', recommended' : ', small'}${o.size ? ` (${o.size})` : ''}` }));
+      pick.setAttribute('aria-label', tf('{action} model', { action: label }));
+      for (const o of s.options) {
+        const text = tf(o.role === 'recommended' ? '{name}, recommended ({size})' : '{name}, small ({size})', { name: o.name, size: o.size ?? '?' });
+        pick.append(Object.assign(document.createElement('option'), { value: o.role, textContent: text }));
+      }
       pick.value = s.choice;
       const best = s.options.find((o) => o.role === 'recommended');
-      setText(note, s.choice === 'recommended' && best && !best.ready ? `${best.name} is not downloaded yet, so ${s.label} uses the small model until it is.` : `${s.label} uses ${s.options.find((o) => o.id === s.active)?.name ?? s.active}.`);
+      setText(note, s.choice === 'recommended' && best && !best.ready ? tf('{name} is not downloaded yet, so {action} uses the small model until it is.', { name: best.name, action: label })
+        : tf('{action} uses {name}.', { action: label, name: s.options.find((o) => o.id === s.active)?.name ?? s.active }));
       const get = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-primary"></button>');
-      setText(get, `Download ${best?.name ?? 'it'}${best?.size ? ` (${best.size})` : ''}`);
+      setText(get, tf('Download {name} ({size})', { name: best?.name ?? '', size: best?.size ?? '?' }));
       setHidden(get, !best || best.ready);
-      get.addEventListener('click', () => void (async () => { try { const j = await api(`/models/${best!.id}/download`, { method: 'POST' }); await this.follow(j.job_id, note, () => void this.showSelection()); } catch (err) { setText(note, err instanceof Error ? err.message : 'Could not start the download.'); } })());
-      pick.addEventListener('change', () => void (async () => { try { await chooseSelectionModel(kind, pick.value as SelectionChoice); await this.showSelection(); } catch (err) { setText(note, err instanceof Error ? err.message : 'The choice could not be saved.'); } })());
-      const row = el('<label class="cv-dialog-row"><span></span></label>'); setText(row.firstElementChild as HTMLElement, s.label); row.append(pick);
+      get.addEventListener('click', () => void (async () => { try { const j = await api(`/models/${best!.id}/download`, { method: 'POST' }); await this.follow(j.job_id, note, () => void this.showSelection()); } catch (err) { setText(note, err instanceof Error ? err.message : t('Could not start the download.')); } })());
+      pick.addEventListener('change', () => void (async () => { try { await chooseSelectionModel(kind, pick.value as SelectionChoice); await this.showSelection(); } catch (err) { setText(note, t(err instanceof Error ? err.message : 'The model choice could not be saved.')); } })());
+      const row = el('<label class="cv-dialog-row"><span></span></label>'); setText(row.firstElementChild as HTMLElement, label); row.append(pick);
       const actions = el('<div class="cv-improve"></div>'); actions.append(get);
       parts.push(row, actions, note);
     }

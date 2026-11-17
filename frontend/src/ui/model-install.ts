@@ -1,19 +1,26 @@
 import { installModel, modelEntry } from '../io/local-gen';
 import { chooseSelectionModel, selectionModels, type SelectionKind } from '../io/selection-models';
 import { confirmAction } from './dialogs';
+import { t } from './i18n';
 import { toast } from './toast';
 
 const installing = new Map<string, Promise<boolean>>();
 
+/** `english` in the current language with each {key} filled in, the way status.ts and properties.ts assemble text. */
+export const tf = (english: string, values: Record<string, string>): string =>
+  Object.entries(values).reduce((s, [k, v]) => s.split(`{${k}}`).join(v), t(english));
+
+const installLabel = (size: string | null): string => tf('Install now ({size})', { size: size ?? '?' });
+
 async function install(id: string, name: string): Promise<boolean> {
-  const dismiss = toast(`Installing ${name}. The action carries on when it is done.`, 'info', { ms: 0 });
+  const dismiss = toast(tf('Installing {name}. The action carries on when it is done.', { name }), 'info', { ms: 0 });
   let said = '';
   try {
     if (await installModel(id, (text) => { said = text; })) return true;
-    toast(`${said || `${name} did not download.`} Try again from Preferences > Plugins > Local models.`, 'error');
+    toast(`${said || tf('{name} did not download.', { name })} ${t('Try again from Preferences > Plugins > Local models.')}`, 'error');
     return false;
   } catch (err) {
-    toast(`${name} could not start downloading (${err instanceof Error ? err.message : 'the engine did not answer'}).`, 'error');
+    toast(tf('{name} could not start downloading ({reason}).', { name, reason: err instanceof Error ? err.message : t('the engine did not answer') }), 'error');
     return false;
   } finally { dismiss(); }
 }
@@ -24,19 +31,19 @@ export async function offerModel(id: string): Promise<boolean> {
   const entry = await modelEntry(id);
   if (!entry) return false;
   if (entry.ready) return true;
-  const size = entry.size ? ` (${entry.size})` : '';
-  const ok = await confirmAction(`Install ${entry.name}?`,
-    `This needs ${entry.name}, which is not on this computer yet. It downloads once${entry.size ? `, about ${entry.size},` : ''} and then runs on this computer, with no key and no cost. It can be removed in Preferences > Plugins > Local models.`,
-    `Install now${size}`);
+  const name = entry.name, size = entry.size;
+  const ok = await confirmAction(tf('Install {name}?', { name }),
+    tf('This needs {name}, which is not on this computer yet. It downloads once, about {size}, and then runs on this computer, with no key and no cost. It can be removed in Preferences > Plugins > Local models.', { name, size: size ?? '?' }),
+    installLabel(size));
   if (!ok) return false;
   let run = installing.get(id);
-  if (!run) { run = install(id, entry.name).finally(() => installing.delete(id)); installing.set(id, run); }
+  if (!run) { run = install(id, name).finally(() => installing.delete(id)); installing.set(id, run); }
   return run;
 }
 
 const BETTER: Record<SelectionKind, string> = {
-  subject: 'finds the subject with cleaner edges, hair and fine detail',
-  object: 'follows the object you click more closely',
+  subject: '{name} is the recommended model for Select Subject: it finds the subject with cleaner edges, hair and fine detail than the small model, {small}. It downloads once, about {size}, and runs on this computer, with no key and no cost ({license}). You can switch in Preferences > Plugins > Local models.',
+  object: '{name} is the recommended model for Object Selection: it follows the object you click more closely than the small model, {small}. It downloads once, about {size}, and runs on this computer, with no key and no cost ({license}). You can switch in Preferences > Plugins > Local models.',
 };
 
 /** Select Subject and Object Selection offer their recommended model first while it is not here: Install now downloads
@@ -45,12 +52,11 @@ export async function offerRecommended(kind: SelectionKind): Promise<void> {
   const state = (await selectionModels())?.[kind];
   const best = state?.options.find((o) => o.role === 'recommended'), small = state?.options.find((o) => o.role === 'small');
   if (!state || !best || !small || state.choice !== 'recommended' || best.ready) return;
-  const size = best.size ? ` (${best.size})` : '';
-  const ok = await confirmAction(`Use ${best.name} for ${state.label}?`,
-    `${best.name} is the recommended model: it ${BETTER[kind]} than the small model, ${small.name}${small.size ? ` (${small.size})` : ''}. It downloads once${best.size ? `, about ${best.size},` : ''} and runs on this computer, with no key and no cost (${best.license}). You can switch in Preferences > Plugins > Local models.`,
-    `Install now${size}`, false, 'Use the small model');
+  const ok = await confirmAction(tf('Use {name} for {action}?', { name: best.name, action: t(state.label) }),
+    tf(BETTER[kind], { name: best.name, small: small.size ? `${small.name} (${small.size})` : small.name, size: best.size ?? '?', license: best.license }),
+    installLabel(best.size), false, t('Use the small model'));
   if (!ok) {
-    try { await chooseSelectionModel(kind, 'small'); } catch (err) { toast(err instanceof Error ? err.message : 'The model choice could not be saved.', 'error'); }
+    try { await chooseSelectionModel(kind, 'small'); } catch (err) { toast(err instanceof Error ? t(err.message) : t('The model choice could not be saved.'), 'error'); }
     return;
   }
   let run = installing.get(best.id);
