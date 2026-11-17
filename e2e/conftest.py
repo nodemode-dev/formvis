@@ -136,6 +136,13 @@ def page(context, request):
     assert not [e for e in pg.errors if "deliberate" not in e], pg.errors
 
 
+def selection_choices() -> dict:
+    import json
+
+    with urllib.request.urlopen(URL + "api/selection-models", timeout=30) as r:
+        return {kind: state["choice"] for kind, state in json.load(r).items()}
+
+
 def choose_selection_model(kind: str, choice: str) -> None:
     import json
 
@@ -146,15 +153,11 @@ def choose_selection_model(kind: str, choice: str) -> None:
 @pytest.fixture()
 def small_selection_models():
     """Select Subject and Object Selection on their small models (U2-Net, SAM 2.1 tiny), so the offer of the recommended
-    model does not wait in front of a test of the selection itself; the default is put back afterwards."""
-    try:
-        for kind in ("subject", "object"):
-            choose_selection_model(kind, "small")
-    except OSError:
-        pass
+    model does not wait in front of a test of the selection itself; the choices the engine had are put back afterwards.
+    An engine that refuses the choice fails the test (HTTPError is not swallowed)."""
+    before = selection_choices()
+    for kind in before:
+        choose_selection_model(kind, "small")
     yield
-    try:
-        for kind in ("subject", "object"):
-            choose_selection_model(kind, "recommended")
-    except OSError:
-        pass
+    for kind, choice in before.items():
+        choose_selection_model(kind, choice)

@@ -21,6 +21,8 @@ SMALL = {"subject": "u2net-onnx", "object": "sam2-onnx"}
 @pytest.fixture()
 def data(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(config, "total_memory", lambda: 16 * 1024 ** 3)
+    monkeypatch.setattr(selection_models, "_unusable", {})
     return tmp_path
 
 
@@ -67,7 +69,47 @@ def test_a_choice_outside_the_two_is_refused(data, body):
 
 def test_an_unreadable_choice_file_falls_back_to_the_defaults(data):
     (data / "selection_models.json").write_text("{not json", encoding="utf-8")
-    assert selection_models.preferences() == selection_models.DEFAULTS
+    assert selection_models.preferences() == selection_models.defaults()
+
+
+def test_a_choice_file_that_is_not_an_object_falls_back_to_the_defaults(data):
+    (data / "selection_models.json").write_text('["small"]', encoding="utf-8")
+    assert selection_models.preferences() == {"subject": "recommended", "object": "recommended"}
+
+
+def test_the_choice_is_written_whole_through_a_temporary_file(data, monkeypatch):
+    import os
+
+    replaced = []
+    real = os.replace
+    monkeypatch.setattr(selection_models.os, "replace", lambda a, b: replaced.append((str(a), str(b))) or real(a, b))
+    selection_models.set_preference("object", "small")
+    assert replaced == [(str(data / "selection_models.json.tmp"), str(data / "selection_models.json"))]
+    assert not (data / "selection_models.json.tmp").exists()
+
+
+@pytest.mark.parametrize("gb,want", [(8, "small"), (11, "small"), (12, "recommended"), (32, "recommended"), (0, "small")])
+def test_recommended_is_the_default_only_with_12_gb_of_memory_or_more(data, monkeypatch, gb, want):
+    monkeypatch.setattr(config, "total_memory", lambda: gb * 1024 ** 3)
+    assert selection_models.preferences() == {"subject": want, "object": want}
+
+
+def test_a_birefnet_that_fails_to_load_falls_back_to_u2net_once_and_is_not_loaded_again(data, monkeypatch, caplog):
+    calls = []
+
+    def broken(image):
+        calls.append(1)
+        raise background.BackgroundError("BiRefNet could not be loaded (bad file)")
+    monkeypatch.setattr(model_manager, "ready", _ready("birefnet-swin-t"))
+    monkeypatch.setattr(background, "_birefnet", broken)
+    monkeypatch.setattr(background, "_u2net_onnx", lambda image: Image.new("L", image.size, 10))
+    monkeypatch.setattr(background, "_has", lambda module: module == "onnxruntime")
+    for _ in range(3):
+        assert np.asarray(background._ml(Image.new("RGB", (8, 6)))).max() == 10
+    assert calls == [1]
+    assert selection_models.active("subject") == "u2net-onnx"
+    assert selection_models.report()["subject"]["unusable"].startswith("BiRefNet could not be loaded")
+    assert sum("could not be used" in r.message for r in caplog.records) == 1
 
 
 @pytest.mark.parametrize("model", ["birefnet-swin-t", "sam2-base-plus-onnx"])

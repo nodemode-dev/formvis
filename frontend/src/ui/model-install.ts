@@ -1,6 +1,6 @@
 import { installModel, modelEntry } from '../io/local-gen';
 import { chooseSelectionModel, selectionModels, type SelectionKind } from '../io/selection-models';
-import { confirmAction } from './dialogs';
+import { confirmAction, confirmChoice } from './dialogs';
 import { t } from './i18n';
 import { toast } from './toast';
 
@@ -27,7 +27,16 @@ async function install(id: string, name: string): Promise<boolean> {
 
 /** A model an action needs: true at once when it is here; else the person is asked, with its size, and Install now
  *  downloads it through the engine's model manager (true once it is in place). Cancel downloads nothing. */
-export async function offerModel(id: string): Promise<boolean> {
+export function offerModel(id: string): Promise<boolean> {
+  let offer = offers.get(id);
+  if (!offer) { offer = askAndInstall(id).finally(() => offers.delete(id)); offers.set(id, offer); }
+  return offer;
+}
+
+/** One offer a model at a time: actions that find it missing together share one question and one download. */
+const offers = new Map<string, Promise<boolean>>();
+
+async function askAndInstall(id: string): Promise<boolean> {
   const entry = await modelEntry(id);
   if (!entry) return false;
   if (entry.ready) return true;
@@ -52,10 +61,11 @@ export async function offerRecommended(kind: SelectionKind): Promise<void> {
   const state = (await selectionModels())?.[kind];
   const best = state?.options.find((o) => o.role === 'recommended'), small = state?.options.find((o) => o.role === 'small');
   if (!state || !best || !small || state.choice !== 'recommended' || best.ready) return;
-  const ok = await confirmAction(tf('Use {name} for {action}?', { name: best.name, action: t(state.label) }),
+  const answer = await confirmChoice(tf('Use {name} for {action}?', { name: best.name, action: t(state.label) }),
     tf(BETTER[kind], { name: best.name, small: small.size ? `${small.name} (${small.size})` : small.name, size: best.size ?? '?', license: best.license }),
-    installLabel(best.size), false, t('Use the small model'));
-  if (!ok) {
+    installLabel(best.size), t('Use the small model'));
+  if (answer === 'dismiss') return;
+  if (answer === 'cancel') {
     try { await chooseSelectionModel(kind, 'small'); } catch (err) { toast(err instanceof Error ? t(err.message) : t('The model choice could not be saved.'), 'error'); }
     return;
   }

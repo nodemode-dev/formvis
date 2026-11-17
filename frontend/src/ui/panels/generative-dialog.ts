@@ -16,13 +16,15 @@ import { GenerationOptions } from './generation-options';
 import { FalOptions } from './fal-options';
 import { genPrefs, preferredModel } from '../../io/gen-prefs';
 import { offerModel } from '../model-install';
+import { toast } from '../toast';
 import { canvasInputs, pictureLimit, prepareForModel } from '../../io/fal-size';
 import { editInstruction, falCatalogue, falIdOf, falMaskAsPicture, falMaskKey, falModelsOf, falRunImage, falValue } from '../../io/fal';
 import type { FalModel } from '../../io/api';
 
 type Mode = 'fill' | 'expand' | 'upscale';
 
-const NO_KEY = 'This model runs on fal, which needs a fal API key: fal is a paid service and charges for each run. Add your key, or use a model that runs on this computer for free.';
+const LAMA_INSTEAD = 'Ran on LaMa on this computer: fal has no key and the prompt was empty.';
+const NO_KEY ='This model runs on fal, which needs a fal API key: fal is a paid service and charges for each run. Add your key, or use a model that runs on this computer for free.';
 
 const TITLES: Record<Mode, string> = { fill: 'Generative Fill', expand: 'Generative Expand', upscale: 'Upscale' };
 const HINTS: Record<Mode, string> = {
@@ -181,7 +183,7 @@ export class GenerativeDialog extends Dialog {
       const kept = preferredModel(mode, start.prompt) || recalled(TITLES[mode], 'select:Model');
       if (typeof kept === 'string' && [...this.model.options].some((o) => o.value === kept && !o.disabled)) { this.model.value = kept; this.picked = true; }
     }
-    if (start && this.lamaInstead(start.prompt)) this.model.value = 'local:lama';
+    if (start && this.lamaInstead(start.prompt)) { this.model.value = 'local:lama'; this.toLama = true; }
     this.sync();
     if (start && this.runnable) { await this.generate(); return; }
     this.open();
@@ -280,6 +282,8 @@ export class GenerativeDialog extends Dialog {
   private get noKey(): boolean { return this.falBacked && !!this.status && !this.status.configured; }
 
   /** No fal key, no words and LaMa here: an empty fill or expand goes to LaMa, which needs neither. */
+  /** The run was moved to LaMa because fal has no key; the person is told once it starts. */
+  private toLama = false;
   private lamaInstead(prompt: string): boolean { return this.mode !== 'upscale' && this.noKey && this.lama && !prompt.trim() && !this.key.value.trim(); }
 
   /** Use a local model: Real-ESRGAN to upscale; to fill, a ready local generator when there are words, else LaMa. A model
@@ -420,7 +424,8 @@ export class GenerativeDialog extends Dialog {
   private leave(): void { this.close(); this.release(); }
 
   private async prepare(t: number): Promise<void> {
-    if (this.lamaInstead(this.prompt.value)) { this.model.value = 'local:lama'; this.sync(); }
+    if (this.lamaInstead(this.prompt.value)) { this.model.value = 'local:lama'; this.toLama = true; this.sync(); }
+    if (this.toLama && this.lamaHere) { this.toLama = false; toast(LAMA_INSTEAD); }
     if (this.lamaHere) {
       const e = this.engine, mode = this.mode, prompt = this.prompt.value;
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };

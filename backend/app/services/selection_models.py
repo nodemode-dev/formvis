@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Literal
 
 from app.core import config
@@ -20,7 +21,15 @@ KINDS: dict[str, dict[str, str]] = {
     "subject": {"recommended": "birefnet-swin-t", "small": "u2net-onnx", "label": "Select Subject"},
     "object": {"recommended": "sam2-base-plus-onnx", "small": "sam2-onnx", "label": "Object Selection"},
 }
-DEFAULTS: dict[str, str] = {"subject": "recommended", "object": "recommended"}
+RECOMMENDED_FROM_BYTES = 12 * 1024 ** 3
+_unusable: dict[str, str] = {}
+
+
+def defaults() -> dict[str, str]:
+    """Recommended by default on a computer with 12 GB of memory or more (BiRefNet peaks at about 4.3 GB on a 45 MP
+    picture); small below that, or when the memory cannot be read. The person can choose either way."""
+    choice = "recommended" if config.total_memory() >= RECOMMENDED_FROM_BYTES else "small"
+    return {kind: choice for kind in KINDS}
 
 
 def _file():
@@ -28,29 +37,46 @@ def _file():
 
 
 def preferences() -> dict[str, str]:
+    base = defaults()
     try:
         saved = json.loads(_file().read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return dict(DEFAULTS)
+        return base
     except (OSError, ValueError) as exc:
         logger.warning("selection_models.json could not be read, using the defaults: %s", exc)
-        return dict(DEFAULTS)
-    return {k: saved.get(k) if saved.get(k) in ("recommended", "small") else v for k, v in DEFAULTS.items()}
+        return base
+    if not isinstance(saved, dict):
+        logger.warning("selection_models.json does not hold an object, using the defaults")
+        return base
+    return {k: saved.get(k) if saved.get(k) in ("recommended", "small") else v for k, v in base.items()}
 
 
 def set_preference(kind: str, choice: str) -> dict[str, str]:
+    """The choice saved through a temporary file and os.replace, so a crash mid-write never leaves half a file."""
     if kind not in KINDS or choice not in ("recommended", "small"):
         raise ValueError("kind is subject or object, and choice is recommended or small")
     prefs = {**preferences(), kind: choice}
-    _file().write_text(json.dumps(prefs), encoding="utf-8")
+    target = _file()
+    temporary = target.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(prefs), encoding="utf-8")
+    os.replace(temporary, target)
     return prefs
 
 
+def mark_unusable(model: str, reason: str) -> None:
+    """A recommended model that failed to load: the small one runs instead until the engine restarts, logged once, so a
+    broken file is not loaded again on every click."""
+    if model not in _unusable:
+        logger.warning("%s could not be used, the small model runs instead until the engine restarts: %s", model, reason)
+    _unusable[model] = reason
+
+
 def active(kind: str) -> str:
-    """The model id the action runs now: the recommended one when it is chosen and downloaded, else the small one."""
+    """The model id the action runs now: the recommended one when it is chosen, downloaded and loads, else the small one."""
     spec = KINDS[kind]
-    if preferences()[kind] == "recommended" and model_manager.ready(spec["recommended"]):
-        return spec["recommended"]
+    best = spec["recommended"]
+    if preferences()[kind] == "recommended" and best not in _unusable and model_manager.ready(best):
+        return best
     return spec["small"]
 
 
@@ -61,6 +87,6 @@ def _option(model: str, role: str) -> dict:
 
 def report() -> dict:
     prefs = preferences()
-    return {kind: {"label": spec["label"], "choice": prefs[kind], "active": active(kind),
+    return {kind: {"label": spec["label"], "choice": prefs[kind], "active": active(kind), "unusable": _unusable.get(spec["recommended"]),
                    "options": [_option(spec["recommended"], "recommended"), _option(spec["small"], "small")]}
             for kind, spec in KINDS.items()}

@@ -84,7 +84,10 @@ def _ml(image: Image.Image) -> Image.Image:
     from app.services import selection_models
 
     if selection_models.active("subject") == BIREFNET:
-        return _birefnet(image)
+        try:
+            return _birefnet(image)
+        except BackgroundError as exc:
+            selection_models.mark_unusable(BIREFNET, str(exc))
     if not _has("rembg"):
         return _u2net_onnx(image)
     from rembg import remove
