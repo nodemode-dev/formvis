@@ -121,10 +121,46 @@ def test_birefnet_runs_on_the_cpu_only_whatever_device_is_chosen(monkeypatch, tm
     assert seen["providers"] == ["CPUExecutionProvider"]
 
 
+@pytest.mark.parametrize("chosen,want", [
+    (["CoreMLExecutionProvider", "CPUExecutionProvider"], ["CPUExecutionProvider"]),
+    (["CUDAExecutionProvider", "CPUExecutionProvider"], ["CUDAExecutionProvider", "CPUExecutionProvider"]),
+    (["CoreMLExecutionProvider"], ["CPUExecutionProvider"]),
+])
+def test_sam_never_builds_a_core_ml_session(chosen, want):
+    assert segment.sam_providers(chosen) == want
+
+
+def test_both_sam_exports_load_through_the_core_ml_free_session(monkeypatch, tmp_path):
+    import onnxruntime as ort
+
+    from app.localgen import paths, sessions
+
+    seen = []
+
+    class Session:
+        def __init__(self, path, options, providers):
+            seen.append(providers)
+    monkeypatch.setattr(ort, "InferenceSession", Session)
+    monkeypatch.setattr(paths, "providers", lambda: ["CoreMLExecutionProvider", "CPUExecutionProvider"])
+    monkeypatch.setattr(model_manager, "ready", _ready("sam2-onnx", "sam2-base-plus-onnx"))
+    monkeypatch.setattr(sessions, "get", lambda key, load: load())
+    segment._onnx_sessions("sam2-base-plus-onnx")
+    segment._onnx_sessions("sam2-onnx")
+    assert seen == [["CPUExecutionProvider"]] * 4
+
+
+def test_a_click_decodes_with_the_model_that_encoded_the_picture(data, monkeypatch):
+    used = []
+    monkeypatch.setattr(segment, "_onnx_sessions", lambda model=None: used.append(model) or (None, None))
+    with pytest.raises(Exception):
+        segment._onnx_select({"model": "sam2-base-plus-onnx", "size": (8, 6), "onnx": {}}, [(1.0, 1.0, 1)], None)
+    assert used == ["sam2-base-plus-onnx"]
+
+
 def test_an_object_encoded_with_one_model_is_encoded_again_after_the_switch(data, monkeypatch):
     monkeypatch.setattr(segment, "backend", lambda: "onnx")
     monkeypatch.setattr(segment, "available", lambda: True)
-    monkeypatch.setattr(segment, "_onnx_encode", lambda rgb: {"image_embeddings.0": np.zeros(1)})
+    monkeypatch.setattr(segment, "_onnx_encode", lambda rgb, model=None: {"image_embeddings.0": np.zeros(1)})
     monkeypatch.setattr(segment, "_onnx_select", lambda entry, points, box: np.ones(entry["size"][::-1], bool))
     monkeypatch.setattr(model_manager, "ready", _ready())
     b = io.BytesIO(); Image.new("RGB", (8, 6)).save(b, "PNG")
