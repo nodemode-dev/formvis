@@ -184,11 +184,23 @@ def cmd_notarize(args):
     return 0
 
 
+WINDOWS_TRIPLES = {"x64": "x86_64-pc-windows-msvc", "arm64": "aarch64-pc-windows-msvc", "x86": "i686-pc-windows-msvc"}
+
+
+def windows_engine(release_dir, arch, root=None):
+    """The engine beside formvis.exe when the build left one there, else the frozen sidecar in src-tauri/binaries that
+    the installer bundles (a cold build cache leaves no copy in the release folder). Neither: the release-folder path,
+    so the copy fails loudly."""
+    built = os.path.join(release_dir, "formvis-engine.exe")
+    sidecar = os.path.join(root or ROOT, "src-tauri", "binaries", f"formvis-engine-{WINDOWS_TRIPLES.get(arch, arch)}.exe")
+    return built if os.path.isfile(built) or not os.path.isfile(sidecar) else sidecar
+
+
 def cmd_portable_windows(args):
     out = os.path.join("portable", "formvis")
     os.makedirs(out, exist_ok=True)
     shutil.copy(os.path.join(args.release_dir, "formvis.exe"), out)
-    shutil.copy(os.path.join(args.release_dir, "formvis-engine.exe"), out)
+    shutil.copy(windows_engine(args.release_dir, args.arch), os.path.join(out, "formvis-engine.exe"))
     with open(os.path.join(out, "portable.txt"), "w", encoding="utf-8") as f:
         f.write("formvis keeps its data in the FormvisData folder beside this file.\n")
     target = os.path.join("portable", f"formvis-portable-windows-{args.arch}.zip")
@@ -217,8 +229,9 @@ def cmd_msix(args):
     arch = "arm64" if args.arch == "arm64" else "x64"
     root = "msix/layout"
     os.makedirs(root + "/Assets", exist_ok=True)
-    for exe in ("formvis.exe", "formvis-engine.exe"):
-        shutil.copy(os.path.join("src-tauri", "target", "release", exe), root)
+    release_dir = os.path.join("src-tauri", "target", "release")
+    shutil.copy(os.path.join(release_dir, "formvis.exe"), root)
+    shutil.copy(windows_engine(release_dir, args.arch), os.path.join(root, "formvis-engine.exe"))
     py = os.path.join("backend", "venv", "Scripts", "python.exe")
     run([py, "-c", "from PIL import Image; im = Image.open('src-tauri/icons/icon.png').convert('RGBA'); "
          "[im.resize((s, s), Image.LANCZOS).save('" + root + "/Assets/' + n + '.png') for n, s in "
