@@ -4,6 +4,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.3.5 · 2026-11-17
+
+- The Windows release packs the engine again on a cold build cache: the portable zip and the MSIX take `formvis-engine.exe` from the release folder when the build left one there, else the frozen engine in `src-tauri/binaries` that the installer bundles. 2.3.4's Windows release stopped at this step.
+
 ## 2.3.4 · 2026-11-11
 
 A review release: every fix below came from a full read of the code.
