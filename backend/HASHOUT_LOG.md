@@ -2,6 +2,32 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A HEIC with no decoder says why and what to do · after 2.3.5, unreleased (app/services/imaging.py decode_to_png, heic_unavailable)
+
+- Kind: fix · logged 2026-11-17 · from the Creative Bloq review preparation. feat/heic-decode (merged beside this) gives the Windows and Linux desktop engines a decode-only libheif, but an engine can still have no HEIC decoder: a build made with FORMVIS_HEIF=0, or pillow-heif failing to load, with no `sips` (only macOS has it). A HEIC then failed with Pillow's own words ("cannot identify image file"), which read like a damaged file.
+- Now: when the suffix is a HEIF one, Pillow failed, sips is not there and pillow-heif is not loaded, `decode_to_png` raises `DecodeError(heic_unavailable(label))`: the file name, that this engine has no HEIC decoder (built without one, or it did not load), and to convert to JPEG or TIFF. A damaged HEIC on an engine that has pillow-heif keeps the old "Could not decode" message. The decode route already passes the message on as its 415 detail.
+- Checked: `tests/test_heic_unavailable.py` (no decoder, the route's 415, and the damaged-file case); the first two fail on 8ca14e15.
+- No line was removed.
+
+## A missing local model's 409 names the model, and the list gives its size · after 2.3.5, unreleased (app/localgen/model_manager.py missing, MISSING_HEADER, list_models, MODELS sizes; the 409s in inpaint, ai_upscale, colorize, depth, face, sky, style and routers/remove_find)
+
+- Kind: fix · logged 2026-11-17 · so the window can offer Install now and retry (frontend log, same date), instead of sending the person to Preferences > Plugins > Local models.
+- Now: `model_manager.missing(model, detail)` returns the 409 with an `X-Formvis-Model` header naming the model id; each route that waited for a model raises it with its old message unchanged. `MODELS` gains a `size` (the download size the Local models cards already state: LaMa 208 MB, Depth Anything 99 MB, DDColor 135 MB, the style presets 34 MB, YuNet 232 KB, the sky model 176 MB, Real-ESRGAN 67 MB) and `GET /api/models` lists it (`null` for the rest). No download source, pin or route was added: the window uses the existing `POST /api/models/{id}/download` and `/api/jobs/{id}`.
+- Not changed: remove_find's "needs Segment Anything 2" 409 (SAM 2.1 ONNX is fetched on first use, it is not a model-manager download), Relight's Marigold 409, and the Krea 2 and FLUX.2 [klein] licence 409s, which have their own install cards.
+- Checked: `tests/test_missing_models.py` (each route answers 409 with the header and the old words; each of those models lists a size); they fail on 8ca14e15.
+- Replaced, quoted exactly:
+
+```text
+        raise HTTPException(409, "Download LaMa first: Preferences > Plugins > Local models.")
+        raise HTTPException(409, "Download the Real-ESRGAN model first: Preferences > Plugins > Local models.")
+        raise HTTPException(409, "Download DDColor first: Preferences > Plugins > Local models.")
+        raise HTTPException(409, "Download Depth Anything first: Preferences > Plugins > Local models.")
+        raise HTTPException(409, "Download the face finder first: Preferences > Plugins > Local models (YuNet, 232 KB, MIT).")
+        raise HTTPException(409, "Select > Sky needs the sky model (176 MB, MIT): Preferences > Plugins > Local models.")
+        raise HTTPException(409, "Download the style models first: Preferences > Plugins > Local models.")
+        raise HTTPException(409, "Finding people needs the face finder (YuNet, 232 KB, MIT): Preferences > Plugins > Local models.")
+```
+
 ## Release 2.3.4: the review fixes and the version lines · _v2.3.4 (CHANGELOG.md; the version sites)
 
 - Kind: release · logged 2026-11-11. Every engine, setup, packaging and shell change of 2.3.4 has its own entry below, one per fix, each naming the review finding it answers; the frontend's are in `frontend/HASHOUT_LOG.md`. Deferred findings are listed in the fixers' logs, not here.

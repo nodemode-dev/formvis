@@ -451,7 +451,14 @@ def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str
                 return _sips(data, suffix)
             except Exception as retry_exc:
                 raise DecodeError(f"Could not decode {label}: {retry_exc}") from retry_exc
+        if suffix in HEIF_SUFFIXES and not HEIF:
+            raise DecodeError(heic_unavailable(label)) from exc
         raise DecodeError(f"Could not decode {label}: {exc}") from exc
+
+
+def heic_unavailable(label: str) -> str:
+    return (f"Could not open {label}: this formvis engine has no HEIC decoder (it was built without one, or the decoder did "
+            "not load). Convert the picture to JPEG or TIFF, then open that.")
 
 
 ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif", "dpx": "image/x-dpx", "png8": "image/png",
