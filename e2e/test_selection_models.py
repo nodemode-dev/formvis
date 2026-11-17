@@ -36,8 +36,8 @@ def test_select_subject_offers_birefnet_and_the_small_model_keeps_working(page):
         ask = page.locator(DLG, has_text="for Select Subject")
         ask.wait_for(timeout=15000)
         said = ask.inner_text()
-        assert "BiRefNet" in said and "973 MB" in said and "U2-Net" in said and "MIT" in said
-        assert ask.get_by_role("button", name="Install now (973 MB)").count() == 1
+        assert "BiRefNet" in said and "Swin-T" in said and "224 MB" in said and "U2-Net" in said and "MIT" in said
+        assert ask.get_by_role("button", name="Install now (224 MB)").count() == 1
         ask.get_by_role("button", name="Use the small model").click()
         page.wait_for_function("() => !!window.formvis.engine.current.selection", timeout=15000)
         assert seen["remove"] == 1
@@ -51,14 +51,14 @@ def test_select_subject_offers_birefnet_and_the_small_model_keeps_working(page):
 
 def test_install_now_downloads_birefnet_and_the_selection_carries_on(page):
     seen = {"remove": 0, "download": 0}
-    page.route("**/api/models/birefnet-general/download", lambda route, request: (seen.__setitem__("download", seen["download"] + 1), route.fulfill(status=202, json={"job_id": "bj"}))[1])
-    page.route("**/api/jobs/bj", lambda route, request: route.fulfill(json={"status": "done", "result": {"model": "birefnet-general", "ready": True}}))
+    page.route("**/api/models/birefnet-swin-t/download", lambda route, request: (seen.__setitem__("download", seen["download"] + 1), route.fulfill(status=202, json={"job_id": "bj"}))[1])
+    page.route("**/api/jobs/bj", lambda route, request: route.fulfill(json={"status": "done", "result": {"model": "birefnet-swin-t", "ready": True}}))
     try:
         _choose("subject", "recommended")
         _subject(page, seen)
         ask = page.locator(DLG, has_text="for Select Subject")
         ask.wait_for(timeout=15000)
-        ask.get_by_role("button", name="Install now (973 MB)").click()
+        ask.get_by_role("button", name="Install now (224 MB)").click()
         page.wait_for_function("() => !!window.formvis.engine.current.selection", timeout=20000)
         assert seen == {"remove": 1, "download": 1}
     finally:

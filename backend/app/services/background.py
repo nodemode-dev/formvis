@@ -171,7 +171,8 @@ def _file_matte(image: Image.Image, name: str) -> Image.Image:
 
 
 def _birefnet(image: Image.Image) -> Image.Image:
-    """Select Subject's recommended model (BiRefNet general, the author's ONNX export), run as the matting files are."""
+    """Select Subject's recommended model (BiRefNet general on Swin-T, the author's ONNX export), run as the matting files
+    are: the model's own input size (1024 by 1024), ImageNet normalisation, the first output through a sigmoid."""
     from app.localgen import model_manager, sessions
 
     path = model_manager.model_file(next(iter(model_manager.MODELS[BIREFNET]["files"])))
@@ -183,23 +184,20 @@ def _birefnet(image: Image.Image) -> Image.Image:
     return _matte(session, entry.name, list(entry.shape), image, "BiRefNet")
 
 
-BIREFNET = "birefnet-general"
+BIREFNET = "birefnet-swin-t"
 
 
-def birefnet_providers(chosen: list[str]) -> list[str]:
-    """The engine's providers without Core ML: Core ML takes 1,892 of BiRefNet's 5,271 nodes in 207 pieces, and building
-    that session did not finish in over an hour on an M-series Mac, where the CPU loads and runs it in about 16 s."""
-    return [p for p in chosen if p != "CoreMLExecutionProvider"] or ["CPUExecutionProvider"]
+BIREFNET_PROVIDERS = ["CPUExecutionProvider"]
 
 
 def _birefnet_session(path):
+    """BiRefNet on the CPU only, as formlit runs the same file: Core ML split the full model into 207 pieces and building
+    that session did not finish in over an hour on an M-series Mac."""
     import onnxruntime as ort
-
-    from app.localgen.paths import providers
 
     options = ort.SessionOptions()
     options.enable_cpu_mem_arena = False
-    return ort.InferenceSession(str(path), options, providers=birefnet_providers(providers()))
+    return ort.InferenceSession(str(path), options, providers=BIREFNET_PROVIDERS)
 
 
 def _matte(session, input_name: str, shape: list, image: Image.Image, name: str) -> Image.Image:

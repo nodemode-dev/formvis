@@ -17,7 +17,7 @@ Kind = Literal["subject", "object"]
 Choice = Literal["recommended", "small"]
 
 KINDS: dict[str, dict[str, str]] = {
-    "subject": {"recommended": "birefnet-general", "small": "u2net-onnx", "label": "Select Subject"},
+    "subject": {"recommended": "birefnet-swin-t", "small": "u2net-onnx", "label": "Select Subject"},
     "object": {"recommended": "sam2-base-plus-onnx", "small": "sam2-onnx", "label": "Object Selection"},
 }
 DEFAULTS: dict[str, str] = {"subject": "recommended", "object": "recommended"}

@@ -14,7 +14,7 @@ from app.localgen import model_manager
 from app.main import app
 from app.services import background, segment, selection_models
 
-RECOMMENDED = {"subject": "birefnet-general", "object": "sam2-base-plus-onnx"}
+RECOMMENDED = {"subject": "birefnet-swin-t", "object": "sam2-base-plus-onnx"}
 SMALL = {"subject": "u2net-onnx", "object": "sam2-onnx"}
 
 
@@ -70,19 +70,26 @@ def test_an_unreadable_choice_file_falls_back_to_the_defaults(data):
     assert selection_models.preferences() == selection_models.DEFAULTS
 
 
-@pytest.mark.parametrize("model", ["birefnet-general", "sam2-base-plus-onnx"])
+@pytest.mark.parametrize("model", ["birefnet-swin-t", "sam2-base-plus-onnx"])
 def test_the_recommended_models_are_pinned_official_downloads(model):
     spec = model_manager.MODELS[model]
     for name, url in spec["files"].items():
         assert len(model_manager.PINNED[name]) == 64 and int(model_manager.PINNED[name], 16) >= 0
         assert urlparse(url).scheme == "https"
     hosts = {urlparse(u).path.split("/")[1] for u in spec["files"].values()}
-    assert hosts == ({"ZhengPeng7"} if model == "birefnet-general" else {"onnx-community"})
+    assert hosts == ({"ZhengPeng7"} if model == "birefnet-swin-t" else {"onnx-community"})
+
+
+def test_birefnet_is_the_swin_t_file_formlit_uses():
+    (name, url), = model_manager.MODELS["birefnet-swin-t"]["files"].items()
+    assert url == "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx"
+    assert model_manager.PINNED[name] == "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333"
+    assert model_manager.MODELS["birefnet-swin-t"]["size"] == "224 MB" and "birefnet-general" not in model_manager.MODELS
 
 
 def test_select_subject_runs_birefnet_once_it_is_the_active_model(data, monkeypatch):
     seen = []
-    monkeypatch.setattr(model_manager, "ready", _ready("birefnet-general"))
+    monkeypatch.setattr(model_manager, "ready", _ready("birefnet-swin-t"))
     monkeypatch.setattr(background, "_birefnet", lambda image: seen.append("birefnet") or Image.new("L", image.size, 200))
     monkeypatch.setattr(background, "_u2net_onnx", lambda image: seen.append("u2net") or Image.new("L", image.size, 10))
     monkeypatch.setattr(background, "_has", lambda module: module == "onnxruntime")
@@ -101,10 +108,17 @@ def test_birefnet_reads_its_matte_like_a_matting_file():
     assert out.size == (40, 30) and np.asarray(out).min() >= 250
 
 
-def test_birefnet_never_runs_on_core_ml_but_keeps_the_other_accelerators():
-    assert background.birefnet_providers(["CoreMLExecutionProvider", "CPUExecutionProvider"]) == ["CPUExecutionProvider"]
-    assert background.birefnet_providers(["DmlExecutionProvider", "CPUExecutionProvider"]) == ["DmlExecutionProvider", "CPUExecutionProvider"]
-    assert background.birefnet_providers(["CoreMLExecutionProvider"]) == ["CPUExecutionProvider"]
+def test_birefnet_runs_on_the_cpu_only_whatever_device_is_chosen(monkeypatch, tmp_path):
+    import onnxruntime as ort
+
+    seen = {}
+
+    class Session:
+        def __init__(self, path, options, providers):
+            seen["providers"] = providers
+    monkeypatch.setattr(ort, "InferenceSession", Session)
+    background._birefnet_session(tmp_path / "m.onnx")
+    assert seen["providers"] == ["CPUExecutionProvider"]
 
 
 def test_an_object_encoded_with_one_model_is_encoded_again_after_the_switch(data, monkeypatch):

@@ -163,7 +163,7 @@ PINNED: dict[str, str] = {
     "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx": "874414704c5d686db7d206a35f6e15d26563d50c8c4468fccc6739bd7e491dcf",
     "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx_data": "e9874d900dd4134ed60eab1e97910327c2419e0b2954485d8fd6e7f1a1470f47",
     "u2net.onnx": "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491",
-    "birefnet/BiRefNet-general-epoch_244.onnx": "58f621f00f5d756097615970a88a791584600dcf7c45b18a0a6267535a1ebd3c",
+    "birefnet/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx": "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333",
     "sam2.1-hiera-base-plus/vision_encoder.onnx": "6fd992cf796e6ad5a29f3b92a127f2ce33f7f320d63c8b3f02bf3775f5f692f4",
     "sam2.1-hiera-base-plus/vision_encoder.onnx_data": "f8a5f1b14d02eb7ed3b3576ad6774b8ebcfef6cc20674d5f316d6144c60a08a5",
     "sam2.1-hiera-base-plus/prompt_encoder_mask_decoder.onnx": "f39eeec20243ed1c8f2cd013812e77813d937ddbc800fa4bc703761adc7e63cd",
@@ -447,13 +447,13 @@ MODELS = {
         "license": "Apache-2.0",
         "files": {"u2net.onnx": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx"},
     },
-    # BiRefNet general (after 2.3.5): the recommended Select Subject and Remove Background model, MIT, the author's own
-    # ONNX export from the ZhengPeng7/BiRefNet v1 release, hashed on 17 November 2026 from the real download.
-    "birefnet-general": {
-        "name": "BiRefNet general (ONNX)",
-        "size": "973 MB",
+    # BiRefNet general on the Swin-T backbone (after 2.3.5): the recommended Select Subject and Remove Background model,
+    # MIT, the author's own ONNX export from the ZhengPeng7/BiRefNet v1 release, the same file and pin as formlit's.
+    "birefnet-swin-t": {
+        "name": "BiRefNet general, Swin-T (ONNX)",
+        "size": "224 MB",
         "license": "MIT",
-        "files": {"birefnet/BiRefNet-general-epoch_244.onnx": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-epoch_244.onnx"},
+        "files": {"birefnet/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx"},
     },
     # SAM 2.1 base-plus as ONNX (after 2.3.5): the recommended Object Selection model, Meta's SAM 2.1 weights (Apache-2.0)
     # in the same onnx-community export as the tiny one above, pinned to its revision; the SHA-256 Hugging Face records.

@@ -2,6 +2,15 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## BiRefNet is the Swin-T file formlit uses, on the CPU only · after 2.3.5, unreleased (app/localgen/model_manager.py MODELS birefnet-swin-t, PINNED; app/services/background.py BIREFNET, BIREFNET_PROVIDERS, _birefnet_session; app/services/selection_models.py KINDS)
+
+- Kind: change · logged 2026-11-17 · the owner's follow-up: the family shares one BiRefNet, formlit's.
+- Now: `birefnet-general` (the full model, 973 MB) is replaced by `birefnet-swin-t`, BiRefNet general on the Swin-T backbone from the same v1 release (`BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx`, 224,005,088 bytes, SHA-256 5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333, checked against a real download), MIT. It runs on the CPU only (`BIREFNET_PROVIDERS`), as formlit runs it; the filter that dropped Core ML and kept DirectML and CUDA (`birefnet_providers`) is gone.
+- Input and preprocessing: the file declares `input_image` float [1, 3, 1024, 1024] and `output_image` [1, 1, 1024, 1024]; `_matte` reads that shape, so it resizes to 1024 squared as formlit does, normalises with the ImageNet mean and deviation, and reads the output through a sigmoid when it holds logits. Formlit's normalisation and resampling were not compared here (its BiRefNet code is not on any of its GitHub branches).
+- Measured on macOS arm64: a 640 by 480 picture in 9.4 s with a 3.07 GB peak, loading included; a 45 MP picture (8192 by 5504) in 8.5 s with a 4.29 GB peak (formlit measured 8.5 s and 5.9 GB at 45 MP). Inside a drawn subject 255, background 0.
+- The full 973 MB model is left as a note for the owner (formlit found it no better on its test photo); it is not in `MODELS`.
+- Replaced, quoted exactly: `    "birefnet-general": {`, `        "name": "BiRefNet general (ONNX)",`, `        "size": "973 MB",`, the file line `        "files": {"birefnet/BiRefNet-general-epoch_244.onnx": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-epoch_244.onnx"},`, its pin `    "birefnet/BiRefNet-general-epoch_244.onnx": "58f621f00f5d756097615970a88a791584600dcf7c45b18a0a6267535a1ebd3c",`, and `    return [p for p in chosen if p != "CoreMLExecutionProvider"] or ["CPUExecutionProvider"]` with its `birefnet_providers` wrapper.
+
 ## Select Subject and Object Selection get a recommended model: BiRefNet and SAM 2.1 base-plus · after 2.3.5, unreleased (app/services/selection_models.py new; app/routers/selection_models.py new; app/main.py; app/services/background.py _ml, _birefnet, _matte, available; app/services/segment.py FOLDERS, onnx_model, _onnx_sessions, _tiny_sessions, encode, select; app/localgen/model_manager.py MODELS, PINNED)
 
 - Kind: feat · logged 2026-11-17 · the owner asked for stronger selection models after the review preparation.
