@@ -57,7 +57,7 @@ Adobe, Camera Raw and Photoshop are either registered trademarks or trademarks o
 | numpy | BSD-3-Clause | engine |
 | opencv-python-headless | Apache-2.0 (OpenCV), MIT (packaging) | engine; its wheels carry LGPL FFmpeg as separate shared libraries, kept separable in the frozen engine |
 | FFmpeg 7.1.5, ffprobe | LGPL-2.1-or-later (`--disable-gpl --disable-nonfree`; libopus and libvpx BSD-3-Clause) | not bundled: an installed ffmpeg (or FORMVIS_FFMPEG) is used as before, and when none is found the engine downloads this build from the nodemode-dev/formcut-binaries release on first run, checks every file's SHA-256 against `backend/app/ffmpeg_record.py`, and runs it as a separate program for Video Frames to Layers and video export; its source is attached to that release |
-| pillow-heif | BSD-3-Clause; bundles LGPL libheif and GPL x265 | server-side engine only; excluded from the frozen desktop engine |
+| pillow-heif 1.8.1, with libheif 1.23.7 and libde265 1.1.3 | BSD-3-Clause (pillow-heif); libheif and libde265 are LGPL-3.0-or-later | engine, HEIC and HEIF decoding at full bit depth. Its PyPI wheels also link the GPL x265 encoder, so they never ship: the desktop engine builds libde265 and libheif from their release archives with decoders only (no encoder, no other codec, no plugin loading) and pillow-heif from source against them (`setup/heif_decode.py`), and `setup/freeze_backend` stops if any x265 or x264 library reaches the engine. Both libraries are separate shared libraries, unmodified, kept separable and replaceable in the frozen engine |
 | rawpy, with LibRaw | MIT (rawpy); LibRaw is LGPL-2.1 or CDDL-1.0, at the recipient's choice | engine, camera RAW decoding; LibRaw ships in rawpy's wheels as a separate shared library, kept separable and replaceable in the frozen engine |
 | SAM 2.1 (Meta, facebookresearch/sam2 at commit 2b90b9f) and its tiny checkpoint | Apache-2.0 (the repository's cctorch component is BSD-3-Clause and is not built) | engine, optional (`./formvis install-ml`), click-to-select; the checkpoint is downloaded from Meta and checked against its SHA-256 |
 | PyTorch | Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT (its package metadata) | engine, optional, SAM 2.1's runtime |
@@ -767,7 +767,7 @@ Every package installed by `backend/requirements.txt` and frozen into `formvis-e
 | OpenEXR | 3.5.2 | BSD-3-Clause |  |
 | packaging | 26.3 | Apache-2.0 OR BSD-2-Clause |  |
 | pillow | 12.3.0 | MIT-CMU |  |
-| pillow_heif | 1.7.0 | BSD-3-Clause | not in the desktop engine (`--exclude-module pillow_heif`); bundles LGPL libheif and libde265 and GPL x265 |
+| pillow_heif | 1.8.1 | BSD-3-Clause | built from source for the desktop engine against a decode-only libheif (`setup/heif_decode.py`); the PyPI wheel, which links GPL x265, is for development and the server only |
 | protobuf | 7.36.2 | BSD-3-Clause |  |
 | psd-tools | 1.23.0 | MIT |  |
 | ptyprocess | 0.7.0 | ISC |  |
@@ -845,6 +845,7 @@ Several wheels carry compiled libraries of their own. These ship inside the froz
 | numpy 2.5.3, scipy 1.18.1 (ML extra), opencv | libgfortran | GPL-3.0-or-later WITH GCC-exception-3.1 |
 | numpy 2.5.3, scipy 1.18.1 (ML extra), opencv | libquadmath | LGPL-2.1-or-later |
 | rawpy 0.27.1 | LibRaw 0.22.1 | LGPL-2.1 or CDDL-1.0, at the recipient's choice |
+| pillow-heif 1.8.1 (built by `setup/heif_decode.py`) | libheif 1.23.7, libde265 1.1.3, decoders only | LGPL-3.0-or-later; texts in `licenses/native/` |
 | rawpy 0.27.1 | JasPer | JasPer License 2.0 (MIT-style) |
 | rawpy 0.27.1 | libjpeg, Little CMS | as for Pillow above |
 | rawpy 0.27.1 | libgomp | GPL-3.0-or-later WITH GCC-exception-3.1 |
@@ -860,10 +861,12 @@ The GCC runtime libraries (libgfortran, libgomp) are distributed under the GCC R
 
 ### LGPL libraries and their source
 
-formvis ships these LGPL libraries unmodified, as the shared libraries their wheels provide, inside the frozen engine: FFmpeg (in opencv-python-headless), LibRaw (in rawpy, also available under CDDL-1.0) and libquadmath (in numpy, scipy and opencv). You may replace them. formvis's own source, including `setup/freeze_backend`, is public under Apache-2.0, so you can rebuild the engine against modified versions of these libraries. Their source code is available from:
+formvis ships these LGPL libraries unmodified, as the shared libraries their wheels provide, inside the frozen engine: FFmpeg (in opencv-python-headless), LibRaw (in rawpy, also available under CDDL-1.0) and libquadmath (in numpy, scipy and opencv). It also ships libheif 1.23.7 and libde265 1.1.3 (LGPL-3.0-or-later), built unmodified from their release archives by `setup/heif_decode.py`, which pins each archive's SHA-256 and every build option. You may replace them. formvis's own source, including `setup/freeze_backend`, is public under Apache-2.0, so you can rebuild the engine against modified versions of these libraries. Their source code is available from:
 
 - FFmpeg: https://ffmpeg.org/download.html, and the opencv-python build sources at https://github.com/opencv/opencv-python
 - LibRaw: https://www.libraw.org/download and https://github.com/LibRaw/LibRaw
+- libheif: https://github.com/strukturag/libheif/releases/tag/v1.23.7
+- libde265: https://github.com/strukturag/libde265/releases/tag/v1.1.3
 - libquadmath (part of GCC): https://gcc.gnu.org/
 
 On request to the formvis maintainers, we will also provide the exact source of the versions shipped in any formvis release, for at least three years after that release.

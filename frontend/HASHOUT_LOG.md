@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The capabilities type names the HEIC decoder and its depth · after 2.3.5, unreleased (io/api.ts Capabilities decode; e2e/test_legacy_formats_exchange.py)
+
+- Kind: fix · logged 2026-11-17 · branch feat/heic-decode; the engine side is in `backend/HASHOUT_LOG.md` (HEIC in the Windows and Linux desktop engines).
+- Changed: `decode` gains optional `heicEngine` (for example `libheif 1.23.7`) and `heicBits` (16 through libheif, 8 through sips, 0 with none), which `/api/capabilities` now sends. Nothing reads them yet; the window still opens a HEIC through the same paths (`heifBits` picks the deep path for a 10 or 12 bit file).
+- e2e: `test_a_heic_opens_with_its_pixels_and_a_10_bit_one_at_16_bits` opens the engine's lossless fixtures (`backend/tests/fixtures/heic_*.heic`): 16 by 12 at 8 bits with pixel (7, 5) = (119, 115, 127), and the 10-bit one as a 16-bit document. The damaged-file refusal test is unchanged; it still holds with a decoder present.
+- Not changed: the home screen's format chip already says HEIC, which is now true on every desktop platform; the multi-image page chooser stays TIFF and ICO only (a HEIF burst opens its first image; the engine lists the rest through `/api/io/pages`).
+- Old line: `  decode: { heic: boolean; tiff: boolean; engine: string; raw?: boolean; rawEngine?: string };`
+
 ## Release 2.3.4: the review fixes and the version lines · v2.3.4 (CHANGELOG.md; the version sites; the three demo bundles)
 
 - Kind: release · logged: v2.3.4 · 2026-11-11. Every window change of 2.3.4 has its own entry below, one per fix, each naming the review finding it answers; the engine, setup and shell changes are in `backend/HASHOUT_LOG.md`.

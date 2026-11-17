@@ -79,7 +79,7 @@
   <tr>
     <td width="33%" valign="top"><h4>Edit</h4>Layers · Masks · Clipping · Folders · Fill layers · Selections · Paths · Smart objects · Layer styles · Timeline and GIF</td>
     <td width="33%" valign="top"><h4>Adjust and generate</h4>Levels · Curves · Hue/Saturation · Exposure · Vibrance · Color Lookup · Filter Gallery · Healing · Generative Fill and Expand · Upscale · Background removal</td>
-    <td width="33%" valign="top"><h4>Formats</h4>Opens: PSD · PSB · HEIC · TIFF · camera RAW · EXR · HDR · DPX · QOI · TGA · ICO · Saves: PNG · JPEG · PSD · TIFF · GIF · Native: <code>.fvd</code></td>
+    <td width="33%" valign="top"><h4>Formats</h4>Opens: PSD · PSB · HEIC and HEIF (10-bit) · TIFF · camera RAW · EXR · HDR · DPX · QOI · TGA · ICO · Saves: PNG · JPEG · PSD · TIFF · GIF · Native: <code>.fvd</code></td>
   </tr>
 </table>
 
@@ -104,7 +104,7 @@ formvis hosts Form extensions (the Form Extension Contract, API 1): FormPortal i
 - **Engine:** a FastAPI service for decoding, colour, PSD and the local models on ONNX Runtime.
 - **Editor:** vanilla TypeScript and Vite, with a DOM-free document engine; a Tauri 2 shell starts the engine as a sidecar.
 - **Drawing:** WebGPU or WebGL2, falling back to the CPU per document.
-- **Size:** about 166,800 lines of TypeScript, 2,400 of CSS, 22,500 of Python and 6,200 of Rust (product code, tests excluded; `./formvis counts --check` verifies it).
+- **Size:** about 166,800 lines of TypeScript, 2,400 of CSS, 23,200 of Python and 6,200 of Rust (product code, tests excluded; `./formvis counts --check` verifies it).
 - **Tested:** unit, backend and browser suites, run with `./formvis test`.
 
 ## Download

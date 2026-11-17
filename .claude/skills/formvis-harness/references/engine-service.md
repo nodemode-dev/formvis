@@ -29,7 +29,7 @@ Prefixes are set in `backend/app/main.py` unless the router sets its own.
 
 ## Facts that bite
 
-- `pillow-heif` bundles GPL x265: it is excluded from the frozen desktop engine; macOS falls back to `sips`.
+- `pillow-heif`'s PyPI wheels link GPL x265, so they never ship: `setup/freeze_backend` runs `setup/heif_decode.py`, which builds libde265 and libheif (LGPL) with decoders only and pillow-heif from source against them, and stops if an x265 or x264 library reaches the engine. HEIC opens on every desktop platform at its own depth (10 and 12 bit as 16); `sips` stays only as the macOS fallback for a file libheif refuses. `FORMVIS_HEIF=0` freezes without it.
 - `FORMVIS_PORT=0` makes uvicorn pick a free port and print it; the desktop shell reads that line.
 - Imported projects live in temporary session folders for 24 hours.
 - The engine reads `backend/.env` (never committed; `backend/.env.example` is the template). Variables: `FORMVIS_HOST`, `FORMVIS_PORT`, `FORMVIS_DATA_DIR` (default `~/Formvis`), `FORMVIS_CORS_ORIGINS`, `FORMVIS_REMBG_MODEL`, `FORMVIS_DIST`, `FORMVIS_FREEZE_ML`, `FORMVIS_TARGET`.
