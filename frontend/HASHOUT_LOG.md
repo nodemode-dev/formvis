@@ -2,6 +2,46 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Generative Fill without a fal key says what it needs and offers a key or a local model; an empty fill uses LaMa · after 2.3.5, unreleased (ui/panels/generative-dialog.ts NO_KEY, noKeyRow, falBacked, noKey, lamaInstead, useLocal, show, sync, prepare)
+
+- Kind: fix · logged 2026-11-17 · from the Creative Bloq review preparation. Preferences > Generative's defaults (gen-prefs.ts DEFAULT_GEN, 1.96.2) start Generative Fill on fal's FLUX 3 edit and an empty fill on fal's Bria eraser, so on a fresh install the task bar's Generate opened the dialog with only "Add a fal API key to generate." at the foot of a long body, and Generate then said "Paste a fal API key first."
+- Now: while the chosen model runs on fal (`fal` or a `falcat:` value) and the engine has no key, a section right under the Model row says the model needs a fal API key, that fal is paid and charges for each run, and that a model on this computer is free, with Add a fal key (shows and focuses the key field) and Use a local model (Real-ESRGAN for Upscale; for a fill, a ready local generator when there are words, else LaMa; a model not downloaded is offered through `offerModel`, see the next entry, and Cancel leaves the choice as it was). Generate with no key and no key typed shows that section instead of the old line.
+- An empty fill or expand with no fal key, nothing typed in the key field and LaMa downloaded runs on LaMa without asking (`lamaInstead`, in `show` for the task bar's start and in `prepare` for the Generate button). With a key nothing changes: the preferences' models still run. This only replaces what used to be a refusal, so it is not behind a preference; the owner may want it as one (PR body, For the owner).
+- Checked: e2e/test_missing_model_and_fal_key.py (the section and both buttons; an empty fill with LaMa stood in runs with no dialog); both fail on 8ca14e15. Seen at 1400 by 900 and 900 by 700 in Chromium.
+- Replaced, quoted exactly:
+
+```text
+      : s.configured ? `fal key set ${s.source === 'environment' ? 'by FAL_KEY in the environment' : 'in formvis'}.` : 'Add a fal API key to generate.');
+      if (!key) { setText(this.state, 'Paste a fal API key first.'); this.key.focus(); return; }
+```
+
+## An action whose local model is missing offers Install now and carries on · after 2.3.5, unreleased (io/local-gen.ts ask, onMissingModel, modelEntry; ui/model-install.ts offerModel, needModel; app.ts removeFound and the depth commands; ui/panels/neural-dialog.ts, liquify-dialog.ts, color-range-dialog.ts)
+
+- Kind: fix · logged 2026-11-17 · the actions that need a downloadable model (LaMa for Remove People and Remove Distractions, Depth Anything for the depth commands and Depth Blur, DDColor, the style presets, YuNet for Face-Aware Liquify and Detect Faces, and every engine 409 that now names its model, see backend/HASHOUT_LOG.md) stopped with "download it in Preferences > Plugins > Local models".
+- Now: `ui/model-install.ts` `offerModel(id)` reads the model's name and size from `GET /api/models` (`modelEntry`), asks "Install <name>?" with Install now (<size>) and Cancel, and on Install now runs the existing `installModel` (the engine's download job; no new source), with a notice that stays until it ends; true once the model is in place. `needModel(id, declined)` runs `declined` (the action's old message) when it is still missing, so Cancel leaves everything as it was. The pre-checks above call it and carry on after the install. In `io/local-gen.ts`, `ask` hands a 409 that carries `X-Formvis-Model` to the installer `app.ts` registers (`onMissingModel(offerModel)`) and sends the same request again once if it installed; io stays free of UI imports. The sky model's own Download prompt (1.57.6) and Relight's installs are unchanged; Remove's brush still falls back to the patch fill without asking.
+- Checked: tests/missing-model.test.ts (retry once after install; Cancel keeps the engine's words; no second ask; a 409 without the header is plain; the entry's size); e2e/test_missing_model_and_fal_key.py (Compute Depth Map: Install now (99 MB) downloads and the layer arrives; Cancel downloads nothing and leaves one layer). All fail on 8ca14e15.
+- Replaced, quoted exactly:
+
+```text
+import { depthReady, findToRemove, installModel, localDepth, localDepth16, localDepthValues, localInpaint, modelReady, skyMask, skyReady, warmLama } from './io/local-gen';
+    if (!(await modelReady('lama-inpaint'))) { toast('Remove fills with LaMa: download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await depthReady())) { toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await depthReady())) { toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+        if (!(await depthReady())) { toast('Select by Depth needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await depthReady())) { toast('Depth Map from Layer needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await depthReady())) { toast('Recompute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+async function ask(path: string, init?: RequestInit): Promise<Response> {
+  if (!r.ok) { let d = r.statusText; try { const j = await r.json() as { detail?: unknown }; if (typeof j.detail === 'string') d = j.detail; } catch { /* the status */ } throw new Error(d); }
+import { faceReady, findFaces } from '../../io/local-gen';
+        if (!(await faceReady())) throw new Error('Detect Faces needs the face finder (YuNet, 232 KB, MIT): download it in Preferences > Plugins > Local models.');
+import { faceReady, findFaces } from '../../io/local-gen';
+      if (!(await faceReady())) { setText(this.faceNote, 'Face-Aware Liquify needs the face finder (YuNet, 232 KB, MIT): download it in Preferences > Plugins > Local models.'); return; }
+import { colorizeReady, depthReady, localColorize, localDepth, localDepthValues, localStyle, styleReady } from '../../io/local-gen';
+      if (!(await depthReady())) { setText(this.note, 'Depth Blur needs Depth Anything V2 Small (99 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
+      if (!(await colorizeReady())) { setText(this.note, 'Colorize needs DDColor-tiny (135 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
+      if (!(await styleReady())) { setText(this.note, 'Style Transfer needs the five preset models (34 MB, BSD-3-Clause): download them in Preferences > Plugins > Local models.'); return; }
+```
+
 ## Release 2.3.4: the review fixes and the version lines · v2.3.4 (CHANGELOG.md; the version sites; the three demo bundles)
 
 - Kind: release · logged: v2.3.4 · 2026-11-11. Every window change of 2.3.4 has its own entry below, one per fix, each naming the review finding it answers; the engine, setup and shell changes are in `backend/HASHOUT_LOG.md`.
