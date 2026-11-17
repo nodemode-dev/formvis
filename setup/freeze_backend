@@ -64,6 +64,7 @@ if [ "${FORMVIS_HEIF:-1}" = 0 ]; then
 else
   python "$src/setup/heif_decode.py" || cv_die "HEIC decoding could not be built without GPL code (setup/heif_decode.py); fix the build, or set FORMVIS_HEIF=0 to freeze without HEIC"
   extra+=(--hidden-import pillow_heif)
+  export FORMVIS_REQUIRE_HEIC=1
 fi
 mode=--onefile
 if [ "$(cv_os)" = macos ]; then
@@ -91,12 +92,12 @@ if [ "$mode" = --onedir ]; then
   cp -R dist-engine/formvis-engine "$out"
   flatten_engine "$out"
   [ -z "${APPLE_SIGNING_IDENTITY:-}" ] || sign_engine "$out"
-  "$out/formvis-engine" --selfcheck
+  "$out/formvis-engine" --selfcheck || cv_die "the frozen engine failed its self-check; see the line above"
   cv_say "engine folder ready: $out"
   exit 0
 fi
 mkdir -p "$FORMVIS_ROOT/src-tauri/binaries"
 out="$FORMVIS_ROOT/src-tauri/binaries/formvis-engine-${triple}${ext}"
 cp "dist-engine/formvis-engine${ext}" "$out"
-"$out" --selfcheck
+"$out" --selfcheck || cv_die "the frozen engine failed its self-check; see the line above"
 cv_say "sidecar ready: $out"
