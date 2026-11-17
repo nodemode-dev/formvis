@@ -79,7 +79,7 @@
   <tr>
     <td width="33%" valign="top"><h4>Edit</h4>Layers · Masks · Clipping · Folders · Fill layers · Selections · Paths · Smart objects · Layer styles · Timeline and GIF</td>
     <td width="33%" valign="top"><h4>Adjust and generate</h4>Levels · Curves · Hue/Saturation · Exposure · Vibrance · Color Lookup · Filter Gallery · Healing · Generative Fill and Expand · Upscale · Background removal</td>
-    <td width="33%" valign="top"><h4>Formats</h4>Opens: PSD · PSB · HEIC · TIFF · camera RAW · EXR · HDR · DPX · QOI · TGA · ICO · Saves: PNG · JPEG · PSD · TIFF · GIF · Native: <code>.fvd</code></td>
+    <td width="33%" valign="top"><h4>Formats</h4>Opens: PSD · PSB · HEIC and HEIF (10-bit) · TIFF · camera RAW · EXR · HDR · DPX · QOI · TGA · ICO · Saves: PNG · JPEG · PSD · TIFF · GIF · Native: <code>.fvd</code></td>
   </tr>
 </table>
 

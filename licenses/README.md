@@ -9,6 +9,7 @@ The licence texts and copyright notices of the third-party software formvis ship
 | `python/<distribution>/` | The licence files of every Python package in the engine's requirements tree (`backend/requirements.txt`), with the file names the package uses |
 | `python-ml/<distribution>/` | The same for the optional ML extras (`requirements_ml.txt`, `requirements_sam2.txt` and `sam-2`), when they are installed in the build environment |
 | `onnxruntime-ThirdPartyNotices.txt` | ONNX Runtime's notice for the software inside it |
+| `native/<library>-<version>/` | Native libraries the engine builds from source rather than taking from a wheel: libheif and libde265 (`setup/heif_decode.py`), copied from their release archives; update them with the versions in that script |
 | `npm/<package>/` | The licence files of the npm packages in the built bundle (the `dependencies` of `frontend/package.json` and what they depend on) |
 | `rust/<crate>-<version>/` | Crate licence files, written only when cargo-about is not installed |
 | `rust-src-tauri.html`, `rust-formvis-render.html` | The Rust crates of the desktop shell and of the native renderer, grouped by licence (cargo-about) |
