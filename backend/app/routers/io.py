@@ -845,7 +845,7 @@ def export_beside(request: Request, file: UploadFile = File(...), name: str = Fo
 
 #: What a file chosen in the desktop app's panels may be (1.87.0): projects, and every picture formvis reads or writes.
 DISK_KINDS = (".fvd", ".fmv", ".formvis", ".canvasor", ".comp", ".zip", ".psd", ".psb", ".ora", ".kra", ".pdn", ".png", ".jpg", ".jpeg",
-              ".webp", ".avif", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".qoi", ".tga", ".ico", ".pcx", ".xpm", ".pbm", ".pgm", ".ppm",
+              ".webp", ".avif", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".hif", ".qoi", ".tga", ".ico", ".pcx", ".xpm", ".pbm", ".pgm", ".ppm",
               ".pnm", ".pam", ".exr", ".hdr", ".dpx", ".fits", ".fit", ".fts", ".svg", ".pdf", ".dng", ".cr2", ".cr3", ".nef",
               ".arw", ".raf", ".orf", ".rw2", ".abr", ".aco", ".ase", ".grd", ".ggr", ".pat", ".csh")
 OUTPUT_KINDS = tuple(f".{t}" for t in EXPORT_TYPES)

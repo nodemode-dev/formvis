@@ -312,4 +312,5 @@ export const uk: Record<string, string> = {
   'Selection models': 'Моделі виділення', '{action} model': 'Модель для «{action}»', '{name}, recommended ({size})': '{name}, рекомендовано ({size})', '{name}, small ({size})': '{name}, мала ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} ще не завантажена, тому «{action}» поки використовує малу модель.',
   '{action} uses {name}.': '«{action}» використовує {name}.', 'Download {name} ({size})': 'Завантажити {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Виконано з LaMa на цьому комп’ютері: у fal немає ключа, а запит був порожнім.',
 };

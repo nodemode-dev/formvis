@@ -332,4 +332,5 @@ export const srLatn: Record<string, string> = {
   'Selection models': 'Modeli izbora', '{action} model': 'Model za {action}', '{name}, recommended ({size})': '{name}, preporučeno ({size})', '{name}, small ({size})': '{name}, mali ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} još nije preuzet, pa {action} do tada koristi mali model.',
   '{action} uses {name}.': '{action} koristi {name}.', 'Download {name} ({size})': 'Preuzmi {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Pokrenuto sa LaMa na ovom računaru: fal nema ključ, a upit je bio prazan.',
 };

@@ -312,4 +312,5 @@ export const ja: Record<string, string> = {
   'Selection models': '選択モデル', '{action} model': '「{action}」のモデル', '{name}, recommended ({size})': '{name}、推奨 ({size})', '{name}, small ({size})': '{name}、小 ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} はまだダウンロードされていないため、それまで「{action}」は小さいモデルを使います。',
   '{action} uses {name}.': '「{action}」は {name} を使います。', 'Download {name} ({size})': '{name} をダウンロード ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'このコンピューターの LaMa で実行しました。fal のキーがなく、プロンプトが空でした。',
 };

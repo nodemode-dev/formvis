@@ -423,8 +423,8 @@ fn note_recent_document(app: tauri::AppHandle, path: String) {
 #[tauri::command]
 async fn pick_image_path(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let exts = [
-        "png", "jpg", "jpeg", "webp", "gif", "avif", "tif", "tiff", "dpx", "qoi", "tga", "ico", "pgm", "ppm", "pam", "heic",
-        "psd", "dng", "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
+        "png", "jpg", "jpeg", "webp", "gif", "avif", "tif", "tiff", "dpx", "qoi", "tga", "ico", "pgm", "ppm", "pam", "heic", "heif", "hif",
+        "HEIC", "HEIF", "HIF", "psd", "dng", "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
     ];
     let started = std::time::Instant::now();
     match app.dialog().file().add_filter("Images", &exts).blocking_pick_file() {

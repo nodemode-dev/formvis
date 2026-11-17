@@ -312,4 +312,5 @@ export const cs: Record<string, string> = {
   'Selection models': 'Modely výběru', '{action} model': 'Model pro {action}', '{name}, recommended ({size})': '{name}, doporučený ({size})', '{name}, small ({size})': '{name}, malý ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} ještě není stažený, proto {action} zatím používá malý model.',
   '{action} uses {name}.': '{action} používá {name}.', 'Download {name} ({size})': 'Stáhnout {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Spuštěno s LaMa na tomto počítači: fal nemá klíč a zadání bylo prázdné.',
 };

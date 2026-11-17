@@ -196,4 +196,5 @@ export const ar: Record<string, string> = {
   'Selection models': 'نماذج التحديد', '{action} model': 'نموذج {action}', '{name}, recommended ({size})': '{name}، موصى به ({size})', '{name}, small ({size})': '{name}، صغير ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': 'لم يُنزَّل {name} بعد، لذا يستخدم {action} النموذج الصغير إلى أن يُنزَّل.',
   '{action} uses {name}.': 'يستخدم {action} النموذج {name}.', 'Download {name} ({size})': 'تنزيل {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'شُغِّل باستخدام LaMa على هذا الكمبيوتر: لا يوجد مفتاح لـ fal والموجّه فارغ.',
 };

@@ -16,7 +16,7 @@ const KEYS = [
   '{name} is the recommended model for Object Selection: it follows the object you click more closely than the small model, {small}. It downloads once, about {size}, and runs on this computer, with no key and no cost ({license}). You can switch in Preferences > Plugins > Local models.',
   'Use {name} for {action}?', 'Use the small model', 'The model choice could not be saved.', 'Selection models', '{action} model',
   '{name}, recommended ({size})', '{name}, small ({size})', '{name} is not downloaded yet, so {action} uses the small model until it is.', '{action} uses {name}.',
-  'Download {name} ({size})',
+  'Download {name} ({size})', 'Ran on LaMa on this computer: fal has no key and the prompt was empty.',
 ];
 const holes = (s: string): string[] => (s.match(/\{[a-z]+\}/g) ?? []).sort();
 

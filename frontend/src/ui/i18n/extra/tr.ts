@@ -312,4 +312,5 @@ export const tr: Record<string, string> = {
   'Selection models': 'Seçim modelleri', '{action} model': '{action} modeli', '{name}, recommended ({size})': '{name}, önerilen ({size})', '{name}, small ({size})': '{name}, küçük ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} henüz indirilmedi, bu yüzden {action} o zamana kadar küçük modeli kullanır.',
   '{action} uses {name}.': '{action}, {name} kullanıyor.', 'Download {name} ({size})': '{name} indir ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Bu bilgisayarda LaMa ile çalıştırıldı: fal anahtarı yok ve istem boştu.',
 };

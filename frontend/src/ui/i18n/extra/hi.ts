@@ -187,4 +187,5 @@ export const hi: Record<string, string> = {
   'Selection models': 'चयन मॉडल', '{action} model': '{action} का मॉडल', '{name}, recommended ({size})': '{name}, सुझाया गया ({size})', '{name}, small ({size})': '{name}, छोटा ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} अभी डाउनलोड नहीं हुआ है, इसलिए तब तक {action} छोटा मॉडल इस्तेमाल करता है।',
   '{action} uses {name}.': '{action} {name} इस्तेमाल करता है।', 'Download {name} ({size})': '{name} डाउनलोड करें ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'इस कंप्यूटर पर LaMa से चलाया गया: fal की कोई कुंजी नहीं है और प्रॉम्प्ट खाली था।',
 };

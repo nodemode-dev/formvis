@@ -312,4 +312,5 @@ export const hu: Record<string, string> = {
   'Selection models': 'Kijelölési modellek', '{action} model': '{action}: modell', '{name}, recommended ({size})': '{name}, ajánlott ({size})', '{name}, small ({size})': '{name}, kicsi ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': 'A(z) {name} még nincs letöltve, ezért addig a(z) {action} a kis modellt használja.',
   '{action} uses {name}.': '{action}: {name}.', 'Download {name} ({size})': '{name} letöltése ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'LaMa futott ezen a számítógépen: a fal szolgáltatásnak nincs kulcsa, és a prompt üres volt.',
 };

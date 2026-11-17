@@ -316,4 +316,5 @@ export const ru: Record<string, string> = {
   'Selection models': 'Модели выделения', '{action} model': 'Модель для «{action}»', '{name}, recommended ({size})': '{name}, рекомендуется ({size})', '{name}, small ({size})': '{name}, малая ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} ещё не загружена, поэтому «{action}» пока использует малую модель.',
   '{action} uses {name}.': '«{action}» использует {name}.', 'Download {name} ({size})': 'Загрузить {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Выполнено с LaMa на этом компьютере: у fal нет ключа, а запрос был пустым.',
 };

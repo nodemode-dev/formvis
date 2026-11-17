@@ -312,4 +312,5 @@ export const vi: Record<string, string> = {
   'Selection models': 'Mô hình vùng chọn', '{action} model': 'Mô hình cho {action}', '{name}, recommended ({size})': '{name}, đề xuất ({size})', '{name}, small ({size})': '{name}, nhỏ ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} chưa được tải, nên {action} dùng mô hình nhỏ cho đến lúc đó.',
   '{action} uses {name}.': '{action} dùng {name}.', 'Download {name} ({size})': 'Tải {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Đã chạy bằng LaMa trên máy tính này: fal chưa có khóa và lời nhắc để trống.',
 };

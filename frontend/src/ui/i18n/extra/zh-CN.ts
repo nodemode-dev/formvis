@@ -312,4 +312,5 @@ export const zhCN: Record<string, string> = {
   'Selection models': '选择模型', '{action} model': '“{action}”的模型', '{name}, recommended ({size})': '{name}，推荐 ({size})', '{name}, small ({size})': '{name}，小 ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} 尚未下载，因此“{action}”在此之前使用小模型。',
   '{action} uses {name}.': '“{action}”使用 {name}。', 'Download {name} ({size})': '下载 {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': '已在本机用 LaMa 运行：fal 没有密钥，且提示词为空。',
 };

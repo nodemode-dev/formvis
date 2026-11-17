@@ -315,4 +315,5 @@ export const el: Record<string, string> = {
   'Selection models': 'Μοντέλα επιλογής', '{action} model': 'Μοντέλο για {action}', '{name}, recommended ({size})': '{name}, προτεινόμενο ({size})', '{name}, small ({size})': '{name}, μικρό ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': 'Το {name} δεν έχει ληφθεί ακόμη, οπότε η {action} χρησιμοποιεί προς το παρόν το μικρό μοντέλο.',
   '{action} uses {name}.': '{action}: {name}.', 'Download {name} ({size})': 'Λήψη {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Εκτελέστηκε με το LaMa σε αυτόν τον υπολογιστή: το fal δεν έχει κλειδί και η προτροπή ήταν κενή.',
 };

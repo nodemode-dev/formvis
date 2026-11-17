@@ -312,4 +312,5 @@ export const th: Record<string, string> = {
   'Selection models': 'โมเดลการเลือก', '{action} model': 'โมเดลสำหรับ {action}', '{name}, recommended ({size})': '{name} แนะนำ ({size})', '{name}, small ({size})': '{name} ขนาดเล็ก ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} ยังไม่ได้ดาวน์โหลด {action} จึงใช้โมเดลขนาดเล็กไปก่อน',
   '{action} uses {name}.': '{action} ใช้ {name}', 'Download {name} ({size})': 'ดาวน์โหลด {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'รันด้วย LaMa ในคอมพิวเตอร์เครื่องนี้: fal ไม่มีคีย์และพรอมต์ว่าง',
 };

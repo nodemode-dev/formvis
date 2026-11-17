@@ -312,4 +312,5 @@ export const fr: Record<string, string> = {
   'Selection models': 'Modèles de sélection', '{action} model': 'Modèle de {action}', '{name}, recommended ({size})': '{name}, recommandé ({size})', '{name}, small ({size})': '{name}, petit ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} n\'est pas encore téléchargé : {action} utilise le petit modèle d\'ici là.',
   '{action} uses {name}.': '{action} utilise {name}.', 'Download {name} ({size})': 'Télécharger {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Exécuté avec LaMa sur cet ordinateur : fal n\'a pas de clé et l\'invite était vide.',
 };

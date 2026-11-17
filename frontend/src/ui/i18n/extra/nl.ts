@@ -312,4 +312,5 @@ export const nl: Record<string, string> = {
   'Selection models': 'Selectiemodellen', '{action} model': 'Model voor {action}', '{name}, recommended ({size})': '{name}, aanbevolen ({size})', '{name}, small ({size})': '{name}, klein ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} is nog niet gedownload, dus {action} gebruikt tot dan het kleine model.',
   '{action} uses {name}.': '{action} gebruikt {name}.', 'Download {name} ({size})': '{name} downloaden ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Uitgevoerd met LaMa op deze computer: fal heeft geen sleutel en de prompt was leeg.',
 };

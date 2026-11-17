@@ -312,4 +312,5 @@ export const fi: Record<string, string> = {
   'Selection models': 'Valintamallit', '{action} model': 'Malli: {action}', '{name}, recommended ({size})': '{name}, suositeltu ({size})', '{name}, small ({size})': '{name}, pieni ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} ei ole vielä ladattu, joten {action} käyttää pientä mallia siihen asti.',
   '{action} uses {name}.': '{action} käyttää mallia {name}.', 'Download {name} ({size})': 'Lataa {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Ajettiin LaMalla tällä tietokoneella: falilla ei ole avainta ja kehote oli tyhjä.',
 };

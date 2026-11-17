@@ -312,4 +312,5 @@ export const ptBR: Record<string, string> = {
   'Selection models': 'Modelos de seleção', '{action} model': 'Modelo de {action}', '{name}, recommended ({size})': '{name}, recomendado ({size})', '{name}, small ({size})': '{name}, pequeno ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} ainda não foi baixado, então {action} usa o modelo pequeno até lá.',
   '{action} uses {name}.': '{action} usa {name}.', 'Download {name} ({size})': 'Baixar {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Executado com o LaMa neste computador: o fal não tem chave e o prompt estava vazio.',
 };

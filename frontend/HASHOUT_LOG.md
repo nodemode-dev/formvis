@@ -2,6 +2,32 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Review and Windows-run fixes in the window: one offer per model, Escape chooses nothing, .HIF everywhere, LaMa said aloud · after 2.3.5, unreleased (ui/dialogs.ts Confirm.answer, confirmChoice; ui/model-install.ts offerModel, askAndInstall, offerRecommended; ui/panels/generative-dialog.ts toLama, LAMA_INSTEAD; io/images.ts IMAGE_ACCEPT; io/links.ts; ui/home.ts; e2e/conftest.py; e2e/test_selection_models.py)
+
+- Kind: fix · logged 2026-11-17 · the review's M5 and low findings, and the owner's Windows run of 2.3.5.
+- M5: `offerModel` keeps one promise per model id around the question and the download, so actions that find the same model missing together get one dialog and one download.
+- Escape: the Confirm dialog records which button answered (`answer`), and `confirmChoice` returns ok, cancel or dismiss; only the Use the small model button saves the small model, and Escape or the close box saves nothing.
+- Generative Fill toasts "Ran on LaMa on this computer: fal has no key and the prompt was empty." when it moved a run to LaMa, translated in all 27 run-time tables.
+- .HIF: in the open dialog's accept list, the linked-file picker (with .heif, which it lacked) and a HIF chip on Home; drag and drop already took it.
+- The 409 retry download already shows its own notice ("Installing ..."), which stays up inside engine.task.
+- e2e: the selection fixtures read the engine's choices, set what the test needs and put the old ones back, and let an HTTP error fail the test.
+- Checked: tests/hif-accept.test.ts, tests/install-prompts-i18n.test.ts, e2e/test_selection_models.py (Escape, one shared question).
+- Replaced, quoted exactly:
+
+```text
+    this.cancel = this.button('Cancel', 'ghost', () => this.finish(false));
+    this.ok = this.button('OK', 'primary', () => this.finish(true));
+export async function offerModel(id: string): Promise<boolean> {
+  const ok = await confirmAction(tf('Use {name} for {action}?', { name: best.name, action: t(state.label) }),
+    installLabel(best.size), false, t('Use the small model'));
+  if (!ok) {
+    if (start && this.lamaInstead(start.prompt)) this.model.value = 'local:lama';
+    if (this.lamaInstead(this.prompt.value)) { this.model.value = 'local:lama'; this.sync(); }
+    const formats = ['FVD', 'PSD', 'PSB', 'TIFF', 'PNG', 'JPEG', 'WEBP', 'HEIC', 'EXR', 'HDR', 'ORA', 'RAW'].map((f) => `<span class="cv-home-format">${f}</span>`).join('');
+```
+
+and in IMAGE_ACCEPT `.heic,.heif,.tif` and in links.ts `'.pam', '.heic', '.psd'`.
+
 ## The install, selection and no-key prompts in every language · after 2.3.5, unreleased (ui/model-install.ts tf, offerModel, offerRecommended; ui/panels/local-models.ts showSelection; ui/i18n/extra/*.ts)
 
 - Kind: i18n · logged 2026-11-17.

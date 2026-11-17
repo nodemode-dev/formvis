@@ -41,7 +41,7 @@ export class HomeScreen {
     const navItem = (v: Page, ic: string, label: string): string => `<button class="cv-home-nav-item" type="button" data-v="${v}">${icon(ic, 16)}<span>${label}</span>${v === 'start' ? '' : '<span class="cv-home-count">0</span>'}</button>`;
     const cmdItem = (cmd: string, ic: string, label: string): string => `<button class="cv-home-nav-item" type="button" data-cmd="${cmd}">${icon(ic, 16)}<span>${label}</span></button>`;
     const key = (k: string): string => `<kbd class="cv-key">${mod}</kbd><kbd class="cv-key">${k}</kbd>`;
-    const formats = ['FVD', 'PSD', 'PSB', 'TIFF', 'PNG', 'JPEG', 'WEBP', 'HEIC', 'EXR', 'HDR', 'ORA', 'RAW'].map((f) => `<span class="cv-home-format">${f}</span>`).join('');
+    const formats = ['FVD', 'PSD', 'PSB', 'TIFF', 'PNG', 'JPEG', 'WEBP', 'HEIC', 'HIF', 'EXR', 'HDR', 'ORA', 'RAW'].map((f) => `<span class="cv-home-format">${f}</span>`).join('');
     const demos = DEMOS.map((d) => `<button class="cv-home-demo" type="button" data-demo-open="${d.id}" aria-busy="false"><span class="cv-home-demo-pic"><img data-src="${demoCover(d)}" alt="" width="320" height="180" decoding="async" draggable="false"></span><span class="cv-home-demo-title">${d.title}</span><span>${d.blurb}</span></button>`).join('');
     const sizes = PRESETS.map((p, i) => `<button class="cv-home-size" type="button" data-size="${i}"><span class="cv-home-size-box"><span style="aspect-ratio: ${p.w} / ${p.h}"></span></span><span class="cv-home-size-name">${p.name}</span><span class="cv-home-size-meta">${p.w} x ${p.h} px${p.ppi !== 72 ? ` · ${p.ppi} ppi` : ''}</span></button>`).join('');
     this.root.innerHTML = `<nav class="cv-home-nav" aria-label="Home">

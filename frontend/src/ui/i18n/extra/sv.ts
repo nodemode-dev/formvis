@@ -312,4 +312,5 @@ export const sv: Record<string, string> = {
   'Selection models': 'Markeringsmodeller', '{action} model': 'Modell för {action}', '{name}, recommended ({size})': '{name}, rekommenderad ({size})', '{name}, small ({size})': '{name}, liten ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} är inte nedladdad än, så {action} använder den lilla modellen tills dess.',
   '{action} uses {name}.': '{action} använder {name}.', 'Download {name} ({size})': 'Ladda ned {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Kördes med LaMa på den här datorn: fal har ingen nyckel och prompten var tom.',
 };

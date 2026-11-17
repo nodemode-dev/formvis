@@ -312,4 +312,5 @@ export const ko: Record<string, string> = {
   'Selection models': '선택 모델', '{action} model': '{action} 모델', '{name}, recommended ({size})': '{name}, 권장 ({size})', '{name}, small ({size})': '{name}, 작음 ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name}이(가) 아직 다운로드되지 않아 그때까지 {action}은(는) 작은 모델을 사용합니다.',
   '{action} uses {name}.': '{action}은(는) {name}을(를) 사용합니다.', 'Download {name} ({size})': '{name} 다운로드 ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': '이 컴퓨터의 LaMa로 실행했습니다. fal 키가 없고 프롬프트가 비어 있었습니다.',
 };

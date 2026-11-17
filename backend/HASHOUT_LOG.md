@@ -2,6 +2,71 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Windows run of 2.3.5: .HIF by path, file_info's depth, convert_file with no window, the pillow-heif licence · after 2.3.5, unreleased (routers/io.py DISK_KINDS; routers/mcp.py _PICTURES, open_file and convert_file descriptions, _file_depth, HEADLESS_TOOLS, _no_window_to_approve, _agent_call; routers/system.py _LINK_IMAGE_SUFFIXES; licenses/python/pillow-heif/LICENSES_bundled.txt; src-tauri/src/main.rs pick_image_path)
+
+- Kind: fix · logged 2026-11-17 · found by the owner's Windows run of the released 2.3.5.
+- .HIF (Canon's HEIF) was refused by path ("formvis takes ... .heic, .heif ... here"). It is now in every list that takes .heic and .heif: the desktop panels' DISK_KINDS, the MCP open_file suffixes, the linked-file suffixes (which also lacked .heif) and the native linked-file picker (with upper-case spellings, for GTK's case-sensitive filters). The checks lower-case the suffix, so any spelling is taken.
+- file_info said "depth 8" for a 16-bit TIFF because Pillow opens 16-bit RGB as mode RGB. `_file_depth` reads a TIFF's BitsPerSample, a PNG's IHDR bit depth and a HEIF's declared depth, and keeps the mode's depth otherwise.
+- convert_file said it works with no window, but replacing a file (overwrite true) is a step Undo cannot reverse, so under the Ask policy it waited 120 s for an approval no window could show. A file_info or convert_file call that needs approval now fails at once when no window is live, saying to write a new output_path or open formvis; a new file still converts with no window. Making the replace headless was not chosen: it would skip the person's approval for overwriting a file.
+- The deep-decode refusal is two messages (`imaging.HEIF_NO_DECODER`, `imaging.HEIF_EIGHT_BIT`; entry below).
+- LICENSES_bundled.txt described the PyPI wheel (x265, MinGW runtime). It now describes what ships: pillow-heif from source against libheif 1.23.7 and libde265 1.1.3, decoders only, with the texts in licenses/native/, and that a FORMVIS_HEIF=0 build leaves all three out. setup/collect_licenses.py would copy the PyPI wheel's file back from a development venv; that is listed for the owner.
+- Checked: tests/test_windows_review_fixes.py; they fail on the code before this commit.
+- Replaced, quoted exactly:
+
+```text
+              ".webp", ".avif", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".qoi", ".tga", ".ico", ".pcx", ".xpm", ".pbm", ".pgm", ".ppm",
+_PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".pam", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"}
+                            alpha="A" in mode or "transparency" in im.info, depth=_depth_of(mode), pages=getattr(im, "n_frames", 1), profile=bool(im.info.get("icc_profile")))
+    ".pam", ".heic", ".psd", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2", ".pef", ".srw",
+        "png", "jpg", "jpeg", "webp", "gif", "avif", "tif", "tiff", "dpx", "qoi", "tga", "ico", "pgm", "ppm", "pam", "heic",
+        "psd", "dng", "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
+```
+
+and in the two tool descriptions "TIFF, HEIC, QOI" and "A file already at output_path is kept unless overwrite is true. Works with no window open."
+
+## The review of fix/review-gaps: HEIF memory, the build's honesty, Core ML, and the selection defaults · after 2.3.5, unreleased (services/imaging.py heif_deep, HEIF_NO_DECODER, HEIF_EIGHT_BIT; services/contained.py heif_deep, _heif_worker, _cap_memory, heif_memory_limit; routers/io.py decode_deep; formvis_engine.py heic_problem, heic_check; setup/freeze_backend, setup/freeze_backend.bat; setup/heif_decode.py GPL_LIBRARY, HEIF_PLUGIN, is_wanted, windows_arch, generator_args, mac_arch_args, BUILD_TOOLS, pillow_heif_install_args; services/segment.py sam_providers, _sam_session, _onnx_sessions, _onnx_encode, _onnx_select; services/selection_models.py defaults, mark_unusable, set_preference; services/background.py _ml)
+
+- Kind: fix · logged 2026-11-17 · the review of the branch up to 0a2c759d (H1 to H3, M1 to M3, M6, the low ones).
+- H1: `heif_deep` checks the declared size with `_check` before any pixel is decoded, works in uint32 (the uint64 copy was 21 GB at 30k squared), raises DecodeError on an unreadable file and takes the page. The deep route runs it through `contained.heif_deep`, a spawned child with the EXR time limit and, on Linux, an address-space cap of about 40 bytes a pixel of the engine's own limit plus 1.5 GB (RLIMIT_AS is not enforced on macOS or Windows, where the size check is the guard). A crash, hang or refusal comes back as a message. `pages()` still reads HEIF headers in the engine; it decodes no pixels. libheif's own security limits are left at pillow-heif's defaults (not disabled).
+- H2: the freeze scripts export FORMVIS_REQUIRE_HEIC=1 when they built HEIC, and `--selfcheck` then fails without a decoder, with decoders other than exactly libde265, or with any encoder beyond mask; both scripts now stop when the self-check fails (the .bat ignored its result). `-A` comes from `sysconfig.get_platform()` (win32 Win32, win-amd64 x64, win-arm64 ARM64) and only for a Visual Studio generator.
+- M1: the GPL name check is `x26[45][^/\\'" ]*\.(so|dylib|dll|a|lib)` and any `libheif-*` plugin file is flagged too; `is_wanted` uses the same allowlist as the self-check. M2: pillow-heif's sdist is installed with `--require-hashes` against PyPI's SHA-256 and `--no-build-isolation`, after setuptools 80.9.0 and wheel 0.45.1 pinned by hash. M3: FORMVIS_PYI_ARCH=universal2 builds both architectures (`CMAKE_OSX_ARCHITECTURES`, `ARCHFLAGS`).
+- H3: SAM 2.1, tiny and base-plus, never builds a Core ML session (`sam_providers`); both stalled at 0% CPU here (tiny: 347 of 692 nodes in 101 pieces). With Core ML left out, base-plus encoded and answered a click in 3.1 s. A click decodes with the model that encoded the picture.
+- M6: recommended is the default only with 12 GB of memory or more; a BiRefNet that fails is logged once and marked unusable, so U2-Net runs until the engine restarts and the report says why. Low: the choice file must hold an object and is written through os.replace.
+- Checked: tests/test_heif_safety.py, tests/test_heif_build_rules.py, tests/test_selection_models.py (new cases); tests/test_heif.py's damaged-file case now expects DecodeError instead of None.
+- Replaced, quoted exactly:
+
+```text
+def decode_deep(file: UploadFile = File(...)) -> Response:
+        deep = imaging.heif_deep(raw)
+            raise HTTPException(status_code=415, detail="This HEIF holds 8 bits a channel, or no HEIF engine is installed.")
+def heif_deep(data: bytes) -> tuple[np.ndarray, int] | None:
+    except Exception:
+    bits = int(heif.info.get("bit_depth") or 8)
+    if bits <= 8 or heif.mode.split(";")[0] not in ("RGB", "RGBA", "L"):
+    arr = np.asarray(heif)
+    px = np.minimum(arr.astype(np.uint64) * 65535 // top, 65535).astype(np.uint16)
+    if getattr(sys, "frozen", False) and info["heic"]["gpl"]:
+    encoders = sorted((pillow_heif.libheif_info().get("encoders") or {}).keys())
+  "$out/formvis-engine" --selfcheck
+"$out" --selfcheck
+"%ROOT%\src-tauri\binaries\formvis-engine-%TRIPLE%.exe" --selfcheck
+GPL_LIBRARY = re.compile(r"(?:^|[\\/\s'\"(,])(?:lib)?(x265|x264)[-_.0-9a-f]*\.(?:so|dylib|dll|a|lib)\b", re.I)
+            if GPL_LIBRARY.search(" " + f.name):
+    return bool(s.get("installed") and s.get("decode_only") and s.get("version") == PILLOW_HEIF and s.get("libheif") == LIBHEIF
+                and "libde265" in s.get("decoders", []))
+        common += ["-A", "x64"] if platform.machine().lower() in ("amd64", "x86_64") else []
+    subprocess.run([sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps", "--no-cache-dir",
+                    "--no-binary", "pillow-heif", f"pillow-heif=={PILLOW_HEIF}"], check=True, env=env)
+        return sessions.get(f"sam2:{model}", lambda: (onnx_session(model_manager.model_file(folder + "vision_encoder.onnx")),
+                                                      onnx_session(model_manager.model_file(folder + "prompt_encoder_mask_decoder.onnx"))))
+        return (onnx_session(model_manager.model_file(folder + "vision_encoder.onnx")),
+                onnx_session(model_manager.model_file(folder + "prompt_encoder_mask_decoder.onnx")))
+DEFAULTS: dict[str, str] = {"subject": "recommended", "object": "recommended"}
+    _file().write_text(json.dumps(prefs), encoding="utf-8")
+    if preferences()[kind] == "recommended" and model_manager.ready(spec["recommended"]):
+        return _birefnet(image)
+```
+
 ## BiRefNet is the Swin-T file formlit uses, on the CPU only · after 2.3.5, unreleased (app/localgen/model_manager.py MODELS birefnet-swin-t, PINNED; app/services/background.py BIREFNET, BIREFNET_PROVIDERS, _birefnet_session; app/services/selection_models.py KINDS)
 
 - Kind: change · logged 2026-11-17 · the owner's follow-up: the family shares one BiRefNet, formlit's.

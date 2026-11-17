@@ -312,4 +312,5 @@ export const da: Record<string, string> = {
   'Selection models': 'Markeringsmodeller', '{action} model': 'Model til {action}', '{name}, recommended ({size})': '{name}, anbefalet ({size})', '{name}, small ({size})': '{name}, lille ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} er ikke hentet endnu, så {action} bruger den lille model indtil da.',
   '{action} uses {name}.': '{action} bruger {name}.', 'Download {name} ({size})': 'Hent {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Kørt med LaMa på denne computer: fal har ingen nøgle, og prompten var tom.',
 };

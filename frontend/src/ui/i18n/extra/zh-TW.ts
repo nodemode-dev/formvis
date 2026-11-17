@@ -312,4 +312,5 @@ export const zhTW: Record<string, string> = {
   'Selection models': '選取模型', '{action} model': '「{action}」的模型', '{name}, recommended ({size})': '{name}，建議 ({size})', '{name}, small ({size})': '{name}，小型 ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} 尚未下載，因此「{action}」在此之前使用小型模型。',
   '{action} uses {name}.': '「{action}」使用 {name}。', 'Download {name} ({size})': '下載 {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': '已在本機以 LaMa 執行：fal 沒有金鑰，且提示詞為空。',
 };

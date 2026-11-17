@@ -312,4 +312,5 @@ export const id: Record<string, string> = {
   'Selection models': 'Model seleksi', '{action} model': 'Model {action}', '{name}, recommended ({size})': '{name}, disarankan ({size})', '{name}, small ({size})': '{name}, kecil ({size})',
   '{name} is not downloaded yet, so {action} uses the small model until it is.': '{name} belum diunduh, jadi {action} memakai model kecil sampai saat itu.',
   '{action} uses {name}.': '{action} memakai {name}.', 'Download {name} ({size})': 'Unduh {name} ({size})',
+  'Ran on LaMa on this computer: fal has no key and the prompt was empty.': 'Dijalankan dengan LaMa di komputer ini: fal tidak memiliki kunci dan prompt kosong.',
 };
