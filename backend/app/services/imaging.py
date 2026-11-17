@@ -27,6 +27,8 @@ except Exception:
     HEIF_ENGINE = "none"
 
 HEIF_SUFFIXES = {".heic", ".heif", ".hif"}
+HEIF_NO_DECODER = "This build of formvis has no HEIF decoder, so this file cannot be opened at its depth. Convert it to a 16-bit TIFF, or to JPEG for 8 bits."
+HEIF_EIGHT_BIT = "This HEIF picture is 8-bit, so it has no deeper pixels to open; it opens as an 8-bit picture."
 
 # Camera RAW (opened into Camera Raw): decoded by LibRaw through rawpy. DNG is a TIFF container whose
 # embedded preview Pillow would open instead of the sensor data, so RAW suffixes never reach Pillow.
@@ -101,24 +103,29 @@ def _from_rgba(px: np.ndarray, bits: int = 8) -> tuple[bytes, int, int]:
     return _png(image)
 
 
-def heif_deep(data: bytes) -> tuple[np.ndarray, int] | None:
-    """A HEIF or HEIC holding more than 8 bits a channel as uint16 RGBA of shape (height, width, 4) stretched to the full
-    16-bit range, and its bit depth; None for an 8-bit file or without pillow-heif (sips, the macOS fallback, gives 8
-    bits only)."""
+def heif_deep(data: bytes, page: int = 0) -> tuple[np.ndarray, int] | None:
+    """Picture `page` of a HEIF or HEIC holding more than 8 bits a channel as uint16 RGBA of shape (height, width, 4)
+    stretched to the full 16-bit range, and its bit depth; None for an 8-bit picture or without pillow-heif (sips, the
+    macOS fallback, gives 8 bits only). The declared size is checked against the engine's limits before any pixel is
+    decoded, and a file that cannot be read raises DecodeError. The engine runs this in a child (contained.heif_deep)."""
     if not HEIF:
         return None
     try:
         heif = pillow_heif.open_heif(io.BytesIO(data), convert_hdr_to_8bit=False)
-    except Exception:
+    except Exception as exc:
+        raise DecodeError(f"The HEIF file could not be read: {exc}") from exc
+    if not 0 <= page < len(heif):
+        raise DecodeError(f"The HEIF file has {len(heif)} picture{'s' if len(heif) != 1 else ''}; there is no picture {page + 1}.")
+    image = heif[page]
+    _check(*image.size)
+    bits = int(image.info.get("bit_depth") or 8)
+    if bits <= 8 or image.mode.split(";")[0] not in ("RGB", "RGBA", "L"):
         return None
-    bits = int(heif.info.get("bit_depth") or 8)
-    if bits <= 8 or heif.mode.split(";")[0] not in ("RGB", "RGBA", "L"):
-        return None
-    arr = np.asarray(heif)
+    arr = np.asarray(image)
     if arr.dtype != np.uint16:
         return None
     top = ((1 << bits) - 1) << (16 - bits)
-    px = np.minimum(arr.astype(np.uint64) * 65535 // top, 65535).astype(np.uint16)
+    px = np.minimum(arr.astype(np.uint32) * 65535 // top, 65535).astype(np.uint16)
     if px.ndim == 2:
         px = np.stack([px, px, px], axis=2)
     if px.shape[2] == 3:

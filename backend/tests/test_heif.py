@@ -80,7 +80,8 @@ def test_every_image_of_a_heif_is_listed_and_each_decodes(client):
 def test_a_damaged_heic_is_refused_not_crashed(client):
     bad = b"\x00\x00\x00\x18ftypheic" + bytes(64)
     assert client.post("/api/io/decode", files={"file": ("bad.heic", bad, "image/heic")}).status_code == 415
-    assert imaging.heif_deep(bad) is None
+    with pytest.raises(imaging.DecodeError):
+        imaging.heif_deep(bad)
 
 
 def test_the_packaging_check_finds_gpl_codec_libraries(tmp_path):
