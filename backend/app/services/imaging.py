@@ -21,8 +21,10 @@ try:
 
     pillow_heif.register_heif_opener()
     HEIF = True
+    HEIF_ENGINE = "libheif " + pillow_heif.libheif_version()
 except Exception:
     HEIF = False
+    HEIF_ENGINE = "none"
 
 HEIF_SUFFIXES = {".heic", ".heif", ".hif"}
 
@@ -50,8 +52,11 @@ def sips_available() -> bool:
 
 
 def decoders() -> dict:
+    """`heicBits` is the most a HEIC channel keeps: 16 through libheif (10 and 12 bit files at their depth), 8 through
+    sips, 0 with no decoder."""
     engine = "pillow-heif" if HEIF else ("sips" if sips_available() else "none")
-    return {"heic": HEIF or sips_available(), "tiff": True, "engine": engine, "raw": RAW, "rawEngine": RAW_ENGINE}
+    return {"heic": HEIF or sips_available(), "tiff": True, "engine": engine, "heicEngine": HEIF_ENGINE,
+            "heicBits": 16 if HEIF else 8 if sips_available() else 0, "raw": RAW, "rawEngine": RAW_ENGINE}
 
 
 def _check(width: int, height: int) -> None:
@@ -98,7 +103,8 @@ def _from_rgba(px: np.ndarray, bits: int = 8) -> tuple[bytes, int, int]:
 
 def heif_deep(data: bytes) -> tuple[np.ndarray, int] | None:
     """A HEIF or HEIC holding more than 8 bits a channel as uint16 RGBA of shape (height, width, 4) stretched to the full
-    16-bit range, and its bit depth; None for an 8-bit file or without pillow-heif."""
+    16-bit range, and its bit depth; None for an 8-bit file or without pillow-heif (sips, the macOS fallback, gives 8
+    bits only)."""
     if not HEIF:
         return None
     try:
@@ -333,8 +339,8 @@ def _subifd_image(data: bytes, k: int) -> Image.Image | None:
 
 
 def pages(data: bytes, filename: str) -> list[dict]:
-    """A TIFF's pages (1.53.4), BigTIFF included: each page's number, size and mode, read without decoding pixels.
-    One entry for anything else."""
+    """A TIFF's pages (1.53.4), BigTIFF included, or a HEIF's top-level images (a burst or a set): each one's number,
+    size and mode, read without decoding pixels. One entry for anything else."""
     if ico.is_ico(data) and Path(filename).suffix.lower() in (".ico", ".cur"):
         try:
             return [{"index": e["index"], "width": e["width"], "height": e["height"], "mode": f"{e['bits']} bit"} for e in ico.listing(data)]
@@ -342,12 +348,14 @@ def pages(data: bytes, filename: str) -> list[dict]:
             raise DecodeError(f"Could not read {filename or 'the icon'}: {exc}") from exc
     try:
         with Image.open(io.BytesIO(data)) as image:
-            if image.format != "TIFF":
+            if image.format not in ("TIFF", "HEIF"):
                 return [{"index": 0, "width": image.width, "height": image.height, "mode": image.mode}]
             out = []
             for i in range(getattr(image, "n_frames", 1)):
                 image.seek(i)
                 out.append({"index": i, "width": image.width, "height": image.height, "mode": image.mode})
+            if image.format == "HEIF":
+                return out
             for k, sub in enumerate(_subifd_pages(data)):
                 height, width = sub.shape[:2]
                 out.append({"index": len(out), "width": int(width), "height": int(height), "mode": "SubIFD", "sub": k})

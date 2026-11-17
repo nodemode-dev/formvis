@@ -2,7 +2,7 @@ fastapi==0.141.1
 uvicorn[standard]==0.53.0
 python-multipart==0.0.32
 pillow==12.3.0
-pillow-heif==1.7.0
+pillow-heif==1.8.1   # HEIC and HEIF decoding; BSD-3-Clause. Its PyPI wheels link GPL x265, so the desktop engine builds it from source on a decode-only LGPL libheif (setup/heif_decode.py)
 rawpy==0.27.1
 numpy==2.5.3
 opencv-python-headless==5.0.0.93

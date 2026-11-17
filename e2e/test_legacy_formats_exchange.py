@@ -3,6 +3,7 @@ import functools
 import io
 import re
 import struct
+from pathlib import Path
 
 from PIL import Image
 from playwright.sync_api import Error as PlaywrightError
@@ -94,6 +95,25 @@ def test_tiff_with_layers_carries_the_layers_and_reopens_with_them(page, tmp_pat
     by = {l["name"]: l for l in got}
     assert "Red" in by and "Blue" in by, got
     assert by["Red"]["blend"] == "multiply" and abs(by["Red"]["opacity"] - 0.5) < 0.02
+
+
+HEIC = Path(__file__).resolve().parents[1] / "backend" / "tests" / "fixtures"
+OPENED = "() => { const d = window.formvis.engine.current && window.formvis.engine.current.doc; return d ? [d.width, d.height, d.depth || 8] : null; }"
+
+
+def open_heic(page, name):
+    before = page.evaluate("window.formvis.engine.projects.length")
+    page.set_input_files("input[data-role='open-files']", str(HEIC / name))
+    page.wait_for_function(f"() => window.formvis.engine.projects.length > {before}", timeout=30000)
+    return page.evaluate(OPENED)
+
+
+@steady
+def test_a_heic_opens_with_its_pixels_and_a_10_bit_one_at_16_bits(page, tmp_path):
+    assert open_heic(page, "heic_8bit.heic") == [16, 12, 8]
+    px = page.evaluate("([x, y]) => Array.from(window.formvis.engine.flattened().getContext('2d').getImageData(x, y, 1, 1).data)", [7, 5])
+    assert px[:3] == [119, 115, 127], px
+    assert open_heic(page, "heic_10bit.heic") == [16, 12, 16]
 
 
 @steady

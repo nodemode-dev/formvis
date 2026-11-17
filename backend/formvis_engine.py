@@ -33,8 +33,23 @@ def selfcheck() -> int:
         info["app"] = f"failed: {exc!r}"
         print(json.dumps(info))
         return 1
+    info["heic"] = heic_check()
     print(json.dumps(info))
+    if getattr(sys, "frozen", False) and info["heic"]["gpl"]:
+        return 1
     return 0 if info["fal_models"] else 1
+
+
+def heic_check() -> dict:
+    """The HEIC decoder this engine carries. A frozen engine must not hold a GPL encoder (x265, x264): the PyPI
+    pillow-heif wheel links one, so `setup/heif_decode.py` builds a decode-only libheif for the desktop."""
+    try:
+        import pillow_heif
+    except Exception as exc:
+        return {"decoder": "none", "gpl": [], "error": str(exc)}
+    encoders = sorted((pillow_heif.libheif_info().get("encoders") or {}).keys())
+    return {"decoder": "libheif " + pillow_heif.libheif_version(), "encoders": encoders,
+            "gpl": [e for e in encoders if e.lower() in ("x265", "x264")]}
 
 
 def watch_parent() -> None:
