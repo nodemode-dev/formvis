@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The ComfyUI Save graph test waits for its own note · after 2.3.5, unreleased (e2e/test_comfyui_live_mock.py keep_ran_graph, test_a_recipe_is_edited_in_comfyui_and_saved_over_or_as_new_with_versions)
+
+- Kind: test fix · logged 2026-11-17.
+- Wrong: the test pressed Save graph a second time and waited for the panel's note to start with "Kite saved from the last graph", but the note still held that text from the first save at the start of the test, so the wait could end before the second save had read ComfyUI and the old recipe was read back (KeyError '_meta'). It failed 1 run in 2 on 8ca14e15 and 3 in 3 on this branch on this machine; the window code is unchanged. The 13-minute hang seen once on this branch was the engine on 8190 stalled in a Core ML session build (it no longer answered /api/health), not this test.
+- Changed: both Save graph clicks clear the note first. Four runs in a row: 4 passed each.
+- Old lines: `      s.querySelector('[data-act="save-graph"]').click(); }""", name)` and `      s.querySelector('[data-act="save-graph"]').click(); }""")`.
+
 ## Select Subject and Object Selection offer their recommended model first · after 2.3.5, unreleased (io/selection-models.ts new; io/api.ts selectObject; ui/model-install.ts offerRecommended; app.ts selectSubject; ui/panels/local-models.ts showSelection)
 
 - Kind: feat · logged 2026-11-17 · the engine side is in backend/HASHOUT_LOG.md (BiRefNet and SAM 2.1 base-plus).

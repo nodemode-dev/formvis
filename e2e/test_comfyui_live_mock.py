@@ -118,7 +118,7 @@ def test_a_kept_recipe_runs_with_reference_and_control_layers_and_the_result_lay
 
 def keep_ran_graph(page, name):
     page.evaluate("""(name) => { const s = document.querySelector('section.cv-comfyui'); const n = s.querySelector('[data-name]'); n.disabled = false; n.value = name;
-      s.querySelector('[data-act="save-graph"]').click(); }""", name)
+      s.querySelector('[data-note]').textContent = ''; s.querySelector('[data-act="save-graph"]').click(); }""", name)
     page.wait_for_function("(name) => document.querySelector('section.cv-comfyui [data-note]').textContent.startsWith(name + ' saved')", arg=name, timeout=15000)
 
 
@@ -223,7 +223,7 @@ def test_a_recipe_is_edited_in_comfyui_and_saved_over_or_as_new_with_versions(pa
     page.wait_for_timeout(1500)
     assert pid in comfy.history
     page.evaluate("""() => { const s = document.querySelector('section.cv-comfyui'), p = s.querySelector('[data-recipe]'); p.dispatchEvent(new Event('focus')); p.value = 'Kite'; p.dispatchEvent(new Event('change'));
-      s.querySelector('[data-act="save-graph"]').click(); }""")
+      s.querySelector('[data-note]').textContent = ''; s.querySelector('[data-act="save-graph"]').click(); }""")
     page.wait_for_function("() => document.querySelector('section.cv-comfyui [data-note]').textContent.startsWith('Kite saved from the last graph')", timeout=15000)
     now = page.evaluate("JSON.parse(localStorage.getItem('formvis.comfyui.recipes')).find((r) => r.name === 'Kite').json")
     assert json.loads(now)["14"]["_meta"]["title"] == "second canvas edit"
