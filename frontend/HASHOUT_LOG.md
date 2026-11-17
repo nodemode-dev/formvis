@@ -2,6 +2,102 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Review and Windows-run fixes in the window: one offer per model, Escape chooses nothing, .HIF everywhere, LaMa said aloud · after 2.3.5, unreleased (ui/dialogs.ts Confirm.answer, confirmChoice; ui/model-install.ts offerModel, askAndInstall, offerRecommended; ui/panels/generative-dialog.ts toLama, LAMA_INSTEAD; io/images.ts IMAGE_ACCEPT; io/links.ts; ui/home.ts; e2e/conftest.py; e2e/test_selection_models.py)
+
+- Kind: fix · logged 2026-11-17 · the review's M5 and low findings, and the owner's Windows run of 2.3.5.
+- M5: `offerModel` keeps one promise per model id around the question and the download, so actions that find the same model missing together get one dialog and one download.
+- Escape: the Confirm dialog records which button answered (`answer`), and `confirmChoice` returns ok, cancel or dismiss; only the Use the small model button saves the small model, and Escape or the close box saves nothing.
+- Generative Fill toasts "Ran on LaMa on this computer: fal has no key and the prompt was empty." when it moved a run to LaMa, translated in all 27 run-time tables.
+- .HIF: in the open dialog's accept list, the linked-file picker (with .heif, which it lacked) and a HIF chip on Home; drag and drop already took it.
+- The 409 retry download already shows its own notice ("Installing ..."), which stays up inside engine.task.
+- e2e: the selection fixtures read the engine's choices, set what the test needs and put the old ones back, and let an HTTP error fail the test.
+- Checked: tests/hif-accept.test.ts, tests/install-prompts-i18n.test.ts, e2e/test_selection_models.py (Escape, one shared question).
+- Replaced, quoted exactly:
+
+```text
+    this.cancel = this.button('Cancel', 'ghost', () => this.finish(false));
+    this.ok = this.button('OK', 'primary', () => this.finish(true));
+export async function offerModel(id: string): Promise<boolean> {
+  const ok = await confirmAction(tf('Use {name} for {action}?', { name: best.name, action: t(state.label) }),
+    installLabel(best.size), false, t('Use the small model'));
+  if (!ok) {
+    if (start && this.lamaInstead(start.prompt)) this.model.value = 'local:lama';
+    if (this.lamaInstead(this.prompt.value)) { this.model.value = 'local:lama'; this.sync(); }
+    const formats = ['FVD', 'PSD', 'PSB', 'TIFF', 'PNG', 'JPEG', 'WEBP', 'HEIC', 'EXR', 'HDR', 'ORA', 'RAW'].map((f) => `<span class="cv-home-format">${f}</span>`).join('');
+```
+
+and in IMAGE_ACCEPT `.heic,.heif,.tif` and in links.ts `'.pam', '.heic', '.psd'`.
+
+## The install, selection and no-key prompts in every language · after 2.3.5, unreleased (ui/model-install.ts tf, offerModel, offerRecommended; ui/panels/local-models.ts showSelection; ui/i18n/extra/*.ts)
+
+- Kind: i18n · logged 2026-11-17.
+- Convention followed: the repo's 36.32 scheme. English is the key; text the window shows as it is (the no-key section and its buttons in generative-dialog.ts) is translated where it lands by the page translator, by exact match; text assembled at run time goes through `t()` with `{name}` style holes filled after the lookup (as status.ts `Memory {used} of {total} {unit}` and properties.ts `{name} Properties`), and its entries live in part c, `ui/i18n/extra/<lang>.ts`. Menu paths use each table's own words for Preferences, Plugins and Local models, and the action names its words for Select Subject and Object Selection. Regional variants (es-MX, fr-CA) fall back to their parent, as every earlier string does.
+- Now: `tf(english, values)` in model-install.ts (exported for local-models.ts). The sentences that were joined from pieces are single keys, so each language orders them its own way. 24 keys in all 27 run-time tables; no em dash in any of them.
+- Checked: tests/install-prompts-i18n.test.ts (every key is still in the code, every table has every key with the same placeholders and no em dash).
+
+## The ComfyUI Save graph test waits for its own note · after 2.3.5, unreleased (e2e/test_comfyui_live_mock.py keep_ran_graph, test_a_recipe_is_edited_in_comfyui_and_saved_over_or_as_new_with_versions)
+
+- Kind: test fix · logged 2026-11-17.
+- Wrong: the test pressed Save graph a second time and waited for the panel's note to start with "Kite saved from the last graph", but the note still held that text from the first save at the start of the test, so the wait could end before the second save had read ComfyUI and the old recipe was read back (KeyError '_meta'). It failed 1 run in 2 on 8ca14e15 and 3 in 3 on this branch on this machine; the window code is unchanged. The 13-minute hang seen once on this branch was the engine on 8190 stalled in a Core ML session build (it no longer answered /api/health), not this test.
+- Changed: both Save graph clicks clear the note first. Four runs in a row: 4 passed each.
+- Old lines: `      s.querySelector('[data-act="save-graph"]').click(); }""", name)` and `      s.querySelector('[data-act="save-graph"]').click(); }""")`.
+
+## Select Subject and Object Selection offer their recommended model first · after 2.3.5, unreleased (io/selection-models.ts new; io/api.ts selectObject; ui/model-install.ts offerRecommended; app.ts selectSubject; ui/panels/local-models.ts showSelection)
+
+- Kind: feat · logged 2026-11-17 · the engine side is in backend/HASHOUT_LOG.md (BiRefNet and SAM 2.1 base-plus).
+- Now: `io/selection-models.ts` reads and saves the engine's choice and holds `beforeSelection(kind)`, which runs the window's offer (`onSelectionModelOffer(offerRecommended)` in app.ts) at most once a session per kind; io stays free of UI imports. Select Subject (default matting only, not GrabCut, a matting file or fal) and `api.selectObject` wait for it before sending a picture. `offerRecommended` asks "Use <recommended> for <action>?" with its size, licence and the small model named, Install now (<size>) first and Use the small model second: Install now runs the existing download job and the action carries on with the new model; Use the small model saves `small` in the engine so it is not asked again. A failed offer never stops the selection.
+- Preferences > Plugins > Local models gains a Selection models card: per action, a Recommended or Small choice, a Download button for the recommended model while it is missing, and which model runs now.
+- Checked: tests/selection-models.test.ts; e2e/test_selection_models.py (Select Subject: the offer, Use the small model saves it and selects, not asked twice; Install now downloads and selects; Object Selection: offered before its first picture). The tests fail on the commits before this one.
+- Old line: `    if (withImage) return send(await image());` had no wait before it (io/api.ts); nothing else was removed.
+
+## Generative Fill without a fal key says what it needs and offers a key or a local model; an empty fill uses LaMa · after 2.3.5, unreleased (ui/panels/generative-dialog.ts NO_KEY, noKeyRow, falBacked, noKey, lamaInstead, useLocal, show, sync, prepare)
+
+- Kind: fix · logged 2026-11-17 · from the Creative Bloq review preparation. Preferences > Generative's defaults (gen-prefs.ts DEFAULT_GEN, 1.96.2) start Generative Fill on fal's FLUX 3 edit and an empty fill on fal's Bria eraser, so on a fresh install the task bar's Generate opened the dialog with only "Add a fal API key to generate." at the foot of a long body, and Generate then said "Paste a fal API key first."
+- Now: while the chosen model runs on fal (`fal` or a `falcat:` value) and the engine has no key, a section right under the Model row says the model needs a fal API key, that fal is paid and charges for each run, and that a model on this computer is free, with Add a fal key (shows and focuses the key field) and Use a local model (Real-ESRGAN for Upscale; for a fill, a ready local generator when there are words, else LaMa; a model not downloaded is offered through `offerModel`, see the next entry, and Cancel leaves the choice as it was). Generate with no key and no key typed shows that section instead of the old line.
+- An empty fill or expand with no fal key, nothing typed in the key field and LaMa downloaded runs on LaMa without asking (`lamaInstead`, in `show` for the task bar's start and in `prepare` for the Generate button). With a key nothing changes: the preferences' models still run. This only replaces what used to be a refusal, so it is not behind a preference; the owner may want it as one (PR body, For the owner).
+- Checked: e2e/test_missing_model_and_fal_key.py (the section and both buttons; an empty fill with LaMa stood in runs with no dialog); both fail on 8ca14e15. Seen at 1400 by 900 and 900 by 700 in Chromium.
+- Replaced, quoted exactly:
+
+```text
+      : s.configured ? `fal key set ${s.source === 'environment' ? 'by FAL_KEY in the environment' : 'in formvis'}.` : 'Add a fal API key to generate.');
+      if (!key) { setText(this.state, 'Paste a fal API key first.'); this.key.focus(); return; }
+```
+
+## An action whose local model is missing offers Install now and carries on · after 2.3.5, unreleased (io/local-gen.ts ask, onMissingModel, modelEntry; ui/model-install.ts offerModel, needModel; app.ts removeFound and the depth commands; ui/panels/neural-dialog.ts, liquify-dialog.ts, color-range-dialog.ts)
+
+- Kind: fix · logged 2026-11-17 · the actions that need a downloadable model (LaMa for Remove People and Remove Distractions, Depth Anything for the depth commands and Depth Blur, DDColor, the style presets, YuNet for Face-Aware Liquify and Detect Faces, and every engine 409 that now names its model, see backend/HASHOUT_LOG.md) stopped with "download it in Preferences > Plugins > Local models".
+- Now: `ui/model-install.ts` `offerModel(id)` reads the model's name and size from `GET /api/models` (`modelEntry`), asks "Install <name>?" with Install now (<size>) and Cancel, and on Install now runs the existing `installModel` (the engine's download job; no new source), with a notice that stays until it ends; true once the model is in place. `needModel(id, declined)` runs `declined` (the action's old message) when it is still missing, so Cancel leaves everything as it was. The pre-checks above call it and carry on after the install. In `io/local-gen.ts`, `ask` hands a 409 that carries `X-Formvis-Model` to the installer `app.ts` registers (`onMissingModel(offerModel)`) and sends the same request again once if it installed; io stays free of UI imports. The sky model's own Download prompt (1.57.6) and Relight's installs are unchanged; Remove's brush still falls back to the patch fill without asking.
+- Checked: tests/missing-model.test.ts (retry once after install; Cancel keeps the engine's words; no second ask; a 409 without the header is plain; the entry's size); e2e/test_missing_model_and_fal_key.py (Compute Depth Map: Install now (99 MB) downloads and the layer arrives; Cancel downloads nothing and leaves one layer). All fail on 8ca14e15.
+- Replaced, quoted exactly:
+
+```text
+import { depthReady, findToRemove, installModel, localDepth, localDepth16, localDepthValues, localInpaint, modelReady, skyMask, skyReady, warmLama } from './io/local-gen';
+    if (!(await modelReady('lama-inpaint'))) { toast('Remove fills with LaMa: download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await depthReady())) { toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await depthReady())) { toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+        if (!(await depthReady())) { toast('Select by Depth needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await depthReady())) { toast('Depth Map from Layer needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await depthReady())) { toast('Recompute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+async function ask(path: string, init?: RequestInit): Promise<Response> {
+  if (!r.ok) { let d = r.statusText; try { const j = await r.json() as { detail?: unknown }; if (typeof j.detail === 'string') d = j.detail; } catch { /* the status */ } throw new Error(d); }
+import { faceReady, findFaces } from '../../io/local-gen';
+        if (!(await faceReady())) throw new Error('Detect Faces needs the face finder (YuNet, 232 KB, MIT): download it in Preferences > Plugins > Local models.');
+import { faceReady, findFaces } from '../../io/local-gen';
+      if (!(await faceReady())) { setText(this.faceNote, 'Face-Aware Liquify needs the face finder (YuNet, 232 KB, MIT): download it in Preferences > Plugins > Local models.'); return; }
+import { colorizeReady, depthReady, localColorize, localDepth, localDepthValues, localStyle, styleReady } from '../../io/local-gen';
+      if (!(await depthReady())) { setText(this.note, 'Depth Blur needs Depth Anything V2 Small (99 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
+      if (!(await colorizeReady())) { setText(this.note, 'Colorize needs DDColor-tiny (135 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
+      if (!(await styleReady())) { setText(this.note, 'Style Transfer needs the five preset models (34 MB, BSD-3-Clause): download them in Preferences > Plugins > Local models.'); return; }
+```
+
+## The capabilities type names the HEIC decoder and its depth · after 2.3.5, unreleased (io/api.ts Capabilities decode; e2e/test_legacy_formats_exchange.py)
+
+- Kind: fix · logged 2026-11-17 · branch feat/heic-decode; the engine side is in `backend/HASHOUT_LOG.md` (HEIC in the Windows and Linux desktop engines).
+- Changed: `decode` gains optional `heicEngine` (for example `libheif 1.23.7`) and `heicBits` (16 through libheif, 8 through sips, 0 with none), which `/api/capabilities` now sends. Nothing reads them yet; the window still opens a HEIC through the same paths (`heifBits` picks the deep path for a 10 or 12 bit file).
+- e2e: `test_a_heic_opens_with_its_pixels_and_a_10_bit_one_at_16_bits` opens the engine's lossless fixtures (`backend/tests/fixtures/heic_*.heic`): 16 by 12 at 8 bits with pixel (7, 5) = (119, 115, 127), and the 10-bit one as a 16-bit document. The damaged-file refusal test is unchanged; it still holds with a decoder present.
+- Not changed: the home screen's format chip already says HEIC, which is now true on every desktop platform; the multi-image page chooser stays TIFF and ICO only (a HEIF burst opens its first image; the engine lists the rest through `/api/io/pages`).
+- Old line: `  decode: { heic: boolean; tiff: boolean; engine: string; raw?: boolean; rawEngine?: string };`
+
 ## Release 2.3.4: the review fixes and the version lines · v2.3.4 (CHANGELOG.md; the version sites; the three demo bundles)
 
 - Kind: release · logged: v2.3.4 · 2026-11-11. Every window change of 2.3.4 has its own entry below, one per fix, each naming the review finding it answers; the engine, setup and shell changes are in `backend/HASHOUT_LOG.md`.

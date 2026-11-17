@@ -1,5 +1,7 @@
 import pytest
 
+pytestmark = pytest.mark.usefixtures("small_selection_models")
+
 SCENE = """() => { const e = window.formvis.engine; e.newDocument(320, 240, 'O', 'white'); const c = e.current.activeLayer.raster.ctx;
   c.fillStyle = 'rgb(128,128,128)'; c.fillRect(0, 0, 320, 240);
   c.fillStyle = 'rgb(220,40,40)'; c.beginPath(); c.arc(80, 120, 50, 0, Math.PI * 2); c.fill();

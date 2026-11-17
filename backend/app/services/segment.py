@@ -81,10 +81,45 @@ _MEAN = (0.485, 0.456, 0.406)
 _STD = (0.229, 0.224, 0.225)
 
 
-def _onnx_sessions():
-    from app.localgen import jobs, model_manager
-    from app.localgen.paths import providers, session as onnx_session
+FOLDERS = {"sam2-onnx": "sam2.1-hiera-tiny/", "sam2-base-plus-onnx": "sam2.1-hiera-base-plus/"}
+
+
+def onnx_model() -> str:
+    """The SAM 2.1 export Object Selection runs: base-plus once it is downloaded and chosen, else tiny."""
+    from app.services import selection_models
+
+    return selection_models.active("object")
+
+
+def sam_providers(chosen: list[str]) -> list[str]:
+    """The engine's providers without Core ML: building a Core ML session for SAM 2.1 (tiny: 347 of 692 encoder nodes in
+    101 pieces; base-plus: 659 of 1,374 in 197) stalled with no CPU use on an M-series Mac. CUDA and DirectML are kept."""
+    return [p for p in chosen if p != "CoreMLExecutionProvider"] or ["CPUExecutionProvider"]
+
+
+def _sam_session(path):
     import onnxruntime as ort
+
+    from app.localgen.paths import providers
+
+    options = ort.SessionOptions()
+    options.enable_cpu_mem_arena = False
+    return ort.InferenceSession(str(path), options, providers=sam_providers(providers()))
+
+
+def _onnx_sessions(model: str | None = None):
+    from app.localgen import model_manager, sessions
+
+    model = model or onnx_model()
+    if model != "sam2-onnx":
+        folder = FOLDERS[model]
+        return sessions.get(f"sam2:{model}", lambda: (_sam_session(model_manager.model_file(folder + "vision_encoder.onnx")),
+                                                      _sam_session(model_manager.model_file(folder + "prompt_encoder_mask_decoder.onnx"))))
+    return _tiny_sessions()
+
+
+def _tiny_sessions():
+    from app.localgen import jobs, model_manager
     import time
 
     from app.localgen import sessions
@@ -99,15 +134,15 @@ def _onnx_sessions():
                 time.sleep(0.25)
             if not model_manager.ready("sam2-onnx"):
                 raise SegmentError(f"The selection model (SAM 2.1, about 155 MB) could not be downloaded: {state.get('error') or state.get('message') or 'check the connection'}.")
-        folder = "sam2.1-hiera-tiny/"
-        return (onnx_session(model_manager.model_file(folder + "vision_encoder.onnx")),
-                onnx_session(model_manager.model_file(folder + "prompt_encoder_mask_decoder.onnx")))
+        folder = FOLDERS["sam2-onnx"]
+        return (_sam_session(model_manager.model_file(folder + "vision_encoder.onnx")),
+                _sam_session(model_manager.model_file(folder + "prompt_encoder_mask_decoder.onnx")))
     return sessions.get("sam2", load)   # held with the other local models, at most two at a time
 
 
-def _onnx_encode(rgb):
+def _onnx_encode(rgb, model: str | None = None):
     import numpy as np
-    enc, _ = _onnx_sessions()
+    enc, _ = _onnx_sessions(model)
     im = np.asarray(Image.fromarray(rgb).resize((1024, 1024), Image.Resampling.BILINEAR), np.float32) / 255.0
     im = (im - np.array(_MEAN, np.float32)) / np.array(_STD, np.float32)
     outs = enc.run(None, {"pixel_values": im.transpose(2, 0, 1)[None].astype(np.float32)})
@@ -117,7 +152,7 @@ def _onnx_encode(rgb):
 def _onnx_select(entry, points, box):
     import cv2
     import numpy as np
-    _, dec = _onnx_sessions()
+    _, dec = _onnx_sessions(entry.get("model"))
     w, h = entry["size"]
     sx, sy = 1024.0 / w, 1024.0 / h
     pts = [[x * sx, y * sy] for x, y, _ in points] or [[0.0, 0.0]]
@@ -213,7 +248,8 @@ def encode(key: str, data: bytes) -> tuple[int, int]:
         raise SegmentError(f"The image could not be read: {exc}") from exc
     with _lock:
         if backend() == "onnx":
-            _embeddings[key] = {"onnx": _onnx_encode(rgb), "size": (rgb.shape[1], rgb.shape[0])}
+            model = onnx_model()
+            _embeddings[key] = {"onnx": _onnx_encode(rgb, model), "size": (rgb.shape[1], rgb.shape[0]), "model": model}
         else:
             import torch
             pred = _get_predictor()
@@ -235,7 +271,8 @@ def select(key: str, points: list[tuple[float, float, int]], box: tuple[float, f
         raise SegmentError("Click on the object to select, or drag a box round it.")
     with _lock:
         entry = _embeddings.get(key)
-        if entry is None:
+        if entry is None or ("onnx" in entry and entry.get("model") != onnx_model()):
+            _embeddings.pop(key, None)
             raise KeyError(key)
         _embeddings.move_to_end(key)
         if "onnx" in entry:

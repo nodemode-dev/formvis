@@ -1,27 +1,23 @@
 The "pillow-heif" source code is licensed under the BSD-3-Clause license, see LICENSE.txt.
-License for "pillow-heif" binary wheels: GPLv2, due to base library licenses.
 
-Binary wheels combine several license-compatible libraries. Here they are listed.
+formvis does not ship pillow-heif's PyPI binary wheels, which link the GPL x265 encoder. The desktop engine ships
+pillow-heif 1.8.1 built from its source archive (SHA-256 pinned) by setup/heif_decode.py, against these two libraries,
+built unmodified from their release archives with decoders only: no encoder, no other codec, no plugin loading. The
+freeze scripts refuse an engine that holds any x265 or x264 library, and the engine's --selfcheck refuses one whose
+libheif has a decoder other than libde265 or an encoder other than mask.
 
-Name: libheif
-License: LGPLv3
-Files: libheif.[dylib|so|dll]
-  For details, see https://github.com/strukturag/libheif/tree/v1.23.3/COPYING
-  Source code: https://github.com/strukturag/libheif/tree/v1.23.3
+Name: libheif 1.23.7
+License: LGPL-3.0-or-later
+Files: libheif.[dylib|so|dll] (heif.dll on Windows)
+  Licence text: licenses/native/libheif-1.23.7/COPYING
+  Source code: https://github.com/strukturag/libheif/releases/tag/v1.23.7
 
-Name: libde265
-License: LGPLv3
+Name: libde265 1.1.3
+License: LGPL-3.0-or-later
 Files: libde265.[dylib|so|dll]
-  For details, see https://github.com/strukturag/libde265/tree/v1.1.2/COPYING
-  Source code: https://github.com/strukturag/libde265/tree/v1.1.2
+  Licence text: licenses/native/libde265-1.1.3/COPYING
+  Source code: https://github.com/strukturag/libde265/releases/tag/v1.1.3
 
-Name: x265
-License: GPLv2
-Files: libx265.[dylib|so|dll]
-  For details, see https://bitbucket.org/multicoreware/x265_git/src/4.2/COPYING
-  Source code: https://bitbucket.org/multicoreware/x265_git/src/4.2
+Not shipped: x265 (GPL-2.0), and the MinGW-w64 runtime of the Windows PyPI wheels; the Windows build uses MSVC.
 
-Name: MinGW-w64 runtime (Windows wheels only)
-License: GPL-3.0-with-GCC-exception (libgcc, libstdc++), MIT and BSD (libwinpthread)
-Files: libgcc_s_seh-1.dll, libstdc++-6.dll, libwinpthread-1.dll
-  For details, see https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/COPYING
+A build made with FORMVIS_HEIF=0 leaves pillow-heif and both libraries out, and opens no HEIC or HEIF.

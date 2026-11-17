@@ -15,11 +15,16 @@ import { PromptImprover, areaView, referenceViews } from './prompt-improver';
 import { GenerationOptions } from './generation-options';
 import { FalOptions } from './fal-options';
 import { genPrefs, preferredModel } from '../../io/gen-prefs';
+import { offerModel } from '../model-install';
+import { toast } from '../toast';
 import { canvasInputs, pictureLimit, prepareForModel } from '../../io/fal-size';
 import { editInstruction, falCatalogue, falIdOf, falMaskAsPicture, falMaskKey, falModelsOf, falRunImage, falValue } from '../../io/fal';
 import type { FalModel } from '../../io/api';
 
 type Mode = 'fill' | 'expand' | 'upscale';
+
+const LAMA_INSTEAD = 'Ran on LaMa on this computer: fal has no key and the prompt was empty.';
+const NO_KEY ='This model runs on fal, which needs a fal API key: fal is a paid service and charges for each run. Add your key, or use a model that runs on this computer for free.';
 
 const TITLES: Record<Mode, string> = { fill: 'Generative Fill', expand: 'Generative Expand', upscale: 'Upscale' };
 const HINTS: Record<Mode, string> = {
@@ -41,6 +46,7 @@ export class GenerativeDialog extends Dialog {
   private readonly keyRow = el('<div class="cv-panel-section"></div>');
   private readonly key = el<HTMLInputElement>('<input class="cv-input" type="password" autocomplete="off" spellcheck="false" placeholder="fal API key">');
   private readonly state = el('<p class="cv-note"></p>');
+  private readonly noKeyRow = el(`<div class="cv-panel-section" data-gen-nokey hidden><p class="cv-note">${NO_KEY}</p><div class="cv-dialog-row"></div></div>`);
   private readonly forget: HTMLButtonElement;
   private status: GenerativeStatus | null = null;
   // The model (1.51.2): FLUX.1 Fill on fal, or one of your ComfyUI workflows, added here and kept.
@@ -112,6 +118,12 @@ export class GenerativeDialog extends Dialog {
     this.keyRow.append(this.key, el('<p class="cv-note">Get a key at fal.ai. The formvis engine keeps it in its data folder on this computer.</p>'));
     this.body.appendChild(this.keyRow);
     this.body.appendChild(this.state);
+    const addKey = el<HTMLButtonElement>('<button type="button" class="cv-btn" data-gen-add-key>Add a fal key</button>');
+    const useLocal = el<HTMLButtonElement>('<button type="button" class="cv-btn" data-gen-use-local>Use a local model</button>');
+    addKey.addEventListener('click', () => { setHidden(this.keyRow, false); this.key.focus(); this.key.select(); });
+    useLocal.addEventListener('click', () => void this.useLocal());
+    this.noKeyRow.lastElementChild!.append(addKey, useLocal);
+    this.modelRow.after(this.noKeyRow);
     this.forget = this.button('Forget key', 'ghost', () => void this.forgetKey());
     this.button('Cancel', 'ghost', () => this.close());
     this.go = this.button('Generate', 'primary', () => void this.generate());
@@ -171,6 +183,7 @@ export class GenerativeDialog extends Dialog {
       const kept = preferredModel(mode, start.prompt) || recalled(TITLES[mode], 'select:Model');
       if (typeof kept === 'string' && [...this.model.options].some((o) => o.value === kept && !o.disabled)) { this.model.value = kept; this.picked = true; }
     }
+    if (start && this.lamaInstead(start.prompt)) { this.model.value = 'local:lama'; this.toLama = true; }
     this.sync();
     if (start && this.runnable) { await this.generate(); return; }
     this.open();
@@ -265,9 +278,37 @@ export class GenerativeDialog extends Dialog {
   private get local(): LocalModel | undefined { return this.mode !== 'upscale' ? this.locals.find((m) => m.id === this.model.value) : undefined; }
 
   private get falModel(): FalModel | null { const id = falIdOf(this.model.value); return id ? this.catalogue.find((m) => m.id === id) ?? null : null; }
+  private get falBacked(): boolean { return this.model.value === 'fal' || !!falIdOf(this.model.value); }
+  private get noKey(): boolean { return this.falBacked && !!this.status && !this.status.configured; }
+
+  /** No fal key, no words and LaMa here: an empty fill or expand goes to LaMa, which needs neither. */
+  /** The run was moved to LaMa because fal has no key; the person is told once it starts. */
+  private toLama = false;
+  private lamaInstead(prompt: string): boolean { return this.mode !== 'upscale' && this.noKey && this.lama && !prompt.trim() && !this.key.value.trim(); }
+
+  /** Use a local model: Real-ESRGAN to upscale; to fill, a ready local generator when there are words, else LaMa. A model
+   *  not downloaded yet is offered for install first; Cancel leaves the choice as it was. */
+  private async useLocal(): Promise<void> {
+    if (this.mode === 'upscale') {
+      if (!(await offerModel('ai-upscale'))) return;
+      this.upscaleModels(true, await upscaleFiles());
+      this.model.value = 'local:ai-upscale';
+    } else {
+      const ready = this.prompt.value.trim() ? this.locals.find((m) => m.ready)?.id : undefined;
+      if (!ready) {
+        if (!this.lama && !(await offerModel('lama-inpaint'))) return;
+        this.lama = true;
+        this.fillModels();
+      }
+      this.model.value = ready ?? 'local:lama';
+    }
+    this.picked = true;
+    this.sync();
+  }
 
   private sync(): void {
     const s = this.status, local = this.local;
+    setHidden(this.noKeyRow, !this.noKey);
     this.fal.show(this.falModel, this.mode === 'expand' ? ['expand_top', 'expand_bottom', 'expand_left', 'expand_right'] : []);
     // The current layer's seed (1.96.4): a result named "... (seed N)" fills the model's seed, for the same result again.
     const seeded = /\(seed (\d+)\)$/.exec(this.engine.activeLayer?.name ?? '');
@@ -306,7 +347,7 @@ export class GenerativeDialog extends Dialog {
     setHidden(this.keyRow, !s || s.configured);
     setHidden(this.forget, s?.source !== 'settings');
     setText(this.state, !s ? 'The formvis engine is offline. Start it with ./formvis boot.'
-      : s.configured ? `fal key set ${s.source === 'environment' ? 'by FAL_KEY in the environment' : 'in formvis'}.` : 'Add a fal API key to generate.');
+      : s.configured ? `fal key set ${s.source === 'environment' ? 'by FAL_KEY in the environment' : 'in formvis'}.` : 'Paste your fal API key above, or use a model that runs on this computer.');
   }
 
   private async forgetKey(): Promise<void> {
@@ -383,6 +424,8 @@ export class GenerativeDialog extends Dialog {
   private leave(): void { this.close(); this.release(); }
 
   private async prepare(t: number): Promise<void> {
+    if (this.lamaInstead(this.prompt.value)) { this.model.value = 'local:lama'; this.toLama = true; this.sync(); }
+    if (this.toLama && this.lamaHere) { this.toLama = false; toast(LAMA_INSTEAD); }
     if (this.lamaHere) {
       const e = this.engine, mode = this.mode, prompt = this.prompt.value;
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
@@ -434,7 +477,7 @@ export class GenerativeDialog extends Dialog {
     if (!this.status) return;
     if (!this.status.configured) {
       const key = this.key.value.trim();
-      if (!key) { setText(this.state, 'Paste a fal API key first.'); this.key.focus(); return; }
+      if (!key) { setHidden(this.noKeyRow, false); this.noKeyRow.scrollIntoView({ block: 'nearest' }); return; }
       try { this.status = await api.saveGenerativeKey(key); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'The key could not be saved.'); return; }
       this.key.value = '';
       this.sync();

@@ -33,8 +33,47 @@ def selfcheck() -> int:
         info["app"] = f"failed: {exc!r}"
         print(json.dumps(info))
         return 1
+    info["heic"] = heic_check()
+    problem = heic_problem(info["heic"], os.environ.get("FORMVIS_REQUIRE_HEIC") == "1")
+    if problem:
+        info["heic"]["problem"] = problem
     print(json.dumps(info))
+    if (getattr(sys, "frozen", False) and info["heic"]["gpl"]) or problem:
+        return 1
     return 0 if info["fal_models"] else 1
+
+
+DECODE_ONLY_DECODERS = ["libde265"]
+DECODE_ONLY_ENCODERS = {"mask"}
+
+
+def heic_problem(heic: dict, required: bool) -> str:
+    """Why a build that must carry HEIC decoding (the freeze scripts set FORMVIS_REQUIRE_HEIC=1 when they built it) does
+    not: no decoder, a decoder other than libde265, or any encoder beyond libheif's mask. Empty when it is right or not
+    required."""
+    if not required:
+        return ""
+    if heic.get("decoder", "none") == "none":
+        return f"no HEIC decoder in this build ({heic.get('error', 'pillow_heif did not import')})"
+    if heic.get("decoders") != DECODE_ONLY_DECODERS:
+        return f"HEIC decoders are {heic.get('decoders')}, not {DECODE_ONLY_DECODERS}"
+    if not set(heic.get("encoders", [])) <= DECODE_ONLY_ENCODERS:
+        return f"HEIC encoders {sorted(set(heic.get('encoders', [])) - DECODE_ONLY_ENCODERS)} are in this build"
+    return ""
+
+
+def heic_check() -> dict:
+    """The HEIC decoder this engine carries. A frozen engine must not hold a GPL encoder (x265, x264): the PyPI
+    pillow-heif wheel links one, so `setup/heif_decode.py` builds a decode-only libheif for the desktop."""
+    try:
+        import pillow_heif
+    except Exception as exc:
+        return {"decoder": "none", "gpl": [], "error": str(exc)}
+    found = pillow_heif.libheif_info()
+    encoders = sorted((found.get("encoders") or {}).keys())
+    return {"decoder": "libheif " + pillow_heif.libheif_version(), "encoders": encoders,
+            "decoders": sorted((found.get("decoders") or {}).keys()),
+            "gpl": [e for e in encoders if e.lower() in ("x265", "x264")]}
 
 
 def watch_parent() -> None:

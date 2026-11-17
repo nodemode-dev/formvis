@@ -83,7 +83,7 @@ async def find_route(image: UploadFile = File(...), kind: str = Form("people")) 
     if kind not in ("people", "distractions"):
         raise HTTPException(422, "kind is people or distractions")
     if not model_manager.ready(face.MODEL):
-        raise HTTPException(409, "Finding people needs the face finder (YuNet, 232 KB, MIT): Preferences > Plugins > Local models.")
+        raise model_manager.missing(face.MODEL, "Finding people needs the face finder (YuNet, 232 KB, MIT): Preferences > Plugins > Local models.")
     if not segment.available():
         raise HTTPException(409, "Finding people needs Segment Anything 2: Preferences > Plugins > Local models.")
     data = await image.read()

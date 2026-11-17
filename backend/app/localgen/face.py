@@ -40,7 +40,7 @@ router = APIRouter(prefix="/api/face", tags=["face"])
 @router.post("/landmarks")
 async def landmarks(image: UploadFile = File(...)) -> dict:
     if not model_manager.ready(MODEL):
-        raise HTTPException(409, "Download the face finder first: Preferences > Plugins > Local models (YuNet, 232 KB, MIT).")
+        raise model_manager.missing(MODEL, "Download the face finder first: Preferences > Plugins > Local models (YuNet, 232 KB, MIT).")
     try:
         picture = Image.open(io.BytesIO(await image.read()))
         picture.load()

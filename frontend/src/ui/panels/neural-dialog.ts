@@ -1,6 +1,7 @@
 import type { Engine } from '../../engine';
 import { deblock, depthBlur, harmonize, mixColor, skinSmooth } from '../../engine/neural';
-import { colorizeReady, depthReady, localColorize, localDepth, localDepthValues, localStyle, styleReady } from '../../io/local-gen';
+import { localColorize, localDepth, localDepthValues, localStyle } from '../../io/local-gen';
+import { needModel } from '../model-install';
 import { depthBytes } from '../../engine/doc-depth';
 import { toBlob } from '../../engine/surface';
 import { Dialog } from '../dialogs';
@@ -83,7 +84,7 @@ export class NeuralFiltersDialog extends Dialog {
     const key = pixelsKey(l), moved = (): boolean => { const now = this.engine.current?.activeLayer; return !now || pixelsKey(now) !== key; };
     let stale = false;
     try {
-      if (!(await depthReady())) { setText(this.note, 'Depth Blur needs Depth Anything V2 Small (99 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
+      if (!(await needModel('depth-anything-v2-small', () => setText(this.note, 'Depth Blur needs Depth Anything V2 Small (99 MB, Apache-2.0): download it in Preferences > Plugins > Local models.')))) return;
       const p = this.engine.current;
       if (p && l.raster.width === p.doc.width && l.raster.height === p.doc.height) {
         const shared = p.doc.depthMap?.key && this.engine.docDepth(p) ? p.doc.depthMap : null;
@@ -145,7 +146,7 @@ export class NeuralFiltersDialog extends Dialog {
     const key = pixelsKey(l);
     let stale = false;
     try {
-      if (!(await colorizeReady())) { setText(this.note, 'Colorize needs DDColor-tiny (135 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
+      if (!(await needModel('ddcolor-tiny', () => setText(this.note, 'Colorize needs DDColor-tiny (135 MB, Apache-2.0): download it in Preferences > Plugins > Local models.')))) return;
       setText(this.note, 'Coloring this layer...');
       const png = await localColorize(await toBlob(l.raster.canvas)), bmp = await createImageBitmap(png), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
       const g = c.getContext('2d') as CanvasRenderingContext2D; g.drawImage(bmp, 0, 0);
@@ -169,7 +170,7 @@ export class NeuralFiltersDialog extends Dialog {
     const key = pixelsKey(l), style = this.style;
     let stale = false;
     try {
-      if (!(await styleReady())) { setText(this.note, 'Style Transfer needs the five preset models (34 MB, BSD-3-Clause): download them in Preferences > Plugins > Local models.'); return; }
+      if (!(await needModel('fast-style', () => setText(this.note, 'Style Transfer needs the five preset models (34 MB, BSD-3-Clause): download them in Preferences > Plugins > Local models.')))) return;
       setText(this.note, 'Painting this layer in the style...');
       const png = await localStyle(await toBlob(l.raster.canvas), style), bmp = await createImageBitmap(png), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
       const g = c.getContext('2d') as CanvasRenderingContext2D; g.drawImage(bmp, 0, 0);

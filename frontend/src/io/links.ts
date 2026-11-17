@@ -103,7 +103,7 @@ export async function pickLinkSource(fallback: () => Promise<File | null>): Prom
   }
   if (picker) {
     try {
-      const [h] = await picker({ types: [{ description: 'Images', accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.tif', '.tiff', '.dpx', '.qoi', '.tga', '.ico', '.pgm', '.ppm', '.pam', '.heic', '.psd', '.dng', '.cr2', '.cr3', '.nef', '.arw', '.raf', '.orf', '.rw2', '.pef', '.srw'] } }] });
+      const [h] = await picker({ types: [{ description: 'Images', accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.tif', '.tiff', '.dpx', '.qoi', '.tga', '.ico', '.pgm', '.ppm', '.pam', '.heic', '.heif', '.hif', '.psd', '.dng', '.cr2', '.cr3', '.nef', '.arw', '.raf', '.orf', '.rw2', '.pef', '.srw'] } }] });
       if (!h) return null;
       const source = fromHandle(h);
       sources.set(id, source);

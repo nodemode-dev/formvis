@@ -24,8 +24,8 @@ Decoding and encoding is split: the page does what a browser can (PNG, JPEG, Web
 
 | Route (prefix) | File | Purpose |
 | --- | --- | --- |
-| `GET /api/health`, `/version`, `/capabilities`, `/compute` | `routers/system.py` | Liveness, version, decoders (`heic`, `tiff`, `raw`, `rawEngine`), background engines |
-| `POST /api/io/decode` (`page`), `/pages` | `routers/io.py` | Any image to PNG (HEIC, TIFF, camera raw, EXIF rotation); TIFF page list |
+| `GET /api/health`, `/version`, `/capabilities`, `/compute` | `routers/system.py` | Liveness, version, decoders (`heic`, `heicEngine`, `heicBits`, `tiff`, `raw`, `rawEngine`), background engines |
+| `POST /api/io/decode` (`page`), `/pages` | `routers/io.py` | Any image to PNG (HEIC, TIFF, camera raw, EXIF rotation); TIFF page and HEIF image list |
 | `POST /api/io/encode` | `routers/io.py` | PNG to JPEG, WebP, TIFF with quality, dpi and an embedded profile |
 | `POST /api/io/decode-deep`, `/encode-deep`, `/encode-tiff16` | `routers/io.py` | 16 bit and float: PNG, TIFF, HDR, EXR |
 | `POST /api/io/decode-cmyk`, `/encode-cmyk`, `/decode-cmyk-psd`, `/encode-cmyk-psd` | `routers/io.py` | CMYK TIFF, JPEG and PSD |
@@ -61,7 +61,7 @@ A project is `manifest.json` plus `images/`. formvis writes `com.nodemode.formvi
 
 ## Facts that bite
 
-- `pillow-heif` bundles GPL x265 and is excluded from the frozen desktop engine; macOS falls back to `sips`.
+- `pillow-heif`'s PyPI wheels link GPL x265, so they never ship: `setup/freeze_backend` runs `setup/heif_decode.py`, which builds libde265 and libheif (LGPL) with decoders only and pillow-heif from source against them, and stops if an x265 or x264 library reaches the engine. HEIC opens on every desktop platform at its own depth (10 and 12 bit as 16); `sips` stays only as the macOS fallback for a file libheif refuses. `FORMVIS_HEIF=0` freezes without it.
 - OpenCV's EXR codec stays off in the engine; EXR files go through the child process in `contained.py` with a 60 second limit.
 - Imported projects live in temporary session folders for 24 hours.
 - `/api/io/export` works only in the desktop app; the web app downloads.

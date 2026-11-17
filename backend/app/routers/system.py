@@ -60,7 +60,7 @@ def reveal(body: RevealBody) -> dict:
 
 _LINK_IMAGE_SUFFIXES = {
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".tif", ".tiff", ".dpx", ".qoi", ".tga", ".ico", ".pgm", ".ppm",
-    ".pam", ".heic", ".psd", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2", ".pef", ".srw",
+    ".pam", ".heic", ".heif", ".hif", ".psd", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2", ".pef", ".srw",
 }
 
 

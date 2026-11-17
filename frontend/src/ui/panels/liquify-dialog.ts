@@ -1,7 +1,8 @@
 import type { Engine, ID } from '../../engine';
 import { clearFreeze, dabField, fieldFromSettings, fieldIsZero, fieldToSettings, freezeAt, freezePolygon, invertFreeze, liquifyImage, makeField, meshFromJson, meshToJson, paintFreeze, pushField, pushLeftField, rateScale, resetField, resizeField, smoothField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
 import { FACE_SLIDERS, faceField, noFaceChange, type Face, type FaceSettings, type FaceSlider } from '../../engine/face-liquify';
-import { faceReady, findFaces } from '../../io/local-gen';
+import { findFaces } from '../../io/local-gen';
+import { needModel } from '../model-install';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { paint } from '../palette';
@@ -336,7 +337,7 @@ export class LiquifyDialog extends Dialog {
   private async findFaces(): Promise<void> {
     if (!this.src) return;
     try {
-      if (!(await faceReady())) { setText(this.faceNote, 'Face-Aware Liquify needs the face finder (YuNet, 232 KB, MIT): download it in Preferences > Plugins > Local models.'); return; }
+      if (!(await needModel('yunet-face', () => setText(this.faceNote, 'Face-Aware Liquify needs the face finder (YuNet, 232 KB, MIT): download it in Preferences > Plugins > Local models.')))) return;
       setText(this.faceNote, 'Finding faces...');
       const c = document.createElement('canvas'); c.width = this.src.width; c.height = this.src.height; (c.getContext('2d') as CanvasRenderingContext2D).putImageData(this.src, 0, 0);
       const blob = await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('no pixels'))), 'image/png'));

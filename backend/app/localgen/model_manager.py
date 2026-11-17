@@ -163,6 +163,11 @@ PINNED: dict[str, str] = {
     "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx": "874414704c5d686db7d206a35f6e15d26563d50c8c4468fccc6739bd7e491dcf",
     "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx_data": "e9874d900dd4134ed60eab1e97910327c2419e0b2954485d8fd6e7f1a1470f47",
     "u2net.onnx": "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491",
+    "birefnet/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx": "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333",
+    "sam2.1-hiera-base-plus/vision_encoder.onnx": "6fd992cf796e6ad5a29f3b92a127f2ce33f7f320d63c8b3f02bf3775f5f692f4",
+    "sam2.1-hiera-base-plus/vision_encoder.onnx_data": "f8a5f1b14d02eb7ed3b3576ad6774b8ebcfef6cc20674d5f316d6144c60a08a5",
+    "sam2.1-hiera-base-plus/prompt_encoder_mask_decoder.onnx": "f39eeec20243ed1c8f2cd013812e77813d937ddbc800fa4bc703761adc7e63cd",
+    "sam2.1-hiera-base-plus/prompt_encoder_mask_decoder.onnx_data": "445cd3f72a218815db10e336f4f1c46a6eb2713a0160a85af5365134607f32a7",
     "realesrgan-x4plus.onnx": "4851ec156207d271f5328605d0582eeb851e656227da8aca093ced9e60789291",
     "kokoro-v1.0.onnx": "beb0d1848dee9a49da392cc3df26958d46cfa35d321edf434f52949153f0df3a",
     "voices-v1.0.bin": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
@@ -335,6 +340,7 @@ MODELS = {
     # ComfyUI or fal. big-lama exported to ONNX by Carve (Apache-2.0), fixed at 512 x 512, pinned to its revision.
     "lama-inpaint": {
         "name": "LaMa inpainting (big-lama, ONNX)",
+        "size": "208 MB",
         "license": "Apache-2.0",
         "files": {"lama_fp32.onnx": "https://huggingface.co/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx"},
     },
@@ -343,6 +349,7 @@ MODELS = {
     # pinned to its revision, hashed on 1 October 2026.
     "depth-anything-v2-small": {
         "name": "Depth Anything V2 Small (ONNX)",
+        "size": "99 MB",
         "license": "Apache-2.0",
         "files": {"depth-anything-v2-small/model.onnx": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/413ce838e669ab7dfc01a6a396bf3d4397286d7f/onnx/model.onnx"},
     },
@@ -383,6 +390,7 @@ MODELS = {
     # Apache-2.0 (piddnad/DDColor); the fp16 export is edgetools', pinned to its revision, hashed on 1 October 2026.
     "ddcolor-tiny": {
         "name": "DDColor-tiny (ONNX)",
+        "size": "135 MB",
         "license": "Apache-2.0",
         "files": {"ddcolor-tiny/ddcolor-tiny-fp16.onnx": "https://huggingface.co/edgetools/ddcolor/resolve/4755ae9f1f7a35a9e7693b96c2a88f3432cb6ab0/ddcolor-tiny-fp16.onnx"},
     },
@@ -390,6 +398,7 @@ MODELS = {
     # Transfer. The zoo's files are BSD-3-Clause; each file is pinned by SHA-256 below, hashed on 1 October 2026.
     "fast-style": {
         "name": "Style Transfer presets (fast neural style, ONNX)",
+        "size": "34 MB",
         "license": "BSD-3-Clause",
         "files": {f"fast-style/{s}-9.onnx": f"https://github.com/onnx/models/raw/main/validated/vision/style_transfer/fast_neural_style/model/{s}-9.onnx" for s in ("candy", "mosaic", "rain-princess", "udnie", "pointilism")},
     },
@@ -397,6 +406,7 @@ MODELS = {
     # copy pinned to its revision, hashed on 1 October 2026; OpenCV's own FaceDetectorYN runs it.
     "yunet-face": {
         "name": "YuNet face detector (OpenCV Zoo)",
+        "size": "232 KB",
         "license": "MIT",
         "files": {"yunet-face/face_detection_yunet_2023mar.onnx": "https://huggingface.co/opencv/face_detection_yunet/resolve/3cc26e7f1014a5ee5d74a42acee58bafc9d0a310/face_detection_yunet_2023mar.onnx"},
     },
@@ -412,6 +422,7 @@ MODELS = {
     # VGGT project uses, pinned to its revision; hashed on 1 October 2026 from the real download; for Select > Sky.
     "skyseg": {
         "name": "Sky segmenter (U-2-Net)",
+        "size": "176 MB",
         "license": "MIT",
         "files": {"skyseg/skyseg.onnx": "https://huggingface.co/JianyuanWang/skyseg/resolve/3ba8c6df1d9ba9ff26f637c7ba9568ac11a9aa7f/skyseg.onnx"},
     },
@@ -419,6 +430,7 @@ MODELS = {
     # weights (Apache-2.0), exported by onnx-community (the export states no licence of its own), pinned to its revision.
     "sam2-onnx": {
         "name": "SAM 2.1 tiny (ONNX)",
+        "size": "155 MB",
         "license": "Apache-2.0",
         "files": {
             "sam2.1-hiera-tiny/vision_encoder.onnx": "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/vision_encoder.onnx",
@@ -431,11 +443,30 @@ MODELS = {
     # (its md5 checked against rembg's), run on ONNX Runtime; Apache-2.0.
     "u2net-onnx": {
         "name": "U2-Net (background and subject)",
+        "size": "176 MB",
         "license": "Apache-2.0",
         "files": {"u2net.onnx": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx"},
     },
+    # BiRefNet general on the Swin-T backbone (after 2.3.5): the recommended Select Subject and Remove Background model,
+    # MIT, the author's own ONNX export from the ZhengPeng7/BiRefNet v1 release, the same file and pin as formlit's.
+    "birefnet-swin-t": {
+        "name": "BiRefNet general, Swin-T (ONNX)",
+        "size": "224 MB",
+        "license": "MIT",
+        "files": {"birefnet/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx"},
+    },
+    # SAM 2.1 base-plus as ONNX (after 2.3.5): the recommended Object Selection model, Meta's SAM 2.1 weights (Apache-2.0)
+    # in the same onnx-community export as the tiny one above, pinned to its revision; the SHA-256 Hugging Face records.
+    "sam2-base-plus-onnx": {
+        "name": "SAM 2.1 base-plus (ONNX)",
+        "size": "328 MB",
+        "license": "Apache-2.0",
+        "files": {f"sam2.1-hiera-base-plus/{f}": f"https://huggingface.co/onnx-community/sam2.1-hiera-base-plus-ONNX/resolve/bab18593f44e652f04cf18b60b3690f60e8996b0/onnx/{f}"
+                  for f in ("vision_encoder.onnx", "vision_encoder.onnx_data", "prompt_encoder_mask_decoder.onnx", "prompt_encoder_mask_decoder.onnx_data")},
+    },
     "ai-upscale": {
         "name": "Real-ESRGAN x4plus",
+        "size": "67 MB",
         "license": "BSD-3-Clause",
         # Converted to ONNX from the official RealESRGAN_x4plus.pth by a published,
         # reproducible recipe; pinned below to the converter's stated SHA-256.
@@ -460,6 +491,14 @@ def ready(model: str) -> bool:
     return True
 
 
+MISSING_HEADER = "X-Formvis-Model"
+
+
+def missing(model: str, detail: str) -> HTTPException:
+    """The 409 an action answers while its model is not downloaded, naming the model so the window can offer to install it."""
+    return HTTPException(409, detail, headers={MISSING_HEADER: model})
+
+
 @router.get("/runtime")
 def runtime():
     """BG6: what this machine offers and which provider sessions will use."""
@@ -478,6 +517,7 @@ def list_models():
             "license": spec["license"],
             "ready": ready(key),
             "downloading": key in _downloading,
+            "size": spec.get("size"),
             "files": list(spec["files"]),
             # Krea 2's builds and its filter are installed from their own card, after the licence and the filter choice
             "managedBy": "krea-2"

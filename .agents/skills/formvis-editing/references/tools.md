@@ -211,7 +211,7 @@ Removes the active layer's background on this computer, keeping the subject (a m
 
 ## open_file
 
-Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw, SVG drawn to pixels at svg_width) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document. into replace opens a picture in place of the active document (its unsaved changes are discarded), into layer adds it as a layer of the active document (as place_image does; reference true flags it as a reference picture). The file is remembered, so save_project or export_image with no path writes the document back to it. Use when the person gives a path to a picture or project to work on.
+Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, HEIF and HIF, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw, SVG drawn to pixels at svg_width) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document. into replace opens a picture in place of the active document (its unsaved changes are discarded), into layer adds it as a layer of the active document (as place_image does; reference true flags it as a reference picture). The file is remembered, so save_project or export_image with no path writes the document back to it. Use when the person gives a path to a picture or project to work on.
 
 - `path`: string; required; Absolute path, e.g. /Users/me/Pictures/beach.jpg
 - `into`: string (document | replace | layer); default "document"
@@ -668,7 +668,7 @@ Note: read-only.
 
 ## convert_file
 
-Converts a picture file to another format without opening it in the window: path in, output_path out, the output's extension picks the format (png, jpg, webp, avif, tif, bmp, qoi, tga, ico, pdf, ppm, pgm, pbm, pnm, dpx, fits, wbmp). The result is one flat picture; layers are not kept (open_file then save_project does that). A file already at output_path is kept unless overwrite is true. Works with no window open. Use when a picture file should become another format and nothing else about it changes.
+Converts a picture file to another format without opening it in the window: path in, output_path out, the output's extension picks the format (png, jpg, webp, avif, tif, bmp, qoi, tga, ico, pdf, ppm, pgm, pbm, pnm, dpx, fits, wbmp). The result is one flat picture; layers are not kept (open_file then save_project does that). A file already at output_path is kept unless overwrite is true. Writing a new file works with no window open; replacing a file (overwrite true) under the Ask policy needs the person's approval in the formvis window, and fails at once when no window is open. Use when a picture file should become another format and nothing else about it changes.
 
 - `path`: string; required; Absolute path to the picture to read.
 - `output_path`: string; required; Absolute path to write, with the new extension.

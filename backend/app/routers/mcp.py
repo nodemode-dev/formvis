@@ -123,7 +123,7 @@ TOOLS = [
            "options": {"type": "object", "description": "Other SAM 3 inputs by name (fal_models with model fal-ai/sam-3/image), for example {output_format: 'png'}."}}, ["prompt"], open=True),
     _tool("remove_background", "Removes the active layer's background on this computer, keeping the subject (a mask on the layer; undoable).", {}),
     # Files, read and written by the engine at absolute paths (~ is expanded).
-    _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw, SVG drawn to pixels at svg_width) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document. into replace opens a picture in place of the active document (its unsaved changes are discarded), into layer adds it as a layer of the active document (as place_image does; reference true flags it as a reference picture). The file is remembered, so save_project or export_image with no path writes the document back to it.",
+    _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, HEIF and HIF, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw, SVG drawn to pixels at svg_width) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document. into replace opens a picture in place of the active document (its unsaved changes are discarded), into layer adds it as a layer of the active document (as place_image does; reference true flags it as a reference picture). The file is remembered, so save_project or export_image with no path writes the document back to it.",
           {"path": {"type": "string", "description": "Absolute path, e.g. /Users/me/Pictures/beach.jpg"}, "into": {"type": "string", "enum": ["document", "replace", "layer"], "default": "document"},
            "svg_width": {"type": "integer", "minimum": 1, "maximum": 30000, "description": "For an SVG: the width in pixels it is drawn at."}, "reference": {"type": "boolean", "default": False}}, ["path"]),
     _tool("save_project", "Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path. With no path it writes back to the .fvd the active document was opened from with open_file (replacing it). A file already there is kept unless overwrite is true.",
@@ -249,7 +249,7 @@ TOOLS = [
           {"path": {"type": "string", "description": "Absolute path to a picture or project file."}}, ["path"], read=True, idempotent=True),
     _tool("improve_prompt", "Rewrites an image prompt through the language model set in Preferences > Plugins, under an improve template (default Richer detail; or a starter or a Markdown template in the data folder's prompt-templates folder). Returns the rewritten prompt and kept, the @img reference tokens of the prompt that the rewrite still carries (any the model dropped are put back at the end and named in restored). Changes nothing in the document; works with no window open. Fails with what to do when no language model is set.",
           {"prompt": {"type": "string", "minLength": 1, "maxLength": 4000, "description": "The prompt to improve; @img1, @img2 and so on name reference pictures and are kept."}, "template": {"type": "string", "maxLength": 80, "description": "A template name: Richer detail, Fill a selection, Short and plain, Generate a new picture, Edit instruction, Photographic, Tag list or Transparent asset (the starter for each use case)."}}, ["prompt"], read=True),
-    _tool("convert_file", "Converts a picture file to another format without opening it in the window: path in, output_path out, the output's extension picks the format (png, jpg, webp, avif, tif, bmp, qoi, tga, ico, pdf, ppm, pgm, pbm, pnm, dpx, fits, wbmp). The result is one flat picture; layers are not kept (open_file then save_project does that). A file already at output_path is kept unless overwrite is true. Works with no window open.",
+    _tool("convert_file", "Converts a picture file to another format without opening it in the window: path in, output_path out, the output's extension picks the format (png, jpg, webp, avif, tif, bmp, qoi, tga, ico, pdf, ppm, pgm, pbm, pnm, dpx, fits, wbmp). The result is one flat picture; layers are not kept (open_file then save_project does that). A file already at output_path is kept unless overwrite is true. Writing a new file works with no window open; replacing a file (overwrite true) under the Ask policy needs the person's approval in the formvis window, and fails at once when no window is open.",
           {"path": {"type": "string", "description": "Absolute path to the picture to read."}, "output_path": {"type": "string", "description": "Absolute path to write, with the new extension."},
            "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92, "description": "For jpg, webp and avif."}, "dpi": {"type": "integer", "minimum": 1, "maximum": 9600, "default": 72},
            "page": {"type": "integer", "minimum": 0, "default": 0, "description": "Which page of a multi-page TIFF; the first by default."},
@@ -713,7 +713,7 @@ async def _until_gone(request: Request, task: asyncio.Future) -> bool:
 
 
 # Files at absolute paths (1.53.3): read and written here, the window doing the picture's part.
-_PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".pam", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"}
+_PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".hif", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".pam", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"}
 _PROJECTS = {".fvd", ".fmv", ".psd", ".psb", ".ora"}
 _EXPORTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".psd": "psd", ".psb": "psb", ".ora": "ora",
             ".tif": "tiff", ".tiff": "tiff", ".tga": "tga", ".dpx": "dpx", ".bmp": "bmp", ".exr": "exr", ".hdr": "hdr"}
@@ -813,6 +813,26 @@ def _depth_of(mode: str) -> int:
     return 16 if mode.startswith("I;16") or mode == "I" else 32 if mode == "F" else 1 if mode == "1" else 8
 
 
+def _file_depth(im, src: Path) -> int:
+    """The bits a channel the file stores, which Pillow's mode hides for 16-bit RGB: a TIFF's BitsPerSample, a PNG's
+    IHDR bit depth, a HEIF's declared depth; the mode's depth otherwise."""
+    try:
+        if im.format == "TIFF":
+            bits = im.tag_v2.get(258)
+            if bits:
+                return int(max(bits) if isinstance(bits, (tuple, list)) else bits)
+        if im.format == "PNG":
+            with open(src, "rb") as f:
+                head = f.read(25)
+            if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
+                return int(head[24])
+        if im.format == "HEIF" and im.info.get("bit_depth"):
+            return int(im.info["bit_depth"])
+    except (OSError, ValueError, TypeError):
+        pass
+    return _depth_of(im.mode)
+
+
 def _info(args: dict) -> dict:
     import struct
     import zipfile
@@ -860,7 +880,7 @@ def _info(args: dict) -> dict:
             with Image.open(src) as im:
                 mode = im.mode
                 info.update(width=im.width, height=im.height, format=im.format, mode={"RGB": "rgb", "RGBA": "rgb", "L": "grayscale", "LA": "grayscale", "CMYK": "cmyk", "LAB": "lab", "P": "indexed", "1": "bitmap"}.get(mode, mode),
-                            alpha="A" in mode or "transparency" in im.info, depth=_depth_of(mode), pages=getattr(im, "n_frames", 1), profile=bool(im.info.get("icc_profile")))
+                            alpha="A" in mode or "transparency" in im.info, depth=_file_depth(im, src), pages=getattr(im, "n_frames", 1), profile=bool(im.info.get("icc_profile")))
                 if im.info.get("dpi"):
                     info["dpi"] = [round(float(v), 2) for v in im.info["dpi"]]
         except Exception as exc:
@@ -1120,6 +1140,15 @@ async def _write_back(name: str) -> str:
     return path
 
 
+HEADLESS_TOOLS = {"convert_file", "file_info"}
+
+
+def _no_window_to_approve(name: str, why: str) -> str:
+    """The answer at once, instead of a 120-second wait, when a step the person must approve finds no window to ask in."""
+    return (f"{name} needs the person's approval in the formvis window ({why}), and no formvis window is open to ask. Write to a new "
+            "output_path (a new file needs no approval and runs with no window), or open formvis and retry.")
+
+
 async def _agent_call(client: str, name: str, args: dict, cli: bool = False) -> dict:
     """A tool call as an outside agent's: refused when agents are off or this client is denied, held for the person's
     approval when it is risky under the Ask policy, and noted in the activity feed either way. The Claude Code the window's own
@@ -1153,6 +1182,10 @@ async def _agent_call(client: str, name: str, args: dict, cli: bool = False) -> 
             return _fail(refusal)
         if agents.policy_of(client) == "ask" and not (cli and name in ("convert_file", "run_command")):   # the command line names both files and --overwrite, and risky commands need --yes
             why = await _risk(name, args)
+            if why and name in HEADLESS_TOOLS and not _live():
+                refusal = _no_window_to_approve(name, why)
+                agents.end(entry, "denied", refusal)
+                return _fail(refusal)
             if why:
                 refusal = await agents.approval(entry, why)
                 if refusal:

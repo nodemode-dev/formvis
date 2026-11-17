@@ -20,4 +20,4 @@ The Python engine does what a browser cannot: decode HEIC and TIFF, keep the pro
 - Validate every manifest against the limits before touching disk; reject what this build cannot read with a clear message.
 - Write library files atomically (temporary file, then replace).
 - Accept only safe asset names; never build paths from request text without validation.
-- Keep `pillow-heif` out of the frozen sidecar (GPL x265 inside); desktop HEIC decoding uses the platform instead.
+- Never ship `pillow-heif`'s PyPI wheel (it links GPL x265): the frozen sidecar carries the decode-only build that `setup/heif_decode.py` makes, and `setup/freeze_backend` fails if x265 or x264 reaches it.

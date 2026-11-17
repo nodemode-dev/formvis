@@ -314,18 +314,21 @@ class Confirm extends Dialog {
   private readonly ok: HTMLButtonElement;
   private readonly cancel: HTMLButtonElement;
   private resolve: ((v: boolean) => void) | null = null;
+  /** How the last question was answered: its OK button, its Cancel button, or neither (Escape, the close box, another question). */
+  answer: 'ok' | 'cancel' | 'dismiss' = 'dismiss';
 
   constructor() {
     super('Confirm', 400);
     this.body.appendChild(this.note);
-    this.cancel = this.button('Cancel', 'ghost', () => this.finish(false));
-    this.ok = this.button('OK', 'primary', () => this.finish(true));
+    this.cancel = this.button('Cancel', 'ghost', () => { this.answer = 'cancel'; this.finish(false); });
+    this.ok = this.button('OK', 'primary', () => { this.answer = 'ok'; this.finish(true); });
     this.onClose = () => this.finish(false);
   }
 
   /** A destructive question opens with Cancel focused, so Return alone never confirms it; the arrow keys move between the buttons. */
   ask(title: string, text: string, okLabel: string, danger: boolean, cancelLabel = 'Cancel'): Promise<boolean> {
     this.resolve?.(false);
+    this.answer = 'dismiss';
     this.setTitle(title);
     setText(this.note, text);
     setText(this.ok, okLabel);
@@ -391,6 +394,19 @@ export function confirmAction(title: string, text: string, okLabel = 'OK', dange
     return confirmDlg.ask(title, text, okLabel, danger, cancelLabel);
   } catch {
     return Promise.resolve(window.confirm(`${title}\n\n${text}`));
+  }
+}
+
+/** confirmAction for a question whose second button is a choice of its own: 'cancel' only when that button was
+ *  pressed, 'dismiss' for Escape or the close box, so closing the question never counts as choosing. */
+export async function confirmChoice(title: string, text: string, okLabel: string, otherLabel: string): Promise<'ok' | 'cancel' | 'dismiss'> {
+  try {
+    if (!windowDialogs()) throw new Error('no overlay root');
+    confirmDlg ??= new Confirm();
+    const dlg = confirmDlg, ok = await dlg.ask(title, text, okLabel, false, otherLabel);
+    return ok ? 'ok' : dlg.answer === 'cancel' ? 'cancel' : 'dismiss';
+  } catch {
+    return window.confirm(`${title}\n\n${text}`) ? 'ok' : 'dismiss';
   }
 }
 

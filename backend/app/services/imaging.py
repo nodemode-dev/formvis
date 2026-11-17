@@ -21,10 +21,14 @@ try:
 
     pillow_heif.register_heif_opener()
     HEIF = True
+    HEIF_ENGINE = "libheif " + pillow_heif.libheif_version()
 except Exception:
     HEIF = False
+    HEIF_ENGINE = "none"
 
 HEIF_SUFFIXES = {".heic", ".heif", ".hif"}
+HEIF_NO_DECODER = "This build of formvis has no HEIF decoder, so this file cannot be opened at its depth. Convert it to a 16-bit TIFF, or to JPEG for 8 bits."
+HEIF_EIGHT_BIT = "This HEIF picture is 8-bit, so it has no deeper pixels to open; it opens as an 8-bit picture."
 
 # Camera RAW (opened into Camera Raw): decoded by LibRaw through rawpy. DNG is a TIFF container whose
 # embedded preview Pillow would open instead of the sensor data, so RAW suffixes never reach Pillow.
@@ -50,8 +54,11 @@ def sips_available() -> bool:
 
 
 def decoders() -> dict:
+    """`heicBits` is the most a HEIC channel keeps: 16 through libheif (10 and 12 bit files at their depth), 8 through
+    sips, 0 with no decoder."""
     engine = "pillow-heif" if HEIF else ("sips" if sips_available() else "none")
-    return {"heic": HEIF or sips_available(), "tiff": True, "engine": engine, "raw": RAW, "rawEngine": RAW_ENGINE}
+    return {"heic": HEIF or sips_available(), "tiff": True, "engine": engine, "heicEngine": HEIF_ENGINE,
+            "heicBits": 16 if HEIF else 8 if sips_available() else 0, "raw": RAW, "rawEngine": RAW_ENGINE}
 
 
 def _check(width: int, height: int) -> None:
@@ -96,23 +103,29 @@ def _from_rgba(px: np.ndarray, bits: int = 8) -> tuple[bytes, int, int]:
     return _png(image)
 
 
-def heif_deep(data: bytes) -> tuple[np.ndarray, int] | None:
-    """A HEIF or HEIC holding more than 8 bits a channel as uint16 RGBA of shape (height, width, 4) stretched to the full
-    16-bit range, and its bit depth; None for an 8-bit file or without pillow-heif."""
+def heif_deep(data: bytes, page: int = 0) -> tuple[np.ndarray, int] | None:
+    """Picture `page` of a HEIF or HEIC holding more than 8 bits a channel as uint16 RGBA of shape (height, width, 4)
+    stretched to the full 16-bit range, and its bit depth; None for an 8-bit picture or without pillow-heif (sips, the
+    macOS fallback, gives 8 bits only). The declared size is checked against the engine's limits before any pixel is
+    decoded, and a file that cannot be read raises DecodeError. The engine runs this in a child (contained.heif_deep)."""
     if not HEIF:
         return None
     try:
         heif = pillow_heif.open_heif(io.BytesIO(data), convert_hdr_to_8bit=False)
-    except Exception:
+    except Exception as exc:
+        raise DecodeError(f"The HEIF file could not be read: {exc}") from exc
+    if not 0 <= page < len(heif):
+        raise DecodeError(f"The HEIF file has {len(heif)} picture{'s' if len(heif) != 1 else ''}; there is no picture {page + 1}.")
+    image = heif[page]
+    _check(*image.size)
+    bits = int(image.info.get("bit_depth") or 8)
+    if bits <= 8 or image.mode.split(";")[0] not in ("RGB", "RGBA", "L"):
         return None
-    bits = int(heif.info.get("bit_depth") or 8)
-    if bits <= 8 or heif.mode.split(";")[0] not in ("RGB", "RGBA", "L"):
-        return None
-    arr = np.asarray(heif)
+    arr = np.asarray(image)
     if arr.dtype != np.uint16:
         return None
     top = ((1 << bits) - 1) << (16 - bits)
-    px = np.minimum(arr.astype(np.uint64) * 65535 // top, 65535).astype(np.uint16)
+    px = np.minimum(arr.astype(np.uint32) * 65535 // top, 65535).astype(np.uint16)
     if px.ndim == 2:
         px = np.stack([px, px, px], axis=2)
     if px.shape[2] == 3:
@@ -333,8 +346,8 @@ def _subifd_image(data: bytes, k: int) -> Image.Image | None:
 
 
 def pages(data: bytes, filename: str) -> list[dict]:
-    """A TIFF's pages (1.53.4), BigTIFF included: each page's number, size and mode, read without decoding pixels.
-    One entry for anything else."""
+    """A TIFF's pages (1.53.4), BigTIFF included, or a HEIF's top-level images (a burst or a set): each one's number,
+    size and mode, read without decoding pixels. One entry for anything else."""
     if ico.is_ico(data) and Path(filename).suffix.lower() in (".ico", ".cur"):
         try:
             return [{"index": e["index"], "width": e["width"], "height": e["height"], "mode": f"{e['bits']} bit"} for e in ico.listing(data)]
@@ -342,12 +355,14 @@ def pages(data: bytes, filename: str) -> list[dict]:
             raise DecodeError(f"Could not read {filename or 'the icon'}: {exc}") from exc
     try:
         with Image.open(io.BytesIO(data)) as image:
-            if image.format != "TIFF":
+            if image.format not in ("TIFF", "HEIF"):
                 return [{"index": 0, "width": image.width, "height": image.height, "mode": image.mode}]
             out = []
             for i in range(getattr(image, "n_frames", 1)):
                 image.seek(i)
                 out.append({"index": i, "width": image.width, "height": image.height, "mode": image.mode})
+            if image.format == "HEIF":
+                return out
             for k, sub in enumerate(_subifd_pages(data)):
                 height, width = sub.shape[:2]
                 out.append({"index": len(out), "width": int(width), "height": int(height), "mode": "SubIFD", "sub": k})
@@ -451,7 +466,14 @@ def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str
                 return _sips(data, suffix)
             except Exception as retry_exc:
                 raise DecodeError(f"Could not decode {label}: {retry_exc}") from retry_exc
+        if suffix in HEIF_SUFFIXES and not HEIF:
+            raise DecodeError(heic_unavailable(label)) from exc
         raise DecodeError(f"Could not decode {label}: {exc}") from exc
+
+
+def heic_unavailable(label: str) -> str:
+    return (f"Could not open {label}: this formvis engine has no HEIC decoder (it was built without one, or the decoder did "
+            "not load). Convert the picture to JPEG or TIFF, then open that.")
 
 
 ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif", "dpx": "image/x-dpx", "png8": "image/png",

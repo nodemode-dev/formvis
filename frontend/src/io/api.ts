@@ -1,10 +1,11 @@
 import { lutFrom, lut4From, lut3x4From, type ColourLut, type Lut4, type Lut3x4 } from '../engine/colour-lut';
+import { beforeSelection } from './selection-models';
 export interface ExrLayout { width: number; height: number; /** The stereo views, when the file holds more than one. */ views?: string[]; parts: Array<{ part: number; name: string; groups: Array<{ key: string; label: string; channels: number; view?: string }> }>; crypto: Array<{ name: string; objects: string[] }> }
 export type ExrPick = { part: number; key: string } | { crypto: string; object: string } | { sum: Array<{ part: number; key: string }>; name: string };
 export interface Capabilities { pixelBudget?: number; memory?: number;
   name: string; version: string;
   desktop: boolean;
-  decode: { heic: boolean; tiff: boolean; engine: string; raw?: boolean; rawEngine?: string };
+  decode: { heic: boolean; tiff: boolean; engine: string; heicEngine?: string; heicBits?: number; raw?: boolean; rawEngine?: string };
   removeBackground: { ml: boolean; lite: boolean; default: 'ml' | 'lite' | null; model: string };
   dataDir: string;
   dataDirSource?: 'override' | 'portable' | 'default';
@@ -834,6 +835,7 @@ export const api = {
       const body = form({ key, points: JSON.stringify(points), ...(box ? { box: JSON.stringify(box) } : {}) }, img ? [{ name: 'image.png', blob: img }] : [], 'file');
       return (await request('/ops/select-object', { method: 'POST', body })).blob();
     };
+    await beforeSelection('object');
     if (withImage) return send(await image());
     try { return await send(null); } catch (err) {
       if (err instanceof ApiError && err.status === 409) return send(await image());

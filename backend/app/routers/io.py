@@ -48,7 +48,7 @@ def image_pages(file: UploadFile = File(...)) -> dict:
 
 
 @router.post("/decode-deep")
-def decode_deep(file: UploadFile = File(...)) -> Response:
+def decode_deep(file: UploadFile = File(...), page: int = Form(0)) -> Response:
     """A picture's pixels at their own depth (1.53.6, the parity plan's H1): RGBA, 16 bits a channel, little-endian,
     with X-Depth saying whether the file held 16 bits or 8 (widened). OpenCV reads 16-bit PNG and TIFF, which Pillow
     narrows to 8."""
@@ -92,9 +92,16 @@ def decode_deep(file: UploadFile = File(...)) -> Response:
         return Response(np.ascontiguousarray(px).astype("<f4" if bits == 32 else "<u2").tobytes(), media_type="application/octet-stream",
                         headers={"X-Width": str(px.shape[1]), "X-Height": str(px.shape[0]), "X-Depth": str(bits)})
     if Path(file.filename or "").suffix.lower() in imaging.HEIF_SUFFIXES:
-        deep = imaging.heif_deep(raw)
+        if not imaging.HEIF:
+            raise HTTPException(status_code=415, detail=imaging.HEIF_NO_DECODER)
+        ran = contained.heif_deep(raw, page)
+        if ran is None:
+            raise HTTPException(status_code=415, detail="The HEIF file could not be read: its decoder stopped or took too long, so formvis left it.")
+        status, deep = ran
+        if status != "ok":
+            raise HTTPException(status_code=413 if "limit" in str(deep) else 415, detail=str(deep))
         if deep is None:
-            raise HTTPException(status_code=415, detail="This HEIF holds 8 bits a channel, or no HEIF engine is installed.")
+            raise HTTPException(status_code=415, detail=imaging.HEIF_EIGHT_BIT)
         px = deep[0]
         if px.shape[1] > 30000 or px.shape[0] > 30000 or px.shape[0] * px.shape[1] > config.MAX_PIXELS:
             raise HTTPException(status_code=413, detail="The picture is larger than formvis edits in one piece.")
@@ -838,7 +845,7 @@ def export_beside(request: Request, file: UploadFile = File(...), name: str = Fo
 
 #: What a file chosen in the desktop app's panels may be (1.87.0): projects, and every picture formvis reads or writes.
 DISK_KINDS = (".fvd", ".fmv", ".formvis", ".canvasor", ".comp", ".zip", ".psd", ".psb", ".ora", ".kra", ".pdn", ".png", ".jpg", ".jpeg",
-              ".webp", ".avif", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".qoi", ".tga", ".ico", ".pcx", ".xpm", ".pbm", ".pgm", ".ppm",
+              ".webp", ".avif", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".hif", ".qoi", ".tga", ".ico", ".pcx", ".xpm", ".pbm", ".pgm", ".ppm",
               ".pnm", ".pam", ".exr", ".hdr", ".dpx", ".fits", ".fit", ".fts", ".svg", ".pdf", ".dng", ".cr2", ".cr3", ".nef",
               ".arw", ".raf", ".orf", ".rw2", ".abr", ".aco", ".ase", ".grd", ".ggr", ".pat", ".csh")
 OUTPUT_KINDS = tuple(f".{t}" for t in EXPORT_TYPES)

@@ -423,6 +423,46 @@ def inspect_exr(data: bytes, picks: "list | None" = None) -> dict | None:
     return out if isinstance(out, dict) else None
 
 
+def _cap_memory(limit: int) -> None:
+    """The child's address space capped at `limit` bytes where the system enforces it (Linux); elsewhere the size check
+    before decoding is the guard."""
+    try:
+        import resource
+        import sys
+        if sys.platform.startswith("linux"):
+            resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    except (ImportError, ValueError, OSError):
+        pass
+
+
+def heif_memory_limit() -> int:
+    """Enough for the largest picture the engine edits as 16-bit RGBA, its uint32 working copy and the decoder, plus the
+    interpreter: about 40 bytes a pixel and 1.5 GB."""
+    from app.core import config
+
+    return int(config.MAX_PIXELS * 40 + 1.5 * 1024 ** 3)
+
+
+def _heif_worker(arg: tuple, q: "mp.Queue[object]") -> None:
+    data, page, limit = arg
+    _cap_memory(limit)
+    try:
+        from app.services import imaging
+        q.put(("ok", imaging.heif_deep(data, page)))
+    except MemoryError:
+        q.put(("error", "The HEIF file needs more memory to decode than formvis allows for one picture."))
+    except Exception as exc:   # DecodeError (size, page, unreadable) and anything the decoder raises
+        q.put(("error", str(exc) or "The HEIF file could not be read."))
+
+
+def heif_deep(data: bytes, page: int = 0) -> "tuple[str, object] | None":
+    """imaging.heif_deep in a child process with a time limit and, on Linux, a memory cap, so a crafted or broken HEIF
+    cannot take the engine down: ("ok", (pixels, bits) or None for an 8-bit picture), ("error", message), or None when
+    the child crashed or ran out of time."""
+    out = _run(_heif_worker, (data, page, heif_memory_limit()))
+    return out if isinstance(out, tuple) and len(out) == 2 else None
+
+
 def encode_exr(img: np.ndarray, opts: dict | None = None) -> bytes | None:
     """`img` (BGRA float32) as EXR bytes, or None when the child could not write it. `opts` as `_binding_encode` takes."""
     out = _run(_encode_worker, (img, opts or {}))

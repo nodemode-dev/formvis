@@ -85,6 +85,8 @@ app.include_router(system.router, prefix="/api")
 app.include_router(io.router, prefix="/api/io")
 app.include_router(projects.router, prefix="/api/projects")
 app.include_router(ops.router, prefix="/api/ops")
+from app.routers import selection_models as _selection_models  # noqa: E402
+app.include_router(_selection_models.router, prefix="/api")
 app.include_router(colour.router, prefix="/api/color")   # colour management (1.53.5)
 from app.routers import remove_find  # noqa: E402  (Remove's People and Distractions, 1.57.4)
 app.include_router(remove_find.router)

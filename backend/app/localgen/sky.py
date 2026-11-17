@@ -83,7 +83,7 @@ router = APIRouter(prefix="/api/sky", tags=["sky"])
 async def mask(image: UploadFile = File(...), quick: bool = False) -> Response:
     """The sky as a soft mask: the model's, or with `quick` the quick method, which needs no model."""
     if not quick and not model_manager.ready(MODEL):
-        raise HTTPException(409, "Select > Sky needs the sky model (176 MB, MIT): Preferences > Plugins > Local models.")
+        raise model_manager.missing(MODEL, "Select > Sky needs the sky model (176 MB, MIT): Preferences > Plugins > Local models.")
     try:
         picture = Image.open(io.BytesIO(await image.read()))
         picture.load()

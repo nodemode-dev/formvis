@@ -46,7 +46,7 @@ router = APIRouter(prefix="/api/colorize", tags=["colorize"])
 @router.post("/local")
 async def colorize_local(image: UploadFile = File(...)) -> Response:
     if not model_manager.ready(MODEL):
-        raise HTTPException(409, "Download DDColor first: Preferences > Plugins > Local models.")
+        raise model_manager.missing(MODEL, "Download DDColor first: Preferences > Plugins > Local models.")
     try:
         picture = Image.open(io.BytesIO(await image.read()))
         picture.load()

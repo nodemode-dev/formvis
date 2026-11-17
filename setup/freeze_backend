@@ -58,6 +58,14 @@ src="$(cv_native_path "$FORMVIS_ROOT")"
 extra=(--additional-hooks-dir "$src/setup/pyi_hooks")
 [ -z "${FORMVIS_PYI_ARCH:-}" ] || extra+=(--target-arch "$FORMVIS_PYI_ARCH")
 if [ "${FORMVIS_FREEZE_ML:-0}" = 1 ]; then extra+=(--collect-all rembg --hidden-import onnxruntime --hidden-import rembg); fi
+if [ "${FORMVIS_HEIF:-1}" = 0 ]; then
+  extra+=(--exclude-module pillow_heif)
+  cv_say "FORMVIS_HEIF=0: the engine is frozen without HEIC decoding (macOS falls back to sips)"
+else
+  python "$src/setup/heif_decode.py" || cv_die "HEIC decoding could not be built without GPL code (setup/heif_decode.py); fix the build, or set FORMVIS_HEIF=0 to freeze without HEIC"
+  extra+=(--hidden-import pillow_heif)
+  export FORMVIS_REQUIRE_HEIC=1
+fi
 mode=--onefile
 if [ "$(cv_os)" = macos ]; then
   mode=--onedir
@@ -71,24 +79,25 @@ pyinstaller --noconfirm --clean "$mode" --name formvis-engine \
   --add-data "$src/backend/app/data${sep}data" \
   --add-data "$src/setup/mcp_stdio.py${sep}setup" --add-data "$src/setup/agents.py${sep}setup" \
   --collect-submodules app --collect-submodules uvicorn --collect-submodules keyring --hidden-import cv2 --hidden-import OpenEXR \
-  --exclude-module pillow_heif "${extra[@]}" \
+  "${extra[@]}" \
   "$src/backend/formvis_engine.py"
 if [ "$(cv_os)" = macos ]; then
   gpl="$(find dist-engine \( -iname 'libx264*' -o -iname 'libx265*' -o -iname 'librubberband*' -o -iname 'libvidstab*' -o -iname 'libpostproc*' \) | head -1)"
   [ -z "$gpl" ] || cv_die "GPL FFmpeg library in the engine: $gpl. Run setup/opencv_macos, which builds OpenCV from source without FFmpeg (./build_app and ./formvis install-desktop run it), then freeze again"
 fi
+python "$src/setup/heif_decode.py" --check dist-engine build/pyinstaller || cv_die "a GPL codec library (x265 or x264) is in the frozen engine; see the lines above"
 if [ "$mode" = --onedir ]; then
   out="$FORMVIS_ROOT/src-tauri/engine"
   rm -rf "$out"
   cp -R dist-engine/formvis-engine "$out"
   flatten_engine "$out"
   [ -z "${APPLE_SIGNING_IDENTITY:-}" ] || sign_engine "$out"
-  "$out/formvis-engine" --selfcheck
+  "$out/formvis-engine" --selfcheck || cv_die "the frozen engine failed its self-check; see the line above"
   cv_say "engine folder ready: $out"
   exit 0
 fi
 mkdir -p "$FORMVIS_ROOT/src-tauri/binaries"
 out="$FORMVIS_ROOT/src-tauri/binaries/formvis-engine-${triple}${ext}"
 cp "dist-engine/formvis-engine${ext}" "$out"
-"$out" --selfcheck
+"$out" --selfcheck || cv_die "the frozen engine failed its self-check; see the line above"
 cv_say "sidecar ready: $out"
