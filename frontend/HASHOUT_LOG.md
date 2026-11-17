@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Select Subject and Object Selection offer their recommended model first · after 2.3.5, unreleased (io/selection-models.ts new; io/api.ts selectObject; ui/model-install.ts offerRecommended; app.ts selectSubject; ui/panels/local-models.ts showSelection)
+
+- Kind: feat · logged 2026-11-17 · the engine side is in backend/HASHOUT_LOG.md (BiRefNet and SAM 2.1 base-plus).
+- Now: `io/selection-models.ts` reads and saves the engine's choice and holds `beforeSelection(kind)`, which runs the window's offer (`onSelectionModelOffer(offerRecommended)` in app.ts) at most once a session per kind; io stays free of UI imports. Select Subject (default matting only, not GrabCut, a matting file or fal) and `api.selectObject` wait for it before sending a picture. `offerRecommended` asks "Use <recommended> for <action>?" with its size, licence and the small model named, Install now (<size>) first and Use the small model second: Install now runs the existing download job and the action carries on with the new model; Use the small model saves `small` in the engine so it is not asked again. A failed offer never stops the selection.
+- Preferences > Plugins > Local models gains a Selection models card: per action, a Recommended or Small choice, a Download button for the recommended model while it is missing, and which model runs now.
+- Checked: tests/selection-models.test.ts; e2e/test_selection_models.py (Select Subject: the offer, Use the small model saves it and selects, not asked twice; Install now downloads and selects; Object Selection: offered before its first picture). The tests fail on the commits before this one.
+- Old line: `    if (withImage) return send(await image());` had no wait before it (io/api.ts); nothing else was removed.
+
 ## Generative Fill without a fal key says what it needs and offers a key or a local model; an empty fill uses LaMa · after 2.3.5, unreleased (ui/panels/generative-dialog.ts NO_KEY, noKeyRow, falBacked, noKey, lamaInstead, useLocal, show, sync, prepare)
 
 - Kind: fix · logged 2026-11-17 · from the Creative Bloq review preparation. Preferences > Generative's defaults (gen-prefs.ts DEFAULT_GEN, 1.96.2) start Generative Fill on fal's FLUX 3 edit and an empty fill on fal's Bria eraser, so on a fresh install the task bar's Generate opened the dialog with only "Add a fal API key to generate." at the foot of a long body, and Generate then said "Paste a fal API key first."

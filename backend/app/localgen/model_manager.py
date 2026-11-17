@@ -163,6 +163,11 @@ PINNED: dict[str, str] = {
     "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx": "874414704c5d686db7d206a35f6e15d26563d50c8c4468fccc6739bd7e491dcf",
     "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx_data": "e9874d900dd4134ed60eab1e97910327c2419e0b2954485d8fd6e7f1a1470f47",
     "u2net.onnx": "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491",
+    "birefnet/BiRefNet-general-epoch_244.onnx": "58f621f00f5d756097615970a88a791584600dcf7c45b18a0a6267535a1ebd3c",
+    "sam2.1-hiera-base-plus/vision_encoder.onnx": "6fd992cf796e6ad5a29f3b92a127f2ce33f7f320d63c8b3f02bf3775f5f692f4",
+    "sam2.1-hiera-base-plus/vision_encoder.onnx_data": "f8a5f1b14d02eb7ed3b3576ad6774b8ebcfef6cc20674d5f316d6144c60a08a5",
+    "sam2.1-hiera-base-plus/prompt_encoder_mask_decoder.onnx": "f39eeec20243ed1c8f2cd013812e77813d937ddbc800fa4bc703761adc7e63cd",
+    "sam2.1-hiera-base-plus/prompt_encoder_mask_decoder.onnx_data": "445cd3f72a218815db10e336f4f1c46a6eb2713a0160a85af5365134607f32a7",
     "realesrgan-x4plus.onnx": "4851ec156207d271f5328605d0582eeb851e656227da8aca093ced9e60789291",
     "kokoro-v1.0.onnx": "beb0d1848dee9a49da392cc3df26958d46cfa35d321edf434f52949153f0df3a",
     "voices-v1.0.bin": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
@@ -425,6 +430,7 @@ MODELS = {
     # weights (Apache-2.0), exported by onnx-community (the export states no licence of its own), pinned to its revision.
     "sam2-onnx": {
         "name": "SAM 2.1 tiny (ONNX)",
+        "size": "155 MB",
         "license": "Apache-2.0",
         "files": {
             "sam2.1-hiera-tiny/vision_encoder.onnx": "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/vision_encoder.onnx",
@@ -437,8 +443,26 @@ MODELS = {
     # (its md5 checked against rembg's), run on ONNX Runtime; Apache-2.0.
     "u2net-onnx": {
         "name": "U2-Net (background and subject)",
+        "size": "176 MB",
         "license": "Apache-2.0",
         "files": {"u2net.onnx": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx"},
+    },
+    # BiRefNet general (after 2.3.5): the recommended Select Subject and Remove Background model, MIT, the author's own
+    # ONNX export from the ZhengPeng7/BiRefNet v1 release, hashed on 17 November 2026 from the real download.
+    "birefnet-general": {
+        "name": "BiRefNet general (ONNX)",
+        "size": "973 MB",
+        "license": "MIT",
+        "files": {"birefnet/BiRefNet-general-epoch_244.onnx": "https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/BiRefNet-general-epoch_244.onnx"},
+    },
+    # SAM 2.1 base-plus as ONNX (after 2.3.5): the recommended Object Selection model, Meta's SAM 2.1 weights (Apache-2.0)
+    # in the same onnx-community export as the tiny one above, pinned to its revision; the SHA-256 Hugging Face records.
+    "sam2-base-plus-onnx": {
+        "name": "SAM 2.1 base-plus (ONNX)",
+        "size": "328 MB",
+        "license": "Apache-2.0",
+        "files": {f"sam2.1-hiera-base-plus/{f}": f"https://huggingface.co/onnx-community/sam2.1-hiera-base-plus-ONNX/resolve/bab18593f44e652f04cf18b60b3690f60e8996b0/onnx/{f}"
+                  for f in ("vision_encoder.onnx", "vision_encoder.onnx_data", "prompt_encoder_mask_decoder.onnx", "prompt_encoder_mask_decoder.onnx_data")},
     },
     "ai-upscale": {
         "name": "Real-ESRGAN x4plus",

@@ -1,4 +1,5 @@
 import { installModel, modelEntry } from '../io/local-gen';
+import { chooseSelectionModel, selectionModels, type SelectionKind } from '../io/selection-models';
 import { confirmAction } from './dialogs';
 import { toast } from './toast';
 
@@ -31,6 +32,30 @@ export async function offerModel(id: string): Promise<boolean> {
   let run = installing.get(id);
   if (!run) { run = install(id, entry.name).finally(() => installing.delete(id)); installing.set(id, run); }
   return run;
+}
+
+const BETTER: Record<SelectionKind, string> = {
+  subject: 'finds the subject with cleaner edges, hair and fine detail',
+  object: 'follows the object you click more closely',
+};
+
+/** Select Subject and Object Selection offer their recommended model first while it is not here: Install now downloads
+ *  it and the action runs on it; Use the small model keeps the small one (saved, so it is not asked again). */
+export async function offerRecommended(kind: SelectionKind): Promise<void> {
+  const state = (await selectionModels())?.[kind];
+  const best = state?.options.find((o) => o.role === 'recommended'), small = state?.options.find((o) => o.role === 'small');
+  if (!state || !best || !small || state.choice !== 'recommended' || best.ready) return;
+  const size = best.size ? ` (${best.size})` : '';
+  const ok = await confirmAction(`Use ${best.name} for ${state.label}?`,
+    `${best.name} is the recommended model: it ${BETTER[kind]} than the small model, ${small.name}${small.size ? ` (${small.size})` : ''}. It downloads once${best.size ? `, about ${best.size},` : ''} and runs on this computer, with no key and no cost (${best.license}). You can switch in Preferences > Plugins > Local models.`,
+    `Install now${size}`, false, 'Use the small model');
+  if (!ok) {
+    try { await chooseSelectionModel(kind, 'small'); } catch (err) { toast(err instanceof Error ? err.message : 'The model choice could not be saved.', 'error'); }
+    return;
+  }
+  let run = installing.get(best.id);
+  if (!run) { run = install(best.id, best.name).finally(() => installing.delete(best.id)); installing.set(best.id, run); }
+  await run;
 }
 
 /** offerModel, with `declined` run when the model is still missing afterwards (what the action did before it could offer). */

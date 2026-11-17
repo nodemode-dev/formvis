@@ -81,7 +81,29 @@ _MEAN = (0.485, 0.456, 0.406)
 _STD = (0.229, 0.224, 0.225)
 
 
+FOLDERS = {"sam2-onnx": "sam2.1-hiera-tiny/", "sam2-base-plus-onnx": "sam2.1-hiera-base-plus/"}
+
+
+def onnx_model() -> str:
+    """The SAM 2.1 export Object Selection runs: base-plus once it is downloaded and chosen, else tiny."""
+    from app.services import selection_models
+
+    return selection_models.active("object")
+
+
 def _onnx_sessions():
+    from app.localgen import model_manager, sessions
+    from app.localgen.paths import session as onnx_session
+
+    model = onnx_model()
+    if model != "sam2-onnx":
+        folder = FOLDERS[model]
+        return sessions.get(f"sam2:{model}", lambda: (onnx_session(model_manager.model_file(folder + "vision_encoder.onnx")),
+                                                      onnx_session(model_manager.model_file(folder + "prompt_encoder_mask_decoder.onnx"))))
+    return _tiny_sessions()
+
+
+def _tiny_sessions():
     from app.localgen import jobs, model_manager
     from app.localgen.paths import providers, session as onnx_session
     import onnxruntime as ort
@@ -213,7 +235,8 @@ def encode(key: str, data: bytes) -> tuple[int, int]:
         raise SegmentError(f"The image could not be read: {exc}") from exc
     with _lock:
         if backend() == "onnx":
-            _embeddings[key] = {"onnx": _onnx_encode(rgb), "size": (rgb.shape[1], rgb.shape[0])}
+            model = onnx_model()
+            _embeddings[key] = {"onnx": _onnx_encode(rgb), "size": (rgb.shape[1], rgb.shape[0]), "model": model}
         else:
             import torch
             pred = _get_predictor()
@@ -235,7 +258,8 @@ def select(key: str, points: list[tuple[float, float, int]], box: tuple[float, f
         raise SegmentError("Click on the object to select, or drag a box round it.")
     with _lock:
         entry = _embeddings.get(key)
-        if entry is None:
+        if entry is None or ("onnx" in entry and entry.get("model") != onnx_model()):
+            _embeddings.pop(key, None)
             raise KeyError(key)
         _embeddings.move_to_end(key)
         if "onnx" in entry:

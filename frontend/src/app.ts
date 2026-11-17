@@ -134,7 +134,8 @@ import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, serviceReady, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, dialogWatch, fileDialogReport, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
 import { findToRemove, installModel, localDepth, localDepth16, localDepthValues, localInpaint, modelReady, onMissingModel, skyMask, skyReady, warmLama } from './io/local-gen';
-import { needModel, offerModel } from './ui/model-install';
+import { needModel, offerModel, offerRecommended } from './ui/model-install';
+import { beforeSelection, onSelectionModelOffer } from './io/selection-models';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
 import { ScriptEventsDialog } from './ui/panels/script-events-dialog';
@@ -3011,6 +3012,7 @@ export function startApp(): void {
   }
   engine.removeFinder = removeFound;
   onMissingModel(offerModel);
+  onSelectionModelOffer(offerRecommended);
   let lamaWarmAt = 0;
   engine.warmRemove = () => {
     if (Date.now() - lamaWarmAt < 5 * 60_000) return;
@@ -3079,6 +3081,8 @@ export function startApp(): void {
     const flat = engine.autoSelSource(), crop = createSurface(box.w, box.h);
     if (!flat) return;
     ctxOf(crop).drawImage(flat, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+    if (!mattingChoice()) await beforeSelection('subject');
+    if (engine.current !== p) return;
     await engine.task(async () => {
       try {
         const choice = mattingChoice();

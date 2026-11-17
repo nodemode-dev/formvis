@@ -15,7 +15,8 @@ def _engine_up() -> bool:
         return False
 
 
-pytestmark = pytest.mark.skipif(not _engine_up(), reason="needs the engine on 8190 with a background engine (./formvis backend)")
+pytestmark = [pytest.mark.skipif(not _engine_up(), reason="needs the engine on 8190 with a background engine (./formvis backend)"),
+              pytest.mark.usefixtures("small_selection_models")]
 
 SCENE = """() => {
   const e = window.formvis.engine;

@@ -30,7 +30,9 @@ def model_name() -> str:
 def available() -> dict:
     ml = _has("onnxruntime")   # 1.53.4: rembg when installed, else U^2-Net on ONNX Runtime directly (nothing to install)
     lite = _has("cv2")
-    return {"ml": ml, "lite": lite, "default": "ml" if ml else ("lite" if lite else None), "model": model_name()}
+    from app.services import selection_models
+
+    return {"ml": ml, "lite": lite, "default": "ml" if ml else ("lite" if lite else None), "model": model_name(), "subjectModel": selection_models.active("subject")}
 
 
 @lru_cache(maxsize=2)
@@ -79,6 +81,10 @@ def _u2net_onnx(image: Image.Image) -> Image.Image:
 
 
 def _ml(image: Image.Image) -> Image.Image:
+    from app.services import selection_models
+
+    if selection_models.active("subject") == BIREFNET:
+        return _birefnet(image)
     if not _has("rembg"):
         return _u2net_onnx(image)
     from rembg import remove
@@ -160,9 +166,45 @@ def _matting_session(name: str):
 def _file_matte(image: Image.Image, name: str) -> Image.Image:
     """A chosen matting model (BiRefNet, RMBG and the like exported to ONNX): the picture at the model's own size
     (1024 when it takes any), ImageNet-normalised, and the first output read as the subject's matte."""
+    session, input_name, shape = _matting_session(name)
+    return _matte(session, input_name, shape, image, name)
+
+
+def _birefnet(image: Image.Image) -> Image.Image:
+    """Select Subject's recommended model (BiRefNet general, the author's ONNX export), run as the matting files are."""
+    from app.localgen import model_manager, sessions
+
+    path = model_manager.model_file(next(iter(model_manager.MODELS[BIREFNET]["files"])))
+    try:
+        session = sessions.get(BIREFNET, lambda: _birefnet_session(path))
+        entry = session.get_inputs()[0]
+    except Exception as err:
+        raise BackgroundError(f"BiRefNet could not be loaded ({str(err).splitlines()[0][:160] if str(err) else 'unreadable'}); choose the small model in Preferences > Plugins > Local models.") from err
+    return _matte(session, entry.name, list(entry.shape), image, "BiRefNet")
+
+
+BIREFNET = "birefnet-general"
+
+
+def birefnet_providers(chosen: list[str]) -> list[str]:
+    """The engine's providers without Core ML: Core ML takes 1,892 of BiRefNet's 5,271 nodes in 207 pieces, and building
+    that session did not finish in over an hour on an M-series Mac, where the CPU loads and runs it in about 16 s."""
+    return [p for p in chosen if p != "CoreMLExecutionProvider"] or ["CPUExecutionProvider"]
+
+
+def _birefnet_session(path):
+    import onnxruntime as ort
+
+    from app.localgen.paths import providers
+
+    options = ort.SessionOptions()
+    options.enable_cpu_mem_arena = False
+    return ort.InferenceSession(str(path), options, providers=birefnet_providers(providers()))
+
+
+def _matte(session, input_name: str, shape: list, image: Image.Image, name: str) -> Image.Image:
     import numpy as np
 
-    session, input_name, shape = _matting_session(name)
     h, w = (int(d) if isinstance(d, int) else 1024 for d in shape[2:])
     x = np.asarray(image.convert("RGB").resize((w, h), Image.Resampling.BICUBIC), np.float32) / 255.0
     x = ((x - np.array((0.485, 0.456, 0.406), np.float32)) / np.array((0.229, 0.224, 0.225), np.float32)).transpose(2, 0, 1)[None].astype(np.float32)

@@ -134,3 +134,27 @@ def page(context, request):
     if pg.navigations:
         print(f"\n[navigated after load] {request.node.nodeid}: {pg.navigations} warnings: {pg.warnings[-8:]}")
     assert not [e for e in pg.errors if "deliberate" not in e], pg.errors
+
+
+def choose_selection_model(kind: str, choice: str) -> None:
+    import json
+
+    req = urllib.request.Request(URL + "api/selection-models", data=json.dumps({"kind": kind, "choice": choice}).encode(), method="PUT", headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=30).read()
+
+
+@pytest.fixture()
+def small_selection_models():
+    """Select Subject and Object Selection on their small models (U2-Net, SAM 2.1 tiny), so the offer of the recommended
+    model does not wait in front of a test of the selection itself; the default is put back afterwards."""
+    try:
+        for kind in ("subject", "object"):
+            choose_selection_model(kind, "small")
+    except OSError:
+        pass
+    yield
+    try:
+        for kind in ("subject", "object"):
+            choose_selection_model(kind, "recommended")
+    except OSError:
+        pass

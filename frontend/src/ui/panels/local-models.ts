@@ -1,5 +1,6 @@
 import { el, setHidden, setText } from '../dom';
 import { toggleOf } from './controls';
+import { chooseSelectionModel, selectionModels, type SelectionChoice } from '../../io/selection-models';
 
 /** Preferences > Plugins > Local models (1.52.9): Krea 2 Turbo and FLUX.2 [klein] 4B installed on this computer, each
  *  licence shown and accepted before anything downloads (Krea 2's content filter installed with it, as its licence
@@ -21,6 +22,7 @@ export class LocalModelsSection {
   private readonly klein = el('<div class="cv-local-card" data-model="klein"></div>');
   private readonly library = el('<div class="cv-local-card" data-model="loras"></div>');
   private readonly upscaler = el('<div class="cv-local-card" data-model="ai-upscale"></div>');
+  private readonly selection = el('<div class="cv-local-card" data-model="selection"></div>');
   private readonly lama = el('<div class="cv-local-card" data-model="lama-inpaint"></div>');
   private readonly depth = el('<div class="cv-local-card" data-model="depth-anything-v2-small"></div>');
   private readonly ddcolor = el('<div class="cv-local-card" data-model="ddcolor-tiny"></div>');
@@ -35,11 +37,11 @@ export class LocalModelsSection {
   private sourceShow: (() => void) | null = null;
 
   constructor() {
-    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each license is shown for you to accept before anything downloads.</p>'), this.lama, this.depth, this.ddcolor, this.styles, this.yunet, this.sky, this.moge, this.upscaler, this.krea, this.klein, this.library, this.source);
+    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each license is shown for you to accept before anything downloads.</p>'), this.selection, this.lama, this.depth, this.ddcolor, this.styles, this.yunet, this.sky, this.moge, this.upscaler, this.krea, this.klein, this.library, this.source);
   }
 
   async refresh(): Promise<void> {
-    try { await Promise.all([this.showDownload(this.lama, 'lama-inpaint', 'LaMa inpainting', 'Download LaMa', 'about 208 MB', 'Generative Fill and Expand on any computer, with no prompt, key or cost: it fills from what surrounds the selection. Apache-2.0.'), this.showDownload(this.depth, 'depth-anything-v2-small', 'Depth Anything V2 Small', 'Download Depth Anything', 'about 99 MB', 'Depth from one picture for the Neural Filters\' Depth Blur, on any computer. The Small checkpoint, Apache-2.0.'), this.showDownload(this.ddcolor, 'ddcolor-tiny', 'DDColor-tiny', 'Download DDColor', 'about 135 MB', 'Color for black-and-white pictures in the Neural Filters, on any computer; the picture\'s own light is kept. Apache-2.0.'), this.showDownload(this.styles, 'fast-style', 'Style Transfer presets', 'Download the styles', 'about 34 MB', 'Five preset styles (Mosaic, Candy, Rain Princess, Udnie, Pointilism) for the Neural Filters, the ONNX model zoo\'s fast neural style models, on any computer. BSD-3-Clause.'), this.showDownload(this.yunet, 'yunet-face', 'YuNet face finder', 'Download the face finder', 'about 232 KB', 'Finds faces and their eyes, nose and mouth for Face-Aware Liquify, on any computer. OpenCV Zoo, MIT.'), this.showDownload(this.sky, 'skyseg', 'Sky segmentation', 'Download the sky model', 'about 176 MB', 'Finds the sky for Select > Sky, on any computer. U-2-Net sky model, MIT.'), this.showMoge(), this.showSources(), this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
+    try { await Promise.all([this.showDownload(this.lama, 'lama-inpaint', 'LaMa inpainting', 'Download LaMa', 'about 208 MB', 'Generative Fill and Expand on any computer, with no prompt, key or cost: it fills from what surrounds the selection. Apache-2.0.'), this.showDownload(this.depth, 'depth-anything-v2-small', 'Depth Anything V2 Small', 'Download Depth Anything', 'about 99 MB', 'Depth from one picture for the Neural Filters\' Depth Blur, on any computer. The Small checkpoint, Apache-2.0.'), this.showDownload(this.ddcolor, 'ddcolor-tiny', 'DDColor-tiny', 'Download DDColor', 'about 135 MB', 'Color for black-and-white pictures in the Neural Filters, on any computer; the picture\'s own light is kept. Apache-2.0.'), this.showDownload(this.styles, 'fast-style', 'Style Transfer presets', 'Download the styles', 'about 34 MB', 'Five preset styles (Mosaic, Candy, Rain Princess, Udnie, Pointilism) for the Neural Filters, the ONNX model zoo\'s fast neural style models, on any computer. BSD-3-Clause.'), this.showDownload(this.yunet, 'yunet-face', 'YuNet face finder', 'Download the face finder', 'about 232 KB', 'Finds faces and their eyes, nose and mouth for Face-Aware Liquify, on any computer. OpenCV Zoo, MIT.'), this.showDownload(this.sky, 'skyseg', 'Sky segmentation', 'Download the sky model', 'about 176 MB', 'Finds the sky for Select > Sky, on any computer. U-2-Net sky model, MIT.'), this.showMoge(), this.showSources(), this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary(), this.showSelection()]); }
     catch { this.krea.replaceChildren(el('<p class="cv-note">The formvis engine is offline: local models need it.</p>')); }
   }
 
@@ -60,6 +62,31 @@ export class LocalModelsSection {
     const b = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Cancel</button>');
     b.addEventListener('click', () => { const j = this.jobs.get(note); this.jobs.delete(note); if (j) void api(`/jobs/${j}`, { method: 'DELETE' }).catch(() => undefined); setText(note, 'Cancelled.'); });
     return b;
+  }
+
+  /** Select Subject's and Object Selection's model: the recommended one (downloaded here) or the small one. */
+  private async showSelection(): Promise<void> {
+    const models = await selectionModels();
+    if (!models) { this.selection.replaceChildren(); return; }
+    const parts: HTMLElement[] = [el('<p class="cv-local-state">Selection models</p>')];
+    for (const kind of ['subject', 'object'] as const) {
+      const s = models[kind], note = el('<p class="cv-note cv-local-note" role="status"></p>');
+      const pick = el<HTMLSelectElement>(`<select class="cv-input" data-selection-kind="${kind}"></select>`);
+      pick.setAttribute('aria-label', `${s.label} model`);
+      for (const o of s.options) pick.append(Object.assign(document.createElement('option'), { value: o.role, textContent: `${o.name}${o.role === 'recommended' ? ', recommended' : ', small'}${o.size ? ` (${o.size})` : ''}` }));
+      pick.value = s.choice;
+      const best = s.options.find((o) => o.role === 'recommended');
+      setText(note, s.choice === 'recommended' && best && !best.ready ? `${best.name} is not downloaded yet, so ${s.label} uses the small model until it is.` : `${s.label} uses ${s.options.find((o) => o.id === s.active)?.name ?? s.active}.`);
+      const get = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-primary"></button>');
+      setText(get, `Download ${best?.name ?? 'it'}${best?.size ? ` (${best.size})` : ''}`);
+      setHidden(get, !best || best.ready);
+      get.addEventListener('click', () => void (async () => { try { const j = await api(`/models/${best!.id}/download`, { method: 'POST' }); await this.follow(j.job_id, note, () => void this.showSelection()); } catch (err) { setText(note, err instanceof Error ? err.message : 'Could not start the download.'); } })());
+      pick.addEventListener('change', () => void (async () => { try { await chooseSelectionModel(kind, pick.value as SelectionChoice); await this.showSelection(); } catch (err) { setText(note, err instanceof Error ? err.message : 'The choice could not be saved.'); } })());
+      const row = el('<label class="cv-dialog-row"><span></span></label>'); setText(row.firstElementChild as HTMLElement, s.label); row.append(pick);
+      const actions = el('<div class="cv-improve"></div>'); actions.append(get);
+      parts.push(row, actions, note);
+    }
+    this.selection.replaceChildren(...parts);
   }
 
   /** A model with no licence to accept (1.53.2: LaMa), downloaded here. */
