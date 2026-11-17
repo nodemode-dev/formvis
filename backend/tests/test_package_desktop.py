@@ -103,3 +103,42 @@ def test_the_appimage_carries_the_program_its_menu_entry_runs():
     for kind in ("deb", "appimage"):
         source = linux[kind]["files"][f"/usr/bin/{program}"]
         assert (ROOT / "src-tauri" / source).is_file(), (kind, source)
+
+
+def windows_tree(base: Path, engine_in_release: bool) -> Path:
+    """A Windows build: formvis.exe in the release folder, the frozen engine in src-tauri/binaries (where the
+    installer takes it from), and on a warm cache a copy of the engine beside formvis.exe as well."""
+    release = base / "src-tauri" / "target" / "release"
+    release.mkdir(parents=True)
+    (release / "formvis.exe").write_bytes(b"shell")
+    binaries = base / "src-tauri" / "binaries"
+    binaries.mkdir(parents=True)
+    (binaries / "formvis-engine-x86_64-pc-windows-msvc.exe").write_bytes(b"sidecar")
+    if engine_in_release:
+        (release / "formvis-engine.exe").write_bytes(b"release")
+    return release
+
+
+def portable_engine(tmp_path, monkeypatch, engine_in_release: bool) -> bytes:
+    release = windows_tree(tmp_path, engine_in_release)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pd, "ROOT", str(tmp_path))
+    assert pd.cmd_portable_windows(SimpleNamespace(arch="x64", release_dir=str(release))) == 0
+    return (tmp_path / "portable" / "formvis" / "formvis-engine.exe").read_bytes()
+
+
+def test_the_portable_zip_takes_the_installer_engine_when_the_release_folder_lacks_it(tmp_path, monkeypatch):
+    assert portable_engine(tmp_path, monkeypatch, engine_in_release=False) == b"sidecar"
+
+
+def test_the_portable_zip_prefers_the_release_folder_engine(tmp_path, monkeypatch):
+    assert portable_engine(tmp_path, monkeypatch, engine_in_release=True) == b"release"
+
+
+def test_the_portable_zip_still_fails_with_no_engine_anywhere(tmp_path, monkeypatch):
+    release = windows_tree(tmp_path, engine_in_release=False)
+    (tmp_path / "src-tauri" / "binaries" / "formvis-engine-x86_64-pc-windows-msvc.exe").unlink()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pd, "ROOT", str(tmp_path))
+    with pytest.raises(FileNotFoundError):
+        pd.cmd_portable_windows(SimpleNamespace(arch="x64", release_dir=str(release)))
