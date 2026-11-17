@@ -133,7 +133,8 @@ import { commitPendingCrop, cropPending, startPerspectiveCrop } from './extensio
 import { HostLink } from './host';
 import { api, onServiceChange, serviceDown, serviceReady, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { PROJECT_FILTER, baseName, checkForUpdate, chooseOpenPaths, chooseSavePath, confirmExit, dialogWatch, fileDialogReport, folderOf, hasPanels, installUpdate, isDiskPath, listenShell } from './io/disk';
-import { depthReady, findToRemove, installModel, localDepth, localDepth16, localDepthValues, localInpaint, modelReady, skyMask, skyReady, warmLama } from './io/local-gen';
+import { findToRemove, installModel, localDepth, localDepth16, localDepthValues, localInpaint, modelReady, onMissingModel, skyMask, skyReady, warmLama } from './io/local-gen';
+import { needModel, offerModel } from './ui/model-install';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
 import { ScriptEventsDialog } from './ui/panels/script-events-dialog';
@@ -2995,7 +2996,8 @@ export function startApp(): void {
   async function removeFound(kind: 'people' | 'distractions'): Promise<void> {
     const p = engine.current, flat = engine.flattened();
     if (!p || !flat) return;
-    if (!(await modelReady('lama-inpaint'))) { toast('Remove fills with LaMa: download it in Preferences > Plugins > Local models.', 'error'); return; }
+    if (!(await needModel('lama-inpaint', () => toast('Remove fills with LaMa: download it in Preferences > Plugins > Local models.', 'error')))) return;
+    if (engine.current !== p) return;
     await engine.task(async () => {
       try {
         const W = p.doc.width, H = p.doc.height, found = await createImageBitmap(await findToRemove(await toBlob(flat), kind));
@@ -3008,6 +3010,7 @@ export function startApp(): void {
     });
   }
   engine.removeFinder = removeFound;
+  onMissingModel(offerModel);
   let lamaWarmAt = 0;
   engine.warmRemove = () => {
     if (Date.now() - lamaWarmAt < 5 * 60_000) return;
@@ -5904,11 +5907,11 @@ export function startApp(): void {
     { id: 'upscale-2x', label: 'Upscale 2x...', enabled: has, run: () => void dialogs.generative.show('upscale', 2) },
     { id: 'upscale-4x', label: 'Upscale 4x...', enabled: has, run: () => void dialogs.generative.show('upscale', 4) },
     { id: 'compute-depth-map', label: 'Compute Depth Map', enabled: has, run: () => void (async () => {
-      if (!(await depthReady())) { toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await needModel('depth-anything-v2-small', () => toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error')))) return;
       if (await engine.task(() => engine.computeDepthMap(localDepth))) toast('Added a Depth Map layer: near is bright, far is dark.');
     })() },
     { id: 'compute-depth-map-16', label: 'Compute Depth Map as 16-Bit Document', enabled: has, run: () => void (async () => {
-      if (!(await depthReady())) { toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await needModel('depth-anything-v2-small', () => toast('Compute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error')))) return;
       const p = engine.current, flat = engine.flattened();
       if (!p || !flat) return;
       const W = p.doc.width, H = p.doc.height;
@@ -5932,7 +5935,7 @@ export function startApp(): void {
         dialog: { type: 'boolean', description: 'Open the Color Range dialog on depth instead of selecting at once.' },
       },
       run: (a) => void (async () => {
-        if (!(await depthReady())) { toast('Select by Depth needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+        if (!(await needModel('depth-anything-v2-small', () => toast('Select by Depth needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error')))) return;
         const fine = a?.quality === 'detail';
         const d = await engine.task(() => engine.ensureDocDepth((i, w, h) => localDepthValues(i, w, h, fine), fine));
         if (!d) return;
@@ -5942,12 +5945,12 @@ export function startApp(): void {
         engine.selectByDepth({ near: typeof a?.near === 'number' ? a.near : 100, far: typeof a?.far === 'number' ? a.far : 60, feather: typeof a?.feather === 'number' ? a.feather : 10, mode });
       })() },
     { id: 'depth-map-from-layer', label: 'Depth Map from Layer', enabled: () => !!layer() && !layer()?.isGroup, run: () => void (async () => {
-      if (!(await depthReady())) { toast('Depth Map from Layer needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await needModel('depth-anything-v2-small', () => toast('Depth Map from Layer needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error')))) return;
       const id = engine.current?.activeLayer?.id;
       if (id && await engine.task(() => engine.computeDepthMap(localDepth, { layer: id }))) toast('Added a Depth Map layer read from that layer alone.');
     })() },
     { id: 'depth-map-recompute', label: 'Recompute Depth Map', enabled: () => !!engine.depthLayer(), run: () => void (async () => {
-      if (!(await depthReady())) { toast('Recompute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error'); return; }
+      if (!(await needModel('depth-anything-v2-small', () => toast('Recompute Depth Map needs Depth Anything V2 Small (99 MB): download it in Preferences > Plugins > Local models.', 'error')))) return;
       if (await engine.task(() => engine.computeDepthMap(localDepth, { recompute: true }))) toast('Recomputed the Depth Map from what the document shows.');
     })() },
     { id: 'depth-map-show', label: 'Show Depth Map', enabled: () => !!engine.depthLayer() || !!engine.depthView, checked: () => !!engine.depthView && engine.depthView.project === engine.current, run: () => engine.showDepthMap() },

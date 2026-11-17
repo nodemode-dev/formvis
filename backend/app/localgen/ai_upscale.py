@@ -165,7 +165,7 @@ async def upscale_local(file: UploadFile = File(...), factor: float = Form(4.0),
             raise HTTPException(422, str(err))
         label = f"{model} (this computer)"
     elif not model_manager.ready(MODEL):
-        raise HTTPException(409, "Download the Real-ESRGAN model first: Preferences > Plugins > Local models.")
+        raise model_manager.missing(MODEL, "Download the Real-ESRGAN model first: Preferences > Plugins > Local models.")
     factor = 2.0 if float(factor) <= 2 else 4.0
     data = await file.read()
     try:

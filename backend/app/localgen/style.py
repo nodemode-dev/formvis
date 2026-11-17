@@ -55,7 +55,7 @@ async def style_local(image: UploadFile = File(...), style: str = Form("mosaic")
     if style not in STYLES:
         raise HTTPException(422, "Unknown style.")
     if not model_manager.ready(MODEL):
-        raise HTTPException(409, "Download the style models first: Preferences > Plugins > Local models.")
+        raise model_manager.missing(MODEL, "Download the style models first: Preferences > Plugins > Local models.")
     try:
         picture = Image.open(io.BytesIO(await image.read()))
         picture.load()

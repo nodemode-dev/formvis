@@ -52,7 +52,7 @@ router = APIRouter(prefix="/api/inpaint", tags=["inpaint"])
 @router.post("/local")
 async def inpaint_local(image: UploadFile = File(...), mask: UploadFile = File(...)) -> Response:
     if not model_manager.ready(MODEL):
-        raise HTTPException(409, "Download LaMa first: Preferences > Plugins > Local models.")
+        raise model_manager.missing(MODEL, "Download LaMa first: Preferences > Plugins > Local models.")
     try:
         picture, hole = Image.open(io.BytesIO(await image.read())), Image.open(io.BytesIO(await mask.read()))
         picture.load(); hole.load()

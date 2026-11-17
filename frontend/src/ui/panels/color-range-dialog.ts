@@ -1,7 +1,8 @@
 import { COLOR_RANGE_MODES, type ColorRangeMode, type Engine, type RGB, type SelectionMode } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
-import { faceReady, findFaces } from '../../io/local-gen';
+import { findFaces } from '../../io/local-gen';
+import { offerModel } from '../model-install';
 
 const BOX_W = 320, BOX_H = 200;
 
@@ -81,7 +82,7 @@ export class ColorRangeDialog extends Dialog {
       if (!flat) { this.detect.checked = false; return; }
       setText(this.note, 'Finding faces...');
       try {
-        if (!(await faceReady())) throw new Error('Detect Faces needs the face finder (YuNet, 232 KB, MIT): download it in Preferences > Plugins > Local models.');
+        if (!(await offerModel('yunet-face'))) throw new Error('Detect Faces needs the face finder (YuNet, 232 KB, MIT): download it in Preferences > Plugins > Local models.');
         const c = document.createElement('canvas');
         c.width = flat.width; c.height = flat.height;
         (c.getContext('2d') as CanvasRenderingContext2D).drawImage(flat as CanvasImageSource, 0, 0);

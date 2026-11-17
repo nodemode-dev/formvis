@@ -63,7 +63,7 @@ router = APIRouter(prefix="/api/depth", tags=["depth"])
 @router.post("/local")
 async def depth_local(image: UploadFile = File(...), fmt: str = "png", width: int = 0, height: int = 0, quality: str = "standard") -> Response:
     if not model_manager.ready(MODEL):
-        raise HTTPException(409, "Download Depth Anything first: Preferences > Plugins > Local models.")
+        raise model_manager.missing(MODEL, "Download Depth Anything first: Preferences > Plugins > Local models.")
     if quality not in ("standard", "detail"):
         raise HTTPException(400, "quality is standard or detail")
     side = DETAIL_SIZE if quality == "detail" else SIZE

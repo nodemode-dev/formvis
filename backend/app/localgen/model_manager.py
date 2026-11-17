@@ -335,6 +335,7 @@ MODELS = {
     # ComfyUI or fal. big-lama exported to ONNX by Carve (Apache-2.0), fixed at 512 x 512, pinned to its revision.
     "lama-inpaint": {
         "name": "LaMa inpainting (big-lama, ONNX)",
+        "size": "208 MB",
         "license": "Apache-2.0",
         "files": {"lama_fp32.onnx": "https://huggingface.co/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx"},
     },
@@ -343,6 +344,7 @@ MODELS = {
     # pinned to its revision, hashed on 1 October 2026.
     "depth-anything-v2-small": {
         "name": "Depth Anything V2 Small (ONNX)",
+        "size": "99 MB",
         "license": "Apache-2.0",
         "files": {"depth-anything-v2-small/model.onnx": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/413ce838e669ab7dfc01a6a396bf3d4397286d7f/onnx/model.onnx"},
     },
@@ -383,6 +385,7 @@ MODELS = {
     # Apache-2.0 (piddnad/DDColor); the fp16 export is edgetools', pinned to its revision, hashed on 1 October 2026.
     "ddcolor-tiny": {
         "name": "DDColor-tiny (ONNX)",
+        "size": "135 MB",
         "license": "Apache-2.0",
         "files": {"ddcolor-tiny/ddcolor-tiny-fp16.onnx": "https://huggingface.co/edgetools/ddcolor/resolve/4755ae9f1f7a35a9e7693b96c2a88f3432cb6ab0/ddcolor-tiny-fp16.onnx"},
     },
@@ -390,6 +393,7 @@ MODELS = {
     # Transfer. The zoo's files are BSD-3-Clause; each file is pinned by SHA-256 below, hashed on 1 October 2026.
     "fast-style": {
         "name": "Style Transfer presets (fast neural style, ONNX)",
+        "size": "34 MB",
         "license": "BSD-3-Clause",
         "files": {f"fast-style/{s}-9.onnx": f"https://github.com/onnx/models/raw/main/validated/vision/style_transfer/fast_neural_style/model/{s}-9.onnx" for s in ("candy", "mosaic", "rain-princess", "udnie", "pointilism")},
     },
@@ -397,6 +401,7 @@ MODELS = {
     # copy pinned to its revision, hashed on 1 October 2026; OpenCV's own FaceDetectorYN runs it.
     "yunet-face": {
         "name": "YuNet face detector (OpenCV Zoo)",
+        "size": "232 KB",
         "license": "MIT",
         "files": {"yunet-face/face_detection_yunet_2023mar.onnx": "https://huggingface.co/opencv/face_detection_yunet/resolve/3cc26e7f1014a5ee5d74a42acee58bafc9d0a310/face_detection_yunet_2023mar.onnx"},
     },
@@ -412,6 +417,7 @@ MODELS = {
     # VGGT project uses, pinned to its revision; hashed on 1 October 2026 from the real download; for Select > Sky.
     "skyseg": {
         "name": "Sky segmenter (U-2-Net)",
+        "size": "176 MB",
         "license": "MIT",
         "files": {"skyseg/skyseg.onnx": "https://huggingface.co/JianyuanWang/skyseg/resolve/3ba8c6df1d9ba9ff26f637c7ba9568ac11a9aa7f/skyseg.onnx"},
     },
@@ -436,6 +442,7 @@ MODELS = {
     },
     "ai-upscale": {
         "name": "Real-ESRGAN x4plus",
+        "size": "67 MB",
         "license": "BSD-3-Clause",
         # Converted to ONNX from the official RealESRGAN_x4plus.pth by a published,
         # reproducible recipe; pinned below to the converter's stated SHA-256.
@@ -460,6 +467,14 @@ def ready(model: str) -> bool:
     return True
 
 
+MISSING_HEADER = "X-Formvis-Model"
+
+
+def missing(model: str, detail: str) -> HTTPException:
+    """The 409 an action answers while its model is not downloaded, naming the model so the window can offer to install it."""
+    return HTTPException(409, detail, headers={MISSING_HEADER: model})
+
+
 @router.get("/runtime")
 def runtime():
     """BG6: what this machine offers and which provider sessions will use."""
@@ -478,6 +493,7 @@ def list_models():
             "license": spec["license"],
             "ready": ready(key),
             "downloading": key in _downloading,
+            "size": spec.get("size"),
             "files": list(spec["files"]),
             # Krea 2's builds and its filter are installed from their own card, after the licence and the filter choice
             "managedBy": "krea-2"

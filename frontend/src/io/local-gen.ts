@@ -35,11 +35,29 @@ export async function settingsOf(record: Record<string, unknown>, blob: Blob): P
   return Object.keys(out).length ? out : undefined;
 }
 
-async function ask(path: string, init?: RequestInit): Promise<Response> {
+/** The header the engine's 409 names a missing model in (model_manager.missing). */
+export const MISSING_MODEL_HEADER = 'x-formvis-model';
+export type ModelInstaller = (model: string) => Promise<boolean>;
+let installer: ModelInstaller | null = null;
+/** The window's offer to install a model an action needs; true when it is installed, and the action is then sent again once. */
+export function onMissingModel(fn: ModelInstaller | null): void { installer = fn; }
+
+async function ask(path: string, init?: RequestInit, retry = true): Promise<Response> {
   let r: Response;
   try { r = await fetch(`/api${path}`, init); } catch { throw new Error('The formvis engine is not reachable. Start it with ./formvis boot.'); }
-  if (!r.ok) { let d = r.statusText; try { const j = await r.json() as { detail?: unknown }; if (typeof j.detail === 'string') d = j.detail; } catch { /* the status */ } throw new Error(d); }
+  if (!r.ok) {
+    let d = r.statusText; try { const j = await r.json() as { detail?: unknown }; if (typeof j.detail === 'string') d = j.detail; } catch { /* the status */ }
+    const model = r.status === 409 ? r.headers.get(MISSING_MODEL_HEADER) : null;
+    if (model && retry && installer && (await installer(model))) return ask(path, init, false);
+    throw new Error(d);
+  }
   return r;
+}
+
+export interface ModelEntry { id: string; name: string; ready: boolean; size: string | null }
+/** A downloadable model as the engine lists it (its name, whether it is here, its download size); null when unknown or the engine is away. */
+export async function modelEntry(id: string): Promise<ModelEntry | null> {
+  try { const m = await (await ask('/models')).json() as Array<Partial<ModelEntry>>; const x = m.find((e) => e.id === id); return x ? { id, name: x.name ?? id, ready: !!x.ready, size: typeof x.size === 'string' ? x.size : null } : null; } catch { return null; }
 }
 
 export async function localModels(): Promise<LocalModel[]> {
