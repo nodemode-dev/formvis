@@ -3,7 +3,7 @@ import { ChatPane, OwnChat, type DockChatView } from './chat';
 import { Consent } from './consent';
 import { el, q, setClass, setDisabled, setHidden, setText } from './dom';
 import { dockIcon as icon } from './icons';
-import { chordLabel, contain, isChord, leaves } from './keys';
+import { chordLabel, contain, isChord, keeps, leaves } from './keys';
 import { placementFor, type Placement } from './placement';
 import type { DockSide } from './state';
 import type { DockTerm } from './terminal';
@@ -158,6 +158,8 @@ export class Dock {
   }
 
   isOpen(): boolean { return this.place.isOpen(); }
+
+  keeps(event: Event): boolean { return keeps(this.a, event); }
 
   shown(): void {
     this.place.shown(true);

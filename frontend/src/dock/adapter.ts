@@ -126,7 +126,7 @@ export interface DockAdapter {
 }
 
 export const DOCK_PUBLIC = {
-  classes: ['ft-dock', 'ft-consent', 'ft-tour', 'ft-term', 'ft-chat', 'ft-dock-pane', 'ft-notranslate', 'is-hosted', 'has-own-chat', 'has-no-ask', 'has-ask-line', 'ft-dock-ask', 'ft-dock-ask-own'],
+  classes: ['ft-dock', 'ft-consent', 'ft-tour', 'ft-term', 'ft-chat', 'ft-dock-pane', 'ft-notranslate', 'is-hosted', 'has-own-chat', 'has-no-ask', 'has-ask-line', 'ft-dock-ask', 'ft-dock-ask-own', 'ft-dock-head', 'ft-dock-tab', 'ft-dock-stage', 'ft-icon', 'is-on', 'is-own'],
   rootAttributes: ['data-ft-dock', 'data-ft-dock-side', 'data-ft-dock-h', 'data-ft-dock-w'],
   rootProperties: ['--ft-dock-size', '--ft-dock-wsize'],
   tokens: [
@@ -134,6 +134,7 @@ export const DOCK_PUBLIC = {
     '--dock-text', '--dock-text-dim', '--dock-text-muted', '--dock-tab-text', '--dock-accent', '--dock-accent-line', '--dock-accent-ink', '--dock-danger', '--dock-danger-text',
     '--dock-space-1', '--dock-space-2', '--dock-space-3', '--dock-space-4', '--dock-radius-xs', '--dock-radius-sm', '--dock-radius', '--dock-radius-md', '--dock-tab-radius',
     '--dock-head-h', '--dock-tab-h', '--dock-ibtn', '--dock-ask-h', '--dock-chat-bar-h', '--dock-ctl-h', '--dock-icon', '--dock-icon-sm', '--dock-icon-xs', '--dock-icon-note', '--dock-icon-send',
+    '--dock-stage-pad', '--dock-ask-ctl-h', '--dock-tab-accent',
     '--dock-fs-xs', '--dock-fs-sm', '--dock-fs-md', '--dock-font-mono',
     '--dock-term-bg', '--dock-term-fg', '--dock-term-cursor', '--dock-term-selection', '--dock-term-font-size', '--dock-term-line-height', '--dock-term-contrast',
   ],
