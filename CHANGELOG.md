@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.3.6 · 2026-11-19
+
+- HEIC and HEIF open in the Windows and Linux desktop engines at full depth, through a decode-only libheif with no GPL code; the size is checked before decoding, the deep decode runs in a child process, and an engine with no HEIC decoder says why and suggests JPEG or TIFF. Canon `.HIF` opens everywhere, and file info reports its real depth.
+- Selection: BiRefNet (Swin-T, 224 MB, on the CPU) and SAM 2.1 base-plus are the recommended Select Subject and click-selection models. SAM 2.1 tiny and base-plus never build a Core ML session, and a click decodes with the model that made the encoding.
+- An action whose local model is missing offers Install now, with its size, and carries on once it is installed; one offer per model, Escape chooses nothing, and the recommended model needs 12 GB of memory, else BiRefNet falls back once.
+- Generative Fill without a fal key says what it needs and offers a key or a local model.
+- The install, selection and no-key prompts are in all 27 languages.
+- Notices and licence texts name the decode-only libheif and the shipped pillow-heif licence.
+- Mac builds are signed with the new Developer ID and notarized by Apple, so macOS opens the downloaded app without asking first.
+
 ## 2.3.5 · 2026-11-17
 
 - The Windows release packs the engine again on a cold build cache: the portable zip and the MSIX take `formvis-engine.exe` from the release folder when the build left one there, else the frozen engine in `src-tauri/binaries` that the installer bundles. 2.3.4's Windows release stopped at this step.
