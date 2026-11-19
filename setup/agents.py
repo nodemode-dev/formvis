@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -166,7 +167,28 @@ def tool_map() -> str:
 
 MANIFEST = ROOT / "agents" / "manifest.json"
 APP = "formvis"   # the file name of formvis's entry in formcompiler apps/
-DOCK = {"present": True, "positions": ["bottom"], "tabs": ["chat", "shell", "claude", "agent"]}   # frontend/src/ui/terminal-dock.ts: the bottom band (styles/terminal.css), Chat first, then one tab per engine PTY by kind
+DOCK = {"present": True, "positions": ["bottom", "right"], "tabs": ["chat", "shell", "claude", "codex", "cursor", "agent"]}   # frontend/src/dock/dock.ts with dock-adapter.ts tabs: the bottom band or the right column, Chat, a tab per engine PTY by kind (codex and cursor when found), Claude's read-only commands
+DOCK_DIR = ROOT / "frontend" / "src" / "dock"
+DOCK_MANIFEST = DOCK_DIR / "MANIFEST.json"
+DOCK_VERSION = "1.0.0-stage1"
+
+
+def _dock_files() -> dict[str, str]:
+    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(DOCK_DIR.iterdir()) if p.is_file() and p.name != DOCK_MANIFEST.name}
+
+
+def dock_manifest() -> str:
+    return json.dumps({"module": "dock", "version": DOCK_VERSION, "files": _dock_files()}, indent=2) + "\n"
+
+
+def dock_problems() -> list[str]:
+    try:
+        kept = json.loads(DOCK_MANIFEST.read_text(encoding="utf-8")).get("files", {})
+    except (OSError, ValueError):
+        return [f"{DOCK_MANIFEST.relative_to(ROOT)}: missing or not JSON"]
+    now = _dock_files()
+    rel = DOCK_DIR.relative_to(ROOT)
+    return [f"{rel}/{name}: does not match MANIFEST.json (the shared dock module changes only as a whole new version)" for name in sorted(set(kept) | set(now)) if kept.get(name) != now.get(name)]
 
 
 def manifest() -> str:
@@ -185,7 +207,7 @@ def manifest() -> str:
 
 
 def generated() -> dict[Path, str]:
-    want = {SKILLS / "formvis-editing" / "references" / "tools.md": tools_reference(), SKILLS / "formvis-harness" / "references" / "tool-map.md": tool_map(), MANIFEST: manifest()}
+    want = {SKILLS / "formvis-editing" / "references" / "tools.md": tools_reference(), SKILLS / "formvis-harness" / "references" / "tool-map.md": tool_map(), MANIFEST: manifest(), DOCK_MANIFEST: dock_manifest()}
     rows = _catalogue()
     if rows:
         want[SKILLS / "formvis-driving" / "references" / "commands.md"] = commands_reference(rows)
@@ -283,7 +305,7 @@ def sync(check: bool) -> int:
         drift.append(str(stale.relative_to(ROOT)) + " (removed skill)")
         if not check:
             shutil.rmtree(stale, ignore_errors=True)
-    problems = skill_problems() + routing_problems() + tool_problems()
+    problems = skill_problems() + routing_problems() + tool_problems() + (dock_problems() if check else [])
     if CATALOGUE.exists() is False:
         print("agents: no command catalogue in " + str(CATALOGUE.parent) + " (open the formvis window once); commands.md and command-map.md left as they are")
     if check:

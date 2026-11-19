@@ -248,12 +248,15 @@
   "dock": {
     "present": true,
     "positions": [
-      "bottom"
+      "bottom",
+      "right"
     ],
     "tabs": [
       "chat",
       "shell",
       "claude",
+      "codex",
+      "cursor",
       "agent"
     ]
   },
