@@ -2,6 +2,29 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## themes · AMOLED Black and the oled flag · after 2.3.5, unreleased (ui/themes.ts THEMES['amoled'], ThemeProfile.oled, applyTheme)
+
+- Kind: rationale · logged 2026-11-19 · ported from FormTxt eb5bacd, the family reference.
+- A true-black theme for OLED screens, where a `#000000` pixel is off. High Contrast is not that theme: its panels are `#0a0a0a` and `#161616` and its borders are bright. AMOLED Black puts `--bg-primary`, `--bg-secondary`, `--bg-node` and `--canvas-bg` at `#000000`, so panels are told apart by `--border-color` `#262626` and `--border-light` `#3a3a3a` alone. `--bg-tertiary` stays `#141414` because inputs, menus and selected rows use it as their only fill and would vanish at black. Text is `#ededed`, `#a6a6a6` and `#858585` (17.9, 8.6 and 5.7 to 1 on black), off-white to limit halation. The accent is the person's own.
+- `--grid-color` (the pasteboard's dot grid, a column FormTxt does not have) is `#262626`, the border colour: the dots stay visible and cover under 1% of the pasteboard. No `--node-shadow`: a shadow on black shows nothing, so the default stays.
+- `oled: true` makes `applyTheme` set `data-oled` on `html`, and remove it for every other theme, touching the attribute only when it changes. CSS hangs the true-black exceptions on `data-oled`, never on the theme id, so another OLED profile only needs the flag. The Theme menu, the swatch grid and the darker and lighter steps are built from `THEMES`, so they list it with no other change.
+
+## index · the OLED flag before first paint · after 2.3.5, unreleased (index.html critical style, theme-boot script OLED, PROFILES)
+
+- Kind: warning-context · logged 2026-11-19.
+- `PROFILES` and `LIGHT` are a second copy of `THEMES` in `ui/themes.ts` (`ui/themes.test.ts` holds them equal); a theme in one table and not the other paints Studio Dark first and then switches. `OLED` is the same kind of copy for the `oled` flag: the script sets `data-oled` on `html` before first paint, so the rules below apply on the first frame. The eleventh column of a row is `--bg-node`.
+- The critical style paints `html, body` `#0a0a0a` until the stylesheets arrive, and only `html` takes the profile's colour from the script, so `html[data-oled] body { background: #000000; }` keeps the body, which fills the window while `#app` is hidden, black from the first frame.
+
+## tokens · true-black surfaces under data-oled · after 2.3.5, unreleased (styles/tokens.css `:root[data-oled]`; styles/shell.css `:root[data-oled] .cv-rail`)
+
+- Kind: rationale · logged 2026-11-19.
+- `--bg-hover` and `--border-soft` go from white at 6% and 8% to 10% and 12%: over black the old values give 1.10 and 1.14 to 1, where Studio Dark gets 1.17 and 1.24.
+- `--surface-1` mixes 45% of `--bg-tertiary` into `--bg-primary` and came out `#090909`; it fills the title bar's lower half, the tool rail, document tabs, the Home demo and size boxes and the dark buttons of the title bar. Under `data-oled` it is `--bg-primary`.
+- `--line-0` mixes `--bg-primary` with black and is the divider under the title bar and the options bar and beside the rail; on a black window it vanished, and borders are all that part panels here, so under `data-oled` it is `--border-color` (as `body.theme-light` already does).
+- `.cv-rail` draws two accent glows over `--surface-1`, `#211410` at 12% and brighter at its foot with the orange accent; under `data-oled` the rail is plain `--surface-1`.
+- Left as they are: `--surface-raised` (hovered tools, the active tab, title chips: a fill that marks something), `--bg-tertiary` inputs such as the dock's ask field, the dot grid, and the document canvas, which keeps the document's colours. Every other large surface (options bar, panels, dock, status bar, Home) already reads `--bg-primary` or `--bg-secondary`.
+- Verified in headless Chrome at 1440 by 900, 4x CPU, a slow network (150 ms, 1.6 Mbit/s) and the cache off: on a cold load and a hard reload every frame after navigation is `#000000` at the corners and centre of each large surface; a live switch between Studio Dark and AMOLED Black adds or removes no node and moves nothing but a spinning icon.
+
 ## The window key: the page holds it and sends it on every request to the engine · after 2.3.5, unreleased (io/window-key.ts new; io/api.ts socketTo; main.ts)
 
 - Kind: fix · logged 2026-11-19.
