@@ -25,6 +25,7 @@ The Form family update: the terminal panel is the one every Form app now shares,
 - FFmpeg is downloaded from formai-binaries first and formcut-binaries second, and checked the same way from either.
 - For agents and the people who set them up: every MCP tool says in its own definition whether it only reads, whether it asks first, whether it runs with no window and whether it reaches files, and the approval step follows that; the server has 140 tools. `agents/manifest.json` lists what formvis offers agents (tools, skills, the terminal panel). `./formvis agents sync` writes it, and `sync --check` fails when it, a skill's routing table or the shared terminal panel's files are out of step.
 - The manual, SECURITY.md, the wiki and the agent skills describe the question, Outside agents, the terminal panel and `.fvd` projects as they are, and the manual has a Themes section.
+- The Windows build no longer stops while building HEIC decoding (the 2.3.6 Windows build failed there with "Access is denied").
 
 ## 2.3.6 · 2026-11-19
 
