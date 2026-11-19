@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The engine gets as long to start as before; the 10 seconds cover only the key · after 2.3.5, unreleased (src-tauri/src/main.rs setup, the loop that reads the engine's first lines)
+
+- Kind: fix · logged 2026-11-19.
+- On 2.3.5 the shell waited for the engine's address with no limit, and it still does: a first launch of a packaged engine can take long (cold disk, a virus scan, unpacking). The 10 second timer starts only once the address has arrived, and only covers a key line read out of order: the engine prints the key, flushed, on stdout before uvicorn prints the address on stderr, and the shell reads the two streams apart.
+- When the 10 seconds run out with no key, the shell now takes the "engine failed to start" path and opens no window (`match port.filter(|_| key.is_some())`); before, it opened a window that had no key and could not write.
+- The thread that forwards the engine's events sends `None` when the event stream ends, so an engine whose stream closes without a `Terminated` event takes the failure path at once instead of waiting on the sender the timer holds.
+- Replaced, quoted exactly: `                match port {` (now filtered on the key); the forwarder's loop had no line after it.
+- Verified: rustfmt parses the file (its formatting differences are the same 79 before and after); the loop's logic copied into a scratch crate with tokio only (see the build report). Not compiled here (no WebKit). On a real machine: start the packaged app with an engine that sleeps 20 seconds before printing anything; the window must open.
+
 ## themes · AMOLED Black and the oled flag · after 2.3.5, unreleased (ui/themes.ts THEMES['amoled'], ThemeProfile.oled, applyTheme)
 
 - Kind: rationale · logged 2026-11-19 · ported from FormTxt eb5bacd, the family reference.

@@ -747,6 +747,7 @@ fn main() {
                             break;
                         }
                     }
+                    let _ = tx.send(None).await;
                 });
                 let mut port: Option<u16> = None;
                 let mut key: Option<String> = None;
@@ -780,7 +781,7 @@ fn main() {
                     }
                 }
                 drop(late);
-                match port {
+                match port.filter(|_| key.is_some()) {
                     Some(port) => {
                         let url = if std::env::args().any(|arg| arg == "--no-skin") {
                             format!("http://127.0.0.1:{port}/?no-skin")
