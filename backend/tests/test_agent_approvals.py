@@ -39,6 +39,34 @@ def test_no_answer_stop_and_decline_each_have_their_own_status_and_reach_the_dis
     assert json.loads(lines[-1])["status"] == status
 
 
+def test_the_choice_on_outside_agents_is_kept_beside_agents_json(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setenv("FORMVIS_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(agents, "_loaded", False)
+    monkeypatch.setitem(agents._stored, "allowed", None)
+    agents.set_outside_allowed(True)
+    assert json.loads((tmp_path / "agents.json").read_text())["allowed"] is True
+    monkeypatch.setattr(agents, "_loaded", False)
+    monkeypatch.setitem(agents._stored, "allowed", None)
+    assert agents.outside_allowed() is True and agents.state()["allowed"] is True
+
+
+def test_a_window_with_no_screen_refuses_at_once_instead_of_asking(monkeypatch, tmp_path):
+    import time
+
+    monkeypatch.setenv("FORMVIS_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(M, "_headless", True)
+    monkeypatch.setattr(M, "_seen", time.monotonic())
+    monkeypatch.setattr(M, "_allowed", False)
+    started = time.monotonic()
+    out = asyncio.run(M._call("get_document", {}))
+    assert out["isError"] and "no screen" in out["content"][0]["text"] and time.monotonic() - started < 2
+    monkeypatch.setattr(M, "_allowed", True)
+    out = asyncio.run(M._agent_call("Tester", "export_image", {"path": str(tmp_path / "out.png")}))
+    assert out["isError"] and "no screen" in out["content"][0]["text"] and time.monotonic() - started < 4
+
+
 def test_the_activity_record_rotates_and_keeps_three_old_files(tmp_path, monkeypatch):
     monkeypatch.setenv("FORMVIS_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(agents, "ACTIVITY_MAX_BYTES", 600)

@@ -612,6 +612,7 @@ _taken: dict[str, float] = {}   # requests the window took and has not answered 
 # Seamless start (1.53.3): the window polls whether or not agents are allowed, saying which; with agents not allowed
 # the first request asks the person in the window; with no window, formvis is opened in the browser and waited for.
 _allowed = False
+_headless = False
 _declined_until = 0.0
 _opened_at = 0.0
 # Calls waiting on the window, by (client, JSON-RPC request id), so notifications/cancelled can stop one.
@@ -654,6 +655,11 @@ def _live() -> bool:
     """A window polled lately, or is working through a call it took (for as long as _ask waits, 600 s)."""
     now = time.monotonic()
     return (_seen > 0 and now - _seen <= LIVE) or any(now - t < 600 for t in _taken.values())
+
+
+def _screenless() -> bool:
+    """The window answering is the one ./formvis headless started (a headless browser): nobody is there to answer a question."""
+    return _headless and _live()
 
 
 def _fail(text: str) -> dict:
@@ -1084,6 +1090,8 @@ async def _call(name: str, args: dict) -> dict:
         if not _live():
             return _fail("formvis is not open. Start it with ./formvis boot (or open the formvis app), then retry.")
     if not _allowed and not _inapp_call.get():
+        if _screenless():
+            return _fail("Outside agents are not allowed in formvis, and the formvis window running now has no screen to ask in. Ask the person to allow them in formvis (Preferences > Plugins), then retry.")
         if time.monotonic() < _declined_until:
             return _fail("The person chose not to allow outside agents in formvis just now. Ask them to turn on Allow outside agents (Preferences > Plugins), then retry.")
         answer = await _ask("__consent__", {}, 180)
@@ -1184,6 +1192,10 @@ async def _agent_call(client: str, name: str, args: dict, cli: bool = False) -> 
             why = await _risk(name, args)
             if why and name in HEADLESS_TOOLS and not _live():
                 refusal = _no_window_to_approve(name, why)
+                agents.end(entry, "denied", refusal)
+                return _fail(refusal)
+            if why and _screenless():
+                refusal = f"{name} needs the person's approval ({why}), and the formvis window running now has no screen to ask in. Write to a new output_path, or ask the person to open formvis and retry."
                 agents.end(entry, "denied", refusal)
                 return _fail(refusal)
             if why:
@@ -1549,7 +1561,10 @@ async def bridge_next(request: Request) -> Response:
     taking one, and a request taken for a gone window goes back to the front for the next poll (1.52.1)."""
     global _seen, _allowed
     window_key.require(request)
+    globals()["_headless"] = "HeadlessChrome" in request.headers.get("user-agent", "")
     allowed = request.query_params.get("allowed", "1") != "0"   # 1.53.3: the window polls either way, saying which
+    if "allowed" in request.query_params:
+        agents.set_outside_allowed(allowed)
     if allowed and not _allowed:
         globals()["_declined_until"] = 0.0
     _allowed = allowed

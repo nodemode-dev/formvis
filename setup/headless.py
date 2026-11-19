@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""A window with no screen: Chromium (the one Playwright installs, as bench and perf use) opens formvis, allows outside
-agents for that one browser profile, and stays until it is told to stop. Document commands, the CLI and the MCP tools
+"""A window with no screen: Chromium (the one Playwright installs, as bench and perf use) opens formvis, follows the
+person's stored choice on outside agents (kept by the engine in agents.json), and stays until it is told to stop.
+With agents not allowed, or a step that needs approval, an agent's call is refused at once: nobody is there to answer. Document commands, the CLI and the MCP tools
 then run against it without a visible window.
 
   ./formvis headless [--url URL] [--timeout SECONDS]   start it and stay until Ctrl-C or SIGTERM; closes the browser cleanly
@@ -21,8 +22,20 @@ import urllib.error
 import urllib.request
 
 ENGINE = os.environ.get("FORMVIS_URL", f"http://127.0.0.1:{os.environ.get('FORMVIS_PORT', '').lstrip('0') or 8190}").rstrip("/")
-SEED = ("try{const k='formvis.prefs',o=JSON.parse(localStorage.getItem(k)||'{}');"
-        "if(o.agentsAllowed!==true){o.agentsAllowed=true;localStorage.setItem(k,JSON.stringify(o));}}catch(e){}")
+
+
+def key_taken() -> str:
+    """Why a window with no screen cannot join this engine: its window key was already given to a window, or it is the desktop app's engine; empty when it can."""
+    try:
+        with urllib.request.urlopen(ENGINE + "/api/window/key", timeout=3) as r:
+            state = json.loads(r.read().decode())
+    except (urllib.error.URLError, OSError, ValueError):
+        return ""
+    if state.get("packaged"):
+        return "This engine belongs to the formvis desktop app, which has a window of its own; a window with no screen cannot join it."
+    if state.get("claimed"):
+        return "This engine already gave its window key to a formvis window, so a window with no screen cannot join it. Use that window, or restart the engine (./formvis boot) and run this again before opening one."
+    return ""
 
 
 def status() -> dict:
@@ -54,11 +67,11 @@ def host(url: str) -> int:
         browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
         try:
             context = browser.new_context(viewport={"width": 1400, "height": 900})
-            context.add_init_script(SEED)
             page = context.new_page()
             page.goto(url)
             while not stop and os.getppid() == parent:
                 page.wait_for_timeout(300)
+            page.evaluate("fetch('/api/mcp/bridge/stop', {method: 'POST'}).then(() => 1, () => 0)")
         finally:
             browser.close()
     return 0
@@ -70,8 +83,11 @@ def ensure(timeout: float = 90.0):
     now = status()
     if not now:
         raise RuntimeError(f"The formvis engine is not answering at {ENGINE}. Start it with ./formvis boot (or ./formvis serve), then retry.")
-    if now.get("live") and now.get("allowed"):
+    if now.get("live"):
         return None
+    taken = key_taken()
+    if taken:
+        raise RuntimeError(taken)
     try:
         import playwright  # noqa: F401
     except ImportError as exc:
@@ -89,7 +105,7 @@ def ensure(timeout: float = 90.0):
             remove_log(log)
             raise RuntimeError("The headless window stopped" + (": " + lines[-1] if lines else "."))
         seen = status()
-        if seen.get("live") and seen.get("allowed"):
+        if seen.get("live"):
             return proc
         time.sleep(0.5)
     release(proc)
@@ -139,10 +155,6 @@ def release(proc) -> None:
         proc.kill()
         proc.wait()
     remove_log(getattr(proc, "log", ""))
-    try:   # the engine counts a window live for 30 seconds after its last poll: tell it this one is gone
-        urllib.request.urlopen(urllib.request.Request(ENGINE + "/api/mcp/bridge/stop", method="POST"), timeout=3).close()
-    except (urllib.error.URLError, OSError):
-        pass
 
 
 def main(argv: list[str]) -> int:

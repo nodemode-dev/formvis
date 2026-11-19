@@ -2,6 +2,31 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The window with no screen follows the stored choice and refuses at once where it would ask · after 2.3.5, unreleased (services/agents.py set_outside_allowed, outside_allowed; routers/mcp.py _headless, _screenless, bridge_next, _call, _agent_call; setup/headless.py key_taken, host, ensure, release; frontend app.ts AgentBridge start)
+
+- Kind: fix · logged 2026-11-19.
+- `./formvis headless` wrote `agentsAllowed=true` into the fresh browser profile's prefs (`SEED`), so its window arrived with outside agents allowed whatever the person had chosen. The seed is gone. The choice now lives on the engine side: the window's keyed poll (`bridge_next`, `allowed=0|1`) stores it with `agents.set_outside_allowed` as `allowed` in agents.json (sealed with the rest), and `GET /api/agents` reports it. At boot the page reads it and uses it, writing it into its own prefs when they differ; with nothing stored yet (the first run after this update) the page's own pref stands and its first poll stores it. A fresh profile therefore inherits the person's choice.
+- With nobody to answer: `bridge_next` notes whether the polling window is a headless browser (`HeadlessChrome` in its user agent). While such a window is the live one (`_screenless`), a call that would ask whether outside agents may edit is refused at once ("Outside agents are not allowed in formvis, and the formvis window running now has no screen to ask in..."), and a step that needs approval under the Ask policy (the six approval tools and risky commands) is refused at once instead of waiting 120 s. The approval list is unchanged; those steps still ask whenever a window with a screen is open.
+- headless.py: `ensure` no longer needs the engine to report `allowed`, only a live window. It fails at once, in one line, when the engine's window key was already given to a window or the engine is the desktop app's (`key_taken`, from `GET /api/window/key`): run from source the key is given once per engine launch. `release` no longer posts `/api/mcp/bridge/stop` itself (that now needs the key); the page posts it before the browser closes.
+- Checked by running the engine and the Vite dev server with the page in headless Chrome: not allowed, a call was refused in 0.0 s; the person allowed in the page and agents.json stored `allowed: true`; after an engine restart a fresh browser profile with no seed came up allowed and new_document ran; export_image was refused at once. tests/test_agent_approvals.py.
+- Replaced, quoted exactly:
+
+```py
+SEED = ("try{const k='formvis.prefs',o=JSON.parse(localStorage.getItem(k)||'{}');"
+        "if(o.agentsAllowed!==true){o.agentsAllowed=true;localStorage.setItem(k,JSON.stringify(o));}}catch(e){}")
+            context.add_init_script(SEED)
+    if now.get("live") and now.get("allowed"):
+        if seen.get("live") and seen.get("allowed"):
+    try:   # the engine counts a window live for 30 seconds after its last poll: tell it this one is gone
+        urllib.request.urlopen(urllib.request.Request(ENGINE + "/api/mcp/bridge/stop", method="POST"), timeout=3).close()
+    except (urllib.error.URLError, OSError):
+        pass
+```
+
+```ts
+  agents.setEnabled(loadPrefs().agentsAllowed);
+```
+
 ## No answer and Stop are their own statuses, and the activity record is kept on disk · after 2.3.5, unreleased (services/agents.py approval, end, _record, ACTIVITY_FILE, ACTIVITY_MAX_BYTES, ACTIVITY_KEEP; frontend ui/panels/agent-connect.ts STATUS)
 
 - Kind: fix · logged 2026-11-19.

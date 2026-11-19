@@ -3685,7 +3685,11 @@ export function startApp(): void {
     log: () => [...errorLog.entries, ...engine.failures],
     status: (note, seconds) => status.setAgentNote(note, seconds),
   });
-  agents.setEnabled(loadPrefs().agentsAllowed);
+  void fetch('/api/agents').then((r) => (r.ok ? r.json() as Promise<{ allowed?: unknown }> : null)).then((s) => {
+    const stored = typeof s?.allowed === 'boolean' ? s.allowed : null;
+    if (stored !== null && stored !== loadPrefs().agentsAllowed) savePrefs({ ...loadPrefs(), agentsAllowed: stored });
+    agents.setEnabled(stored ?? loadPrefs().agentsAllowed);
+  }, () => agents.setEnabled(loadPrefs().agentsAllowed));
   window.addEventListener('formvis:agents', (ev) => agents.setEnabled((ev as CustomEvent<boolean>).detail === true));
   // The assistant (1.52.2) acts through the same bridge, whether or not outside agents are allowed.
   const assistant = new AssistantPanel(engine, agents);

@@ -214,6 +214,19 @@ def revoke_inapp(token: str | None) -> None:
     _inapp_tokens.discard(token or "")
 
 
+def set_outside_allowed(on: bool) -> None:
+    """The person's choice in the window (Allow outside agents), kept in agents.json so a window with no screen follows it."""
+    _load()
+    if _stored["allowed"] is not bool(on):
+        _stored["allowed"] = bool(on)
+        _save()
+
+
+def outside_allowed() -> bool | None:
+    _load()
+    return _stored["allowed"]
+
+
 def set_enabled(on: bool) -> None:
     global _enabled
     _enabled = bool(on)
