@@ -201,6 +201,23 @@ def skill_problems() -> list[str]:
     return bad
 
 
+def routing_problems() -> list[str]:
+    """A skill with a sub-skills folder routes to them in a table whose last cell names one in backticks: every name
+    there must be a folder, and every folder must be named."""
+    bad = []
+    for name in skill_names():
+        folder = SKILLS / name / "sub-skills"
+        if not folder.is_dir():
+            continue
+        rows = re.findall(r"^\|.*\|\s*`([a-z0-9][a-z0-9-]*)`\s*\|\s*$", (SKILLS / name / "SKILL.md").read_text(encoding="utf-8"), re.M)
+        have = {p.name for p in folder.iterdir() if p.is_dir()}
+        for missing in sorted(set(rows) - have):
+            bad.append(f".claude/skills/{name}/SKILL.md: the routing table names {missing}, which has no folder in sub-skills/")
+        for unlisted in sorted(have - set(rows)):
+            bad.append(f".claude/skills/{name}/sub-skills/{unlisted}: not in the routing table of SKILL.md")
+    return bad
+
+
 def _files(folder: Path) -> dict:
     return {str(p.relative_to(folder)): p.read_bytes() for p in sorted(folder.rglob("*")) if p.is_file()}
 
@@ -225,7 +242,7 @@ def sync(check: bool) -> int:
         drift.append(str(stale.relative_to(ROOT)) + " (removed skill)")
         if not check:
             shutil.rmtree(stale, ignore_errors=True)
-    problems = skill_problems()
+    problems = skill_problems() + routing_problems()
     if CATALOGUE.exists() is False:
         print("agents: no command catalogue in " + str(CATALOGUE.parent) + " (open the formvis window once); commands.md and command-map.md left as they are")
     if check:

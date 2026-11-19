@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## agents sync --check also checks each skill's routing table against its sub-skill folders · after 2.3.5, unreleased (setup/agents.py routing_problems, sync)
+
+- Kind: feat · logged 2026-11-19.
+- `routing_problems` reads, for every skill with a `sub-skills` folder, the table rows of SKILL.md whose last cell is one backticked name, and reports a name with no folder and a folder no row names. `sync` adds them to the upload-gate problems, so `--check` exits 1 on either. The tool declaration check (each tool exactly one of read-only, approval-gated, folder-confined write or document-only) is not done yet.
+- Checked by running `sync --check` (in step: formvis-driving 13 rows and folders, formvis-harness 12) and `routing_problems` on a copy with one folder renamed (both directions reported).
+- Replaced, quoted exactly:
+
+```py
+    problems = skill_problems()
+```
+
 ## mcp --headless uses the session's engine and tells the client when the window could not start · after 2.3.5, unreleased (setup/mcp_stdio.py HEADLESS_FAILED, forward, start_headless)
 
 - Kind: fix · logged 2026-11-19.
