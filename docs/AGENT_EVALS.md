@@ -9,7 +9,7 @@ evaluations with results you can check, and the skill's trigger test.
 
 1. In the formvis folder, run `./formvis agents install` (or open the formvis repository itself in the client, which
    carries `.mcp.json`, `.cursor/mcp.json` and `.codex/config.toml`). Restart the client.
-2. The client lists a `formvis` MCP server with 134 tools (Claude Code: `/mcp`; Codex: `codex mcp list`; Cursor:
+2. The client lists a `formvis` MCP server with 140 tools (Claude Code: `/mcp`; Codex: `codex mcp list`; Cursor:
    Settings > MCP). In Claude Code a project server first shows as waiting for your approval: approve it.
 3. With formvis closed, ask: "What is open in formvis?" formvis's engine starts and a formvis window opens in your
    browser (the desktop app, if that is what you run, is the window itself).
@@ -37,7 +37,7 @@ after).
 | 7 | "Extend the picture 300 pixels to the right so it fits a wider banner." | any landscape photo | the canvas is 300 px wider and the new strip continues the picture (generative_expand) |
 | 8 | "Add a gold light leak from the top and a white frame." | any photo | two new layers, a gold leak from the top and a white frame, the photo unchanged beneath |
 | 9 | "Undo the last two things you did." | after any two edits | the document is as it was before those two edits (undo steps 2) |
-| 10 | "Save this so I can keep working on it tomorrow, next to the photo." | a photo opened from a folder | a .fmv beside the photo that reopens with every layer (open_file on it) |
+| 10 | "Save this so I can keep working on it tomorrow, next to the photo." | a photo opened from a folder | a .fvd beside the photo that reopens with every layer (open_file on it) |
 
 Generative evaluations (2, 7) run on this computer when LaMa is downloaded (Preferences > Plugins > Local models); with
 nothing downloaded and no fal key the agent should relay the error's instruction instead of guessing.

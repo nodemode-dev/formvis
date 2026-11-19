@@ -11,6 +11,7 @@ from starlette.datastructures import MutableHeaders
 from app import ffmpeg_fetch
 from app.core import config, runtime
 from app.core.local_guard import LocalGuard
+from app.core import window_key
 from app.routers import fal as _fal_router
 from app.routers import comfyui, generative, io, large, llm, mcp, ops, plugins, projects, system, nodemode, colour
 from app.services import claude_code as _claude_service, sessions, terminal as _terminal_service
@@ -35,6 +36,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=config.APP_NAME, version=config.VERSION, lifespan=lifespan)
+app.add_middleware(window_key.WindowKeyGuard)
 app.add_middleware(CORSMiddleware, allow_origins=config.cors_origins(), allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(LocalGuard, origins=config.window_origins())
 
@@ -82,6 +84,7 @@ app.add_middleware(IsolateWindow)
 
 
 app.include_router(system.router, prefix="/api")
+app.include_router(window_key.router)
 app.include_router(io.router, prefix="/api/io")
 app.include_router(projects.router, prefix="/api/projects")
 app.include_router(ops.router, prefix="/api/ops")

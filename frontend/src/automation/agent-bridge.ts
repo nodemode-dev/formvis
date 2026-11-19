@@ -28,6 +28,7 @@ import type { UiControl } from './ui-control';
 export interface McpResult { content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>; structuredContent?: Record<string, unknown>; isError?: boolean }
 export interface AgentDeps {
   ask(title: string, text: string): Promise<boolean>; note(text: string): void; allow(): void;
+  consent?(id: string, tool: string, client: string, seconds: number): void;
   // 1.53.3: what the app does that the engine alone does not (File > Open, the .fmv file, filters without their dialog, Select Subject, Remove Background).
   openFile?(file: File): Promise<void>; projectBlob?(): Promise<Blob | null>; applyFilter?(kind: string, settings: Record<string, unknown>): Promise<boolean> | boolean;
   selectSubject?(): Promise<void>; removeBackground?(): Promise<void>;
@@ -209,7 +210,11 @@ export class AgentBridge {
         await whenServiceUp();   // with the engine service not running there is nothing to poll, and no timer either
         const res = await fetch(`/api/mcp/bridge/next?allowed=${this.on ? 1 : 0}`);
         if (res.status === 200) {
-          const item = await res.json() as { id: string; name: string; arguments: Record<string, unknown>; inapp?: boolean };
+          const item = await res.json() as { id: string; name: string; arguments: Record<string, unknown>; inapp?: boolean; once?: boolean };
+          if (item.name === '__consent__' && !this.on && this.deps.consent) {
+            this.deps.consent(item.id, typeof item.arguments?.tool === 'string' ? item.arguments.tool : '', typeof item.arguments?.client === 'string' ? item.arguments.client : '', typeof item.arguments?.wait === 'number' ? item.arguments.wait : 0);
+            continue;
+          }
           if (item.name === '__consent__') {
             const yes = this.on || await this.deps.ask('Allow an outside agent to edit?', 'An AI agent connected to formvis (such as Claude Code, Codex or Cursor) asks to edit your documents. Each change is an undoable step, and anything that costs money asks first. You can turn this off in Preferences > Plugins.');
             if (yes && !this.on) { this.on = true; this.deps.allow(); }
@@ -219,7 +224,7 @@ export class AgentBridge {
           this.inflight++;
           this.callId = item.id;
           let result: McpResult;
-          try { result = this.on || item.inapp === true ? await this.run(item.name, item.arguments ?? {}) : fail('formvis stopped taking requests.'); } finally { this.inflight--; }
+          try { result = this.on || item.inapp === true || item.once === true ? await this.run(item.name, item.arguments ?? {}) : fail('formvis stopped taking requests.'); } finally { this.inflight--; }
           await fetch('/api/mcp/bridge/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, result }) });
         } else if (res.status !== 204) await sleep(2000);
       } catch { await sleep(2000); }   // the engine is not answering: try again shortly

@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from app.localgen import content_filter, krea2, model_manager
 from app.main import app
+from app.core.window_key import HEADER as WINDOW_HEADER, KEY as WINDOW_KEY
 from fastapi.testclient import TestClient
 
 
@@ -71,7 +72,7 @@ def test_the_prompt_guard_is_not_a_setting(prompt, refused):
 
 
 def test_the_api_gates_install_and_download_on_the_licence(fresh):
-    client = TestClient(app, base_url="http://127.0.0.1:8123", headers={"x-formvis-local": "1"})
+    client = TestClient(app, base_url="http://127.0.0.1:8123", headers={"x-formvis-local": "1", WINDOW_HEADER: WINDOW_KEY})
     terms = client.get("/api/models/krea-2/terms").json()
     assert terms["licence"]["url"] == krea2.LICENCE_URL and terms["removedWarning"] == krea2.REMOVED_WARNING
     assert terms["filter"]["name"] == "Falconsai/nsfw_image_detection" and len(terms["licence"]["summary"]) == 6
@@ -153,7 +154,7 @@ def test_the_studio_generator_offers_krea_and_its_pictures_carry_the_notice(fres
     when installed, and the job hands the page the licence's notice and, with the filter removed, the warning."""
     import time
 
-    client = TestClient(app, base_url="http://127.0.0.1:8123", headers={"x-formvis-local": "1"})
+    client = TestClient(app, base_url="http://127.0.0.1:8123", headers={"x-formvis-local": "1", WINDOW_HEADER: WINDOW_KEY})
     assert not any(g["id"] == "local:krea-2" for g in client.get("/api/generate").json()["generators"])
     krea2.record_consent(True)
     listed = next(g for g in client.get("/api/generate").json()["generators"] if g["id"] == "local:krea-2")

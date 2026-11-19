@@ -3,19 +3,19 @@ import { transformBounds, type Engine } from '../../engine';
 import type { Commands } from '../commands';
 import { el, patchList, q, setChecked, setClass, setHidden, setText, setValue } from '../dom';
 import { icon } from '../icons';
-import { loadPrefs, savePrefs } from '../prefs';
+import { outsideAgents } from '../../dock-adapter';
 import { toast } from '../toast';
 
 const KEY = 'formvis.agentConnect';
 const FEED_LIMIT = 200;
 const POLICIES: Array<{ value: string; label: string }> = [{ value: 'allow', label: 'Allow all' }, { value: 'ask', label: 'Ask for risky steps' }, { value: 'deny', label: 'Deny' }];
-const STATUS: Record<string, string> = { running: 'Running', ok: 'Done', error: 'Failed', denied: 'Declined', waiting: 'Waiting for you' };
+const STATUS: Record<string, string> = { running: 'Running', ok: 'Done', error: 'Failed', denied: 'Declined', timeout: 'No answer in time', stopped: 'Stopped', waiting: 'Waiting for you' };
 const NEW_LAYER_TOOLS = new Set(['add_layer', 'add_text', 'draw_shape', 'place_image', 'generate_image', 'generative_fill', 'duplicate_layer', 'add_adjustment', 'add_film_layer']);
 
 interface Agent { name: string; version: string; policy: string; calls: number; waiting: number }
 interface Ask { id: string; client: string; tool: string; command: string | null; summary: string; why: string }
 interface Entry { id: string; t: number; client: string; tool: string; command: string | null; summary: string; status: string; message: string; target: { layer?: string; rect?: { x: number; y: number; w: number; h: number } } | null }
-interface Wire { type: 'state' | 'activity'; enabled?: boolean; clients?: Agent[]; pending?: Ask[]; activity?: Entry[]; entry?: Entry }
+interface Wire { type: 'state' | 'activity'; enabled?: boolean; sealBroken?: boolean; clients?: Agent[]; pending?: Ask[]; activity?: Entry[]; entry?: Entry }
 
 const clock = (t: number): string => new Date(t * 1000).toLocaleTimeString([], { hour12: false });
 
@@ -49,6 +49,7 @@ export class AgentConnect {
     <div class="ft-connect-head"><span class="ft-connect-title">Agent Connect</span><span class="ft-connect-spacer"></span>
       <button type="button" class="cv-icon-btn ft-connect-close" aria-label="Close Agent Connect" title="Close">${icon('close', 16)}</button></div>
     <div class="ft-connect-master"><label><input type="checkbox" class="ft-connect-on"><span>Allow outside agents</span></label><span class="ft-connect-state" role="status"></span></div>
+    <p class="ft-connect-empty ft-connect-seal" role="status" hidden>The saved agent permission was changed outside formvis, so it is back to Ask.</p>
     <div class="ft-connect-sheet" hidden><span class="ft-connect-sheet-title">Waiting for your approval</span><div class="ft-connect-asks"></div></div>
     <div class="ft-connect-section"><span class="ft-connect-label">Connected agents</span>
       <div class="ft-connect-agents"></div>
@@ -68,6 +69,8 @@ export class AgentConnect {
   </aside>`);
   private readonly master = q<HTMLInputElement>(this.el, '.ft-connect-on');
   private readonly state = q(this.el, '.ft-connect-state');
+  private readonly sealNote = q(this.el, '.ft-connect-seal');
+  private sealBroken = false;
   private readonly sheet = q(this.el, '.ft-connect-sheet');
   private readonly asks = q(this.el, '.ft-connect-asks');
   private readonly agentList = q(this.el, '.ft-connect-agents');
@@ -96,6 +99,7 @@ export class AgentConnect {
   isOpen(): boolean { return !this.el.hidden; }
 
   toggle(open = !this.isOpen()): void {
+    if (open && this.sealBroken) setHidden(this.sealNote, false);
     setHidden(this.el, !open);
     if (open) void this.loadRoots();
   }
@@ -119,8 +123,7 @@ export class AgentConnect {
 
   private switchAgents(on: boolean): void {
     void post('/enabled', { enabled: on });
-    savePrefs({ ...loadPrefs(), agentsAllowed: on });
-    window.dispatchEvent(new CustomEvent('formvis:agents', { detail: on }));
+    void outsideAgents.set(on ? 'allowed' : 'ask');
   }
 
   private connect(): void {
@@ -144,6 +147,7 @@ export class AgentConnect {
     if (m.type === 'state') {
       this.agents = m.clients ?? [];
       setChecked(this.master, m.enabled !== false);
+      if (m.sealBroken) { this.sealBroken = true; if (!this.isOpen()) setHidden(this.sealNote, false); }
       if (m.activity) { this.entries.length = 0; this.entries.push(...m.activity.slice(0, FEED_LIMIT)); this.paintFeed(); }
       this.paintAgents();
       this.paintAsks(m.pending ?? []);
@@ -188,7 +192,7 @@ export class AgentConnect {
       key: (a) => a.id,
       create: (a) => {
         const row = el(`<div class="ft-connect-ask"><span class="ft-connect-ask-what"></span><span class="ft-connect-ask-why"></span><span class="ft-connect-ask-sum"></span>
-          <div class="ft-connect-ask-row"><button type="button" class="cv-btn cv-btn-ghost" data-act="deny">Decline</button><button type="button" class="cv-btn cv-btn-primary" data-act="allow">Approve</button></div></div>`);
+          <div class="ft-connect-ask-row"><button type="button" class="cv-btn cv-btn-ghost" data-act="deny">Deny</button><button type="button" class="cv-btn cv-btn-primary" data-act="allow">Allow once</button></div></div>`);
         q(row, '[data-act="deny"]').addEventListener('click', () => void post('/approve', { id: a.id, allow: false }));
         q(row, '[data-act="allow"]').addEventListener('click', () => void post('/approve', { id: a.id, allow: true }));
         this.fillAsk(row, a);

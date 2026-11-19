@@ -25,7 +25,8 @@ def test_heic_without_a_decoder_names_the_reason_and_the_way_round(no_decoder):
 
 
 def test_the_decode_route_passes_the_reason_on(no_decoder):
-    r = TestClient(app, base_url="http://127.0.0.1:8190").post("/api/io/decode", files={"file": ("photo.heic", HEIC, "image/heic")})
+    from app.core import window_key
+    r = TestClient(app, base_url="http://127.0.0.1:8190", headers={window_key.HEADER: window_key.KEY}).post("/api/io/decode", files={"file": ("photo.heic", HEIC, "image/heic")})
     assert r.status_code == 415
     assert "no HEIC decoder" in r.json()["detail"] and "JPEG or TIFF" in r.json()["detail"]
 

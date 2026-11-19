@@ -211,13 +211,11 @@ def run_cmd(args: list[str]) -> int:
     if status == 200 and c.get("risky") and not yes:
         print(f"{cid} cannot be undone ({c.get('description', '')}). Run it again with --yes to go ahead.", file=sys.stderr)
         return 1
-    status, out = call("POST", "/api/commands/" + quoted, {"params": params})
-    if status != 200:
-        say_error(status, out)
-    if not out.get("ok"):
-        print(out.get("error", "The command did not run."), file=sys.stderr)
+    ok, said, structured = tool("run_command", {"id": cid, "params": params})
+    if not ok:
+        print(said or "The command did not run.", file=sys.stderr)
         return 1
-    result = out.get("result")
+    result = structured.get("result", said)
     if isinstance(result, dict):
         print(result.get("message") or json.dumps(result))
         rest = {k: v for k, v in result.items() if k != "message"}
@@ -252,12 +250,10 @@ def command_result(cid: str, params: dict, yes: bool) -> dict:
     status, c = call("GET", "/api/commands/" + quoted)
     if status == 200 and c.get("risky") and not yes:
         raise RuntimeError(f"{cid} cannot be undone. Run again with --yes to go ahead.")
-    status, out = call("POST", "/api/commands/" + quoted, {"params": params})
-    if status != 200:
-        raise RuntimeError(out.get("detail") or out.get("error") or f"The engine answered {status}.")
-    if not out.get("ok"):
-        raise RuntimeError(out.get("error", f"{cid} did not run."))
-    result = out.get("result")
+    ok, said, structured = tool("run_command", {"id": cid, "params": params})
+    if not ok:
+        raise RuntimeError(said or f"{cid} did not run.")
+    result = structured.get("result", said)
     STEP["said"] = (result.get("message") if isinstance(result, dict) else result) or ""
     returned = result.get("returned") if isinstance(result, dict) else None
     return returned if isinstance(returned, dict) else {}

@@ -229,9 +229,15 @@ def build() -> dict:
     return _verify()
 
 
-def _verify() -> dict:
+def _child_status() -> dict:
+    """status() as a fresh Python reports it. This process must never import pillow-heif itself: Windows refuses to
+    replace a library that a running process has loaded, and the reinstall below replaces it."""
     found = subprocess.run([sys.executable, __file__, "--status"], check=True, capture_output=True, text=True).stdout
-    s = json.loads(found)
+    return json.loads(found)
+
+
+def _verify() -> dict:
+    s = _child_status()
     if not is_wanted(s):
         raise HeifBuildError(f"pillow-heif is not the decode-only build after installing it: {s}")
     hits = gpl_hits([Path(s["package"]), *[p for p in _site().glob("*x265*")], *[p for p in _site().glob("pillow_heif*.libs")]])
@@ -256,7 +262,10 @@ def main(argv: list[str]) -> int:
     if args.status:
         print(json.dumps(status()))
         return 0
-    current = status()
+    try:
+        current = _child_status()
+    except (subprocess.CalledProcessError, ValueError) as exc:
+        current = {"installed": False, "error": str(exc)}
     if is_wanted(current) and not args.force:
         say(f"HEIC decoding: pillow-heif {PILLOW_HEIF} with libheif {LIBHEIF}, decoders only, already built")
         return 0

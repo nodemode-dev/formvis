@@ -5,7 +5,7 @@ The engine is the document model and every operation on it, with no DOM access: 
 | Source path | What lives there |
 | --- | --- |
 | `frontend/src/engine/index.ts` | `Engine`: projects, edits, undo and redo, layer, mask, clip, merge, selection, paint, transform and export operations; move snapping with guides and exact transforms (`snapMove`, `setLayerTransform`), moving and duplicating selected pixels (`beginPixelMove`), Transform Selection (`beginSelectionTransform`, merging through `growLayer`), retouch strokes, canvas sampling for eyedroppers (`sampleOriginal`) and Remove Background's mask (`applySubjectMask`) |
-| `frontend/src/engine/types.ts` | Layer, document, transform and mask types, the 13 blend modes, limits |
+| `frontend/src/engine/types.ts` | Layer, document, transform and mask types, the blend modes (`BLEND_MODES`, and the layer-only `EXTRA_BLEND_MODES`), limits |
 | `frontend/src/engine/renderer.ts` | Rendering: blend modes, opacity, pass-through folders, raster and folder masks, clipping chains, adjustments |
 | `frontend/src/engine/history.ts` | Structure snapshots plus region pixel patches, 100 entries and 256 MB |
 | `frontend/src/engine/selection.ts` | `SelectionMask` and the run-linking outline tracer for marching ants |

@@ -4,7 +4,7 @@ handshake, no session; server/discover; the version on every request) and still 
 2025-11-25. The Origin header is checked (only this computer), as the specification requires. The work happens in the
 window, which collects requests from /api/mcp/bridge only while Allow outside agents is on in Preferences > Plugins;
 anything that costs money asks the user there first. The Claude Code the window's own terminal dock starts sends the
-per-run x-formvis-inapp header (agents.INAPP_TOKEN): it is never asked the Allow question and is served with outside
+x-formvis-inapp header with the token of its own tab (agents.issue_inapp): it is never asked the Allow question and is served with outside
 agents off. The terminal and Claude Code commands (WINDOW_ONLY) are refused to every agent."""
 
 import asyncio
@@ -18,13 +18,13 @@ import os
 import time
 import urllib.parse
 
-from app.core import config
+from app.core import config, window_key
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app import __version__
 from app.services import agents, fal_run
-from app.routers.mcp_pack import PACK_TOOLS, PACK_USE_WHEN
+from app.routers.mcp_pack import PACK_DECLARED, PACK_TOOLS, PACK_USE_WHEN
 from app.routers.terminal import server_port
 
 router = APIRouter()
@@ -54,7 +54,11 @@ STRATEGY = """How to edit a picture in formvis with these tools.
 PROMPTS = [{"name": "edit_strategy", "title": "How to edit in formvis", "description": "The decision tree for formvis's tools: looking, choosing layers, removing and adding, text, colour, cut-outs, sizes, saving and exporting.", "arguments": []}]
 
 
-def _tool(name: str, description: str, props: dict, required: list[str] | None = None, **hints: bool) -> dict:
+DECLARED: dict[str, dict] = {}
+
+
+def _tool(name: str, description: str, props: dict, required: list[str] | None = None, *, reach: str = "", asks: str = "", asks_if: str = "", headless: bool = False, **hints: bool) -> dict:
+    DECLARED[name] = {"read": hints.get("read", False), "destructive": hints.get("destructive", False), "reach": reach, "asks": asks, "asks_if": asks_if, "headless": headless}
     return {"name": name, "description": description, "inputSchema": {"type": "object", "properties": props, "required": required or [], "additionalProperties": False},
             "annotations": {"readOnlyHint": hints.get("read", False), "destructiveHint": hints.get("destructive", False), "idempotentHint": hints.get("idempotent", False), "openWorldHint": hints.get("open", False)}}
 
@@ -74,84 +78,84 @@ _FAL_MORE = {"seed": {"type": "integer", "minimum": 0, "maximum": 4294967295, "d
              "options": {"type": "object", "description": "Other inputs of the chosen model by their names (fal_models lists them), for example {guidance_scale: 4}. The engine checks each against the model's own schema."}}
 _OVERWRITE = {"type": "boolean", "default": False, "description": "Replace a file already at the path. Without it an existing file is not touched."}
 TOOLS = [
-    _tool("get_document", "The open document: name, size, resolution, colour mode (rgb, cmyk, grayscale...), bit depth, colour profile, the layers bottom to top (id, name, kind, visible, opacity, blend, parent group), the active layer and the selection's bounds.", {}, read=True, idempotent=True),
+    _tool("get_document", "The open document: name, size, resolution, colour mode (rgb, cmyk, grayscale...), bit depth, colour profile, the layers bottom to top (id, name, kind, visible, opacity, blend, parent group), the active layer and the selection's bounds.", {}, reach="document", read=True, idempotent=True),
     _tool("get_image", "A picture of the document as it looks, its longer side at most max_size pixels (a PNG, or a JPEG with format). view document is the flattened picture; editor is the window's canvas as the person sees it, with the selection outline, guides and tool overlays; layer is one layer alone (id from get_document). x, y, width and height crop a box in document pixels, shown at 1:1 unless it is larger than max_size.",
           {"max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}, "view": {"type": "string", "enum": ["document", "editor", "layer"], "default": "document"},
            "id": {"type": "string", "description": "A layer id from get_document; for view layer."}, "x": {"type": "integer"}, "y": {"type": "integer"}, "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1},
-           "format": {"type": "string", "enum": ["png", "jpeg"], "default": "png"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.9}}, read=True, idempotent=True),
+           "format": {"type": "string", "enum": ["png", "jpeg"], "default": "png"}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.9}}, reach="document", read=True, idempotent=True),
     _tool("new_document", "Opens a new document of width x height pixels, or of an aspect and size class (a model-friendly size, sides in steps of 16: size_class 1k is about 1024 on the longer side, 2k about 2048, 4k about 4096). Width and height win when given; with no size at all the document is 1920 by 1080. mode (rgb, grayscale, lab, cmyk) and depth (8, 16 or 32 bits a channel) set the colour mode and bit depth; background is white, transparent, black or a colour #rrggbb. cmyk converts with no dialog through profile (default: the shipped CMYK profile; else a profile id or name from the Convert to Profile list) and the intent in the colour preferences.",
           {"mode": {"type": "string", "enum": ["rgb", "grayscale", "lab", "cmyk"], "default": "rgb"}, "profile": {"type": "string", "maxLength": 120, "default": "default", "description": "For cmyk: default, or a CMYK profile id or name."}, "depth": {"type": "integer", "enum": [8, 16, 32], "default": 8}, "width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
            "aspect": {"type": "string", "enum": ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "21:9", "5:4", "4:5"]}, "size_class": {"type": "string", "enum": ["1k", "2k", "4k"], "default": "1k"},
-           "name": {"type": "string", "maxLength": 120}, "background": {"type": "string", "pattern": "^(white|transparent|black|#[0-9a-fA-F]{6})$", "default": "white", "description": "white, transparent, black or #rrggbb"}}),
+           "name": {"type": "string", "maxLength": 120}, "background": {"type": "string", "pattern": "^(white|transparent|black|#[0-9a-fA-F]{6})$", "default": "white", "description": "white, transparent, black or #rrggbb"}}, reach="document"),
     _tool("select","Changes the selection: a rectangle or ellipse (x, y, width, height in pixels) combined by mode, or all, none, or invert.", {"shape": {"type": "string", "enum": ["rectangle", "ellipse", "all", "none", "invert"]},
           "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1},
-          "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["shape"]),
-    _tool("add_layer", "Adds an empty layer above the active one and makes it active; returns its id.", {"name": {"type": "string", "maxLength": 120}}),
+          "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["shape"], reach="document"),
+    _tool("add_layer", "Adds an empty layer above the active one and makes it active; returns its id.", {"name": {"type": "string", "maxLength": 120}}, reach="document"),
     _tool("set_layer", "Changes a layer's name, visibility, opacity (0 to 1), blend mode, reference flag (the generation dialogs' References list starts with flagged layers chosen) or locks (locks: pixels, position, transparency, all; true locks, false unlocks, left out stays), or makes it the active layer.", {"id": _ID, "name": {"type": "string", "maxLength": 120}, "reference": {"type": "boolean"},
           "visible": {"type": "boolean"}, "opacity": {"type": "number", "minimum": 0, "maximum": 1}, "blend": {"type": "string"}, "active": {"type": "boolean"},
-          "locks": {"type": "object", "properties": {"pixels": {"type": "boolean"}, "position": {"type": "boolean"}, "transparency": {"type": "boolean"}, "all": {"type": "boolean"}}, "additionalProperties": False}}, ["id"], idempotent=True),
-    _tool("delete_layer", "Deletes a layer (undoable).", {"id": _ID}, ["id"], destructive=True),
-    _tool("fill", "Fills the selection (or the whole active layer when nothing is selected) with a colour.", {"color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"}}, ["color"]),
+          "locks": {"type": "object", "properties": {"pixels": {"type": "boolean"}, "position": {"type": "boolean"}, "transparency": {"type": "boolean"}, "all": {"type": "boolean"}}, "additionalProperties": False}}, ["id"], reach="document", idempotent=True),
+    _tool("delete_layer", "Deletes a layer (undoable).", {"id": _ID}, ["id"], reach="document", destructive=True),
+    _tool("fill", "Fills the selection (or the whole active layer when nothing is selected) with a colour.", {"color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"}}, ["color"], reach="document"),
     _tool("add_adjustment", "Adds an adjustment layer (for example curves, levels, hsv, exposure, splitToning, halation, glow) with optional parameters.",
-          {"kind": {"type": "string"}, "params": {"type": "object", "description": "The adjustment's parameters, as its Properties show them."}}, ["kind"]),
+          {"kind": {"type": "string"}, "params": {"type": "object", "description": "The adjustment's parameters, as its Properties show them."}}, ["kind"], reach="document"),
     _tool("place_image", "Places a PNG, JPEG, WebP or SVG image as a new layer at x, y, at its own size unless scale (percent) or fit is given: fit contain or cover sizes it to the document and centres it, center centres it at its size, smart_object makes it a smart object so it can be scaled without loss. An SVG is drawn to pixels at svg_width pixels across (its own width when left out). reference true flags the layer as a reference picture: the generation dialogs' References list starts with it chosen. From path, an absolute path to a file, or data, base64.",
           {"reference": {"type": "boolean", "default": False}, "svg_width": {"type": "integer", "minimum": 1, "maximum": 30000, "description": "For an SVG: the width in pixels it is drawn at."},
            "scale": {"type": "number", "minimum": 1, "maximum": 1000, "description": "Percent of the image's own size."}, "fit": {"type": "string", "enum": ["none", "contain", "cover"], "default": "none"},
            "center": {"type": "boolean", "default": False}, "smart_object": {"type": "boolean", "default": False}, "path": {"type": "string", "description": "Absolute path to a .png, .jpg, .jpeg, .webp or .svg file; use this for files on disk."},
            "data": {"type": "string", "description": "Base64 image data, when there is no file."}, "name": {"type": "string", "maxLength": 120},
-           "x": {"type": "number", "default": 0}, "y": {"type": "number", "default": 0}}),
-    _tool("undo", "Steps back through the document's history.", {"steps": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1}}),
-    _tool("redo", "Steps forward through the document's history.", {"steps": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1}}),
+           "x": {"type": "number", "default": 0}, "y": {"type": "number", "default": 0}}, reach="reads files"),
+    _tool("undo", "Steps back through the document's history.", {"steps": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1}}, reach="document"),
+    _tool("redo", "Steps forward through the document's history.", {"steps": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1}}, reach="document"),
     # Generative, local-first (1.53.3): what runs on this computer for free first, fal last (asked, it costs money).
     _tool("generative_fill", "Fills the selection (select first) and returns the new layer, masked to the selection. With no prompt it removes what the selection covers, filling from the surroundings; with a prompt it paints that. model auto uses LaMa (no prompt) or Krea 2 (a prompt) on this computer when downloaded, else FLUX on fal, which asks the person first. Fails with what to download or set up when nothing can run.",
           {"prompt": {"type": "string", "maxLength": 2000, "default": ""}, "model": {"type": "string", "enum": ["auto", "lama", "krea-2", "fal"], "default": "auto", "description": "auto: on this computer first (LaMa with no prompt, Krea 2 with one), fal last (asks the person, costs money)."},
-           "influence": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.4, "description": "Krea 2 only: how much what the selection covers shapes the result."}}, open=True),
+           "influence": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.4, "description": "Krea 2 only: how much what the selection covers shapes the result."}}, reach="document", open=True),
     _tool("generative_expand", "Grows the canvas by the margins (pixels) and fills the new border, continuing the picture; a prompt describes what to add there. model as generative_fill.",
           {"left": {"type": "integer", "minimum": 0, "maximum": 8000, "default": 0}, "top": {"type": "integer", "minimum": 0, "maximum": 8000, "default": 0},
            "right": {"type": "integer", "minimum": 0, "maximum": 8000, "default": 0}, "bottom": {"type": "integer", "minimum": 0, "maximum": 8000, "default": 0},
-           "prompt": {"type": "string", "maxLength": 2000, "default": ""}, "model": {"type": "string", "enum": ["auto", "lama", "krea-2", "fal"], "default": "auto", "description": "auto: on this computer first (LaMa with no prompt, Krea 2 with one), fal last (asks the person, costs money)."}}, open=True),
+           "prompt": {"type": "string", "maxLength": 2000, "default": ""}, "model": {"type": "string", "enum": ["auto", "lama", "krea-2", "fal"], "default": "auto", "description": "auto: on this computer first (LaMa with no prompt, Krea 2 with one), fal last (asks the person, costs money)."}}, reach="document", open=True),
     _tool("generate_image", "Generates a picture from a prompt as a new layer, the size of the document unless size or aspect_ratio is given (then the picture keeps that shape and is centred, fitted inside the document). model auto uses Krea 2 or FLUX.2 [klein] on this computer when installed, else FLUX1.1 [pro] on fal, which asks the person first. model can also be the id of a generate model from fal_models (always fal, asks first): only those models take seed, negative_prompt and options, and size or aspect_ratio, by whichever of image_size or aspect_ratio the model has.",
           {"prompt": {"type": "string", "maxLength": 2000}, "model": {"type": "string", "enum": ["auto", "krea-2", "flux2-klein-4b", "fal", *_fal_ids("generate")], "default": "auto"},
            "size": {"type": "object", "properties": {"width": {"type": "integer", "minimum": 64, "maximum": 8192}, "height": {"type": "integer", "minimum": 64, "maximum": 8192}}, "required": ["width", "height"], "additionalProperties": False, "description": "The picture's size in pixels; for a fal_models generate model."},
-           "aspect_ratio": {"type": "string", "pattern": "^[0-9]+:[0-9]+$", "description": "For example 16:9; for a fal_models generate model (one with an aspect_ratio input takes the values it lists)."}, **_FAL_MORE}, ["prompt"], open=True),
+           "aspect_ratio": {"type": "string", "pattern": "^[0-9]+:[0-9]+$", "description": "For example 16:9; for a fal_models generate model (one with an aspect_ratio input takes the values it lists)."}, **_FAL_MORE}, ["prompt"], reach="document", open=True),
     _tool("upscale", "Enlarges what the document shows 2 or 4 times into a new document. model auto uses Real-ESRGAN on this computer when downloaded, else Real-ESRGAN on fal (asks first). model can also be the id of an upscale model from fal_models (fal, asks first); seed, negative_prompt and options then apply as that model's inputs allow.",
-          {"scale": {"type": "integer", "enum": [2, 4], "default": 2}, "model": {"type": "string", "enum": ["auto", "local", "fal", *_fal_ids("upscale")], "default": "auto"}, **_FAL_MORE}, open=True),
+          {"scale": {"type": "integer", "enum": [2, 4], "default": 2}, "model": {"type": "string", "enum": ["auto", "local", "fal", *_fal_ids("upscale")], "default": "auto"}, **_FAL_MORE}, reach="document", open=True),
     _tool("fal_models", "Lists the fal models formvis may use (the owner's catalogue, no others) with their roles: " + ", ".join(_FAL_ROLES) + ". With role, only that role's models; with model, one model's inputs (key, type, default, enum, range) for the options of generate_image and upscale. Changes nothing, costs nothing, needs no window.",
-          {"role": {"type": "string", "enum": _FAL_ROLES}, "model": {"type": "string", "maxLength": 120}}, read=True, idempotent=True),
+          {"role": {"type": "string", "enum": _FAL_ROLES}, "model": {"type": "string", "maxLength": 120}}, reach="app", read=True, idempotent=True),
     _tool("select_by_text", "Selects what a short description names, for example 'the red car' or 'all the people', by sending the document's picture and the words to SAM 3 on fal (asks the person first, costs money); the returned mask becomes the selection, combined by mode. Fails with a message when nothing matches. Follow with generative_fill, fill or any selection edit.",
           {"prompt": {"type": "string", "minLength": 1, "maxLength": 300}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"},
-           "options": {"type": "object", "description": "Other SAM 3 inputs by name (fal_models with model fal-ai/sam-3/image), for example {output_format: 'png'}."}}, ["prompt"], open=True),
-    _tool("remove_background", "Removes the active layer's background on this computer, keeping the subject (a mask on the layer; undoable).", {}),
+           "options": {"type": "object", "description": "Other SAM 3 inputs by name (fal_models with model fal-ai/sam-3/image), for example {output_format: 'png'}."}}, ["prompt"], reach="document", open=True),
+    _tool("remove_background", "Removes the active layer's background on this computer, keeping the subject (a mask on the layer; undoable).", {}, reach="document"),
     # Files, read and written by the engine at absolute paths (~ is expanded).
     _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, HEIF and HIF, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw, SVG drawn to pixels at svg_width) or a project (.fvd, .fmv, .psd, .psb, .ora) from an absolute path as a new document. into replace opens a picture in place of the active document (its unsaved changes are discarded), into layer adds it as a layer of the active document (as place_image does; reference true flags it as a reference picture). The file is remembered, so save_project or export_image with no path writes the document back to it.",
           {"path": {"type": "string", "description": "Absolute path, e.g. /Users/me/Pictures/beach.jpg"}, "into": {"type": "string", "enum": ["document", "replace", "layer"], "default": "document"},
-           "svg_width": {"type": "integer", "minimum": 1, "maximum": 30000, "description": "For an SVG: the width in pixels it is drawn at."}, "reference": {"type": "boolean", "default": False}}, ["path"]),
+           "svg_width": {"type": "integer", "minimum": 1, "maximum": 30000, "description": "For an SVG: the width in pixels it is drawn at."}, "reference": {"type": "boolean", "default": False}}, ["path"], reach="reads files"),
     _tool("save_project", "Saves the document as a formvis project (.fvd: layers, masks, adjustments and text stay editable) at an absolute path. With no path it writes back to the .fvd the active document was opened from with open_file (replacing it). A file already there is kept unless overwrite is true.",
-          {"path": {"type": "string", "description": "Absolute path ending .fvd; left out, the file the document was opened from."}, "overwrite": _OVERWRITE}, [], destructive=True),
+          {"path": {"type": "string", "description": "Absolute path ending .fvd; left out, the file the document was opened from."}, "overwrite": _OVERWRITE}, [], reach="writes files", asks="overwrites a project file", destructive=True),
     _tool("export_image", "Writes the document to an absolute path by the path's extension: PNG, JPEG or WebP as it looks (scale applies), or with every layer kept as .psd, .psb (a document past 30000 pixels a side) or .ora (RGB and grayscale documents; scale does not apply). Also .tif or .tiff (flat, or with every layer kept when layers is true), .tga, .dpx and .bmp (flat, scale applies), and .exr or .hdr (linear light float, at the document's size; a 32-bit document keeps its values). With no path it writes back to the file the active document was opened from with open_file, replacing it. A file already there is kept unless overwrite is true.",
           {"path": {"type": "string", "description": "Absolute path ending .png, .jpg, .webp, .psd, .psb, .ora, .tif, .tiff, .tga, .dpx, .bmp, .exr or .hdr; left out, the file the document was opened from."}, "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92},
            "scale": {"type": "number", "minimum": 0.05, "maximum": 4, "default": 1, "description": "Writes the picture at this factor of its size; the document is not changed."}, "overwrite": _OVERWRITE,
            "layers": {"type": "boolean", "default": False, "description": "For a TIFF: keep every layer."}, "dpi": {"type": "integer", "minimum": 1, "maximum": 9600, "default": 72, "description": "The resolution written into a TIFF, TGA, DPX or BMP."},
            "metadata": {"type": "string", "enum": ["keep", "none"], "default": "keep", "description": "none leaves out the document's AI label metadata from a PNG, JPEG or WebP."},
            "exr_compression": {"type": "string", "enum": ["zip", "piz", "none"], "default": "zip", "description": "For an .exr."}, "half": {"type": "boolean", "default": False, "description": "For an .exr: 16-bit half floats."},
-           "options": {"type": "object", "description": "Format settings as the export dialog names them, for a TIFF, TGA, DPX or BMP, for example {compression: deflate}."}}, [], destructive=True),
-    _tool("switch_document", "Makes an open document the one tools act on, by its id from get_document's documents.", {"id": _ID}, ["id"], idempotent=True),
+           "options": {"type": "object", "description": "Format settings as the export dialog names them, for a TIFF, TGA, DPX or BMP, for example {compression: deflate}."}}, [], reach="writes files", asks="overwrites a picture file", destructive=True),
+    _tool("switch_document", "Makes an open document the one tools act on, by its id from get_document's documents.", {"id": _ID}, ["id"], reach="document", idempotent=True),
     _tool("close_document", "Closes an open document by its id from get_document's documents (the active one when id is left out) without asking about unsaved changes: they are discarded, so save_project first to keep them. The person can bring the tab back with Reopen Closed Tab.",
-          {"id": {"type": "string", "description": "A document id from get_document's documents."}}, destructive=True),
-    _tool("ping", "Reports in one call whether formvis is there: its version, whether the window is open and connected, whether outside agents are allowed, and the open documents (id, name, size). Never opens the window and never asks the person anything.", {}, read=True, idempotent=True),
-    _tool("list_plugins", "Lists the plugins in the plugins folder: file name, size, whether it is on, whether it is running, its name and the commands it registered (run one with run_command id plugin:[file]:[command]).", {}, read=True, idempotent=True),
-    _tool("extensions_list", "Lists the extensions FormPortal installed and form.ext runs for formvis (Form Extension Contract, API 1): id, name, version, source (catalogue, sideload, development), state (ready, needs-permission, refused with the reason), permissions and the commands each contributes.", {}, read=True, idempotent=True),
+          {"id": {"type": "string", "description": "A document id from get_document's documents."}}, reach="document", destructive=True),
+    _tool("ping", "Reports in one call whether formvis is there: its version, whether the window is open and connected, whether outside agents are allowed, and the open documents (id, name, size). Never opens the window and never asks the person anything.", {}, reach="app", read=True, idempotent=True),
+    _tool("list_plugins", "Lists the plugins in the plugins folder: file name, size, whether it is on, whether it is running, its name and the commands it registered (run one with run_command id plugin:[file]:[command]).", {}, reach="app", read=True, idempotent=True),
+    _tool("extensions_list", "Lists the extensions FormPortal installed and form.ext runs for formvis (Form Extension Contract, API 1): id, name, version, source (catalogue, sideload, development), state (ready, needs-permission, refused with the reason), permissions and the commands each contributes.", {}, reach="app", read=True, idempotent=True),
     _tool("extension_command", "Runs a command an extension contributes (ids from extensions_list), with the same consent as the Extensions menu: the first run of a version asks the person in the formvis window, and a refusal fails. Waits for the extension to finish: a headless command stops after 120 seconds without a pending request, and the call waits at most 10 minutes.",
-          {"id": {"type": "string", "description": "The extension id."}, "command": {"type": "string", "description": "The command id within the extension."}, "args": {"type": "object", "description": "Arguments passed to the extension with the command."}}, ["id", "command"]),
+          {"id": {"type": "string", "description": "The extension id."}, "command": {"type": "string", "description": "The command id within the extension."}, "args": {"type": "object", "description": "Arguments passed to the extension with the command."}}, ["id", "command"], reach="document"),
     # The document's size and shape.
     _tool("resize_image", "Resamples the whole document. Give width and height in pixels, or one of them (the other follows the shape), or percent (100 keeps the size), or long_side (the longer side in pixels, the shape kept).",
           {"width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
-           "percent": {"type": "number", "minimum": 1, "maximum": 1000}, "long_side": {"type": "integer", "minimum": 1, "maximum": 30000}}),
+           "percent": {"type": "number", "minimum": 1, "maximum": 1000}, "long_side": {"type": "integer", "minimum": 1, "maximum": 30000}}, reach="document"),
     _tool("resize_canvas", "Changes the canvas to width x height without scaling the picture; anchor says where the picture stays.",
           {"width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
-           "anchor": {"type": "string", "enum": ["center", "top-left", "top", "top-right", "left", "right", "bottom-left", "bottom", "bottom-right"], "default": "center"}}, ["width", "height"]),
-    _tool("crop", "Crops the document to a rectangle in pixels.", {"x": {"type": "integer"}, "y": {"type": "integer"}, "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}}, ["x", "y", "width", "height"], destructive=True),
-    _tool("flip_canvas", "Flips the whole document horizontally or vertically.", {"direction": {"type": "string", "enum": ["horizontal", "vertical"]}}, ["direction"]),
+           "anchor": {"type": "string", "enum": ["center", "top-left", "top", "top-right", "left", "right", "bottom-left", "bottom", "bottom-right"], "default": "center"}}, ["width", "height"], reach="document"),
+    _tool("crop", "Crops the document to a rectangle in pixels.", {"x": {"type": "integer"}, "y": {"type": "integer"}, "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}}, ["x", "y", "width", "height"], reach="document", destructive=True),
+    _tool("flip_canvas", "Flips the whole document horizontally or vertically.", {"direction": {"type": "string", "enum": ["horizontal", "vertical"]}}, ["direction"], reach="document"),
     # Layers.
     _tool("transform_layer", "Moves, scales, rotates or flips a layer (id from get_document): x and y are its new top-left in pixels, scale a percentage, rotation degrees. Then, one of distort (the four corners it is pulled to: perspective and free distortion) or warp (a bend such as arc, wave or fisheye); both resample the pixels, apply as one step and need a pixel layer or a smart object.",
           {"id": _ID, "x": {"type": "number"}, "y": {"type": "number"}, "scale": {"type": "number", "minimum": 1, "maximum": 1000}, "rotation": {"type": "number", "minimum": -360, "maximum": 360},
@@ -161,30 +165,30 @@ TOOLS = [
            "warp": {"type": "object", "description": "A preset bend laid over the layer: style, bend and horizontal and vertical distortion in percent (-100 to 100).", "properties": {
                "style": {"type": "string", "enum": ["arc", "arcLower", "arcUpper", "arch", "bulge", "shellLower", "shellUpper", "flag", "wave", "fish", "rise", "fisheye", "inflate", "squeeze", "twist"]},
                "bend": {"type": "number", "minimum": -100, "maximum": 100, "default": 50}, "horizontal": {"type": "number", "minimum": -100, "maximum": 100, "default": 0}, "vertical": {"type": "number", "minimum": -100, "maximum": 100, "default": 0},
-               "orientation": {"type": "string", "enum": ["horizontal", "vertical"], "default": "horizontal"}, "grid": {"type": "integer", "minimum": 3, "maximum": 6, "default": 4}}, "required": ["style"], "additionalProperties": False}}, ["id"]),
-    _tool("rasterize_layer", "Turns a text, shape or smart-object layer into pixels, so filters and painting apply to it.", {"id": _ID}, ["id"]),
-    _tool("duplicate_layer", "Duplicates a layer above itself; returns the copy's id.", {"id": _ID, "name": {"type": "string", "maxLength": 120}}, ["id"]),
-    _tool("move_layer", "Moves a layer above or below another in the stack.", {"id": _ID, "target": _ID, "where": {"type": "string", "enum": ["above", "below"], "default": "above"}}, ["id", "target"]),
-    _tool("merge_layers", "Merges layers into one (the ids given, or with only one id that layer into the one below it).", {"ids": {"type": "array", "items": _ID, "minItems": 1}}, ["ids"], destructive=True),
-    _tool("flatten_image", "Flattens every layer into one.", {}, destructive=True),
+               "orientation": {"type": "string", "enum": ["horizontal", "vertical"], "default": "horizontal"}, "grid": {"type": "integer", "minimum": 3, "maximum": 6, "default": 4}}, "required": ["style"], "additionalProperties": False}}, ["id"], reach="document"),
+    _tool("rasterize_layer", "Turns a text, shape or smart-object layer into pixels, so filters and painting apply to it.", {"id": _ID}, ["id"], reach="document"),
+    _tool("duplicate_layer", "Duplicates a layer above itself; returns the copy's id.", {"id": _ID, "name": {"type": "string", "maxLength": 120}}, ["id"], reach="document"),
+    _tool("move_layer", "Moves a layer above or below another in the stack.", {"id": _ID, "target": _ID, "where": {"type": "string", "enum": ["above", "below"], "default": "above"}}, ["id", "target"], reach="document"),
+    _tool("merge_layers", "Merges layers into one (the ids given, or with only one id that layer into the one below it).", {"ids": {"type": "array", "items": _ID, "minItems": 1}}, ["ids"], reach="document", destructive=True),
+    _tool("flatten_image", "Flattens every layer into one.", {}, reach="document", destructive=True),
     _tool("add_text", "Adds a text layer; returns its id. x and y are the top-left of the text in pixels; size in pixels; color as #rrggbb.",
           {"text": {"type": "string", "maxLength": 5000}, "x": {"type": "number", "default": 0}, "y": {"type": "number", "default": 0}, "size": {"type": "number", "minimum": 1, "maximum": 2000, "default": 48},
            "color": {"type": "string", "default": "#000000"}, "font": {"type": "string", "default": "Inter"}, "bold": {"type": "boolean", "default": False}, "italic": {"type": "boolean", "default": False},
-           "align": {"type": "string", "enum": ["left", "center", "right"], "default": "left"}}, ["text"]),
+           "align": {"type": "string", "enum": ["left", "center", "right"], "default": "left"}}, ["text"], reach="document"),
     _tool("draw_shape", "Draws a shape layer: a rectangle, ellipse, triangle, star, line or arrow within x, y, width, height, filled and/or stroked (colors #rrggbb; omit fill or stroke for none).",
           {"kind": {"type": "string", "enum": ["rectangle", "ellipse", "triangle", "star", "polygon", "line", "arrow"]}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1},
-           "fill": {"type": "string"}, "stroke": {"type": "string"}, "stroke_width": {"type": "number", "minimum": 0.5, "maximum": 200, "default": 3}}, ["kind", "x", "y", "width", "height"]),
+           "fill": {"type": "string"}, "stroke": {"type": "string"}, "stroke_width": {"type": "number", "minimum": 0.5, "maximum": 200, "default": 3}}, ["kind", "x", "y", "width", "height"], reach="document"),
     # Selecting.
-    _tool("select_subject", "Selects the main subject (a person, animal or object) on this computer.", {}),
-    _tool("select_color_range", "Selects pixels near a colour (#rrggbb) in the active layer; fuzziness 0 to 200 widens the range.", {"color": {"type": "string"}, "fuzziness": {"type": "number", "minimum": 0, "maximum": 200, "default": 40}}, ["color"]),
+    _tool("select_subject", "Selects the main subject (a person, animal or object) on this computer.", {}, reach="document"),
+    _tool("select_color_range", "Selects pixels near a colour (#rrggbb) in the active layer; fuzziness 0 to 200 widens the range.", {"color": {"type": "string"}, "fuzziness": {"type": "number", "minimum": 0, "maximum": 200, "default": 40}}, ["color"], reach="document"),
     _tool("select_feather", "Softens the selection's edge by radius pixels (0.1 to 1000), as Select > Modify > Feather; the selection stays one selection with a gradual edge. Needs a selection.",
-          {"radius": {"type": "number", "minimum": 0.1, "maximum": 1000}, "at_bounds": {"type": "boolean", "default": False, "description": "Feather along the canvas edge too, instead of carrying the edge pixels on."}}, ["radius"]),
+          {"radius": {"type": "number", "minimum": 0.1, "maximum": 1000}, "at_bounds": {"type": "boolean", "default": False, "description": "Feather along the canvas edge too, instead of carrying the edge pixels on."}}, ["radius"], reach="document"),
     _tool("select_grow", "Makes the selection bigger or smaller by amount pixels (1 to 1024), as Select > Modify > Expand or Contract. Needs a selection.",
-          {"amount": {"type": "integer", "minimum": 1, "maximum": 1024}, "direction": {"type": "string", "enum": ["expand", "contract"], "default": "expand"}, "at_bounds": {"type": "boolean", "default": False, "description": "Act along the canvas edge too, instead of carrying the edge pixels on."}}, ["amount"]),
+          {"amount": {"type": "integer", "minimum": 1, "maximum": 1024}, "direction": {"type": "string", "enum": ["expand", "contract"], "default": "expand"}, "at_bounds": {"type": "boolean", "default": False, "description": "Act along the canvas edge too, instead of carrying the edge pixels on."}}, ["amount"], reach="document"),
     _tool("select_point", "Selects the object at points, as the Object Selection tool does: inside points (x, y in document pixels) lie on the object, outside points on what it must not include. Runs the Segment Anything model on this computer, which takes a few seconds the first time and fails with how to install it when it is missing.",
           {"inside": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}},
            "outside": {"type": "array", "maxItems": 20, "items": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}},
-           "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["inside"]),
+           "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["inside"], reach="document"),
     # Filters and looks.
     _tool("apply_filter", "Applies a filter to the active layer (inside the selection if there is one). kind and its settings: gaussianBlur {radius}, motionBlur {angle, distance}, addNoise {amount, gaussian, monochromatic}, unsharpMask {usmAmount, usmRadius, threshold}, lensBlur {lensRadius}, surfaceBlur, radialBlur, tiltShift, irisBlur, fieldBlur; with no settings: average (the selection filled with its average colour), blur, blurMore, sharpen, sharpenMore, sharpenEdges, despeckle, ntscColors; boxBlur {radius}, shapeBlur {radius, shape: circle|ring|square|diamond|triangle|hexagon|star|heart|cross}, smartBlur {radius, threshold, quality: high|medium|low, mode: normal|edgeOnly|overlayEdge}, dustAndScratches {radius, threshold}, median {radius}, reduceNoise {strength 0 to 10, preserve, color, sharpen (percent), jpeg}, custom {kernel (25 integers, row by row), scale, offset}, hsbHsl {input, output: rgb|hsb|hsl}, highPass {radius}, maximum and minimum {radius, preserve: squareness|roundness}, offset {horizontal, vertical, undefinedAreas: transparent|repeat|wrap}, deInterlace {eliminate: oddFields|evenFields, createBy: interpolation|duplication}. Distort, centred on the selection's bounds (else the canvas): twirl {angle}, pinch {amount}, spherize {amount, mode: normal|horizontalOnly|verticalOnly}, ripple {amount, size: small|medium|large}, polarCoordinates {mode: rectangularToPolar|polarToRectangular}, wave {generators, wavelengthMin, wavelengthMax, amplitudeMin, amplitudeMax, scaleX, scaleY (percent), type: sine|triangle|square, undefinedAreas: wrap|repeat, seed}, zigZag {amount, ridges, style: pondRipples|outFromCenter|aroundCenter}, chromaticShift {style: plates|lateral|linear, amount (px, 0 to 200), angle (degrees, Linear only)}, shear {top, middle, bottom (percent of half the width), undefinedAreas: wrap|repeat}, displace {horizontal, vertical (percent), fit: stretch|tile, undefinedAreas: repeat|wrap, map (the name of an open document, required)}. Pixelate: facet and fragment with no settings; colorHalftone {maxRadius, channel1 to channel4 (degrees)}, crystallize {cellSize}, mezzotint {type: fineDots|mediumDots|grainyDots|coarseDots|shortLines|mediumLines|longLines|shortStrokes|mediumStrokes|longStrokes}, mosaic {cellSize}, pointillize {cellSize} (dots on the background colour). Stylize: findEdges and solarize with no settings; diffuse {mode: normal|darkenOnly|lightenOnly|anisotropic}, emboss {angle, height, amount}, extrude {type: blocks|pyramids, size, depth, depthMode: random|levelBased, solidFront, maskIncomplete}, oilPaint {stylization, cleanliness, brush (its scale), bristle, lighting, angle, shine}, tiles {count, maxOffset, fill: background|foreground|inverse|unaltered}, traceContour {level, edge: lower|upper}, wind {method: wind|blast|stagger, direction: fromRight|fromLeft}. Render: clouds and differenceClouds with no settings, and fibers {variance, strength, seed}, between the foreground and background colours; lensFlare {brightness, centerX, centerY (percent of the selection's bounds, else the canvas), lens: zoom|prime35|prime105|moviePrime}; lightingEffects {type: spot|point|infinite, color (#rrggbb), intensity, x, y, targetX, targetY (percent of the selection's bounds, else the canvas), z (percent of their shorter side), cone, hotspot, radius, angle, elevation, gloss, metallic, exposure, ambience, texture: none|luminance|red|green|blue|alpha, height, whiteIsHigh}. Drawn over the layer (a new empty layer keeps them apart), each with a seed for its arrangement: flame {path (a path's name; else the selected path; with none, an arc low in the selection or canvas), flameType: oneFlameAlongPath|multipleFlamesAlongPath|multipleFlamesPathDirections|multipleFlamesVariousLength|candleLight|multipleFlamesOneDirection, length, randomizeLength, width, angle, interval (px), adjustIntervalForLoops, quality: draft|low|medium|high|fine, customColor, color (#rrggbb), turbulent, jag, opacity, flameLines, flameBottomAlignment, flameStyle: normal|violent|flat, flameShape: parallel|toCenter|spread|oval|pointed, randomizeShapes, seed}; pictureFrame {frame: vineWithFlowers|vine|leafGarland|flowerBorder|berries|ribbon|waves|zigzag|dots|rope|scallops|lines|stars|hearts|snowflakes|bamboo, margin (percent), size, arrangement, lines, thickness, fade, vineColor, flowerColor, leafColor (#rrggbb), seed}; tree {baseTreeType: oak|maple|autumnMaple|birch|elm|apple|cherryBlossom|olive|willow|pine|fir|spruce|cypress|poplar|palm|coconutPalm|bamboo|shrub|bareWinterTree, lightDirection (1 to 5), leavesAmount, leavesSize, branchesHeight, branchesThickness, defaultLeaves, leavesColor, customBranchColor, branchesColor (#rrggbb), flatShading, x, y, size (percent of the selection's bounds, else the canvas), seed}. Blur Gallery: spinBlur {blurAngle (degrees), x, y (percent of the selection's bounds, else the canvas), radiusX, radiusY (percent of their shorter side), angle}. Filter Gallery: filterGallery {effects: [{filter, values, visible}]}, its effect layers applied in order, the first at the bottom, hidden ones skipped; filter is one of: coloredPencil {pencilWidth 1 to 24, strokePressure 0 to 15, paperBrightness 0 to 50}, cutout {numberOfLevels 2 to 8, edgeSimplicity 0 to 10, edgeFidelity 1 to 3}, dryBrush and fresco {brushSize 0 to 10, brushDetail 0 to 10, texture 1 to 3}, filmGrain {grain 0 to 20, highlightArea 0 to 20, intensity 0 to 10}, neonGlow {glowSize -24 to 24, glowBrightness 0 to 50, glowColor (#rrggbb)}, paintDaubs {brushSize 1 to 50, sharpness 0 to 40, brushType: simple|lightRough|darkRough|wideSharp|wideBlurry|sparkle}, paletteKnife {strokeSize 1 to 50, strokeDetail 1 to 3, softness 0 to 10}, plasticWrap {highlightStrength 0 to 20, detail 1 to 15, smoothness 1 to 15}, posterEdges {edgeThickness 0 to 10, edgeIntensity 0 to 10, posterization 0 to 6}, roughPastels {strokeLength 0 to 40, strokeDetail 1 to 20, texture: canvas|brick|burlap|sandstone, scaling 50 to 200, relief 0 to 50, light: top|topRight|right|bottomRight|bottom|bottomLeft|left|topLeft, invert}, smudgeStick {strokeLength 0 to 10, highlightArea 0 to 20, intensity 0 to 10}, sponge {brushSize 0 to 10, definition 0 to 25, smoothness 1 to 15}, underpainting {brushSize 0 to 40, textureCoverage 0 to 40, and roughPastels' texture, scaling, relief, light, invert}, watercolor {brushDetail 1 to 14, shadowIntensity 0 to 10, texture 1 to 3}, accentedEdges {edgeWidth 1 to 14, edgeBrightness 0 to 50, smoothness 1 to 15}, angledStrokes {directionBalance 0 to 100, strokeLength 3 to 50, sharpness 0 to 10}, crosshatch {strokeLength 3 to 50, sharpness 0 to 20, strength 1 to 3}, darkStrokes {balance 0 to 10, blackIntensity 0 to 10, whiteIntensity 0 to 10}, inkOutlines {strokeLength 1 to 50, darkIntensity 0 to 50, lightIntensity 0 to 50}, spatter {sprayRadius 0 to 25, smoothness 1 to 15}, sprayedStrokes {strokeLength 0 to 20, sprayRadius 0 to 25, strokeDirection: rightDiagonal|horizontal|leftDiagonal|vertical}, sumiE {strokeWidth 3 to 15, strokePressure 0 to 15, contrast 0 to 40}, diffuseGlow {graininess 0 to 10, glowAmount 0 to 20, clearAmount 0 to 20}, glass {distortion 0 to 20, smoothness 1 to 15, texture: frosted|blocks|canvas|tinyLens|ribbed|reeded|wavy|pebbled, scaling 50 to 200, invert}, oceanRipple {rippleSize 1 to 15, rippleMagnitude 0 to 20}, glowingEdges {edgeWidth 1 to 14, edgeBrightness 0 to 20, smoothness 1 to 15}, basRelief {detail 1 to 15, smoothness 1 to 15, light}, chalkCharcoal {charcoalArea 0 to 20, chalkArea 0 to 20, strokePressure 0 to 5}, charcoal {charcoalThickness 1 to 7, detail 0 to 5, lightDarkBalance 0 to 100}, chrome {detail 0 to 10, smoothness 0 to 10}, conteCrayon {foregroundLevel 1 to 15, backgroundLevel 1 to 15, and roughPastels' texture, scaling, relief, light, invert}, graphicPen {strokeLength 1 to 15, lightDarkBalance 0 to 100, strokeDirection}, halftonePattern {size 1 to 12, contrast 0 to 50, patternType: dot|circle|line}, notePaper {imageBalance 0 to 50, graininess 0 to 20, relief 0 to 25}, photocopy {detail 1 to 24, darkness 1 to 50}, plaster {imageBalance 0 to 50, smoothness 1 to 15, light}, reticulation {density 0 to 50, foregroundLevel 0 to 50, backgroundLevel 0 to 50}, stamp {lightDarkBalance 0 to 50, smoothness 1 to 50}, tornEdges {imageBalance 0 to 50, smoothness 1 to 15, contrast 1 to 25}, waterPaper {fiberLength 3 to 50, brightness 0 to 100, contrast 0 to 100}, craquelure {crackSpacing 2 to 100, crackDepth 0 to 10, crackBrightness 0 to 10}, grain {intensity 0 to 100, contrast 0 to 100, grainType: regular|soft|sprinkles|clumped|contrasty|enlarged|stippled|horizontal|vertical|speckle}, mosaicTiles {tileSize 2 to 100, groutWidth 1 to 15, lightenGrout 0 to 10}, patchwork {squareSize 0 to 10, relief 0 to 25}, stainedGlass {cellSize 2 to 50, borderThickness 1 to 20, lightIntensity 0 to 10}, texturizer {roughPastels' texture, scaling, relief, light, invert}; colours come from the foreground and background colours (the Sketch effects' ink and paper). Unnamed settings keep their defaults.",
           {"kind": {"type": "string", "enum": ["gaussianBlur", "motionBlur", "addNoise", "unsharpMask", "lensBlur", "smartSharpen", "surfaceBlur", "radialBlur", "tiltShift", "irisBlur", "fieldBlur",
@@ -193,213 +197,213 @@ TOOLS = [
                                                "displace", "pinch", "polarCoordinates", "ripple", "shear", "spherize", "twirl", "wave", "zigZag", "chromaticShift",
                                                "colorHalftone", "crystallize", "facet", "fragment", "mezzotint", "mosaic", "pointillize",
                                                "diffuse", "emboss", "extrude", "findEdges", "oilPaint", "solarize", "tiles", "traceContour", "wind",
-                                               "clouds", "differenceClouds", "fibers", "lensFlare", "lightingEffects", "flame", "pictureFrame", "tree", "spinBlur", "filterGallery"]}, "settings": {"type": "object", "default": {}}}, ["kind"]),
-    _tool("set_adjustment", "Changes an adjustment layer's parameters (id from get_document; the same parameters as add_adjustment). Takes the parametric adjustments (such as photoFilter, colorBalance, channelMixer, selectiveColor), grain and exposure; apply_preset sets gradientMap, curves and levels from a preset.", {"id": _ID, "params": {"type": "object"}}, ["id", "params"], idempotent=True),
+                                               "clouds", "differenceClouds", "fibers", "lensFlare", "lightingEffects", "flame", "pictureFrame", "tree", "spinBlur", "filterGallery"]}, "settings": {"type": "object", "default": {}}}, ["kind"], reach="document"),
+    _tool("set_adjustment", "Changes an adjustment layer's parameters (id from get_document; the same parameters as add_adjustment). Takes the parametric adjustments (such as photoFilter, colorBalance, channelMixer, selectiveColor), grain and exposure; apply_preset sets gradientMap, curves and levels from a preset.", {"id": _ID, "params": {"type": "object"}}, ["id", "params"], reach="document", idempotent=True),
     _tool("color_match", "Matches a layer's colours to what is beneath it or around it, as a Curves layer clipped to it; amount 0 to 1.",
-          {"id": _ID, "to": {"type": "string", "enum": ["beneath", "around"], "default": "beneath"}, "amount": {"type": "number", "minimum": 0, "maximum": 1, "default": 1}}, ["id"]),
+          {"id": _ID, "to": {"type": "string", "enum": ["beneath", "around"], "default": "beneath"}, "amount": {"type": "number", "minimum": 0, "maximum": 1, "default": 1}}, ["id"], reach="document"),
     _tool("add_film_layer", "Adds a film look as its own layer: a light leak (color amber|red|magenta|gold from left|right|top|bottom|corner) or a frame (style film|white|line).",
           {"kind": {"type": "string", "enum": ["leak", "frame"]}, "color": {"type": "string", "enum": ["amber", "red", "magenta", "gold"], "default": "amber"},
-           "from": {"type": "string", "enum": ["left", "right", "top", "bottom", "corner"], "default": "left"}, "style": {"type": "string", "enum": ["film", "white", "line"], "default": "film"}}, ["kind"]),
+           "from": {"type": "string", "enum": ["left", "right", "top", "bottom", "corner"], "default": "left"}, "style": {"type": "string", "enum": ["film", "white", "line"], "default": "film"}}, ["kind"], reach="document"),
     # The video timeline (1.59.7, DEV_PLAN 25.5), as Photon Studio's timeline operations: frames counted from 0; every
     # edit is one undoable step; moving the playhead is not an edit.
-    _tool("timeline_get", "The document's video timeline: frame rate, length in frames and seconds, the playhead, the work area, loops, and per layer (top first) its clip (start and length in frames), fades and keyframes. Null when it has none.", {}, read=True, idempotent=True),
+    _tool("timeline_get", "The document's video timeline: frame rate, length in frames and seconds, the playhead, the work area, loops, and per layer (top first) its clip (start and length in frames), fades and keyframes. Null when it has none.", {}, reach="document", read=True, idempotent=True),
     _tool("timeline_create", "Creates a video timeline with a track per layer, fps frames a second and seconds long. A document has a video timeline or a frame animation, not both.",
-          {"fps": {"type": "number", "minimum": 1, "maximum": 240, "default": 30}, "seconds": {"type": "number", "minimum": 0.1, "maximum": 3600, "default": 5}}),
-    _tool("timeline_delete", "Deletes the video timeline: its clips, keyframes and transitions (the layers stay).", {}, destructive=True),
+          {"fps": {"type": "number", "minimum": 1, "maximum": 240, "default": 30}, "seconds": {"type": "number", "minimum": 0.1, "maximum": 3600, "default": 5}}, reach="document"),
+    _tool("timeline_delete", "Deletes the video timeline: its clips, keyframes and transitions (the layers stay).", {}, reach="document", destructive=True),
     _tool("timeline_set", "Changes the frame rate, the length in seconds, the work area (work_in to work_out, frames, work_out excluded) or the loop count (0 forever).",
           {"fps": {"type": "number", "minimum": 1, "maximum": 240}, "seconds": {"type": "number", "minimum": 0.01, "maximum": 3600}, "work_in": {"type": "integer", "minimum": 0},
-           "work_out": {"type": "integer", "minimum": 1}, "loops": {"type": "integer", "minimum": 0, "maximum": 65535}}, idempotent=True),
-    _tool("timeline_go_to", "Moves the playhead to a frame; the window shows that moment. Not an edit.", {"frame": {"type": "integer", "minimum": 0}}, ["frame"], idempotent=True),
+           "work_out": {"type": "integer", "minimum": 1}, "loops": {"type": "integer", "minimum": 0, "maximum": 65535}}, reach="document", idempotent=True),
+    _tool("timeline_go_to", "Moves the playhead to a frame; the window shows that moment. Not an edit.", {"frame": {"type": "integer", "minimum": 0}}, ["frame"], reach="document", idempotent=True),
     _tool("timeline_clip", "Moves or trims a layer's clip: start is the frame where it begins, length how many frames it lasts. Outside its clip the layer does not show.",
-          {"id": _ID, "start": {"type": "integer"}, "length": {"type": "integer", "minimum": 1}}, ["id"], idempotent=True),
+          {"id": _ID, "start": {"type": "integer"}, "length": {"type": "integer", "minimum": 1}}, ["id"], reach="document", idempotent=True),
     _tool("timeline_split", "Splits a layer's clip at a frame (default the playhead): the clip ends there and a copy of the layer carries on with the rest and the same keyframes; returns the copy's id.",
-          {"id": _ID, "frame": {"type": "integer", "minimum": 1}}, ["id"]),
+          {"id": _ID, "frame": {"type": "integer", "minimum": 1}}, ["id"], reach="document"),
     _tool("timeline_keyframe", "Keys a layer's property at a frame (default the playhead): x and y in pixels, opacity and fill 0 to 1, style 1 (its layer style on) or 0; interpolation linear or hold (until the next keyframe). delete removes the keyframe at that frame; clear removes all of the property's keyframes.",
           {"id": _ID, "property": {"type": "string", "enum": ["x", "y", "opacity", "fill", "style"]}, "frame": {"type": "integer", "minimum": 0}, "value": {"type": "number"},
-           "interpolation": {"type": "string", "enum": ["linear", "hold"], "default": "linear"}, "delete": {"type": "boolean", "default": False}, "clear": {"type": "boolean", "default": False}}, ["id", "property"]),
+           "interpolation": {"type": "string", "enum": ["linear", "hold"], "default": "linear"}, "delete": {"type": "boolean", "default": False}, "clear": {"type": "boolean", "default": False}}, ["id", "property"], reach="document"),
     _tool("timeline_transition", "Adds a transition to a layer's clip: fade_in, fade_out or fade (both) over seconds, to transparent or with black or white (the layer turns to that colour at the clip's edge); cross_fade with the clip starting or ending within it (only the upper fades, so the picture never dips); or remove.",
           {"id": _ID, "kind": {"type": "string", "enum": ["fade_in", "fade_out", "fade", "cross_fade", "remove"]}, "seconds": {"type": "number", "minimum": 0.01, "maximum": 600, "default": 1},
-           "color": {"type": "string", "enum": ["transparent", "black", "white"], "default": "transparent"}}, ["id", "kind"]),
+           "color": {"type": "string", "enum": ["transparent", "black", "white"], "default": "transparent"}}, ["id", "kind"], reach="document"),
     _tool("timeline_frame_image", "One frame of the video timeline as a PNG image, its longer side at most max_size pixels.",
-          {"frame": {"type": "integer", "minimum": 0}, "max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}}, ["frame"], read=True, idempotent=True),
+          {"frame": {"type": "integer", "minimum": 0}, "max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}}, ["frame"], reach="document", read=True, idempotent=True),
     _tool("timeline_render", "Renders the video timeline to an absolute path: .mp4 (H.264), .gif, or .zip (numbered PNG frames); every frame, or from to to (frames, to excluded); scale 1, 0.5 or 0.25. A file already there is kept unless overwrite is true.",
           {"path": {"type": "string", "description": "Absolute path ending .mp4, .gif or .zip"}, "from": {"type": "integer", "minimum": 0}, "to": {"type": "integer", "minimum": 1},
-           "scale": {"type": "number", "enum": [1, 0.5, 0.25], "default": 1}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
+           "scale": {"type": "number", "enum": [1, 0.5, 0.25], "default": 1}, "overwrite": _OVERWRITE}, ["path"], reach="writes files", asks="overwrites a video file", destructive=True),
     _tool("list_commands", "Lists formvis's commands: every menu and palette action, each as id, label, menu (its path in the menu bar, such as Filter > Blur > Gaussian Blur, which ui_menu_invoke takes), when (what it is for) and params (what it takes). Narrow it with group (a menu or family such as Filter or Layer) or text (words from the label, id or description); an unfiltered list is capped, so filter first.",
-          {"group": {"type": "string", "maxLength": 80}, "text": {"type": "string", "maxLength": 120}, "enabled": {"type": "boolean", "description": "true lists only the commands that can run right now, false only those that cannot; each row says enabled, mutates, its keys and, when disabled, disabledReason (and needsDocument when no document is open)."}}, read=True, idempotent=True),
+          {"group": {"type": "string", "maxLength": 80}, "text": {"type": "string", "maxLength": 120}, "enabled": {"type": "boolean", "description": "true lists only the commands that can run right now, false only those that cannot; each row says enabled, mutates, its keys and, when disabled, disabledReason (and needsDocument when no document is open)."}}, reach="app", read=True, idempotent=True),
     _tool("describe_command", "One command in full: its label, group, description, when to use it, params with types and defaults, and whether it changes the document or is risky (cannot be undone).",
-          {"id": {"type": "string", "maxLength": 120, "description": "A command id from list_commands."}}, ["id"], read=True, idempotent=True),
+          {"id": {"type": "string", "maxLength": 120, "description": "A command id from list_commands."}}, ["id"], reach="app", read=True, idempotent=True),
     _tool("run_command", "Runs one command by id with params, as one undoable step. A command marked risky waits for the person's approval in the formvis window (Window > Agent Connect) unless they allowed all. With wait false it starts the command and answers at once with a job id; command_job gives its result.",
           {"id": {"type": "string", "maxLength": 120, "description": "A command id from list_commands."}, "params": {"type": "object", "description": "The command's params, as describe_command lists them."},
-           "wait": {"type": "boolean", "default": True, "description": "false: start it in the background and return a job id (a long command such as a model run); do not edit the document until command_job says it is done."}}, ["id"], destructive=True),
+           "wait": {"type": "boolean", "default": True, "description": "false: start it in the background and return a job id (a long command such as a model run); do not edit the document until command_job says it is done."}}, ["id"], reach="document", asks="runs a command marked risky", asks_if="a risky command", destructive=True),
     _tool("command_job", "The state of commands started with run_command wait false: job (an id such as cmd:1) gives that one, none lists the last 50. Each shows running, done or failed, the seconds it has taken, its message and its result.",
-          {"job": {"type": "string", "maxLength": 40, "description": "A job id from run_command, such as cmd:1."}}, read=True, idempotent=True),
+          {"job": {"type": "string", "maxLength": 40, "description": "A job id from run_command, such as cmd:1."}}, reach="app", read=True, idempotent=True),
     _tool("run_commands", "Runs several commands in order as one batch and one undo step; it stops at the first failure and says which command failed. A risky command in the batch asks the person first.",
-          {"commands": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "object", "properties": {"id": {"type": "string", "maxLength": 120}, "params": {"type": "object"}}, "required": ["id"], "additionalProperties": False}}}, ["commands"], destructive=True),
-    _tool("get_selection", "The selection: its bounds in pixels (x, y, width, height), or none when nothing is selected.", {}, read=True, idempotent=True),
-    _tool("get_layer_tree", "The layers as a tree, bottom to top, each with id, name, kind, visible and its children (a focused view of get_document's layers, without the document details).", {}, read=True, idempotent=True),
+          {"commands": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "object", "properties": {"id": {"type": "string", "maxLength": 120}, "params": {"type": "object"}}, "required": ["id"], "additionalProperties": False}}}, ["commands"], reach="document", asks="runs a command marked risky", asks_if="a risky command", destructive=True),
+    _tool("get_selection", "The selection: its bounds in pixels (x, y, width, height), or none when nothing is selected.", {}, reach="document", read=True, idempotent=True),
+    _tool("get_layer_tree", "The layers as a tree, bottom to top, each with id, name, kind, visible and its children (a focused view of get_document's layers, without the document details).", {}, reach="document", read=True, idempotent=True),
     _tool("select_mask", "Makes the selection from a layer: its pixels (transparency), its layer mask, or its vector mask. Defaults to the active layer and replaces the selection.",
           {"id": _ID, "source": {"type": "string", "enum": ["transparency", "mask", "vector"], "default": "transparency"}, "invert": {"type": "boolean", "default": False},
-           "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}),
-    _tool("list_settings", "The window's simple settings (numbers, on-off choices and short texts in Preferences) with their current values.", {}, read=True, idempotent=True),
+           "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, reach="document"),
+    _tool("list_settings", "The window's simple settings (numbers, on-off choices and short texts in Preferences) with their current values.", {}, reach="app", read=True, idempotent=True),
     _tool("list_fonts", "The font families the window offers for type, bundled and installed ones, most recently used first. Give family to get that family's faces (regular, bold, italic, bold italic) with whether the font file could be read and how many characters it maps; use a listed family name in add_text.",
-          {"family": {"type": "string", "maxLength": 120, "description": "A family from the list; omit to list all families."}}, read=True, idempotent=True),
+          {"family": {"type": "string", "maxLength": 120, "description": "A family from the list; omit to list all families."}}, reach="app", read=True, idempotent=True),
     # Headless: the engine alone, no window.
     _tool("file_info", "Reads a picture or project file at an absolute path without opening it: size in pixels, colour mode, bit depth, resolution, whether it carries a colour profile, pages or frames, and for projects (.fvd, .fmv, .ora, .psd, .psb) the layer count. Works with no window open.",
-          {"path": {"type": "string", "description": "Absolute path to a picture or project file."}}, ["path"], read=True, idempotent=True),
+          {"path": {"type": "string", "description": "Absolute path to a picture or project file."}}, ["path"], reach="reads files", headless=True, read=True, idempotent=True),
     _tool("improve_prompt", "Rewrites an image prompt through the language model set in Preferences > Plugins, under an improve template (default Richer detail; or a starter or a Markdown template in the data folder's prompt-templates folder). Returns the rewritten prompt and kept, the @img reference tokens of the prompt that the rewrite still carries (any the model dropped are put back at the end and named in restored). Changes nothing in the document; works with no window open. Fails with what to do when no language model is set.",
-          {"prompt": {"type": "string", "minLength": 1, "maxLength": 4000, "description": "The prompt to improve; @img1, @img2 and so on name reference pictures and are kept."}, "template": {"type": "string", "maxLength": 80, "description": "A template name: Richer detail, Fill a selection, Short and plain, Generate a new picture, Edit instruction, Photographic, Tag list or Transparent asset (the starter for each use case)."}}, ["prompt"], read=True),
+          {"prompt": {"type": "string", "minLength": 1, "maxLength": 4000, "description": "The prompt to improve; @img1, @img2 and so on name reference pictures and are kept."}, "template": {"type": "string", "maxLength": 80, "description": "A template name: Richer detail, Fill a selection, Short and plain, Generate a new picture, Edit instruction, Photographic, Tag list or Transparent asset (the starter for each use case)."}}, ["prompt"], reach="app", read=True),
     _tool("convert_file", "Converts a picture file to another format without opening it in the window: path in, output_path out, the output's extension picks the format (png, jpg, webp, avif, tif, bmp, qoi, tga, ico, pdf, ppm, pgm, pbm, pnm, dpx, fits, wbmp). The result is one flat picture; layers are not kept (open_file then save_project does that). A file already at output_path is kept unless overwrite is true. Writing a new file works with no window open; replacing a file (overwrite true) under the Ask policy needs the person's approval in the formvis window, and fails at once when no window is open.",
           {"path": {"type": "string", "description": "Absolute path to the picture to read."}, "output_path": {"type": "string", "description": "Absolute path to write, with the new extension."},
            "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.92, "description": "For jpg, webp and avif."}, "dpi": {"type": "integer", "minimum": 1, "maximum": 9600, "default": 72},
            "page": {"type": "integer", "minimum": 0, "default": 0, "description": "Which page of a multi-page TIFF; the first by default."},
-           "options": {"type": "object", "description": "Format settings as the export dialog names them, for example {compression: deflate} for tiff or {level: 9} for png."}, "overwrite": _OVERWRITE}, ["path", "output_path"], destructive=True),
+           "options": {"type": "object", "description": "Format settings as the export dialog names them, for example {compression: deflate} for tiff or {level: 9} for png."}, "overwrite": _OVERWRITE}, ["path", "output_path"], reach="writes files", asks="writes a picture file", asks_if="overwrite", headless=True, destructive=True),
     _tool("jobs_list", "Lists the engine's background work: local generation, upscaling and similar jobs (id, kind, status, progress, what it is doing) and the agent calls now running or waiting for the person's approval. Newest first.",
-          {"status": {"type": "string", "enum": ["all", "active", "finished"], "default": "all"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}, read=True, idempotent=True),
+          {"status": {"type": "string", "enum": ["all", "active", "finished"], "default": "all"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}}, reach="app", read=True, idempotent=True),
     _tool("jobs_cancel", "Cancels a background job by its id from jobs_list, or every active one with all true. A job stops at its next step; jobs_list shows it as cancelled.",
-          {"id": {"type": "string", "maxLength": 80, "description": "A job id from jobs_list."}, "all": {"type": "boolean", "default": False}}, destructive=True, idempotent=True),
+          {"id": {"type": "string", "maxLength": 80, "description": "A job id from jobs_list."}, "all": {"type": "boolean", "default": False}}, reach="app", destructive=True, idempotent=True),
     _tool("set_settings", "Changes simple settings by name, as list_settings names them. A value must be the same kind as the current one. The person is asked first.",
-          {"values": {"type": "object", "description": "Setting names and their new values."}}, ["values"], idempotent=True),
+          {"values": {"type": "object", "description": "Setting names and their new values."}}, ["values"], reach="app", idempotent=True),
     _tool("ui_inspect", "Describes parts of the formvis window: for each element matching a CSS selector, its tag, id, text, whether it is visible, disabled or pressed, and its box in window pixels.",
-          {"selector": {"type": "string", "maxLength": 200}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}}, ["selector"], read=True, idempotent=True),
+          {"selector": {"type": "string", "maxLength": 200}, "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}}, ["selector"], reach="app", read=True, idempotent=True),
     # The window's own controls (P22): state, pictures of it, menus by path, named settings, dialogs, synthetic input, the window, raw control calls and file roots.
     _tool("ui_state", "The window's state: the active tool, the open document and its view (zoom, rotation, centre in document pixels), the foreground and background colours, window and stage size, whether it has focus or is full screen, the theme, whether panels are shown, the dialogs open, whether a menu is open, what the engine is busy with, and the frames per second measured over a third of a second.",
-          {}, read=True, idempotent=True),
+          {}, reach="app", read=True, idempotent=True),
     _tool("ui_screenshot", "A picture of the formvis window: with no selector the canvas as the person sees it (the picture, selection outline, guides and tool overlays); with a CSS selector (from ui_inspect) that part of the window, such as a panel or a dialog, drawn from a copy of its elements (fonts that are not installed on this computer may differ). Its longer side is at most max_size pixels.",
           {"selector": {"type": "string", "maxLength": 200}, "max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}, "format": {"type": "string", "enum": ["png", "jpeg"], "default": "png"},
-           "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.9}}, read=True, idempotent=True),
+           "quality": {"type": "number", "minimum": 0.1, "maximum": 1, "default": 0.9}}, reach="app", read=True, idempotent=True),
     _tool("ui_menu_list", "The menu bar's tree. With no path the menus; with a path such as Filter > Blur the items under it, each with its command id, label, whether it can run now, whether it is checked and its shortcut. depth (1 to 4) says how many submenu levels to open; deeper ones show only their item count.",
-          {"path": {"type": "string", "maxLength": 200, "default": ""}, "depth": {"type": "integer", "minimum": 1, "maximum": 4, "default": 1}}, read=True, idempotent=True),
+          {"path": {"type": "string", "maxLength": 200, "default": ""}, "depth": {"type": "integer", "minimum": 1, "maximum": 4, "default": 1}}, reach="app", read=True, idempotent=True),
     _tool("ui_menu_invoke", "Runs a menu item by its path from the menu bar, such as Edit > Undo or Filter > Blur > Gaussian Blur, as a person clicking it would (a dialog may open: ui_dialog answers it). params are the command's params as describe_command lists them. A command marked risky waits for the person's approval.",
-          {"path": {"type": "string", "maxLength": 200, "description": "Menu labels joined with > ending at the item."}, "params": {"type": "object"}}, ["path"], destructive=True),
+          {"path": {"type": "string", "maxLength": 200, "description": "Menu labels joined with > ending at the item."}, "params": {"type": "object"}}, ["path"], reach="document", asks="runs a command marked risky", asks_if="a risky command", destructive=True),
     _tool("ui_set", "Sets named parts of the window in one call: tool (a tool id), zoom (1 is 100 percent), centre ({x, y} document pixels to bring to the middle), rotation (degrees of view rotation), theme (a theme name), panels (shown or hidden), foreground and background (#rrggbb), mask_target (edit the active layer's mask instead of its pixels), eyedropper ({size: 1 for a point sample or the side of an average (3, 5, 11, 31, 51, 101), sample: current, below, all, below-flat or all-flat, ring: show the sample ring}), crop_overlay ({kind: the Crop tool's composition guide, show: auto, always or never}) and dock_layout (a workspace by name or id, such as Essentials or Photography; ui_state lists them). A field it does not have is refused by name.",
           {"tool": {"type": "string", "maxLength": 60}, "zoom": {"type": "number", "minimum": 0.01, "maximum": 64}, "centre": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False},
            "rotation": {"type": "number", "minimum": -360, "maximum": 360}, "theme": {"type": "string", "maxLength": 60}, "panels": {"type": "boolean"}, "foreground": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"},
            "background": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"}, "mask_target": {"type": "boolean"},
            "eyedropper": {"type": "object", "properties": {"size": {"type": "integer", "enum": [1, 3, 5, 11, 31, 51, 101]}, "sample": {"type": "string", "enum": ["current", "below", "all", "below-flat", "all-flat"]}, "ring": {"type": "boolean"}}, "additionalProperties": False},
            "crop_overlay": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["thirds", "grid", "diagonal", "triangle", "golden", "spiral"]}, "show": {"type": "string", "enum": ["auto", "always", "never"]}}, "additionalProperties": False},
-           "dock_layout": {"type": "string", "maxLength": 60}}, idempotent=True),
+           "dock_layout": {"type": "string", "maxLength": 60}}, reach="app", idempotent=True),
     _tool("ui_dialog", "Lists, fills in and answers the dialog that is open in the window. action list shows each open dialog's title, message, fields (name, kind, value, range or options) and buttons; set puts values into fields (a field's name from list, or its number as in Name #2); confirm presses the primary button; cancel closes it; button presses the button of that name. An open dialog blocks edits until it is answered.",
           {"action": {"type": "string", "enum": ["list", "set", "confirm", "cancel"], "default": "list"}, "fields": {"type": "object", "description": "Field names and their new values (text, number, true or false for a checkbox, or an option's name)."},
-           "button": {"type": "string", "maxLength": 60}}),
+           "button": {"type": "string", "maxLength": 60}}, reach="document"),
     _tool("ui_pointer", "Sends synthetic pointer events to the canvas as a pen, mouse or finger would: down, move, up, cancel, hover and wheel, each at x, y in document pixels (or window pixels with space window) with pressure (0 to 1), tilt_x and tilt_y (degrees), twist, button, and the modifier keys shift, alt, ctrl and meta. The active tool receives them exactly as a person's. A press left down is released at the end unless keep_down is true. Pressure counts only while Preferences > Tools reads pen pressure.",
           {"events": {"type": "array", "minItems": 1, "maxItems": 2000, "items": {"type": "object", "properties": {
               "type": {"type": "string", "enum": ["down", "move", "up", "cancel", "hover", "wheel"]}, "x": {"type": "number", "minimum": -1000000, "maximum": 1000000}, "y": {"type": "number", "minimum": -1000000, "maximum": 1000000},
               "space": {"type": "string", "enum": ["document", "window"], "default": "document"}, "pressure": {"type": "number", "minimum": 0, "maximum": 1}, "tilt_x": {"type": "number", "minimum": -90, "maximum": 90}, "tilt_y": {"type": "number", "minimum": -90, "maximum": 90},
               "twist": {"type": "number", "minimum": 0, "maximum": 359}, "button": {"type": "integer", "minimum": 0, "maximum": 4}, "pointer_type": {"type": "string", "enum": ["pen", "mouse", "touch"], "default": "pen"},
               "shift": {"type": "boolean"}, "alt": {"type": "boolean"}, "ctrl": {"type": "boolean"}, "meta": {"type": "boolean"}, "delta_x": {"type": "number"}, "delta_y": {"type": "number"}}, "required": ["type"], "additionalProperties": False}},
-           "delay_ms": {"type": "integer", "minimum": 0, "maximum": 100, "default": 4, "description": "Pause after each event."}, "keep_down": {"type": "boolean", "default": False}}, ["events"], destructive=True),
+           "delay_ms": {"type": "integer", "minimum": 0, "maximum": 100, "default": 4, "description": "Pause after each event."}, "keep_down": {"type": "boolean", "default": False}}, ["events"], reach="document", destructive=True),
     _tool("ui_key", "Presses keys in the window as a person would, to whatever has focus: keys are combos such as Mod+Z, Shift+Tab, Escape, Enter or B (Mod is Ctrl, or Cmd on a Mac); text types characters into the focused text field or dialog field.",
-          {"keys": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "maxLength": 40}}, "text": {"type": "string", "maxLength": 2000}}, destructive=True),
+          {"keys": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "maxLength": 40}}, "text": {"type": "string", "maxLength": 2000}}, reach="document", destructive=True),
     _tool("ui_window", "The formvis window itself: size reports its size and focus, resize sets it (the desktop app's window only; a browser tab refuses), focus asks for focus, fullscreen toggles full screen, quit closes formvis (confirm must be true; the person approves it, and is asked about each document with unsaved changes; a browser tab only ends by saying it can be closed).",
-          {"action": {"type": "string", "enum": ["size", "resize", "focus", "fullscreen", "quit"]}, "confirm": {"type": "boolean", "default": False}, "width": {"type": "integer", "minimum": 400, "maximum": 10000}, "height": {"type": "integer", "minimum": 300, "maximum": 10000}}, ["action"]),
+          {"action": {"type": "string", "enum": ["size", "resize", "focus", "fullscreen", "quit"]}, "confirm": {"type": "boolean", "default": False}, "width": {"type": "integer", "minimum": 400, "maximum": 10000}, "height": {"type": "integer", "minimum": 300, "maximum": 10000}}, ["action"], reach="app", asks="closes formvis", asks_if="quit"),
     _tool("control_call", "Calls a window control by its protocol name with raw params, the same as the typed tool: ui.inspect, ui.state, ui.screenshot, ui.menu.list, ui.menu.invoke, ui.set, ui.dialog, ui.pointer, ui.key, window, app.open (open_file), app.save (save_project), app.export (export_image) and app.roots (file_roots). params are checked against that tool's schema.",
-          {"method": {"type": "string", "enum": list(CONTROL_METHODS)}, "params": {"type": "object", "default": {}}}, ["method"], destructive=True),
+          {"method": {"type": "string", "enum": list(CONTROL_METHODS)}, "params": {"type": "object", "default": {}}}, ["method"], reach="document", destructive=True),
     _tool("file_roots", "The folders agents may read and write files in (the person sets them), and the caps on one reply: the most characters of text and bytes of one picture a tool returns. With no folders set, any folder outside the system's own is allowed.",
-          {}, read=True, idempotent=True),
+          {}, reach="app", read=True, idempotent=True),
     # Layout boxes, depth, crop, sampling and mask files (1.88.8).
-    _tool("boxes_list", "The layout boxes on the document (rectangles that say where new, kept, moved or removed things go, which Generate writes into its prompt): id, kind, name, description and rectangle in document pixels, with warnings about empty descriptions, tiny or overlapping boxes.", {}, read=True, idempotent=True),
+    _tool("boxes_list", "The layout boxes on the document (rectangles that say where new, kept, moved or removed things go, which Generate writes into its prompt): id, kind, name, description and rectangle in document pixels, with warnings about empty descriptions, tiny or overlapping boxes.", {}, reach="document", read=True, idempotent=True),
     _tool("boxes_add", "Adds a layout box: a rectangle in document pixels with a kind (new, keep, move, remove, reference, text) and a description of what belongs there. At most 24 boxes; the rectangle is kept on the canvas.",
           {"x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1},
-           "kind": {"type": "string", "enum": ["new", "keep", "move", "remove", "reference", "text"], "default": "new"}, "text": {"type": "string", "maxLength": 500, "default": ""}}, ["x", "y", "width", "height"]),
+           "kind": {"type": "string", "enum": ["new", "keep", "move", "remove", "reference", "text"], "default": "new"}, "text": {"type": "string", "maxLength": 500, "default": ""}}, ["x", "y", "width", "height"], reach="document"),
     _tool("boxes_set", "Changes a layout box: its kind, description, name or rectangle (only what you give). The id is from boxes_list.",
           {"id": {"type": "string", "description": "A box id from boxes_list."}, "kind": {"type": "string", "enum": ["new", "keep", "move", "remove", "reference", "text"]}, "text": {"type": "string", "maxLength": 500},
-           "name": {"type": "string", "maxLength": 60}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1}}, ["id"], idempotent=True),
-    _tool("boxes_remove", "Deletes one layout box by its id from boxes_list (undoable).", {"id": {"type": "string", "description": "A box id from boxes_list."}}, ["id"], destructive=True),
+           "name": {"type": "string", "maxLength": 60}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1}}, ["id"], reach="document", idempotent=True),
+    _tool("boxes_remove", "Deletes one layout box by its id from boxes_list (undoable).", {"id": {"type": "string", "description": "A box id from boxes_list."}}, ["id"], reach="document", destructive=True),
     _tool("boxes_from_selection", "Makes a layout box over the bounds of the current selection, as one step.",
-          {"kind": {"type": "string", "enum": ["new", "keep", "move", "remove", "reference", "text"], "default": "new"}, "text": {"type": "string", "maxLength": 500, "default": ""}}),
-    _tool("boxes_clear", "Deletes every layout box in one undoable step.", {}, destructive=True, idempotent=True),
+          {"kind": {"type": "string", "enum": ["new", "keep", "move", "remove", "reference", "text"], "default": "new"}, "text": {"type": "string", "maxLength": 500, "default": ""}}, reach="document"),
+    _tool("boxes_clear", "Deletes every layout box in one undoable step.", {}, reach="document", destructive=True, idempotent=True),
     _tool("sample_box", "The average colour (opacity weighted, of the flattened picture) inside a layout box, or inside a rectangle in document pixels. Returns #rrggbb, its red, green and blue, and how opaque the area is.",
-          {"id": {"type": "string", "description": "A box id from boxes_list; leave out to give a rectangle."}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1}}, read=True, idempotent=True),
+          {"id": {"type": "string", "description": "A box id from boxes_list; leave out to give a rectangle."}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1}}, reach="document", read=True, idempotent=True),
     _tool("frequency_separation", "Splits what the picture shows at a radius into two layers above the active one: Low Frequency (the blurred colour and tone) and High Frequency (the detail, in Linear Light), which together look as the picture did. Retouch skin tone on the first and texture on the second.",
-          {"radius": {"type": "number", "minimum": 0.5, "maximum": 100, "default": 8, "description": "Blur radius in pixels: larger keeps more in the detail layer."}}),
+          {"radius": {"type": "number", "minimum": 0.5, "maximum": 100, "default": 8, "description": "Blur radius in pixels: larger keeps more in the detail layer."}}, reach="document"),
     _tool("sample_depth", "Reads the Depth Map layer at a point: 0 to 255 (and 0 to 1), near is bright, far is dark. size averages a square of that many pixels. The document needs a Depth Map layer (a grey layer named Depth Map).",
-          {"x": {"type": "integer", "minimum": 0}, "y": {"type": "integer", "minimum": 0}, "size": {"type": "integer", "minimum": 1, "maximum": 101, "default": 1}}, ["x", "y"], read=True, idempotent=True),
+          {"x": {"type": "integer", "minimum": 0}, "y": {"type": "integer", "minimum": 0}, "size": {"type": "integer", "minimum": 1, "maximum": 101, "default": 1}}, ["x", "y"], reach="document", read=True, idempotent=True),
     _tool("depth_edit", "Corrects the Depth Map layer, inside the selection when there is one: flatten (pull amount percent toward mid grey), nearer or farther (shift amount percent of the range), or smooth (blur by radius pixels; edges true keeps depth sharp at the picture's own edges, radius up to 9).",
           {"kind": {"type": "string", "enum": ["flatten", "nearer", "farther", "smooth"]}, "amount": {"type": "number", "minimum": 1, "maximum": 100, "description": "Percent for flatten (50 when left out), nearer and farther (10)."},
-           "radius": {"type": "number", "minimum": 1, "maximum": 32, "default": 4, "description": "For smooth."}, "edges": {"type": "boolean", "default": False, "description": "For smooth: keep the picture's edges sharp."}}, ["kind"]),
+           "radius": {"type": "number", "minimum": 1, "maximum": 32, "default": 4, "description": "For smooth."}, "edges": {"type": "boolean", "default": False, "description": "For smooth: keep the picture's edges sharp."}}, ["kind"], reach="document"),
     _tool("set_crop", "Crops to a frame given in document pixels, with a turn: angle straightens the picture (degrees, -45 to 45) about the frame's centre, and output_width with output_height resample the result to exactly that size at resolution ppi. A frame past the picture's edge adds canvas; content_aware fills it from the picture. crop is the plain rectangle.",
           {"x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1}, "angle": {"type": "number", "minimum": -45, "maximum": 45, "default": 0},
            "output_width": {"type": "integer", "minimum": 1, "maximum": 30000}, "output_height": {"type": "integer", "minimum": 1, "maximum": 30000}, "resolution": {"type": "number", "minimum": 1, "maximum": 9600, "description": "Pixels per inch; the document's own when left out."},
-           "content_aware": {"type": "boolean", "default": False}}, ["x", "y", "width", "height"], destructive=True),
+           "content_aware": {"type": "boolean", "default": False}}, ["x", "y", "width", "height"], reach="document", destructive=True),
     _tool("export_mask", "Writes a mask as a grey PNG the size of the document (white shows, black hides, greys are partial) to an absolute path: the selection, a layer's mask, or what a layer's pixels cover. A file already there is kept unless overwrite is true.",
           {"path": {"type": "string", "description": "Absolute path ending .png"}, "source": {"type": "string", "enum": ["selection", "layer_mask", "layer_pixels"], "default": "selection"},
-           "id": {"type": "string", "description": "A layer id from get_document; for layer_mask and layer_pixels."}, "overwrite": _OVERWRITE}, ["path"], destructive=True),
+           "id": {"type": "string", "description": "A layer id from get_document; for layer_mask and layer_pixels."}, "overwrite": _OVERWRITE}, ["path"], reach="writes files", asks="overwrites a picture file", destructive=True),
     # Recipes, selecting, layers, masks, history, brush and files (P22).
-    _tool("list_recipes", "Which ways of filling, generating, upscaling and reading depth this computer can run now: each with its id, the task, where it runs (this computer, or fal which costs money and asks the person), whether it is ready, why not when it is not, and the tool that uses it.", {}, read=True, idempotent=True),
+    _tool("list_recipes", "Which ways of filling, generating, upscaling and reading depth this computer can run now: each with its id, the task, where it runs (this computer, or fal which costs money and asks the person), whether it is ready, why not when it is not, and the tool that uses it.", {}, reach="app", read=True, idempotent=True),
     _tool("set_active_layer", "Selects the layers in ids (from get_document) so commands that act on the selected layers, such as align_layers or group_layers, reach them; the last id becomes the active layer. With add true the layers join the current selection, else they replace it.",
-          {"ids": {"type": "array", "minItems": 1, "maxItems": 200, "items": _ID}, "add": {"type": "boolean", "default": False}}, ["ids"], idempotent=True),
+          {"ids": {"type": "array", "minItems": 1, "maxItems": 200, "items": _ID}, "add": {"type": "boolean", "default": False}}, ["ids"], reach="document", idempotent=True),
     _tool("select_color", "Selects by colour from a seed point, as the Magic Wand does: the pixels within tolerance of the colour at x, y, either contiguous with the point or everywhere. source layer reads the active layer, merged reads the whole picture. mode combines the result with the selection.",
           {"x": {"type": "integer", "minimum": 0}, "y": {"type": "integer", "minimum": 0}, "tolerance": {"type": "integer", "minimum": 0, "maximum": 255, "default": 32}, "contiguous": {"type": "boolean", "default": True},
-           "source": {"type": "string", "enum": ["layer", "merged"], "default": "layer"}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["x", "y"]),
+           "source": {"type": "string", "enum": ["layer", "merged"], "default": "layer"}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["x", "y"], reach="document"),
     _tool("select_shape", "Selects a rectangle, an ellipse (x, y, width, height in pixels) or a polygon (points, at least 3, in pixels), with an optional feather radius, combined with the selection by mode.",
           {"shape": {"type": "string", "enum": ["rectangle", "ellipse", "polygon"]}, "x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 1}, "height": {"type": "number", "minimum": 1},
            "points": {"type": "array", "minItems": 3, "maxItems": 500, "items": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}},
-           "feather": {"type": "number", "minimum": 0, "maximum": 1000, "default": 0, "description": "Edge softness in pixels."}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["shape"]),
+           "feather": {"type": "number", "minimum": 0, "maximum": 1000, "default": 0, "description": "Edge softness in pixels."}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["shape"], reach="document"),
     _tool("select_range", "Selects by range, as Select > Color Range: kind color (pixels near a colour, with fuzziness), a hue family (reds, yellows, greens, cyans, blues, magentas), highlights, midtones, shadows, skin, depth (lo to hi of the Depth Map, 0 to 255, near is bright), or luminosity (lo to hi, 0 to 255, of the layer or the merged picture; fuzziness softens the ends). invert flips the result; mode combines it with the selection.",
           {"kind": {"type": "string", "enum": ["color", "reds", "yellows", "greens", "cyans", "blues", "magentas", "highlights", "midtones", "shadows", "skin", "depth", "luminosity"]}, "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb, for kind color."},
            "fuzziness": {"type": "number", "minimum": 0, "maximum": 200, "default": 40}, "lo": {"type": "integer", "minimum": 0, "maximum": 255, "default": 0}, "hi": {"type": "integer", "minimum": 0, "maximum": 255, "default": 255},
-           "source": {"type": "string", "enum": ["layer", "merged"], "default": "layer", "description": "For luminosity."}, "invert": {"type": "boolean", "default": False}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["kind"]),
+           "source": {"type": "string", "enum": ["layer", "merged"], "default": "layer", "description": "For luminosity."}, "invert": {"type": "boolean", "default": False}, "mode": {"type": "string", "enum": ["replace", "add", "subtract", "intersect"], "default": "replace"}}, ["kind"], reach="document"),
     _tool("sample_mean_color", "The mean colour of the selection (weighted by how much each pixel is selected and opaque), or of the whole picture when nothing is selected; with id, of that layer alone. Changes nothing. Returns #rrggbb, red, green, blue, how opaque the area is and the pixels counted.",
-          {"id": {"type": "string", "description": "A layer id from get_document; omit for the flattened picture."}}, read=True, idempotent=True),
+          {"id": {"type": "string", "description": "A layer id from get_document; omit for the flattened picture."}}, reach="document", read=True, idempotent=True),
     _tool("align_layers", "Aligns or distributes the layers in ids (from get_document; the current selection when left out). align: left, hcenter, right, top, vcenter or bottom; distribute: the same edges or hspace and vspace for equal gaps (three or more layers, or two with to selection or canvas). to auto uses the bounds of the layers themselves, or the selection or canvas.",
           {"ids": {"type": "array", "minItems": 1, "maxItems": 200, "items": _ID}, "align": {"type": "string", "enum": ["left", "hcenter", "right", "top", "vcenter", "bottom"]},
-           "distribute": {"type": "string", "enum": ["left", "hcenter", "right", "top", "vcenter", "bottom", "hspace", "vspace"]}, "to": {"type": "string", "enum": ["auto", "selection", "canvas"], "default": "auto"}}),
+           "distribute": {"type": "string", "enum": ["left", "hcenter", "right", "top", "vcenter", "bottom", "hspace", "vspace"]}, "to": {"type": "string", "enum": ["auto", "selection", "canvas"], "default": "auto"}}, reach="document"),
     _tool("group_layers", "Puts the layers in ids (from get_document) into one new group, named name; returns the group's id.",
-          {"ids": {"type": "array", "minItems": 1, "maxItems": 200, "items": _ID}, "name": {"type": "string", "maxLength": 120}}, ["ids"]),
+          {"ids": {"type": "array", "minItems": 1, "maxItems": 200, "items": _ID}, "name": {"type": "string", "maxLength": 120}}, ["ids"], reach="document"),
     _tool("set_group", "Changes a group's name, visibility, lock (every lock) or collapsed state in the Layers panel. id is a group from get_document.",
-          {"id": _ID, "name": {"type": "string", "maxLength": 120}, "visible": {"type": "boolean"}, "locked": {"type": "boolean"}, "collapsed": {"type": "boolean"}}, ["id"], idempotent=True),
+          {"id": _ID, "name": {"type": "string", "maxLength": 120}, "visible": {"type": "boolean"}, "locked": {"type": "boolean"}, "collapsed": {"type": "boolean"}}, ["id"], reach="document", idempotent=True),
     _tool("set_mask", "Changes a layer's raster mask. action reveal_all or hide_all (adds one, or resets the layer's), reveal_selection or hide_selection (from the selection; the layer has no mask yet), enable, disable, invert, delete, apply (burns it into the pixels, then removes it), or copy_from (a copy of the mask of from_id).",
-          {"id": _ID, "action": {"type": "string", "enum": ["reveal_all", "hide_all", "reveal_selection", "hide_selection", "enable", "disable", "invert", "delete", "apply", "copy_from"]}, "from_id": {"type": "string", "description": "A layer id with a mask; for copy_from."}}, ["id", "action"], destructive=True),
+          {"id": _ID, "action": {"type": "string", "enum": ["reveal_all", "hide_all", "reveal_selection", "hide_selection", "enable", "disable", "invert", "delete", "apply", "copy_from"]}, "from_id": {"type": "string", "description": "A layer id with a mask; for copy_from."}}, ["id", "action"], reach="document", destructive=True),
     _tool("set_text", "Changes a text layer (id from get_document): its words, font, size, colour, bold, italic, alignment, line height, tracking, and its angle in degrees. Give only what changes.",
           {"id": _ID, "text": {"type": "string", "maxLength": 5000}, "font": {"type": "string"}, "size": {"type": "number", "minimum": 1, "maximum": 2000}, "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"}, "bold": {"type": "boolean"}, "italic": {"type": "boolean"},
-           "align": {"type": "string", "enum": ["left", "center", "right", "justify"]}, "line_height": {"type": "number", "minimum": 0.5, "maximum": 5}, "tracking": {"type": "number", "minimum": -500, "maximum": 1000}, "angle": {"type": "number", "minimum": -360, "maximum": 360}}, ["id"], idempotent=True),
-    _tool("list_history", "The document's undo history (each step's name, which are done and which are undone) and its snapshots (id, name, kind, memory), newest last. Snapshots live with the open document and are not saved.", {}, read=True, idempotent=True),
+           "align": {"type": "string", "enum": ["left", "center", "right", "justify"]}, "line_height": {"type": "number", "minimum": 0.5, "maximum": 5}, "tracking": {"type": "number", "minimum": -500, "maximum": 1000}, "angle": {"type": "number", "minimum": -360, "maximum": 360}}, ["id"], reach="document", idempotent=True),
+    _tool("list_history", "The document's undo history (each step's name, which are done and which are undone) and its snapshots (id, name, kind, memory), newest last. Snapshots live with the open document and are not saved.", {}, reach="document", read=True, idempotent=True),
     _tool("take_snapshot", "Keeps the document as it is now as a named snapshot to return to however far the steps move on; returns its id. kind document keeps every layer, merged the flattened picture, layer the active layer.",
-          {"name": {"type": "string", "maxLength": 120}, "kind": {"type": "string", "enum": ["document", "merged", "layer"], "default": "document"}}),
+          {"name": {"type": "string", "maxLength": 120}, "kind": {"type": "string", "enum": ["document", "merged", "layer"], "default": "document"}}, reach="document"),
     _tool("restore_snapshot", "Returns the document to a snapshot, by id or by name (list_history shows both), as one undo step; the snapshot stays.",
-          {"id": {"type": "string", "description": "A snapshot id from list_history."}, "name": {"type": "string", "maxLength": 120}}),
+          {"id": {"type": "string", "description": "A snapshot id from list_history."}, "name": {"type": "string", "maxLength": 120}}, reach="document"),
     _tool("delete_snapshot", "Deletes a snapshot by id or by name (list_history shows both). The history steps are not touched.",
-          {"id": {"type": "string", "description": "A snapshot id from list_history."}, "name": {"type": "string", "maxLength": 120}}, destructive=True),
+          {"id": {"type": "string", "description": "A snapshot id from list_history."}, "name": {"type": "string", "maxLength": 120}}, reach="document", destructive=True),
     _tool("extend_canvas", "Adds pixels to each side of the canvas independently (left, top, right, bottom), filled with fill: transparent, a colour #rrggbb, foreground or background. The picture keeps its place.",
           {"left": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 0}, "top": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 0}, "right": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 0},
-           "bottom": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 0}, "fill": {"type": "string", "default": "transparent", "description": "transparent, #rrggbb, foreground or background."}}),
+           "bottom": {"type": "integer", "minimum": 0, "maximum": 30000, "default": 0}, "fill": {"type": "string", "default": "transparent", "description": "transparent, #rrggbb, foreground or background."}}, reach="document"),
     _tool("export_layer", "Writes one layer alone, with its mask and transparency, as a PNG to an absolute path: the size of the document, or trimmed to the layer's visible pixels with trim true. A file already there is kept unless overwrite is true.",
-          {"path": {"type": "string", "description": "Absolute path ending .png"}, "id": _ID, "trim": {"type": "boolean", "default": False}, "overwrite": _OVERWRITE}, ["path", "id"], destructive=True),
+          {"path": {"type": "string", "description": "Absolute path ending .png"}, "id": _ID, "trim": {"type": "boolean", "default": False}, "overwrite": _OVERWRITE}, ["path", "id"], reach="writes files", asks="overwrites a picture file", destructive=True),
     _tool("read_log", "The window's error log: uncaught errors and failed tasks (at most 100, newest last), each with when, what and the message. It is not a full application log.",
-          {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 30}}, read=True, idempotent=True),
-    _tool("list_brush_tips", "The brush presets and sampled tips: id, name, description, size, hardness, opacity, angle, roundness and spacing, with the brush as it is set now. Use an id as preset in set_brush.", {}, read=True, idempotent=True),
+          {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 30}}, reach="app", read=True, idempotent=True),
+    _tool("list_brush_tips", "The brush presets and sampled tips: id, name, description, size, hardness, opacity, angle, roundness and spacing, with the brush as it is set now. Use an id as preset in set_brush.", {}, reach="app", read=True, idempotent=True),
     _tool("set_brush", "Sets the brush: size (pixels), hardness, opacity, flow (0 to 1), a preset id from list_brush_tips (applied first), and the tip's angle (degrees), roundness (percent), spacing (percent of the size) and follow_direction (the tip turns with the stroke).",
           {"size": {"type": "integer", "minimum": 1, "maximum": 5000}, "hardness": {"type": "number", "minimum": 0, "maximum": 1}, "opacity": {"type": "number", "minimum": 0.01, "maximum": 1}, "flow": {"type": "number", "minimum": 0.01, "maximum": 1},
-           "preset": {"type": "string", "maxLength": 120}, "angle": {"type": "number", "minimum": -180, "maximum": 180}, "roundness": {"type": "number", "minimum": 1, "maximum": 100}, "spacing": {"type": "number", "minimum": 1, "maximum": 1000}, "follow_direction": {"type": "boolean"}}, idempotent=True),
+           "preset": {"type": "string", "maxLength": 120}, "angle": {"type": "number", "minimum": -180, "maximum": 180}, "roundness": {"type": "number", "minimum": 1, "maximum": 100}, "spacing": {"type": "number", "minimum": 1, "maximum": 1000}, "follow_direction": {"type": "boolean"}}, reach="app", idempotent=True),
     _tool("add_filter", "Adds a filter to a layer as a smart filter that stays editable (the layer becomes a smart object when it is not one): kind and settings as apply_filter takes them. Returns the filter's id; set_filter changes, disables or removes it later.",
-          {"id": {"type": "string", "description": "A layer id from get_document; the active layer when left out."}, "kind": {"type": "string", "maxLength": 60}, "settings": {"type": "object", "default": {}}}, ["kind"]),
+          {"id": {"type": "string", "description": "A layer id from get_document; the active layer when left out."}, "kind": {"type": "string", "maxLength": 60}, "settings": {"type": "object", "default": {}}}, ["kind"], reach="document"),
     _tool("set_filter", "Changes a smart filter on a smart object layer: its settings, kind, enabled, opacity (percent), blend mode, or remove it. With only id it lists the layer's filters.",
           {"id": _ID, "filter_id": {"type": "string", "description": "A filter id from add_filter or set_filter's list; the last filter when left out."}, "kind": {"type": "string", "maxLength": 60}, "settings": {"type": "object"},
-           "enabled": {"type": "boolean"}, "opacity": {"type": "number", "minimum": 0, "maximum": 100}, "blend": {"type": "string"}, "remove": {"type": "boolean", "default": False}}, ["id"], destructive=True),
+           "enabled": {"type": "boolean"}, "opacity": {"type": "number", "minimum": 0, "maximum": 100}, "blend": {"type": "string"}, "remove": {"type": "boolean", "default": False}}, ["id"], reach="document", destructive=True),
     # Presets, edges, comparing, depth and the status bar (P21, P22).
     _tool("apply_preset", "Applies a named adjustment preset: the built-in grain presets by film speed (iso100 to iso3200, slide, negative, bw400, bwpush, cine, expired), gradientMap looks (cyberpunk, sunset, tealorange, sepia, infrared, bwcontrast), photoFilter colours (warm85, cool80, sepia, underwater and more), or a preset the person saved in the Adjustments panel for any adjustment kind. With id it changes that adjustment layer, else it adds a new adjustment layer of that kind. With no name it lists the presets (for kind, or all).",
           {"kind": {"type": "string", "maxLength": 40, "description": "The adjustment: grain, gradientMap, photoFilter, or the kind a saved preset belongs to."}, "name": {"type": "string", "maxLength": 80, "description": "A preset id or name from the list; leave out to list."},
-           "id": {"type": "string", "description": "An adjustment layer id of that kind, to change it instead of adding one."}}),
+           "id": {"type": "string", "description": "An adjustment layer id of that kind, to change it instead of adding one."}}, reach="document"),
     _tool("depth_from_layer", "Reads the depth of one layer alone with the local Depth Anything V2 Small model and adds it as a grey layer named Depth Map (near bright, far dark). Waits until the model has finished and the layer exists, then reports its id; fails with how to download the model when it is missing.",
-          {"id": {"type": "string", "description": "A pixel layer id from get_document; the active layer when left out."}}),
+          {"id": {"type": "string", "description": "A pixel layer id from get_document; the active layer when left out."}}, reach="document"),
     _tool("select_by_depth", "Selects the pixels between a far and a near depth of the document's shared depth map (read once with the local Depth Anything V2 Small model and kept with the document), softened by feather, and combines the result with the selection. Waits until the depth is read; fails with how to download the model when it is missing.",
           {"near": {"type": "number", "minimum": 0, "maximum": 100, "default": 100, "description": "The nearest depth to select, percent of the depth range (100 is nearest)."},
            "far": {"type": "number", "minimum": 0, "maximum": 100, "default": 60, "description": "The farthest depth to select, percent of the depth range (0 is farthest)."},
            "feather": {"type": "number", "minimum": 0, "maximum": 50, "default": 10, "description": "Percent of the range over which the edge fades out past each end."},
            "combine": {"type": "string", "enum": ["new", "add", "subtract", "intersect"], "default": "new", "description": "How the result meets the current selection."},
-           "quality": {"type": "string", "enum": ["standard", "detail"], "default": "standard", "description": "detail reads the depth again at a larger size for finer edges; slower."}}),
+           "quality": {"type": "string", "enum": ["standard", "detail"], "default": "standard", "description": "detail reads the depth again at a larger size for finer edges; slower."}}, reach="document"),
     _tool("match_edges", "Cleans the edge of a cut-out layer so it sits on a new background: defringes (replaces the edge colours with those just inside) by width pixels, then decontaminates (removes the old background colour bled into the edge) by the given percent. One undo step; the layer needs pixels.",
           {"id": _ID, "width": {"type": "integer", "minimum": 1, "maximum": 20, "default": 2, "description": "Defringe width in pixels."}, "decontaminate": {"type": "number", "minimum": 0, "maximum": 100, "default": 100, "description": "Percent; 0 skips it."},
-           "radius": {"type": "number", "minimum": 1, "maximum": 100, "default": 6, "description": "Decontaminate radius in pixels."}}, ["id"]),
+           "radius": {"type": "number", "minimum": 1, "maximum": 100, "default": 6, "description": "Decontaminate radius in pixels."}}, ["id"], reach="document"),
     _tool("realism_pass", "Makes a pasted or generated layer sit in its picture in one undo step: matches its colours to what is beneath it (a clipped Curves layer), cleans its edge as match_edges does, and adds a grain layer on top so the whole picture shares one grain. Each part can be turned off.",
           {"id": _ID, "colour": {"type": "boolean", "default": True}, "amount": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.8, "description": "How far the colours move toward the background."}, "edges": {"type": "boolean", "default": True},
-           "grain": {"type": "string", "maxLength": 20, "default": "iso400", "description": "A grain preset id from apply_preset, or none."}}, ["id"]),
+           "grain": {"type": "string", "maxLength": 20, "default": "iso400", "description": "A grain preset id from apply_preset, or none."}}, ["id"], reach="document"),
     _tool("compare", "Shows the document before and after its last steps in one picture: steps back through the history (1 to 50), split (before on the left of a white line at position percent, after on the right) or side_by_side. The history ends where it began; nothing changes.",
           {"steps": {"type": "integer", "minimum": 1, "maximum": 50, "default": 1}, "layout": {"type": "string", "enum": ["split", "side_by_side"], "default": "split"},
-           "position": {"type": "number", "minimum": 5, "maximum": 95, "default": 50, "description": "Where the split line sits, percent from the left."}, "max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}}, read=True, idempotent=True),
+           "position": {"type": "number", "minimum": 5, "maximum": 95, "default": 50, "description": "Where the split line sits, percent from the left."}, "max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}}, reach="document", read=True, idempotent=True),
     _tool("set_status", "Puts a short note in the formvis status bar for the person to read (at most 160 characters), for seconds (1 to 600, default 60), or clears it with empty text. An error still shows first. Changes nothing in the document.",
-          {"text": {"type": "string", "maxLength": 160}, "seconds": {"type": "number", "minimum": 1, "maximum": 600, "default": 60}}, ["text"], idempotent=True),
+          {"text": {"type": "string", "maxLength": 160}, "seconds": {"type": "number", "minimum": 1, "maximum": 600, "default": 60}}, ["text"], reach="app", idempotent=True),
 ]
 USE_WHEN = {
     "get_document": "you need the document's size, mode, layer ids or documents before any edit.",
@@ -533,6 +537,7 @@ USE_WHEN = {
     "command_job": "you started a command with wait false and need its result.",
 }
 TOOLS.extend(PACK_TOOLS)
+DECLARED.update(PACK_DECLARED)
 USE_WHEN.update(PACK_USE_WHEN)
 for _t in TOOLS:
     _t["description"] += f" Use when {USE_WHEN[_t['name']]}"
@@ -541,6 +546,30 @@ CORE = {"get_document", "get_image", "get_selection", "get_layer_tree", "new_doc
         "select_subject", "apply_filter", "add_adjustment", "set_adjustment", "list_commands", "describe_command", "run_command", "run_commands"}
 NAMES = {t["name"] for t in TOOLS}
 SCHEMAS = {t["name"]: t["inputSchema"] for t in TOOLS}
+REACHES = ("document", "app", "reads files", "writes files")   # the open document; formvis itself; files read, or written, at paths inside the folders agents may use
+ASKS_IF = ("", "overwrite", "quit", "a risky command")   # asks always; only to replace a file; only to quit; only for a catalogue command marked risky
+
+
+def declaration_faults() -> list[str]:
+    """What is missing or cannot be true in the tools' own declarations (reach, asks, asks_if, headless, read): one line a fault."""
+    faults = [f"{n} has no declaration" for n in NAMES - set(DECLARED)] + [f"{n} is declared but is not a tool" for n in set(DECLARED) - NAMES]
+    for name in sorted(NAMES & set(DECLARED)):
+        d, props = DECLARED[name], SCHEMAS[name]["properties"]
+        files = d["reach"] in ("reads files", "writes files")
+        said = [(d["reach"] not in REACHES, f"declares no reach (one of {', '.join(REACHES)})"),
+                (d["read"] and bool(d["asks"]), "is read-only and asks for approval"),
+                (d["read"] and d["destructive"], "is read-only and destructive"),
+                (d["read"] and d["reach"] == "writes files", "is read-only and writes files"),
+                (d["reach"] == "writes files" and not d["asks"], "writes files without asking for approval"),
+                (d["asks_if"] not in ASKS_IF, f"asks_if {d['asks_if']!r} is not one of {ASKS_IF}"),
+                (bool(d["asks_if"]) and not d["asks"], "says when it asks but not what it asks"),
+                (d["headless"] and d["reach"] == "document", "runs with no window but acts on the open document"),
+                ("output_path" in props and d["reach"] != "writes files", "has an output_path but does not declare that it writes files"),
+                (files and "path" not in props, "declares files but takes no path"),
+                (name in _FILES and not files, "takes a file path but declares no files"),
+                (name in _FILES and files and _FILES[name][1] != (d["reach"] == "reads files"), "reads or writes its path otherwise than it declares")]
+        faults += [f"{name} {why}" for bad, why in said if bad]
+    return faults
 
 
 def _shown(value) -> str:
@@ -612,7 +641,10 @@ _taken: dict[str, float] = {}   # requests the window took and has not answered 
 # Seamless start (1.53.3): the window polls whether or not agents are allowed, saying which; with agents not allowed
 # the first request asks the person in the window; with no window, formvis is opened in the browser and waited for.
 _allowed = False
+_headless = False
 _declined_until = 0.0
+_declined: dict[str, float] = {}
+_questions: dict[str, dict] = {}
 _opened_at = 0.0
 # Calls waiting on the window, by (client, JSON-RPC request id), so notifications/cancelled can stop one.
 _inflight: dict[tuple[str, str], asyncio.Task] = {}
@@ -656,6 +688,11 @@ def _live() -> bool:
     return (_seen > 0 and now - _seen <= LIVE) or any(now - t < 600 for t in _taken.values())
 
 
+def _screenless() -> bool:
+    """The window answering is the one ./formvis headless started (a headless browser): nobody is there to answer a question."""
+    return _headless and _live()
+
+
 def _fail(text: str) -> dict:
     return {"content": [{"type": "text", "text": text}], "isError": True}
 
@@ -678,21 +715,25 @@ def _open_window() -> bool:
 _sink: contextvars.ContextVar = contextvars.ContextVar("progress_sink", default=None)   # the queue of a call whose client asked for progress
 _sinks: dict[str, asyncio.Queue] = {}   # window request id: where that call's progress goes
 _inapp_call: contextvars.ContextVar = contextvars.ContextVar("inapp_call", default=False)   # the call is the Claude Code the window's own terminal dock started
+_caller: contextvars.ContextVar = contextvars.ContextVar("caller", default="")   # the client name the window's question shows
 
 
-async def _ask(name: str, args: dict, timeout: float) -> dict | None:
+async def _ask(name: str, args: dict, timeout: float, once: bool = False) -> dict | None:
     rid = str(next(_ids))
     fut = asyncio.get_running_loop().create_future()
     _waiting[rid] = fut
     if _sink.get() is not None:
         _sinks[rid] = _sink.get()
-    item = {"id": rid, "name": name, "arguments": args, **({"inapp": True} if _inapp_call.get() else {})}
+    item = {"id": rid, "name": name, "arguments": args, **({"inapp": True} if _inapp_call.get() else {}), **({"once": True} if once else {})}
+    if name == "__consent__":
+        _questions[rid] = {"id": rid, "tool": args.get("tool", ""), "client": args.get("client", ""), "until": time.monotonic() + timeout}
     _put(item)
     try:
         return await asyncio.wait_for(fut, timeout=timeout)
     except asyncio.TimeoutError:
         return None
     finally:
+        _questions.pop(rid, None)
         _waiting.pop(rid, None)
         _sinks.pop(rid, None)
         _taken.pop(rid, None)
@@ -1084,12 +1125,23 @@ async def _call(name: str, args: dict) -> dict:
         if not _live():
             return _fail("formvis is not open. Start it with ./formvis boot (or open the formvis app), then retry.")
     if not _allowed and not _inapp_call.get():
-        if time.monotonic() < _declined_until:
+        who = _caller.get()
+        if agents.standing(who):
+            out = await _ask(name, args, 600, once=True)
+            return out if out is not None else _fail("formvis did not answer in time: it may be busy with a long task. Check the formvis window, then retry.")
+        if _screenless():
+            return _fail("Outside agents are not allowed in formvis, and the formvis window running now has no screen to ask in. Ask the person to allow them in formvis (Preferences > Plugins), then retry.")
+        if time.monotonic() < max(_declined_until, _declined.get(who, 0.0)):
             return _fail("The person chose not to allow outside agents in formvis just now. Ask them to turn on Allow outside agents (Preferences > Plugins), then retry.")
-        answer = await _ask("__consent__", {}, 180)
-        if not (answer or {}).get("allowed"):
-            _declined_until = time.monotonic() + 600
+        answer = await _ask("__consent__", {"tool": name, "client": who, "wait": 180}, 180)
+        if answer is None:
+            return _fail("Nobody answered the question in the formvis window in time. Ask the person to look at the formvis window, then retry.")
+        if not answer.get("allowed"):
+            _declined[who] = time.monotonic() + 600
             return _fail("The person did not allow outside agents in formvis. Ask them to allow it (the question in the formvis window, or Preferences > Plugins), then retry.")
+        if (answer or {}).get("once") is True:
+            out = await _ask(name, args, 600, once=True)
+            return out if out is not None else _fail("formvis did not answer in time: it may be busy with a long task. Check the formvis window, then retry.")
         _allowed = True
     out = await _ask(name, args, 600)   # a generative call waits for the person and the model
     return out if out is not None else _fail("formvis did not answer in time: it may be busy with a long task. Check the formvis window, then retry.")
@@ -1114,10 +1166,14 @@ async def _window_only(name: str, args: dict) -> str | None:
 
 async def _risk(name: str, args: dict) -> str | None:
     """Why a call cannot be undone (a file written, or a catalogue command marked risky); None when Undo covers it."""
-    if name in agents.RISKY_TOOLS and (name != "convert_file" or args.get("overwrite") is True):   # a new file replaces nothing
-        return f"{name} {agents.RISKY_TOOLS[name]} at {args.get('output_path') or args.get('path', 'a path')}, which Undo cannot restore"
-    if name == "ui_window" and args.get("action") == "quit":
-        return "ui_window quit closes formvis, which Undo cannot reverse"
+    said = DECLARED.get(name) or {}
+    asks, when = said.get("asks"), said.get("asks_if")
+    if asks and (not when or when == "overwrite" and args.get("overwrite") is True):
+        return f"{name} {asks} at {args.get('output_path') or args.get('path', 'a path')}, which Undo cannot restore"
+    if asks and when == "quit" and args.get("action") == "quit":
+        return f"{name} quit {asks}, which Undo cannot reverse"
+    if not asks or when != "a risky command":
+        return None
     for cid in dict.fromkeys(i for i in await _command_ids(name, args) if isinstance(i, str)):   # a menu path is judged as the command it names
         out = await _call("describe_command", {"id": cid})
         meta = out.get("structuredContent") or {}
@@ -1140,9 +1196,6 @@ async def _write_back(name: str) -> str:
     return path
 
 
-HEADLESS_TOOLS = {"convert_file", "file_info"}
-
-
 def _no_window_to_approve(name: str, why: str) -> str:
     """The answer at once, instead of a 120-second wait, when a step the person must approve finds no window to ask in."""
     return (f"{name} needs the person's approval in the formvis window ({why}), and no formvis window is open to ask. Write to a new "
@@ -1154,6 +1207,7 @@ async def _agent_call(client: str, name: str, args: dict, cli: bool = False) -> 
     approval when it is risky under the Ask policy, and noted in the activity feed either way. The Claude Code the window's own
     terminal dock started (agents.INAPP_CLIENT, known by its per-run token) is not asked whether outside agents may edit."""
     _inapp_call.set(client == agents.INAPP_CLIENT)
+    _caller.set(client)
     if name == "control_call":   # a dotted method name is the typed tool under another name, checked against that tool's schema
         target = CONTROL_METHODS.get(args.get("method", ""))
         why = _invalid(args.get("params") or {}, SCHEMAS[target], "params") if target else None
@@ -1182,8 +1236,12 @@ async def _agent_call(client: str, name: str, args: dict, cli: bool = False) -> 
             return _fail(refusal)
         if agents.policy_of(client) == "ask" and not (cli and name in ("convert_file", "run_command")):   # the command line names both files and --overwrite, and risky commands need --yes
             why = await _risk(name, args)
-            if why and name in HEADLESS_TOOLS and not _live():
+            if why and (DECLARED.get(name) or {}).get("headless") and not _live():
                 refusal = _no_window_to_approve(name, why)
+                agents.end(entry, "denied", refusal)
+                return _fail(refusal)
+            if why and _screenless():
+                refusal = f"{name} needs the person's approval ({why}), and the formvis window running now has no screen to ask in. Write to a new output_path, or ask the person to open formvis and retry."
                 agents.end(entry, "denied", refusal)
                 return _fail(refusal)
             if why:
@@ -1548,12 +1606,17 @@ async def bridge_next(request: Request) -> Response:
     window that closed or reloaded mid-poll must not take a request with it: the connection is checked before and after
     taking one, and a request taken for a gone window goes back to the front for the next poll (1.52.1)."""
     global _seen, _allowed
+    window_key.require(request)
+    globals()["_headless"] = "HeadlessChrome" in request.headers.get("user-agent", "")
     allowed = request.query_params.get("allowed", "1") != "0"   # 1.53.3: the window polls either way, saying which
+    if "allowed" in request.query_params:
+        agents.set_outside_allowed(allowed)
     if allowed and not _allowed:
         globals()["_declined_until"] = 0.0
+        _declined.clear()
     _allowed = allowed
     deadline = time.monotonic() + 20
-    eligible = lambda it: allowed or it.get("name") == "__consent__" or it.get("inapp") is True   # not allowed: only the question and the window's own Claude Code go out
+    eligible = lambda it: allowed or it.get("name") == "__consent__" or it.get("inapp") is True or it.get("once") is True   # not allowed: only the question, a call allowed once and the window's own Claude Code go out
     while time.monotonic() < deadline:
         _seen = time.monotonic()
         if await request.is_disconnected():
@@ -1575,6 +1638,13 @@ async def bridge_next(request: Request) -> Response:
         _taken[str(item.get("id"))] = time.monotonic()
         return Response(content=json.dumps(item), media_type="application/json")
     return Response(status_code=204)
+
+
+@router.get("/api/mcp/bridge/questions")
+async def bridge_questions(request: Request) -> dict:
+    window_key.require(request)
+    now = time.monotonic()
+    return {"questions": [{"id": q["id"], "tool": q["tool"], "client": q["client"], "wait": max(0, round(q["until"] - now))} for q in _questions.values()]}
 
 
 @router.post("/api/mcp/bridge/result")

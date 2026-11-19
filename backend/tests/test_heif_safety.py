@@ -52,7 +52,8 @@ def test_the_child_is_capped_at_more_than_the_largest_picture_needs():
 
 
 def client():
-    return TestClient(app, base_url="http://127.0.0.1:8190")
+    from app.core import window_key
+    return TestClient(app, base_url="http://127.0.0.1:8190", headers={window_key.HEADER: window_key.KEY})
 
 
 def test_no_decoder_and_an_8_bit_file_are_two_different_refusals(monkeypatch):

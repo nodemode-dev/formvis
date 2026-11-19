@@ -4,6 +4,29 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.4.0 · 2026-11-19
+
+The Form family update: the terminal panel is the one every Form app now shares, formvis asks you before an outside agent changes a picture, and only the formvis window can change what agents may do.
+
+- The terminal panel sits at the bottom of the window or in a column at the right; a button in its head moves it, and each place keeps its own size. It opens Codex and Cursor tabs when those programs are on this computer, and shows a short guide the first time it opens. Show me around in its menu brings the guide back.
+- When an outside agent asks to change a picture, formvis asks in one box in the middle of the window: Deny, Allow once, or Always allow for agents of that name. The name shown is what the program calls itself. An answer covers only the request shown, a request the agent gave up on closes by itself, and a question still waiting is shown again after a reload. Deny holds that agent off for ten minutes.
+- Preferences > Plugins, Outside agents: Ask, Allowed or Blocked. Blocked refuses every agent at once, with or without a window open, and stays after a restart.
+- Only the formvis window can change what agents may do, answer their questions and approvals, use the terminal panel or write through the engine; changes from outside the app's window are refused. Agents come in through the MCP server and its question. formvis's own command line (`./formvis cli run`) is asked about like any other outside agent, and a script that wrote to the engine directly now goes through the command line or the MCP server.
+- Run from source, the first window that opens is the one that can make changes; a second browser window on the same engine cannot until the engine restarts.
+- The saved agent choice is sealed with a key in the system keychain. Changed outside formvis it reads as Ask again, and Preferences and Agent Connect say so.
+- A window with no screen (`./formvis headless`) follows your saved choice, cannot change it, and refuses at once what it would have to ask. `./formvis mcp --headless` checks the engine the session uses and tells the client when the window could not start.
+- `export_mask` and `export_layer` ask before writing a file, as `export_image` does. In Agent Connect a step nobody answered and a stopped step have their own status, and the activity record survives a restart.
+- The answers read the same everywhere: Agent Connect, the fal spending question and Chat say Deny and Allow once.
+- Keys typed in the terminal panel stay in the panel; F1 and the Preferences shortcut still reach formvis from there.
+- New theme, AMOLED Black: a true-black window for OLED screens, with panels told apart by their borders. It is in Preferences > Interface.
+- The terminal panel, the question, the guide and the notices about a changed agent choice are in all 27 languages.
+- The question's buttons stay inside its box when a label is long, left to right and right to left. Open terminals take the new colours on any theme change. The terminal's code loads with the first terminal and not at start, and a refusal from the engine reads differently from an engine that cannot be reached.
+- The desktop app opens its window only once the engine has given that window the right to make changes. When that does not arrive within 10 seconds of the engine coming up, formvis says the engine failed to start and opens no window; the engine itself gets as long to start as before.
+- FFmpeg is downloaded from formai-binaries first and formcut-binaries second, and checked the same way from either.
+- For agents and the people who set them up: every MCP tool says in its own definition whether it only reads, whether it asks first, whether it runs with no window and whether it reaches files, and the approval step follows that; the server has 140 tools. `agents/manifest.json` lists what formvis offers agents (tools, skills, the terminal panel). `./formvis agents sync` writes it, and `sync --check` fails when it, a skill's routing table or the shared terminal panel's files are out of step.
+- The manual, SECURITY.md, the wiki and the agent skills describe the question, Outside agents, the terminal panel and `.fvd` projects as they are, and the manual has a Themes section.
+- The Windows build no longer stops while building HEIC decoding (the 2.3.6 Windows build failed there with "Access is denied").
+
 ## 2.3.6 · 2026-11-19
 
 - HEIC and HEIF open in the Windows and Linux desktop engines at full depth, through a decode-only libheif with no GPL code; the size is checked before decoding, the deep decode runs in a child process, and an engine with no HEIC decoder says why and suggests JPEG or TIFF. Canon `.HIF` opens everywhere, and file info reports its real depth.

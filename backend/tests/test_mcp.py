@@ -19,6 +19,9 @@ os.environ["FORMVIS_OPEN_WINDOW"] = "0"   # no real browser is opened by any eng
 
 from app.main import app  # noqa: E402
 from app.routers import mcp as M  # noqa: E402
+from app.core import window_key  # noqa: E402
+
+WINDOW = {window_key.HEADER: window_key.KEY}
 
 MODERN = {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "1"}, "io.modelcontextprotocol/clientCapabilities": {}}
 
@@ -54,7 +57,7 @@ def test_a_tool_call_without_a_window_says_so(client):
 
 def test_a_tool_call_goes_through_the_window():
     async def run():
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190", headers=WINDOW) as c:
             M._pending.clear(); M._ready = None
             first = asyncio.create_task(c.get("/api/mcp/bridge/next"))           # the window starts collecting
             await asyncio.sleep(0.05)
@@ -95,13 +98,13 @@ def test_the_stdio_bridge_against_a_running_engine():
 
 
 def _reset():
-    M._pending.clear(); M._ready = None; M._allowed = False; M._declined_until = 0.0; M._seen = 0.0; M._opened_at = 0.0
+    M._pending.clear(); M._ready = None; M._allowed = False; M._declined_until = 0.0; M._declined.clear(); M._questions.clear(); M._seen = 0.0; M._opened_at = 0.0
 
 
 def test_not_allowed_asks_once_in_the_window_then_runs(monkeypatch):
     """1.53.3: the window polls with agents not allowed; the engine sends only the question; Allow, and the tool runs."""
     async def run():
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190", headers=WINDOW) as c:
             _reset()
             seen = []
 
@@ -123,9 +126,38 @@ def test_not_allowed_asks_once_in_the_window_then_runs(monkeypatch):
     assert seen == ["__consent__", "get_document"] and result["content"][0]["text"] == "ran" and M._allowed is True
 
 
+def test_allow_once_runs_that_call_and_the_next_call_asks_again():
+    """Allow once (dock 1.1.0): the call is handed to a window still polling as not allowed, and agents stay not allowed."""
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190", headers=WINDOW) as c:
+            _reset()
+            seen = []
+
+            async def window(n):
+                while len(seen) < n:
+                    r = await c.get("/api/mcp/bridge/next?allowed=0")
+                    if r.status_code != 200:
+                        continue
+                    item = r.json(); seen.append((item["name"], item.get("once"), item["arguments"].get("client") if item["name"] == "__consent__" else None))
+                    result = {"allowed": True, "once": True} if item["name"] == "__consent__" else {"content": [{"type": "text", "text": "ran"}]}
+                    await c.post("/api/mcp/bridge/result", json={"id": item["id"], "result": result})
+
+            results = []
+            for n in (2, 4):
+                w = asyncio.create_task(window(n))
+                await asyncio.sleep(0.05)
+                r = await c.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"_meta": MODERN, "name": "get_document", "arguments": {}}})
+                await w
+                results.append(r.json()["result"]["content"][0]["text"])
+            return seen, results
+    seen, results = asyncio.run(run())
+    assert [s[0] for s in seen] == ["__consent__", "get_document", "__consent__", "get_document"]
+    assert seen[1][1] is True and results == ["ran", "ran"] and M._allowed is False
+
+
 def test_not_now_says_how_to_recover_and_is_not_asked_again_at_once():
     async def run():
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190", headers=WINDOW) as c:
             _reset()
 
             async def window():
@@ -147,7 +179,7 @@ def test_not_now_says_how_to_recover_and_is_not_asked_again_at_once():
 
 def test_no_window_opens_formvis_and_waits_for_it(monkeypatch):
     async def run():
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190", headers=WINDOW) as c:
             _reset()
             opened = []
 
@@ -172,7 +204,7 @@ def test_a_window_that_was_just_here_is_waited_for_not_replaced(monkeypatch):
     """A reload or a busy moment pauses the window's polling: the call waits for it instead of opening another or
     saying formvis is not open (1.53.3)."""
     async def run():
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190") as c:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190", headers=WINDOW) as c:
             _reset()
             M._allowed = True
             M._seen = time.monotonic() - 40            # stale, but here 40 seconds ago

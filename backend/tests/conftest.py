@@ -18,6 +18,16 @@ def fresh_secrets(monkeypatch):
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("FORMVIS_DATA_DIR", str(tmp_path))
+    from app.core import window_key
+    from app.main import app
+
+    with TestClient(app, base_url="http://127.0.0.1:8190", headers={window_key.HEADER: window_key.KEY}) as c:
+        yield c
+
+
+@pytest.fixture()
+def bare(tmp_path, monkeypatch):
+    monkeypatch.setenv("FORMVIS_DATA_DIR", str(tmp_path))
     from app.main import app
 
     with TestClient(app, base_url="http://127.0.0.1:8190") as c:

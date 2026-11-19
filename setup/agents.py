@@ -2,7 +2,8 @@
 """./formvis agents (1.53.3): natural-language editing with Claude Code, Codex and Cursor.
 
   sync [--check]            generate the references that follow the code (the tool reference from the MCP catalogue,
-                            the command reference and command map from the window's command catalogue, the tool map),
+                            the command reference and command map from the window's command catalogue, the tool map,
+                            agents/manifest.json for the family spec),
                             mirror every skill under .claude/skills to .agents/skills (Codex, Cursor) and check the
                             skill files against the upload gates; --check: exit 1 if anything drifted or fails
   install [--user] [--dry-run] [claude|codex|cursor ...]
@@ -13,6 +14,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -163,8 +165,49 @@ def tool_map() -> str:
     return "\n".join(out)
 
 
+MANIFEST = ROOT / "agents" / "manifest.json"
+APP = "formvis"   # the file name of formvis's entry in formcompiler apps/
+DOCK = {"present": True, "positions": ["bottom", "right"], "tabs": ["chat", "shell", "claude", "codex", "cursor", "agent"]}   # frontend/src/dock/dock.ts with dock-adapter.ts tabs: the bottom band or the right column, Chat, a tab per engine PTY by kind (codex and cursor when found), Claude's read-only commands
+DOCK_DIR = ROOT / "frontend" / "src" / "dock"
+DOCK_MANIFEST = DOCK_DIR / "MANIFEST.json"
+DOCK_VERSION = "2.1.0"
+
+
+def _dock_files() -> dict[str, str]:
+    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(DOCK_DIR.iterdir()) if p.is_file() and p.name != DOCK_MANIFEST.name}
+
+
+def dock_manifest() -> str:
+    return json.dumps({"module": "dock", "version": DOCK_VERSION, "files": _dock_files()}, indent=2) + "\n"
+
+
+def dock_problems() -> list[str]:
+    try:
+        kept = json.loads(DOCK_MANIFEST.read_text(encoding="utf-8")).get("files", {})
+    except (OSError, ValueError):
+        return [f"{DOCK_MANIFEST.relative_to(ROOT)}: missing or not JSON"]
+    now = _dock_files()
+    rel = DOCK_DIR.relative_to(ROOT)
+    return [f"{rel}/{name}: does not match MANIFEST.json (the shared dock module changes only as a whole new version)" for name in sorted(set(kept) | set(now)) if kept.get(name) != now.get(name)]
+
+
+def manifest() -> str:
+    """agents/manifest.json (formadaptor spec/agent-manifest.schema.json): what formvis offers agents, read from the MCP
+    catalogue and its declarations, the skills folder and the extension host; only the app's name and the dock are declared here."""
+    sys.path.insert(0, str(ROOT / "backend"))
+    from app.routers import mcp
+    from app.services import formext_host
+    tools = [t["name"] for t in mcp.TOOLS]
+    transports = [kind for kind, served in (("stdio", (ROOT / "setup" / "mcp_stdio.py").is_file()), ("http", any(getattr(r, "path", "") == "/mcp" for r in mcp.router.routes))) if served]
+    skills = [{"name": n, "sub_skills": sorted(p.name for p in (SKILLS / n / "sub-skills").iterdir() if p.is_dir()) if (SKILLS / n / "sub-skills").is_dir() else []} for n in skill_names()]
+    data = {"format": "form-agent-manifest", "version": 1, "app": APP,
+            "mcp": {"tools": tools, "read_only": [n for n in tools if mcp.DECLARED[n]["read"]], "approval_gated": [n for n in tools if mcp.DECLARED[n]["asks"]], "transports": transports},
+            "skills": skills, "dock": DOCK, "extensions": {"host_api": formext_host.API}}
+    return json.dumps(data, indent=2) + "\n"
+
+
 def generated() -> dict[Path, str]:
-    want = {SKILLS / "formvis-editing" / "references" / "tools.md": tools_reference(), SKILLS / "formvis-harness" / "references" / "tool-map.md": tool_map()}
+    want = {SKILLS / "formvis-editing" / "references" / "tools.md": tools_reference(), SKILLS / "formvis-harness" / "references" / "tool-map.md": tool_map(), MANIFEST: manifest(), DOCK_MANIFEST: dock_manifest()}
     rows = _catalogue()
     if rows:
         want[SKILLS / "formvis-driving" / "references" / "commands.md"] = commands_reference(rows)
@@ -201,6 +244,43 @@ def skill_problems() -> list[str]:
     return bad
 
 
+def routing_problems() -> list[str]:
+    """A skill with a sub-skills folder routes to them in a table whose last cell names one in backticks: every name
+    there must be a folder, and every folder must be named."""
+    bad = []
+    for name in skill_names():
+        folder = SKILLS / name / "sub-skills"
+        if not folder.is_dir():
+            continue
+        rows = re.findall(r"^\|.*\|\s*`([a-z0-9][a-z0-9-]*)`\s*\|\s*$", (SKILLS / name / "SKILL.md").read_text(encoding="utf-8"), re.M)
+        have = {p.name for p in folder.iterdir() if p.is_dir()}
+        for missing in sorted(set(rows) - have):
+            bad.append(f".claude/skills/{name}/SKILL.md: the routing table names {missing}, which has no folder in sub-skills/")
+        for unlisted in sorted(have - set(rows)):
+            bad.append(f".claude/skills/{name}/sub-skills/{unlisted}: not in the routing table of SKILL.md")
+    return bad
+
+
+def tool_problems() -> list[str]:
+    """Each MCP tool says in its own definition what it is (mcp.py DECLARED): a missing or impossible declaration is a
+    problem, and so is a list in setup/mcp_stdio.py (which cannot import the engine) that says otherwise."""
+    sys.path.insert(0, str(ROOT / "backend"))
+    sys.path.insert(0, str(ROOT / "setup"))
+    from app.routers import mcp
+    import mcp_stdio
+    bad = ["backend/app/routers/mcp.py: " + f for f in mcp.declaration_faults()]
+    said = mcp.DECLARED
+    writes = {n for n, d in said.items() if d["reach"] == "writes files" and "output_path" not in mcp.SCHEMAS[n]["properties"]}
+    menus = {n for n, d in said.items() if "path" in mcp.SCHEMAS[n]["properties"] and d["reach"] not in ("reads files", "writes files")}
+    for name, have, want in (("WRITES", mcp_stdio.WRITES, writes), ("MENUS", mcp_stdio.MENUS, menus)):
+        if set(have) != want:
+            bad.append(f"setup/mcp_stdio.py: {name} is {sorted(have)}, the tools' declarations say {sorted(want)}")
+    for method, name in mcp_stdio.CONTROL.items():
+        if mcp.CONTROL_METHODS.get(method) != name:
+            bad.append(f"setup/mcp_stdio.py: CONTROL sends {method} to {name}, the engine to {mcp.CONTROL_METHODS.get(method)}")
+    return bad
+
+
 def _files(folder: Path) -> dict:
     return {str(p.relative_to(folder)): p.read_bytes() for p in sorted(folder.rglob("*")) if p.is_file()}
 
@@ -225,7 +305,7 @@ def sync(check: bool) -> int:
         drift.append(str(stale.relative_to(ROOT)) + " (removed skill)")
         if not check:
             shutil.rmtree(stale, ignore_errors=True)
-    problems = skill_problems()
+    problems = skill_problems() + routing_problems() + tool_problems() + (dock_problems() if check else [])
     if CATALOGUE.exists() is False:
         print("agents: no command catalogue in " + str(CATALOGUE.parent) + " (open the formvis window once); commands.md and command-map.md left as they are")
     if check:

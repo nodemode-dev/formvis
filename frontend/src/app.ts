@@ -216,7 +216,8 @@ import { setPixelBudget } from './engine/types';
 import { AssistantPanel } from './ui/panels/assistant';
 import { installAgentConnect } from './ui/panels/agent-connect';
 import { installColorSettings } from './ui/panels/colour-settings-dialog';
-import { TerminalDock } from './ui/terminal-dock';
+import { Dock as AgentDock } from './dock/dock';
+import { formvisDock, outsideAgents } from './dock-adapter';
 import { HelpDialog } from './ui/panels/help';
 import { VERSION } from './version';
 import { WhatsNewDialog } from './ui/panels/whats-new';
@@ -3664,7 +3665,7 @@ export function startApp(): void {
   const psdReportDialog = new PsdReportDialog();
   // Allow, asked in the window when an agent first calls (1.53.3), is the same setting as Preferences > Plugins.
   const agents = new AgentBridge(engine, {
-    ask: (title, text) => agentConfirm.ask(title, text), note: (t) => toast(t, 'info'),
+    ask: (title, text) => agentConfirm.ask(title, text), note: (t) => toast(t, 'info'), consent: (id, tool, client, seconds) => outsideAgents.arrive(id, tool, client, seconds),
     allow: () => { savePrefs({ ...loadPrefs(), agentsAllowed: true }); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: true })); },
     // 1.53.3: what agents reach through the app, the same paths as its menus.
     openFile: (f) => openFiles([f]),
@@ -3685,7 +3686,12 @@ export function startApp(): void {
     log: () => [...errorLog.entries, ...engine.failures],
     status: (note, seconds) => status.setAgentNote(note, seconds),
   });
-  agents.setEnabled(loadPrefs().agentsAllowed);
+  void fetch('/api/agents').then((r) => (r.ok ? r.json() as Promise<{ allowed?: unknown; blocked?: unknown }> : null)).then((s) => {
+    outsideAgents.adopt(s?.blocked === true);
+    const stored = outsideAgents.blocked() ? false : typeof s?.allowed === 'boolean' ? s.allowed : null;
+    if (stored !== null && stored !== loadPrefs().agentsAllowed) savePrefs({ ...loadPrefs(), agentsAllowed: stored });
+    agents.setEnabled(stored ?? loadPrefs().agentsAllowed);
+  }, () => agents.setEnabled(loadPrefs().agentsAllowed));
   window.addEventListener('formvis:agents', (ev) => agents.setEnabled((ev as CustomEvent<boolean>).detail === true));
   // The assistant (1.52.2) acts through the same bridge, whether or not outside agents are allowed.
   const assistant = new AssistantPanel(engine, agents);
@@ -3875,10 +3881,10 @@ export function startApp(): void {
   document.body.appendChild(assistant.el);
   // The terminal dock (DEV_PLAN 28.5) with its Claude Code tabs, Chat tab and ask bar: its grid row sits above the status
   // bar and is reserved by terminal.css from the first frame; the title bar's two buttons follow its active tab.
-  const termDock = new TerminalDock();
-  root.insertBefore(termDock.root, q(root, '.cv-status'));
+  const termDock = new AgentDock(formvisDock(() => dialogs.settings.show('Plugins'), () => !!engine.activeLayer));
   termDock.onChange = () => { window.dispatchEvent(new Event('resize')); };
   termDock.onTab = () => { titleTools.syncDock(termDock.isOpen(), termDock.activeKind()); };
+  termDock.mount(root, root.querySelector('.cv-status'));
   installAgentConnect(commands, engine);
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
   model3dInput.addEventListener('change', () => { const f = model3dInput.files?.[0]; model3dInput.value = ''; if (f) void model3d.load(f); });
@@ -3966,7 +3972,6 @@ export function startApp(): void {
     return { scope: 'range', layers: n };
   };
   const layer = () => engine.activeLayer;
-  termDock.yieldsKey = () => !!layer();   // Mod+J is Layer via Copy while a layer is open; the dock keeps it inside itself and the menu opens it otherwise
   const pixel = (): boolean => { const l = engine.activeLayer; return !!l && !l.isGroup && !l.adjustment; };
   const withPixels = (): boolean => pixel() && !!engine.activeLayer?.raster;
   const selected = (): boolean => !!engine.current?.selection;

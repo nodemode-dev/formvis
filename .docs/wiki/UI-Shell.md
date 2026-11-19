@@ -15,7 +15,7 @@ The shell is mounted once from a string template and then patched in place: noth
 | `frontend/src/ui/clone-source-panel.ts`, `ui/panels/toolbar-dialog.ts`, `ui/panels/script-console-dialog.ts` | The Clone Source panel (docked, hidden by default), Edit > Toolbar (the rail's groups, saved as the `toolbar` preference) and Window > Script Console |
 | `frontend/src/ui/i18n.ts`, `ui/i18n/` | The interface languages and the page translator: see [Languages](Languages) |
 | `frontend/src/ui/dom.ts` | NodeMode `dom-stable` helpers plus small in-place setters |
-| `frontend/src/ui/icons.ts`, `themes.ts` | The 80 icons copied verbatim from NodeMode, the 14 theme profiles |
+| `frontend/src/ui/icons.ts`, `themes.ts` | The inline `currentColor` icons (`ICONS`), and the theme profiles (`THEMES`, AMOLED Black among them); the counts are whatever those two tables hold |
 | `frontend/src/styles/` | NodeMode tokens and the component sheets; `scrollbars.css` loads last |
 
 ## Contract

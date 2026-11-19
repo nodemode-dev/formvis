@@ -23,7 +23,7 @@ Each sub-skill lives in `sub-skills/[name]/SUB-SKILL.md` next to this file.
 | The MCP server, its tools, the window bridge, the consent prompt, agent skills sync | `agent-bridge` |
 | The terminal dock, PTYs, the Claude Code panel, Agent Connect and approvals | `terminal-operator` |
 | `native/formvis-render`, the wgpu compositor, GPU brush, the Tauri native commands | `native-render-builder` |
-| PSD and PSB, OpenRaster, TIFF, EXR and HDR, camera raw, the `.fmv` project format, the library endpoints | `io-formats` |
+| PSD and PSB, OpenRaster, TIFF, EXR and HDR, camera raw, the `.fvd` project format (and the older `.fmv` it still reads), the library endpoints | `io-formats` |
 | Version bump, CHANGELOG, HASHOUT logs, `./formvis counts --check`, commits, tags, the two zips, desktop builds | `release-keeper` |
 
 Longer reference material that the sub-skills point to sits in `references/`:

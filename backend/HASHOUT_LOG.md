@@ -2,6 +2,231 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Windows release build of 2.3.6 stopped at HEIC: the build step held the library it was replacing · 2.4.0 (setup/heif_decode.py main, _child_status, _verify; tests/test_heif_build_rules.py)
+
+- Kind: fix (build) · logged 2026-11-19.
+- What happened: on the Windows runner `setup/heif_decode.py` built libde265 and libheif, then asked pip to reinstall pillow-heif from source, and pip failed with "[WinError 5] Access is denied" on `_pillow_heif.cp312-win_amd64.pyd`. `main` had called `status()` first, which imports pillow-heif in the script's own process to see whether the wanted build is already there. Windows does not let a file be replaced while a running process has it loaded, so the script was holding the very file its own pip call had to replace. macOS and Linux allow it, which is why only Windows failed.
+- Now: `main` asks a fresh Python (`_child_status`, the same `--status` call `_verify` already used after the build), so the script's process never loads pillow-heif. A status that cannot be read counts as "not built" and the build runs.
+- Seen on Linux with the build itself stubbed: the released script has `pillow_heif` in `sys.modules` when the build starts; this one does not. The pip step on Windows itself was not run here.
+- Removed line, in full: `    current = status()`.
+
+## Always allow is one agent's standing yes, Blocked is kept by the engine and stops every agent, and a waiting question can be listed again · after 2.3.5, unreleased (services/agents.py _stored, _load, _save, state, set_blocked, blocked, standing, admit; routers/agents.py BlockedBody, block; routers/mcp.py _declined, _questions, _ask, _call, bridge_next, bridge_questions)
+
+- Kind: feat · logged 2026-11-19 · DOCK_SPEC_2 section A rules 1 to 4.
+- `agents.standing(name)` is true when the person set that client's policy to Allow all (`_policies[name] == "allow"`, sealed in agents.json; a broken seal already turns it back to ask). In `_call`, a client with a standing yes runs its call marked `once` while outside agents as a whole stay not allowed, so the shared dialog's "Always allow [agent]" (the window posts `/api/agents/policy` for the agent named in the request) covers that agent and no other. This widens what Allow all means for a client: before, it only skipped the approval of risky steps and the first-connection question was still asked while outside agents were not allowed. The client name is the one the agent gives when it connects, as for every per-client policy.
+- A Deny now pauses that client for ten minutes (`_declined[client]`), not every agent: before, `_declined_until` was one clock, so denying one agent refused another whose question the person had never seen. `_declined_until` stays for the explicit turn-off (`bridge_stop`). A question nobody answered in 180 s now says so ("Nobody answered the question in the formvis window in time") and starts no pause; before, it was reported as "The person did not allow" with the ten-minute pause.
+- Blocked is `blocked` in agents.json (sealed with the rest), set by `POST /api/agents/blocked` (window key required, as every write route) and read first in `admit`, so a blocked engine refuses every agent call at once: outside agents with no window open, and the window's own Claude Code tabs and Chat (the in-app token is not an exception). Before, Blocked was a flag in the window's own storage and did nothing once the window was closed.
+- `_questions` holds each `__consent__` item while its caller waits; `GET /api/mcp/bridge/questions` (window key required) lists them with the seconds left. A page that reloads while a question shows asks for the list and shows it again (before: the new page showed nothing and the caller waited out the 180 s in silence, then every agent was paused for ten minutes); the window also reads the list to learn that a question is gone (caller hung up, time ran out) and closes its dialog unanswered. The question's arguments carry `wait: 180`.
+- Verified by running the engine on 32001 with the dev window in headless Chrome and real `/mcp` calls: two agents at once, Always allow for the first ran it and left the second asking, Deny for the second paused only the second, a third still asked; a caller that hung up closed the dialog in under 4 s; Blocked refused outside and in-app calls at once, with the page closed and after an engine restart; reload with a question pending showed it again and Allow once ran the call. Tests added after: `tests/test_outside_agents.py` (four).
+
+## The window can answer the outside-agent question with Allow once · after 2.3.5, unreleased (routers/mcp.py _caller, _ask, _call, _agent_call, bridge_next eligible)
+
+- Kind: feat · logged 2026-11-19 · DOCK_SPEC section 3 (the shared dialog's three buttons).
+- Before, the first-connection question had two answers: `{"allowed": false}` (refused, not asked again for ten minutes) and `{"allowed": true}` (`_allowed` set, the window then polls as allowed). There was no "this request only". Added, without changing the other two: `{"allowed": true, "once": true}` runs that one call and leaves `_allowed` as it was, so the next call asks again. `_ask` takes `once` and marks the queued item `"once": true`; `bridge_next` hands such an item to a window still polling with `allowed=0` (the same way it hands the window's own Claude Code calls). Removed text, quoted: `eligible = lambda it: allowed or it.get("name") == "__consent__" or it.get("inapp") is True   # not allowed: only the question and the window's own Claude Code go out` and `answer = await _ask("__consent__", {}, 180)`.
+- The question now carries `{"tool": name, "client": <MCP client name>}` (the new `_caller` context variable, set in `_agent_call`), so the window can say who asked for what. No gate rule, policy or stored value changed meaning; the window key is still required to poll and to answer (`bridge/result` without it: 403).
+- Verified by running the engine on 31201 with the dev window in headless Chrome and real `/mcp` calls: Allow once ran `list_commands` and the next call asked again; two calls at once were both asked and both ran; Deny and Escape refused as before. Test added after: `tests/test_mcp.py::test_allow_once_runs_that_call_and_the_next_call_asks_again`.
+
+## agents sync writes the shared dock's MANIFEST.json and --check names a shared file edited in place · after 2.3.5, unreleased (setup/agents.py DOCK, DOCK_DIR, DOCK_MANIFEST, DOCK_VERSION, _dock_files, dock_manifest, dock_problems, generated, sync; frontend/src/dock/MANIFEST.json; agents/manifest.json)
+
+- Kind: feat · logged 2026-11-19 · DOCK_SPEC sections 1 and 8.
+- `frontend/src/dock/MANIFEST.json` is generated by `./formvis agents sync`: module `dock`, version `1.0.0-stage1` (`DOCK_VERSION`), and the SHA-256 of every other file in the folder. formvis is the module's source, so sync rewrites it here; `--check` reports it drifted and, through `dock_problems`, names each shared file whose bytes differ from the committed manifest. In the other apps the same check is what stops a local edit of the copied folder.
+- `DOCK`, the one declared value in the agent manifest, now says positions bottom and right and tabs chat, shell, claude, codex, cursor and agent; the truth lives in `frontend/src/dock/dock.ts` (the kinds it mounts) and `frontend/src/dock-adapter.ts` (`tabs`).
+- Verified: sync wrote both files; formadaptor's `scripts/manifest.py check` accepts agents/manifest.json; `--check` exits 0; on a copy outside the tree with one newline added to `dock/dock.ts`, `--check` exits 1, reports the manifest drifted and names `frontend/src/dock/dock.ts`. Tests added after: `tests/test_dock_manifest.py` (the files match, the check names an edited file, the folder imports only itself and `@xterm/*`).
+ in a terminal tab, offered only when found · after 2.3.5, unreleased (services/agent_programs.py PROGRAMS, find, status, open_terminal; routers/terminal.py open_agent, AgentBody; routers/claude_code.py window_status; services/terminal.py restart)
+
+- Kind: feat · logged 2026-11-19 · DOCK_SPEC 2 and 6; launch approach from formVFX `backend/app/agent/terminals.py` (AGENTS, find_agent, open_agent).
+- `GET /api/claude-code/status` now also answers `agents`: for `codex` (program `codex`) and `cursor` (program `cursor-agent`), installed, path and the install line when missing. Found on the engine's PATH, else by `command -v` in the login shell, as `claude` is.
+- `POST /api/terminal/agent` {kind, cols, rows} starts the found program in a PTY tab of that kind (404 when it is not found, 422 for any other kind). The tab gets its own in-app token from `agents.issue_inapp()` in the child's environment as `FORMVIS_INAPP_TOKEN`, with `FORMVIS_MCP_URL` beside it; the command line carries only the program's path; the token is revoked when the tab closes. The route is a write, so the window key guard refuses it without the key like every other write. `restart` now accepts the two kinds too.
+- How each program uses the token to reach formvis's MCP server is its own configuration (Codex's `mcp_servers` entry, Cursor's `mcp.json` reading the environment); nothing is written into the person's configuration files here. Neither program is installed on this machine: verified with stand-in scripts of both names on PATH, and without them.
+- Verified by running the engine on 31001: status without the stand-ins (both missing, with install lines) and with them (both found, paths); the route without the key 403, with it 200 (a Codex tab), kind `vim` 422; the stand-in's `/proc` environ held the token, its command line did not. Tests added after: `tests/test_agent_programs.py`.
+ agents/manifest.json, what formvis offers agents · after 2.3.5, unreleased (setup/agents.py MANIFEST, APP, DOCK, manifest, generated; agents/manifest.json)
+
+- Kind: feat · logged 2026-11-18.
+- The family reads one file per app (formadaptor spec/agent-manifest.schema.json, docs/SPEC.md "The agent manifest") instead of hand-typed counts. `manifest()` builds it and `generated()` lists it, so `sync` writes it and `--check` names it when it drifts.
+- From the source: `mcp.tools` is `mcp.TOOLS` in the order tools/list gives them; `read_only` the tools declared `read` (the readOnlyHint the server sends); `approval_gated` the tools declared with `asks` (the gate's own data: six file writers, ui_window quit and the three that run catalogue commands, which ask only when the command is marked risky); `transports` stdio when setup/mcp_stdio.py is there and http when the router serves `/mcp`; `skills` each folder of .claude/skills with a SKILL.md and the folders in its sub-skills; `extensions.host_api` is `formext_host.API`.
+- Declared in the script: `APP` (formvis, the file name of its entry in formcompiler apps/) and `DOCK`. The dock's truth is frontend/src/ui/terminal-dock.ts: one band at the foot of the window (styles/terminal.css, `.ft-dock` under the stage, `bottom` only, no other position), the Chat tab first (`DockKind` chat), then a tab per engine terminal by `Tab.kind`: shell, claude, agent (Claude's commands, read only). Change DOCK when that file changes.
+- Not counted as approval-gated: steps the window itself asks about (set_settings, an extension's first run, a fal model that costs money, the first edit when outside agents are not allowed); they are not in the gate's data.
+- Checked by running: sync wrote the file (140 tools, 36 read-only, 10 approval-gated, stdio and http, 4 skills with 0, 13, 0 and 12 sub-skills, dock bottom with 4 tabs, host API 1); formadaptor `scripts/manifest.py check ... --app formvis` accepts it; `--check` exits 0; on a copy outside the tree with ailabel_info no longer read-only, `--check` exits 1 naming agents/manifest.json (and tools.md, tool-map.md); the engine from source on 28301 answered tools/list with the same 140 names in the same order and the same read-only set.
+- Replaced, quoted exactly:
+
+```py
+    want = {SKILLS / "formvis-editing" / "references" / "tools.md": tools_reference(), SKILLS / "formvis-harness" / "references" / "tool-map.md": tool_map()}
+```
+
+```py
+                            the command reference and command map from the window's command catalogue, the tool map),
+```
+
+## Each MCP tool declares what it is where it is defined, and the approval gate reads that · after 2.3.5, unreleased (routers/mcp.py _tool, DECLARED, REACHES, ASKS_IF, declaration_faults, _risk, _agent_call; routers/mcp_pack.py _tool, PACK_DECLARED; services/agents.py; setup/agents.py tool_problems, sync)
+
+- Kind: refactor · logged 2026-11-18.
+- Why: the gate ran on hand lists kept apart from the 140 definitions (`agents.RISKY_TOOLS`, `HEADLESS_TOOLS`), so a new tool missing from a list was treated as needing no approval. Each `_tool(...)` (both copies) now takes keyword-only `reach` (document, app, reads files, writes files: the open document; formvis itself; files at paths, which `_path` keeps inside the folders agents may use), `asks` (what the person approves, the words that were in RISKY_TOOLS), `asks_if` (empty: always; overwrite: only when replacing a file, convert_file; quit: ui_window; a risky command: run_command, run_commands, ui_menu_invoke) and `headless` (runs in the engine with no window: convert_file, file_info), beside the existing `read`. They go into `DECLARED` (mcp_pack's into `PACK_DECLARED`, merged after `TOOLS.extend`), never into the tools/list reply.
+- `_risk` and `_agent_call` read `DECLARED`; RISKY_TOOLS and HEADLESS_TOOLS are gone. setup/mcp_stdio.py keeps `WRITES` and `MENUS` because it runs without the engine's packages; `tool_problems` checks them against the declarations (WRITES: writes files with no output_path; MENUS: a `path` that is not a file), and `CONTROL` against `CONTROL_METHODS`.
+- `declaration_faults` names a tool with no declaration or no reach, read-only with asks, read-only and destructive, read-only that writes files, writes files without asks, an unknown asks_if or one with no asks, headless on the document, output_path not declared as writing, files without a path, and a `_FILES` tool whose reach disagrees with its read flag there. `sync` adds `tool_problems` to its problems, so `--check` exits 1.
+- control_call is declared document: the gate judges it as the tool it names (it is swapped before the gate), so its own declaration only says it has no file path.
+- Behaviour unchanged, checked by running: the gate's branches for all 140 tools (`_agent_call` under Ask with a window, a screenless window and none, overwrite false and true, a stand-in window answering commands as risky; `_refused`; stdio `outside_roots`) dumped before and after, byte-identical; and the engine from source on 28300 through `/mcp` with a stand-in window and person, 45 calls (get_document, set_layer, export_image, convert_file new and overwrite, file_info, under ask, allow and deny, with no window, a window and a screenless window), identical before and after. `--check` on a copy with delete_layer's reach removed, asks on file_info and none on export_layer names all three and exits 1; with save_project left out of WRITES, names it.
+- Replaced, quoted exactly:
+
+```py
+from app.routers.mcp_pack import PACK_TOOLS, PACK_USE_WHEN
+```
+
+```py
+def _tool(name: str, description: str, props: dict, required: list[str] | None = None, **hints: bool) -> dict:
+    return {"name": name,
+```
+
+(the same two lines in mcp_pack.py), and on each of the 140 definitions the closing `..., read=True, idempotent=True),` or `...),` without the new keywords.
+
+```py
+    if name in agents.RISKY_TOOLS and (name != "convert_file" or args.get("overwrite") is True):   # a new file replaces nothing
+        return f"{name} {agents.RISKY_TOOLS[name]} at {args.get('output_path') or args.get('path', 'a path')}, which Undo cannot restore"
+    if name == "ui_window" and args.get("action") == "quit":
+        return "ui_window quit closes formvis, which Undo cannot reverse"
+```
+
+```py
+HEADLESS_TOOLS = {"convert_file", "file_info"}
+```
+
+```py
+            if why and name in HEADLESS_TOOLS and not _live():
+```
+
+```py
+RISKY_TOOLS = {"save_project": "overwrites a project file", "export_image": "overwrites a picture file", "export_mask": "overwrites a picture file", "export_layer": "overwrites a picture file", "timeline_render": "overwrites a video file", "convert_file": "writes a picture file"}
+```
+
+```py
+    problems = skill_problems() + routing_problems()
+```
+
+## agents sync --check also checks each skill's routing table against its sub-skill folders · after 2.3.5, unreleased (setup/agents.py routing_problems, sync)
+
+- Kind: feat · logged 2026-11-19.
+- `routing_problems` reads, for every skill with a `sub-skills` folder, the table rows of SKILL.md whose last cell is one backticked name, and reports a name with no folder and a folder no row names. `sync` adds them to the upload-gate problems, so `--check` exits 1 on either. The tool declaration check (each tool exactly one of read-only, approval-gated, folder-confined write or document-only) is not done yet.
+- Checked by running `sync --check` (in step: formvis-driving 13 rows and folders, formvis-harness 12) and `routing_problems` on a copy with one folder renamed (both directions reported).
+- Replaced, quoted exactly:
+
+```py
+    problems = skill_problems()
+```
+
+## mcp --headless uses the session's engine and tells the client when the window could not start · after 2.3.5, unreleased (setup/mcp_stdio.py HEADLESS_FAILED, forward, start_headless)
+
+- Kind: fix · logged 2026-11-19.
+- headless.py finds the engine through `FORMVIS_URL` or `FORMVIS_PORT` (8190 by default), while the stdio session uses `FORMVIS_MCP_URL` or the packaged port file. Confirmed by running the old code with `FORMVIS_MCP_URL` on port 21040: it reported "not answering at http://127.0.0.1:8190". `start_headless` now sets `headless.ENGINE` to the session's own address before it checks or starts anything.
+- A failure was said only on standard error, which MCP clients usually hide, and the session went on with no window. The reason is now kept in `HEADLESS_FAILED`, still printed on stderr, and every `tools/call` gets it back as a JSON-RPC error (-32000, "formvis mcp --headless: ..."); initialize, tools/list and the rest still answer, so the client connects and sees why. It holds for the whole session: a window opened later is not picked up until the client restarts the server.
+- Checked by running `mcp_stdio.py --headless` against an engine on 21040 whose key was taken: the tool call came back as that error, and initialize answered.
+- Replaced, quoted exactly:
+
+```py
+    """The engine started if need be, then a window with no screen when none is open; None when none was needed or it could not start (said on stderr)."""
+    import headless as window_host
+    try:
+        urllib.request.urlopen(URL.rsplit("/mcp", 1)[0] + "/api/version", timeout=2).close()
+    except (urllib.error.URLError, OSError):
+        if not start_engine():
+            print("[formvis mcp] --headless: the engine is not running and could not be started.", file=sys.stderr, flush=True)
+            return None
+    try:
+        return window_host.ensure()
+    except RuntimeError as exc:
+        print(f"[formvis mcp] --headless: {exc}", file=sys.stderr, flush=True)
+        return None
+```
+
+## The window with no screen follows the stored choice and refuses at once where it would ask · after 2.3.5, unreleased (services/agents.py set_outside_allowed, outside_allowed; routers/mcp.py _headless, _screenless, bridge_next, _call, _agent_call; setup/headless.py key_taken, host, ensure, release; frontend app.ts AgentBridge start)
+
+- Kind: fix · logged 2026-11-19.
+- `./formvis headless` wrote `agentsAllowed=true` into the fresh browser profile's prefs (`SEED`), so its window arrived with outside agents allowed whatever the person had chosen. The seed is gone. The choice now lives on the engine side: the window's keyed poll (`bridge_next`, `allowed=0|1`) stores it with `agents.set_outside_allowed` as `allowed` in agents.json (sealed with the rest), and `GET /api/agents` reports it. At boot the page reads it and uses it, writing it into its own prefs when they differ; with nothing stored yet (the first run after this update) the page's own pref stands and its first poll stores it. A fresh profile therefore inherits the person's choice.
+- With nobody to answer: `bridge_next` notes whether the polling window is a headless browser (`HeadlessChrome` in its user agent). While such a window is the live one (`_screenless`), a call that would ask whether outside agents may edit is refused at once ("Outside agents are not allowed in formvis, and the formvis window running now has no screen to ask in..."), and a step that needs approval under the Ask policy (the six approval tools and risky commands) is refused at once instead of waiting 120 s. The approval list is unchanged; those steps still ask whenever a window with a screen is open.
+- headless.py: `ensure` no longer needs the engine to report `allowed`, only a live window. It fails at once, in one line, when the engine's window key was already given to a window or the engine is the desktop app's (`key_taken`, from `GET /api/window/key`): run from source the key is given once per engine launch. `release` no longer posts `/api/mcp/bridge/stop` itself (that now needs the key); the page posts it before the browser closes.
+- Checked by running the engine and the Vite dev server with the page in headless Chrome: not allowed, a call was refused in 0.0 s; the person allowed in the page and agents.json stored `allowed: true`; after an engine restart a fresh browser profile with no seed came up allowed and new_document ran; export_image was refused at once. tests/test_agent_approvals.py.
+- Replaced, quoted exactly:
+
+```py
+SEED = ("try{const k='formvis.prefs',o=JSON.parse(localStorage.getItem(k)||'{}');"
+        "if(o.agentsAllowed!==true){o.agentsAllowed=true;localStorage.setItem(k,JSON.stringify(o));}}catch(e){}")
+            context.add_init_script(SEED)
+    if now.get("live") and now.get("allowed"):
+        if seen.get("live") and seen.get("allowed"):
+    try:   # the engine counts a window live for 30 seconds after its last poll: tell it this one is gone
+        urllib.request.urlopen(urllib.request.Request(ENGINE + "/api/mcp/bridge/stop", method="POST"), timeout=3).close()
+    except (urllib.error.URLError, OSError):
+        pass
+```
+
+```ts
+  agents.setEnabled(loadPrefs().agentsAllowed);
+```
+
+## No answer and Stop are their own statuses, and the activity record is kept on disk · after 2.3.5, unreleased (services/agents.py approval, end, _record, ACTIVITY_FILE, ACTIVITY_MAX_BYTES, ACTIVITY_KEEP; frontend ui/panels/agent-connect.ts STATUS)
+
+- Kind: fix · logged 2026-11-19.
+- `approval` ended a step that timed out, was stopped and was declined all as `denied`; only the message differed. It now ends them as `timeout`, `stopped` and `denied`. The window's Agent Connect labels the two new ones "No answer in time" and "Stopped" (no style change). A step refused at once because no window is open to approve it stays `denied` (mcp.py `_no_window_to_approve`).
+- The activity feed lived only in memory (deque of 200). `end` now appends every finished step (any status but running and waiting) as one JSON line to `agents-activity.jsonl` in the data folder beside agents.json: t, client, tool, command, summary, status, message. Past 1 MB (`ACTIVITY_MAX_BYTES`) the file becomes `.1`, the older `.2` and `.3`, and the oldest is dropped (`ACTIVITY_KEEP` 3). A write error is ignored, as `_save` does.
+- Checked by running approval with no answer, Stop, Decline and Allow (timeout, stopped, denied, ok, each on disk) and 30 steps with a 600-byte cap (four files, none over the cap). tests/test_agent_approvals.py.
+- Replaced, quoted exactly:
+
+```py
+    end(entry, "denied", message)
+```
+
+## export_mask and export_layer ask like export_image · after 2.3.5, unreleased (services/agents.py RISKY_TOOLS)
+
+- Kind: fix · logged 2026-11-19.
+- Both write a picture file at the agent's path (mcp.py writes them where it writes export_image's) and could replace an existing file with nobody asked, because they were on neither the approval list nor the read-only list. They are now in `RISKY_TOOLS` ("overwrites a picture file"), so `_risk` holds them for the person's approval under the Ask policy, as export_image is. setup/mcp_stdio.py already counted them as writes for `--root`.
+- Checked by running `_agent_call` for export_layer with no window: it waited for approval and was refused when nobody answered. tests/test_agent_approvals.py.
+- Replaced, quoted exactly:
+
+```py
+RISKY_TOOLS = {"save_project": "overwrites a project file", "export_image": "overwrites a picture file", "timeline_render": "overwrites a video file", "convert_file": "writes a picture file"}
+```
+
+## ffmpeg comes from formai-binaries first, formcut-binaries second · after 2.3.5, unreleased (app/ffmpeg_fetch.py SOURCES, sources, fetch; NOTICE.md)
+
+- Kind: feat · logged 2026-11-19.
+- The binaries repository is being renamed from `nodemode-dev/formcut-binaries` to `nodemode-dev/formai-binaries`. `SOURCES` holds both release addresses, the new one first; `sources()` returns the asset address under each, or only the one under `FORMCUT_FFMPEG_RELEASE` when that is set. `fetch()` tries each in turn and installs from the first whose archive matches the SHA-256 record in `ffmpeg_record.py` (unchanged); a download error or bytes that do not match move on to the next address, and when none matches it raises with every address's reason and installs nothing. The tag, the asset names, the shared install folder (`formcut-binaries/ffmpeg-<release>`) and the variable names are unchanged.
+- Checked against a local server: the first address answering with bytes that do not match the record, the second matching (installed from the second); the first missing (404); both wrong (nothing installed); the override set (only it is tried). tests/test_ffmpeg_sources.py.
+- Replaced, quoted exactly:
+
+```py
+SOURCE = "https://github.com/nodemode-dev/formcut-binaries/releases/download"
+def source() -> str:
+    base = os.environ.get("FORMCUT_FFMPEG_RELEASE") or f"{SOURCE}/ffmpeg-{RELEASE}"
+    return f"{base.rstrip('/')}/ffmpeg-lgpl-{RELEASE}-{host_triple()}.tar.gz"
+    with tempfile.TemporaryDirectory() as scratch:
+        archive = Path(scratch) / "ffmpeg.tar.gz"
+        _download(source(), archive)
+        _install(archive, pins, folder())
+    return prefer()
+```
+
+## The window key: only the person's window holds window rights · after 2.3.5, unreleased (core/window_key.py new; core/seal.py new; main.py; formvis_engine.py main; routers/agents.py read, stream; routers/claude_code.py stream; routers/terminal.py attach; routers/mcp.py bridge_next; services/agents.py _load, _save, state, issue_inapp, revoke_inapp, is_inapp; services/claude_code.py start, stop, terminal_env, open_terminal; services/terminal.py Session.on_close, close; setup/cli.py run_cmd, command_result; src-tauri/src/main.rs)
+
+- Kind: fix · logged 2026-11-19.
+- The key: `window_key.KEY`, `secrets.token_urlsafe(32)` made at import, kept in memory only, compared with `hmac.compare_digest`. Header `x-formvis-window-key`. A refusal is 403 with `{"detail": "Only the formvis window can do this"}`.
+- One place: `WindowKeyGuard`, an ASGI middleware added before CORS (so CORS still wraps its answer), refuses every HTTP request whose method is not GET, HEAD or OPTIONS unless it carries the key or its path is in `OPEN`. `OPEN` is `/mcp` (outside agents; consent and approvals apply there), `/api/window/key` (the development bootstrap) and `/api/merge/panorama` and `/api/merge/hdr`, which `./formvis cli photomerge` and `hdr` (setup/cli_offline.py) call with no window: they take pictures and return one, and change no state and no file. LocalGuard (Host and Origin) is unchanged; the key is a layer on top.
+- Reads that need the key too: `GET /api/agents` (it lists the pending approval ids) and `GET /api/mcp/bridge/next` (the window's poll: it takes queued requests and sets whether outside agents are allowed, so only a client with the key can say that).
+- Sockets: `/api/agents/stream`, `/api/agent/claude/stream` and `/api/terminal/{sid}/stream` accept, then wait up to `SOCKET_WAIT` (5 s) for a first message `{"type": "key", "key": ...}`; without it the socket is closed with 4403 before anything is sent or read.
+- How the window gets it. The desktop shell sets `FORMVIS_WINDOW_KEY_STDOUT=1`; `formvis_engine.main` then prints `formvis-window-key: <key>` once on standard output, flushed, after the app is imported and before uvicorn starts (so before the address line). The engine log (`runtime.start_logging`) is a logging handler that starts in the lifespan and never sees that print. In `src-tauri/src/main.rs` (tauri 2.11.6, whose `WebviewWindowBuilder::initialization_script` takes `impl Into<String>`, read in that crate's source) the sidecar's events are forwarded into a `tauri::async_runtime::channel`; the key is matched on stdout only (`formvis-window-key: ([A-Za-z0-9_-]{32,})`), the address on either stream as before, and the loop ends when both are seen, on `Terminated`, or 10 s after the address if no key came (a thread sends a sentinel), so it cannot wait forever. The init script sets `window.__FORMVIS_WINDOW_KEY` only when `location.origin` is `http://127.0.0.1:<port>`. Not compiled here (no WebKit libraries); rustfmt parses the file. Run from source the variable is unset, nothing is printed, and `POST /api/window/key` answers the key once per engine launch, then 409 (`GET /api/window/key` reports `claimed` and `secondClaim`); with the variable set it answers 404. From source the first local program to ask gets the key; that is the weaker mode by nature.
+- The command line is an outside agent: `./formvis cli run` and the steps of `cli` scripts used `POST /api/commands/{id}`; they now call the MCP `run_command` tool on `/mcp`, which is the same `_agent_call` with the same `formvis-cli` name, so consent and the stored choice apply and it cannot change them.
+- The in-app token: `agents.INAPP_TOKEN` (one per engine run) is gone. `agents.issue_inapp()` makes one token per Claude Code terminal tab and one per Chat run; it reaches that one child through its environment only (`FORMVIS_INAPP_TOKEN`; the MCP config on the command line names the variable, not the value), never a plain terminal tab. A tab's token is revoked by `Session.on_close` when the tab closes, the Chat's by `claude_code.stop`. Claude Code's program comes from `FORMVIS_CLAUDE_BIN` or the path only; no stored setting names it, so there is nothing to key.
+- The seal: `core/seal.py` keeps a random 32-byte key in the system keychain (`keyring`, service `formvis`, account `agents-seal`, made on first save), and `agents._save` writes `seal`, HMAC-SHA256 over the canonical JSON of `policies`, `allowed` and `limits` in agents.json. Only the window-keyed routes save. On load, a wrong or missing seal while a policy is `allow` or `allowed` is true makes every `allow` policy `ask` and `allowed` false, and `state()` reports `sealBroken: true`; the next save from the window seals the file again. No keychain (import fails, the fail or null backend, any error): the stored values stand and `state()` reports `seal: "unavailable"`; `keyring` is imported inside a try for that reason. `keyring` was already a pinned dependency (requirements.txt, NOTICE.md).
+- Measured: an OpenAPI sweep of the write operations with no key and no Origin gave 1 refused of 174 on 12de2af and 170 refused of 175 now; the 5 that answer are the open list.
+- Checked: tests/test_window_key.py. The session `client` fixture now sends the key, because every test that writes stands in for the window; the new `bare` fixture has none. tests/test_f1_guard.py's own-socket test sends the key first; tests/test_mcp.py's window clients send it.
+- Replaced, quoted exactly:
+
+```py
+INAPP_TOKEN = secrets.token_urlsafe(24)
+    return bool(token) and hmac.compare_digest(token.encode(), INAPP_TOKEN.encode())
+    return {k: v for k, v in terminal.base_env().items() if not k.startswith("CLAUDE") or k in KEEP_ENV} | {INAPP_VAR: agents.INAPP_TOKEN}
+        return terminal.open_session(folder, cols, rows, title, terminal_argv(path, port, prompt, resume), terminal_env(), "claude").describe()
+            out.write(json.dumps({"policies": _policies, "limits": _limits}))
+    status, out = call("POST", "/api/commands/" + quoted, {"params": params})
+```
+
 ## The Windows run of 2.3.5: .HIF by path, file_info's depth, convert_file with no window, the pillow-heif licence · after 2.3.5, unreleased (routers/io.py DISK_KINDS; routers/mcp.py _PICTURES, open_file and convert_file descriptions, _file_depth, HEADLESS_TOOLS, _no_window_to_approve, _agent_call; routers/system.py _LINK_IMAGE_SUFFIXES; licenses/python/pillow-heif/LICENSES_bundled.txt; src-tauri/src/main.rs pick_image_path)
 
 - Kind: fix · logged 2026-11-17 · found by the owner's Windows run of the released 2.3.5.

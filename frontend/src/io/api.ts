@@ -1,5 +1,6 @@
 import { lutFrom, lut4From, lut3x4From, type ColourLut, type Lut4, type Lut3x4 } from '../engine/colour-lut';
 import { beforeSelection } from './selection-models';
+import { keyMessage } from './window-key';
 export interface ExrLayout { width: number; height: number; /** The stereo views, when the file holds more than one. */ views?: string[]; parts: Array<{ part: number; name: string; groups: Array<{ key: string; label: string; channels: number; view?: string }> }>; crypto: Array<{ name: string; objects: string[] }> }
 export type ExrPick = { part: number; key: string } | { crypto: string; object: string } | { sum: Array<{ part: number; key: string }>; name: string };
 export interface Capabilities { pixelBudget?: number; memory?: number;
@@ -155,7 +156,9 @@ export type AgentEvent =
 
 /** A WebSocket to one of the engine's streams: same origin in the app and through the dev server's proxy. */
 export function socketTo(path: string): WebSocket {
-  return new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api${path}`);
+  const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api${path}`);
+  socket.addEventListener('open', () => socket.send(keyMessage()));
+  return socket;
 }
 
 export type FalRole = 'generate' | 'edit' | 'inpaint' | 'remove' | 'expand' | 'upscale' | 'relight' | 'cutout' | 'segment';

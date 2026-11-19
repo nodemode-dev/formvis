@@ -20,7 +20,7 @@ to look at, what is known not to work yet, and how to report what you find.
    blend modes, masks, type and smart objects are the things to check.
 3. Large pictures: work at your usual sizes and note where it slows. Known: at 8000 by 6000 a 10 px Gaussian Blur
    and a full redraw are over our targets.
-4. Languages: Preferences > Language switches the whole interface to one of 26 languages. The translations were
+4. Languages: Preferences > Language switches the whole interface to one of 30 languages. The translations were
    machine made; Hungarian, Thai, Indonesian and Vietnamese had a consistency pass. Native readers: please mark any
    term that reads wrong, with the English it came from (hover a control to see where it is).
 5. Agents and the assistant: Window > Assistant with your own model key; outside agents through the MCP server. Each

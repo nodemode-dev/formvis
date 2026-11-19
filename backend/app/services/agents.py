@@ -13,21 +13,22 @@ import tempfile
 import time
 import uuid
 
-from app.core import config
+from app.core import config, seal
 
-INAPP_TOKEN = secrets.token_urlsafe(24)
+_inapp_tokens: set[str] = set()
 INAPP_CLIENT = "Claude Code in formvis"
 POLICIES = ("allow", "ask", "deny")
 POLICY_LABELS = {"allow": "Allow all", "ask": "Ask for risky steps", "deny": "Deny"}
 APPROVAL_SECONDS = 120.0
 LOG_LIMIT = 200
-RISKY_TOOLS = {"save_project": "overwrites a project file", "export_image": "overwrites a picture file", "timeline_render": "overwrites a video file", "convert_file": "writes a picture file"}
 
 LIMIT_RANGES = {"text_chars": (1_000, 5_000_000), "image_bytes": (100_000, 64 * 1024 * 1024)}
 _limits: dict = {"roots": [], "text_chars": 200_000, "image_bytes": 12 * 1024 * 1024}
 _enabled = True
 _loaded = False
 _policies: dict[str, str] = {}
+_stored: dict = {"allowed": None, "blocked": False}
+_seal: dict = {"state": "unsealed"}
 _clients: dict[str, dict] = {}
 _sessions: dict[str, tuple[str, str]] = {}
 _pending: dict[str, dict] = {}
@@ -49,7 +50,13 @@ def _load() -> None:
     _loaded = True
     try:
         data = json.loads(_file().read_text(encoding="utf-8"))
-        _policies.update({k: v for k, v in (data.get("policies") or {}).items() if v in POLICIES})
+        if not isinstance(data, dict):
+            return
+        _seal["state"] = seal.check(data)
+        broken = _seal["state"] == "broken"
+        _policies.update({k: ("ask" if broken and v == "allow" else v) for k, v in (data.get("policies") or {}).items() if v in POLICIES})
+        _stored["allowed"] = False if broken else data.get("allowed") if isinstance(data.get("allowed"), bool) else None
+        _stored["blocked"] = data.get("blocked") is True
         saved = data.get("limits") or {}
         _limits["roots"] = [str(r) for r in saved.get("roots", []) if isinstance(r, str) and r.strip()][:32]
         for key, (low, high) in LIMIT_RANGES.items():
@@ -65,8 +72,9 @@ def _save() -> None:
     try:
         fd, temporary = tempfile.mkstemp(prefix=".agents-", suffix=".tmp", dir=path.parent)
         with os.fdopen(fd, "w", encoding="utf-8") as out:
-            out.write(json.dumps({"policies": _policies, "limits": _limits}))
+            out.write(json.dumps(seal.sign({"policies": _policies, "limits": _limits, "allowed": _stored["allowed"], "blocked": _stored["blocked"]})))
         os.replace(temporary, path)
+        _seal["state"] = "ok" if seal.available() else "unavailable"
     except OSError:
         if temporary:
             try:
@@ -141,7 +149,8 @@ def state() -> dict:
         clients.append({"name": name, "version": c["version"], "policy": policy_of(name), "calls": c["calls"], "last_seen": c["last_seen"],
                         "waiting": sum(1 for p in _pending.values() if p["client"] == name)})
     return {"enabled": _enabled, "clients": clients, "pending": sorted(_pending.values(), key=lambda p: p["t"]), "timeout": APPROVAL_SECONDS,
-            "policies": [{"value": v, "label": POLICY_LABELS[v]} for v in POLICIES]}
+            "policies": [{"value": v, "label": POLICY_LABELS[v]} for v in POLICIES], "allowed": _stored["allowed"], "blocked": _stored["blocked"],
+            "seal": "unavailable" if not seal.available() else _seal["state"], "sealBroken": _seal["state"] == "broken"}
 
 
 def _push_state() -> None:
@@ -191,8 +200,51 @@ def identity(sid: str | None, info: dict | None, fallback: str) -> tuple[str, st
 
 
 def is_inapp(token: str | None) -> bool:
-    """True for the per-run token only the engine puts in the MCP configuration of the Claude Code it starts in the window's terminal dock."""
-    return bool(token) and hmac.compare_digest(token.encode(), INAPP_TOKEN.encode())
+    """True for a token the engine gave one Claude Code it started in the window's terminal dock (one per tab or Chat run), still open."""
+    return bool(token) and any(hmac.compare_digest(token.encode(), t.encode()) for t in list(_inapp_tokens))
+
+
+def issue_inapp() -> str:
+    token = secrets.token_urlsafe(24)
+    _inapp_tokens.add(token)
+    return token
+
+
+def revoke_inapp(token: str | None) -> None:
+    _inapp_tokens.discard(token or "")
+
+
+def set_outside_allowed(on: bool) -> None:
+    """The person's choice in the window (Allow outside agents), kept in agents.json so a window with no screen follows it."""
+    _load()
+    if _stored["allowed"] is not bool(on):
+        _stored["allowed"] = bool(on)
+        _save()
+
+
+def outside_allowed() -> bool | None:
+    _load()
+    return _stored["allowed"]
+
+
+def set_blocked(on: bool) -> None:
+    _load()
+    if _stored["blocked"] is not bool(on):
+        _stored["blocked"] = bool(on)
+        _save()
+    if on:
+        stop(None)
+    _push_state()
+
+
+def blocked() -> bool:
+    _load()
+    return _stored["blocked"] is True
+
+
+def standing(name: str) -> bool:
+    _load()
+    return bool(name) and _policies.get(name) == "allow"
 
 
 def set_enabled(on: bool) -> None:
@@ -251,6 +303,31 @@ def end(entry: dict, status: str, message: str = "") -> None:
     entry["status"] = status
     entry["message"] = message[:300]
     _emit({"type": "activity", "entry": entry})
+    if status not in ("running", "waiting"):
+        _record(entry)
+
+
+ACTIVITY_FILE = "agents-activity.jsonl"
+ACTIVITY_MAX_BYTES = 1024 * 1024
+ACTIVITY_KEEP = 3
+
+
+def _record(entry: dict) -> None:
+    """Appends a finished step to agents-activity.jsonl beside agents.json; past ACTIVITY_MAX_BYTES the file becomes .1
+    (the older ones .2 and .3, the oldest dropped), so the record survives a restart and stays small."""
+    path = config.data_dir() / ACTIVITY_FILE
+    line = json.dumps({k: entry.get(k) for k in ("t", "client", "tool", "command", "summary", "status", "message")}, ensure_ascii=False) + "\n"
+    try:
+        if path.is_file() and path.stat().st_size + len(line.encode("utf-8")) > ACTIVITY_MAX_BYTES:
+            for n in range(ACTIVITY_KEEP, 0, -1):
+                older = path.with_name(f"{ACTIVITY_FILE}.{n}")
+                newer = path if n == 1 else path.with_name(f"{ACTIVITY_FILE}.{n - 1}")
+                if newer.is_file():
+                    os.replace(newer, older)
+        with path.open("a", encoding="utf-8") as out:
+            out.write(line)
+    except OSError:
+        return
 
 
 def activity(limit: int = 100) -> list[dict]:
@@ -259,6 +336,8 @@ def activity(limit: int = 100) -> list[dict]:
 
 def admit(client: str) -> str | None:
     """A reason the call is refused outright, written as what the agent should do next; None when it may go on."""
+    if blocked():
+        return "Agents are blocked in formvis (Preferences > Plugins, Outside agents is set to Blocked). Do not retry; ask the person to change that setting if you should continue."
     if not _enabled:
         return "Outside agents are switched off in formvis (Window > Agent Connect). Ask the person to switch them on, then retry."
     if policy_of(client) == "deny":
@@ -292,7 +371,7 @@ async def approval(entry: dict, why: str) -> str | None:
         message = "The person pressed Stop in formvis, so this step did not run. Wait for their next instruction."
     else:
         message = f"The person declined this step ({why}). Do not retry it; ask what they want instead."
-    end(entry, "denied", message)
+    end(entry, {"timeout": "timeout", "stop": "stopped"}.get(verdict, "denied"), message)
     return message
 
 

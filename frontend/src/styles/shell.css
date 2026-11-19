@@ -369,6 +369,7 @@ html[dir='rtl'] .cv-stage { direction: ltr; }
 /* ── Phase 21, step 1b: the tool column as the target's (UI_SPEC.md section 5, measured from s20): lavender glows
    behind the upper tool group and at the foot; the active tool in a rounded, lavender-tinted square. ── */
 .cv-rail { background: linear-gradient(to bottom, var(--surface-1) 0%, color-mix(in srgb, var(--accent-color) calc(10% * var(--accent-intensity)), var(--surface-1)) 12%, var(--surface-1) 30%, var(--surface-1) 72%, color-mix(in srgb, var(--accent-color) calc(14% * var(--accent-intensity)), var(--surface-1)) 100%); border-right-color: var(--line-0); }
+:root[data-oled] .cv-rail { background: var(--surface-1); }
 .cv-tool.is-active { background: var(--accent-soft); border-color: var(--accent-line); border-radius: 8px; color: var(--text-primary); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
 
 /* ── Phase 21, step 3: title bar, its tools, document tabs and the options bar, as the target's (UI_SPEC.md sections 2

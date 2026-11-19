@@ -121,5 +121,8 @@ def test_foreign_websocket_closes_4403(guard, headers):
 
 @pytest.mark.parametrize("headers", [{"host": LOOPBACK_HOST}, {"host": LOOPBACK_HOST, "origin": OWN}, {"host": LOOPBACK_HOST, "origin": WINDOW_ORIGINS[0]}])
 def test_own_websocket_opens(guard, headers):
+    from app.core import window_key
+
     with guard.websocket_connect(WS_PATH, headers=headers) as ws:
+        ws.send_json({"type": "key", "key": window_key.KEY})
         assert ws.receive_json()["type"] == "state"

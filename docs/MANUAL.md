@@ -619,18 +619,30 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - Outside agents (Claude Code, Codex, Cursor): ask them in plain language to edit what is open in formvis. In the
   formvis folder, `./formvis agents install` sets all three up for your account (the MCP server and the editing skill);
   inside the formvis repository they are already set up. formvis starts itself when an agent asks, opens a window if
-  none is open, and asks you once to allow outside agents. They get 134 tools, from opening, saving and exporting files
+  none is open, and asks you in the window before the agent changes anything (see Agents below). They get 140 tools, from opening, saving and exporting files
   to layers, text, selections, filters, the video timeline and generative fill, which uses the models on this computer
   first.
 - Either way, every change is an undoable step, anything that costs money asks you first, your keys are never shown,
   and only this computer can connect.
+- Only the formvis window can change what agents may do, answer their questions and approvals, or use the terminal
+  dock: the engine gives the window a key when it starts and refuses those requests from anything else ("Only the
+  formvis window can do this"). The saved choice is sealed; if the file is changed outside formvis, the choice reads as
+  Ask again and formvis says so once. formvis's own command line (`./formvis cli`, `./formvis headless`) is asked
+  about like any other outside agent.
 
 ## Terminal
 
 - Window > Terminal opens a terminal dock along the foot of the window (Ctrl+J, Cmd+J on a Mac, when no layer is open
   or the dock has focus; with a layer open, Ctrl+J is Layer via Copy); the same key in the dock or the
-  hide button closes it, and the shells keep running while it is hidden. Drag the grip above it to resize; its
-  height and whether it is open are remembered, and the window opens as you left it without moving.
+  hide button closes it, and the programs keep running while it is hidden. The side button in its head moves it to a
+  column at the right of the window, and back to the bottom. Drag its edge to resize; its side, its size and whether
+  it is open are remembered, and the window opens as you left it without moving.
+- Keys you type in the dock stay in the dock: a letter typed in a terminal or in the ask bar never picks a tool or
+  runs a menu command. Only the dock's own key, F1, and the keys for Preferences and the Assistant still reach formvis
+  from there.
+- The first time the dock opens, a short guide points at its parts one step at a time (Back, Next, Done; the
+  cross closes it). The menu button in the dock's head has Show me around to see it again, Outside agents to open
+  that setting, and Codex and Cursor when those programs are on this computer.
 - Each tab is a shell started in the formvis folder by the engine on this computer, with formvis's own command
   (`./formvis`) first on the path. The plus button (or Window > New Terminal) opens another tab, the restart button
   starts a tab's shell again, and the cross on a tab ends it.
@@ -649,6 +661,17 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 
 ## Agents
 
+- Preferences > Plugins, Outside agents says whether other programs may change your pictures at all: Ask (the
+  default), Allowed or Blocked. On Ask, a request opens a box in the middle of the window that names the agent and what
+  it asked to do, with Deny, Allow once and Always allow. Your answer covers only the request shown: Allow once runs
+  that one request and the next one asks again; Deny refuses it, and formvis refuses that agent for ten minutes without
+  asking. Always allow is kept for agents of that one name; others are still asked. The name is what the program says
+  it is called, and any program on this computer can give any name, so choose Always allow only when you are content
+  with everything that uses that name. If the program gives up while the box is open, the box closes by itself and
+  nothing runs.
+- Blocked refuses every outside agent at once, and also the picture tools of formvis's own Claude Code tabs and Chat;
+  it holds whether or not a window is open and after a restart. A plain shell tab still opens. Only the formvis window
+  can change this choice.
 - Window > Agent Connect is where you decide what outside agents (any client that speaks MCP) may do. The master
   switch turns all of them off or on; each agent that has called formvis gets a row with its own policy: Allow, Ask (the default: a step that writes a file or that undo could not reverse waits in the panel
   for Approve or Deny, and times out after two minutes) or Deny.
@@ -665,9 +688,12 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   commands (`--group Filter` narrows by menu), `./formvis cli describe <id>` says what one does and what it takes,
   and `./formvis cli run <id> key=value ...` runs it in the open window as an undoable step. A command whose result
   undo cannot reverse (a file overwritten, say) runs only with `--yes`.
-- The window has to be open (`./formvis boot`) and outside agents allowed (Preferences > Plugins), or add `--headless` to
+- The window has to be open (`./formvis boot`); with Outside agents on Ask (Preferences > Plugins) formvis asks you in
+  the window when a command arrives. Or add `--headless` to
   `list`, `describe`, `run`, `process`, `batch`, `droplet`, `serve` or `convert`: a window with no screen (Playwright's Chromium,
-  as `./formvis bench` uses) is started for that run, allows agents for itself only, and is closed when the command ends.
+  as `./formvis bench` uses) is started for that run and is closed when the command ends. It follows the choice you saved
+  in formvis and cannot change it: set Outside agents to Allowed in the window first, because with no screen nobody can
+  answer a question, so a call that would ask, and a step that needs approval, is refused at once.
   `./formvis headless` keeps one up until Ctrl-C. It needs Playwright and its Chromium (`python3 -m pip install playwright`,
   `python3 -m playwright install chromium`); the page is the one the engine serves after `./formvis serve`, else the dev page
   (`FORMVIS_WINDOW_URL`). Commands that only read or convert flat files need no window at all. Exact actions take
@@ -776,6 +802,12 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   them. Commands that undo cannot reverse (overwriting files, closing without saving) are refused to extensions.
 - formvis notices a newly installed extension within two seconds while its window is in front; Reload Extensions reads
   every extension again at once. Developers: `docs/EXTENSIONS.md` in the repository describes what an extension can call.
+
+## Themes
+
+- Preferences > Interface has the Theme grid: click a theme to use it, right-click one to make it a favorite. The
+  grid holds dark and light themes; AMOLED Black is a true-black theme for OLED screens. Theme
+  and accent are shared with NodeMode on this device.
 
 ## Interface languages
 

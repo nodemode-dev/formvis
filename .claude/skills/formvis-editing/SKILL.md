@@ -24,7 +24,7 @@ Every formvis error says what to do next. Read it, do that, retry.
 | --- | --- | --- |
 | No formvis tools at all | The MCP server is not connected in this client | Tell the person to run `./formvis agents install` in the formvis folder, or approve the project's MCP server, then restart the client |
 | "formvis is not open" | No window, and one could not be opened | Ask the person to run `./formvis boot` (or open the formvis app), then retry |
-| "did not allow outside agents" | The person clicked Not now in formvis | Ask them to allow it (the question in the window, or Preferences > Plugins), then retry |
+| "did not allow outside agents" | The person chose Deny in the question formvis showed | Ask them to allow it (the question in the window, or Preferences > Plugins), then retry. "Agents are blocked in formvis" means the person set Outside agents to Blocked: do not retry, tell them |
 | "No layer has the id" | A stale or mistyped id | `get_document` again and use the ids it gives |
 | A tool name that does not resolve | A near-miss name | Use the exact names in `references/tools.md`; they are case sensitive |
 | A multi-step edit stopped halfway | One step failed | `get_document` and `get_image` to see where it stands; `undo` back if needed; continue from there |

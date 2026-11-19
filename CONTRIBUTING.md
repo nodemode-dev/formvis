@@ -19,7 +19,7 @@ there through real use and real contributions.
 Clone the repository and run `./formvis install`, then `./formvis boot` (or
 `formvis.bat install` and `formvis.bat boot` on Windows). The first installs what the
 engine and the interface need; the second starts both. `./formvis help` lists every
-command, and the README's Quick Start has the details and the requirements.
+command, and the README's "Run it from source" section has the details and the requirements.
 
 The code lives in:
 

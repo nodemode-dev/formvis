@@ -39,7 +39,7 @@ For a question about profiles, intents, CMYK or Lab (not an edit), use `formvis-
 2. `get_image`: look at the picture before touching it. Check again after each change; tools report what they did, only the picture shows whether it looks right. The person is watching the window.
 3. Work in small steps, each one undoable. `undo` takes `steps` (1 to 100); `redo` the same.
 4. A new element goes on its own layer, so it can be moved or removed later.
-5. Finish by delivering: `export_image` for a flat file, `save_project` for a `.fmv` that stays editable.
+5. Finish by delivering: `export_image` for a flat file, `save_project` for a `.fvd` that stays editable.
 
 The server's `edit_strategy` prompt holds the decision tree in ten lines; fetch it if you are unsure which family applies.
 
@@ -62,7 +62,9 @@ Every formvis error says what to do next. Read it, do that, retry.
 | --- | --- | --- |
 | No formvis tools at all | The MCP server is not connected in this client | Tell the person to run `./formvis agents install` in the formvis folder, or approve the project's MCP server, then restart the client |
 | "formvis is not open" | No window, and one could not be opened | Ask the person to run `./formvis boot` (or open the formvis app), then retry |
-| "did not allow outside agents" | The person clicked Not now | Ask them to allow it (the question in the window, or Preferences > Plugins), then retry. Do not retry in a loop: a refusal holds for ten minutes |
+| "did not allow outside agents" | The person chose Deny in the question formvis showed | Ask them to allow it (the question in the window, or Preferences > Plugins), then retry. Do not retry in a loop: after a Deny, formvis refuses that agent for ten minutes without asking again. Allow once covers one call, so the next call asks again unless the person chose Always allow |
+| "Nobody answered the question in the formvis window" | The question waited three minutes | Ask the person to look at the formvis window, then retry once |
+| "Agents are blocked in formvis" | Outside agents is set to Blocked (Preferences > Plugins) | Do not retry. Tell the person; only they can change it, in the formvis window |
 | "No layer has the id" | A stale or mistyped id | `get_document` again and use the ids it gives |
 | "No document is open" | Nothing to act on | `new_document` or `open_file` |
 | A tool name that does not resolve | A near-miss name | Use the exact names in `tools.md`; they are case sensitive |
