@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## export_mask and export_layer ask like export_image · after 2.3.5, unreleased (services/agents.py RISKY_TOOLS)
+
+- Kind: fix · logged 2026-11-19.
+- Both write a picture file at the agent's path (mcp.py writes them where it writes export_image's) and could replace an existing file with nobody asked, because they were on neither the approval list nor the read-only list. They are now in `RISKY_TOOLS` ("overwrites a picture file"), so `_risk` holds them for the person's approval under the Ask policy, as export_image is. setup/mcp_stdio.py already counted them as writes for `--root`.
+- Checked by running `_agent_call` for export_layer with no window: it waited for approval and was refused when nobody answered. tests/test_agent_approvals.py.
+- Replaced, quoted exactly:
+
+```py
+RISKY_TOOLS = {"save_project": "overwrites a project file", "export_image": "overwrites a picture file", "timeline_render": "overwrites a video file", "convert_file": "writes a picture file"}
+```
+
 ## ffmpeg comes from formai-binaries first, formcut-binaries second · after 2.3.5, unreleased (app/ffmpeg_fetch.py SOURCES, sources, fetch; NOTICE.md)
 
 - Kind: feat · logged 2026-11-19.
