@@ -7,7 +7,7 @@ const UI = join(__dirname, '../src/ui/i18n');
 const adapter = readFileSync(join(__dirname, '../src/dock-adapter.ts'), 'utf8');
 const WORDS: Record<string, string> = { app: 'formvis', noun: 'picture', start: './formvis boot' };
 const NAMES = new Set(['Codex', 'Cursor']);
-const TRANSLATED = ['ar', 'cs', 'da', 'de', 'el', 'es', 'fi', 'fr', 'hu', 'it', 'ja', 'nb', 'nl', 'pl', 'pt-BR', 'ru', 'sr-Latn', 'sv', 'tr', 'uk', 'zh-CN'];
+const TRANSLATED = ['ar', 'cs', 'da', 'de', 'el', 'es', 'fi', 'fr', 'hi', 'hu', 'id', 'it', 'ja', 'ko', 'nb', 'nl', 'pl', 'pt-BR', 'ru', 'sr-Latn', 'sv', 'th', 'tr', 'uk', 'vi', 'zh-CN', 'zh-TW'];
 
 const own = (pattern: RegExp): string => (adapter.match(pattern)?.[1] ?? '').replace(/\\'/g, "'");
 const OVERRIDES: Record<string, string> = { tourChatBody: own(/tourChatBody: '((?:[^'\\]|\\.)*)'/) };
@@ -30,6 +30,7 @@ describe('the dock module\'s sentences are in the language tables', () => {
   it('the tables named here exist', () => {
     const files = readdirSync(join(UI, 'more')).map((f) => f.replace(/\.ts$/, ''));
     for (const lang of TRANSLATED) expect(files.includes(lang), lang).toBe(true);
+    expect(files.filter((lang) => !TRANSLATED.includes(lang))).toEqual([]);
   });
   for (const lang of TRANSLATED) {
     it(`${lang} has every module sentence, each with the same placeholders and no em dash`, async () => {
