@@ -126,6 +126,35 @@ def test_not_allowed_asks_once_in_the_window_then_runs(monkeypatch):
     assert seen == ["__consent__", "get_document"] and result["content"][0]["text"] == "ran" and M._allowed is True
 
 
+def test_allow_once_runs_that_call_and_the_next_call_asks_again():
+    """Allow once (dock 1.1.0): the call is handed to a window still polling as not allowed, and agents stay not allowed."""
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190", headers=WINDOW) as c:
+            _reset()
+            seen = []
+
+            async def window(n):
+                while len(seen) < n:
+                    r = await c.get("/api/mcp/bridge/next?allowed=0")
+                    if r.status_code != 200:
+                        continue
+                    item = r.json(); seen.append((item["name"], item.get("once"), item["arguments"].get("client") if item["name"] == "__consent__" else None))
+                    result = {"allowed": True, "once": True} if item["name"] == "__consent__" else {"content": [{"type": "text", "text": "ran"}]}
+                    await c.post("/api/mcp/bridge/result", json={"id": item["id"], "result": result})
+
+            results = []
+            for n in (2, 4):
+                w = asyncio.create_task(window(n))
+                await asyncio.sleep(0.05)
+                r = await c.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"_meta": MODERN, "name": "get_document", "arguments": {}}})
+                await w
+                results.append(r.json()["result"]["content"][0]["text"])
+            return seen, results
+    seen, results = asyncio.run(run())
+    assert [s[0] for s in seen] == ["__consent__", "get_document", "__consent__", "get_document"]
+    assert seen[1][1] is True and results == ["ran", "ran"] and M._allowed is False
+
+
 def test_not_now_says_how_to_recover_and_is_not_asked_again_at_once():
     async def run():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8190", headers=WINDOW) as c:

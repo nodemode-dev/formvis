@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The window can answer the outside-agent question with Allow once · after 2.3.5, unreleased (routers/mcp.py _caller, _ask, _call, _agent_call, bridge_next eligible)
+
+- Kind: feat · logged 2026-11-19 · DOCK_SPEC section 3 (the shared dialog's three buttons).
+- Before, the first-connection question had two answers: `{"allowed": false}` (refused, not asked again for ten minutes) and `{"allowed": true}` (`_allowed` set, the window then polls as allowed). There was no "this request only". Added, without changing the other two: `{"allowed": true, "once": true}` runs that one call and leaves `_allowed` as it was, so the next call asks again. `_ask` takes `once` and marks the queued item `"once": true`; `bridge_next` hands such an item to a window still polling with `allowed=0` (the same way it hands the window's own Claude Code calls). Removed text, quoted: `eligible = lambda it: allowed or it.get("name") == "__consent__" or it.get("inapp") is True   # not allowed: only the question and the window's own Claude Code go out` and `answer = await _ask("__consent__", {}, 180)`.
+- The question now carries `{"tool": name, "client": <MCP client name>}` (the new `_caller` context variable, set in `_agent_call`), so the window can say who asked for what. No gate rule, policy or stored value changed meaning; the window key is still required to poll and to answer (`bridge/result` without it: 403).
+- Verified by running the engine on 31201 with the dev window in headless Chrome and real `/mcp` calls: Allow once ran `list_commands` and the next call asked again; two calls at once were both asked and both ran; Deny and Escape refused as before. Test added after: `tests/test_mcp.py::test_allow_once_runs_that_call_and_the_next_call_asks_again`.
+
 ## agents sync writes the shared dock's MANIFEST.json and --check names a shared file edited in place · after 2.3.5, unreleased (setup/agents.py DOCK, DOCK_DIR, DOCK_MANIFEST, DOCK_VERSION, _dock_files, dock_manifest, dock_problems, generated, sync; frontend/src/dock/MANIFEST.json; agents/manifest.json)
 
 - Kind: feat · logged 2026-11-19 · DOCK_SPEC sections 1 and 8.

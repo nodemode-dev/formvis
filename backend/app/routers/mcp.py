@@ -713,15 +713,16 @@ def _open_window() -> bool:
 _sink: contextvars.ContextVar = contextvars.ContextVar("progress_sink", default=None)   # the queue of a call whose client asked for progress
 _sinks: dict[str, asyncio.Queue] = {}   # window request id: where that call's progress goes
 _inapp_call: contextvars.ContextVar = contextvars.ContextVar("inapp_call", default=False)   # the call is the Claude Code the window's own terminal dock started
+_caller: contextvars.ContextVar = contextvars.ContextVar("caller", default="")   # the client name the window's question shows
 
 
-async def _ask(name: str, args: dict, timeout: float) -> dict | None:
+async def _ask(name: str, args: dict, timeout: float, once: bool = False) -> dict | None:
     rid = str(next(_ids))
     fut = asyncio.get_running_loop().create_future()
     _waiting[rid] = fut
     if _sink.get() is not None:
         _sinks[rid] = _sink.get()
-    item = {"id": rid, "name": name, "arguments": args, **({"inapp": True} if _inapp_call.get() else {})}
+    item = {"id": rid, "name": name, "arguments": args, **({"inapp": True} if _inapp_call.get() else {}), **({"once": True} if once else {})}
     _put(item)
     try:
         return await asyncio.wait_for(fut, timeout=timeout)
@@ -1123,10 +1124,13 @@ async def _call(name: str, args: dict) -> dict:
             return _fail("Outside agents are not allowed in formvis, and the formvis window running now has no screen to ask in. Ask the person to allow them in formvis (Preferences > Plugins), then retry.")
         if time.monotonic() < _declined_until:
             return _fail("The person chose not to allow outside agents in formvis just now. Ask them to turn on Allow outside agents (Preferences > Plugins), then retry.")
-        answer = await _ask("__consent__", {}, 180)
+        answer = await _ask("__consent__", {"tool": name, "client": _caller.get()}, 180)
         if not (answer or {}).get("allowed"):
             _declined_until = time.monotonic() + 600
             return _fail("The person did not allow outside agents in formvis. Ask them to allow it (the question in the formvis window, or Preferences > Plugins), then retry.")
+        if (answer or {}).get("once") is True:
+            out = await _ask(name, args, 600, once=True)
+            return out if out is not None else _fail("formvis did not answer in time: it may be busy with a long task. Check the formvis window, then retry.")
         _allowed = True
     out = await _ask(name, args, 600)   # a generative call waits for the person and the model
     return out if out is not None else _fail("formvis did not answer in time: it may be busy with a long task. Check the formvis window, then retry.")
@@ -1192,6 +1196,7 @@ async def _agent_call(client: str, name: str, args: dict, cli: bool = False) -> 
     approval when it is risky under the Ask policy, and noted in the activity feed either way. The Claude Code the window's own
     terminal dock started (agents.INAPP_CLIENT, known by its per-run token) is not asked whether outside agents may edit."""
     _inapp_call.set(client == agents.INAPP_CLIENT)
+    _caller.set(client)
     if name == "control_call":   # a dotted method name is the typed tool under another name, checked against that tool's schema
         target = CONTROL_METHODS.get(args.get("method", ""))
         why = _invalid(args.get("params") or {}, SCHEMAS[target], "params") if target else None
@@ -1599,7 +1604,7 @@ async def bridge_next(request: Request) -> Response:
         globals()["_declined_until"] = 0.0
     _allowed = allowed
     deadline = time.monotonic() + 20
-    eligible = lambda it: allowed or it.get("name") == "__consent__" or it.get("inapp") is True   # not allowed: only the question and the window's own Claude Code go out
+    eligible = lambda it: allowed or it.get("name") == "__consent__" or it.get("inapp") is True or it.get("once") is True   # not allowed: only the question, a call allowed once and the window's own Claude Code go out
     while time.monotonic() < deadline:
         _seen = time.monotonic()
         if await request.is_disconnected():
