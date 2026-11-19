@@ -33,7 +33,7 @@ Put the private key file's contents in `TAURI_SIGNING_PRIVATE_KEY` and paste the
 
 ## Cutting a release
 
-1. Bump the version in all eight places (see `CLAUDE.md` and the release-keeper skill) and let it land on main.
+1. Bump the version in all eight places (the table in the release-keeper sub-skill, `.claude/skills/formvis-harness/sub-skills/release-keeper/SUB-SKILL.md`, names them), add the release's line to the list in `packaging/linux/ai.nodemode.formvis.metainfo.xml`, and let it land on main.
 2. Push a branch `compile_vX.Y.Z` cut from main's head.
 3. formcompiler builds the targets, signs and notarizes the macOS app, and writes `latest.json` from the updater signatures with `setup/package_desktop.py feed`.
 4. Check the draft release `formvis-vX.Y.Z` on formcompiler's release page, then publish it. Installed apps see the update the next time they open and ask before installing.
@@ -58,4 +58,4 @@ A file named `portable` or `portable.txt` beside the engine makes it keep everyt
 
 - The macOS bundle runs with the hardened runtime; `src-tauri/entitlements.plist` lets the PyInstaller engine sidecar load the libraries it unpacks at launch.
 - Windows builds are unsigned until a code-signing certificate is available, so SmartScreen warns on first run.
-- `.fmv` and `.formvis` (older projects) files are associated with the app; opening a clicked file in the running app is not built yet.
+- `.fvd` files, and `.fmv` and `.formvis` (older projects), are associated with the app; opening a clicked file in the running app is not built yet.

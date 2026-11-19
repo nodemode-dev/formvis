@@ -17,3 +17,4 @@
 - [NodeMode Embedding](NodeMode-Embedding)
 - [Keyboard Shortcuts](Keyboard-Shortcuts)
 - [Verification](Verification)
+- [Releasing](Releasing)

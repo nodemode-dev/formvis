@@ -9,7 +9,7 @@ A release is a short, strict sequence. Do each edit by hand (Edit tool, one regi
 
 ## The 8 version sites
 
-The version is `v*.*.*` with dots and moves together. Today it is 1.67.3. After the last number reaches 9 the middle number rises (1.50.9 then 1.51.x).
+The version is `v*.*.*` with dots and moves together. The current one is in `frontend/src/version.ts`. After the last number reaches 9 the middle number rises (1.50.9 then 1.51.x).
 
 | # | File | What changes |
 | --- | --- | --- |
@@ -22,7 +22,7 @@ The version is `v*.*.*` with dots and moves together. Today it is 1.67.3. After 
 | 7 | `src-tauri/tauri.conf.json` | `"version"` |
 | 8 | `README.md` | the badge: both `version-X.Y.Z` in the image URL and `alt="version X.Y.Z"` |
 
-`.docs/BRANCHING.md` lists six of these and `.docs/wiki/Releasing.md` says "six places"; both omit the two lockfiles. Mention it when you touch those pages. The native crate `native/formvis-render` has its own version (0.8.0) and is not a release site. `grep` for the old version number (with `git grep -n`) after the bump to prove nothing was missed.
+`.docs/BRANCHING.md` and `.docs/wiki/Releasing.md` point at this table. A ninth place gets a new line each release without being one of the eight: the list of releases in `packaging/linux/ai.nodemode.formvis.metainfo.xml`. The native crate `native/formvis-render` has its own version (0.8.0) and is not a release site. `grep` for the old version number (with `git grep -n`) after the bump to prove nothing was missed.
 
 ## Records
 
