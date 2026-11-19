@@ -51,6 +51,7 @@ export interface DockOwnChat {
   hidden?(why: DockPaneHidden): void;
   closed?(): void;
   busy?(): boolean;
+  askTarget?: HTMLElement;
 }
 export interface DockOwnAsk { send?(text: string, tab: DockKind | null): DockSent; element?: HTMLElement }
 export interface DockChatPane { pane(host: HTMLElement): DockOwnChat | void; ask?: 'none' | 'line' | DockOwnAsk }

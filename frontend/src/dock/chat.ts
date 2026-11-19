@@ -19,6 +19,7 @@ export interface DockChatView {
   send(text: string): Promise<boolean>;
   focus?(): void;
   visible?(on: boolean, why: DockPaneHidden): void;
+  askTarget?(): HTMLElement | undefined;
 }
 
 export class OwnChat implements DockChatView {
@@ -39,6 +40,7 @@ export class OwnChat implements DockChatView {
     return (await this.own.send(text)) !== false;
   }
   focus(): void { this.own.focus?.(); }
+  askTarget(): HTMLElement | undefined { return this.own.askTarget; }
   visible(on: boolean, why: DockPaneHidden): void {
     if (on === this.on) return;
     this.on = on;

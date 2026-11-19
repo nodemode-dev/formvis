@@ -320,7 +320,7 @@ export class Dock {
           : { target: '.ft-dock-claude', title: 'tourInstalledTitle', body: 'tourInstalledBody' };
     const steps: TourStep[] = [
       { target: '.ft-dock', title: 'tourPanelTitle', body: 'tourPanelBody' },
-      { target: '.ft-dock-ask-input', title: 'tourChatTitle', body: 'tourChatBody' },
+      { target: this.ownAsk?.element ? '.ft-dock-ask' : this.ownAsk ? '.ft-dock-ask-input' : this.chat?.askTarget?.() ?? '.ft-dock-ask-input', title: 'tourChatTitle', body: 'tourChatBody' },
       middle,
       ...(this.consent ? [{ target: '.ft-dock-more', title: 'tourAskTitle', body: 'tourAskBody' } as TourStep] : []),
       { target: '.ft-dock-side', title: 'tourSideTitle', body: 'tourSideBody' },

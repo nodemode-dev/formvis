@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moveLegacy, readSeen, readState, type DockStore } from '../src/dock/state';
+import { jsonLegacy, moveLegacy, readSeen, readState, type DockStore } from '../src/dock/state';
 
 function store(init: Record<string, string> = {}): DockStore & { data: Map<string, string> } {
   const data = new Map(Object.entries(init));
@@ -43,5 +43,17 @@ describe('dock state', () => {
     expect(s.data.has('app.h')).toBe(false);
     expect(JSON.parse(s.data.get('app.dock') ?? '')).toEqual({ open: false, side: 'bottom', h: 312, w: 440, tab: '' });
     expect(readState(store({ 'app.h': '312' }), 'app.dock', undefined, sizes).h).toBe(280);
+  });
+
+  it('a moved layout is seen only when the reader says so', () => {
+    const said = store({ 'app.h': '312' });
+    expect(moveLegacy(said, 'app.dock', { keys: ['app.h'], read: () => ({ h: 312, seen: true }) }, sizes)).toBe(true);
+    expect(readSeen(said, 'app.dock')).toBe(true);
+    const old = store({ 'formvis.terminal': JSON.stringify({ open: true, h: 300, seen: true }) });
+    expect(moveLegacy(old, 'formvis.agentDock', ['formvis.terminal'], sizes)).toBe(true);
+    expect(readSeen(old, 'formvis.agentDock')).toBe(false);
+    const flagged = store({ 'formvis.terminal': JSON.stringify({ open: true, h: 300 }) });
+    expect(moveLegacy(flagged, 'formvis.agentDock', jsonLegacy(['formvis.terminal'], true), sizes)).toBe(true);
+    expect(JSON.parse(flagged.data.get('formvis.agentDock') ?? '')).toEqual({ open: true, side: 'bottom', h: 300, w: 440, tab: '', seen: true });
   });
 });

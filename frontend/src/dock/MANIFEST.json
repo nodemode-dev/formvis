@@ -3,18 +3,18 @@
   "version": "2.1.0-dev",
   "files": {
     "CONTRACT.md": "a87dd3f86e2444269db1dcc7bd3905702a1eff635d46a27a55eba9f297cf856c",
-    "adapter.ts": "39f2c6050c4d2a575ee2e19553a9014b538f928f8982074469dc10c33199513c",
-    "chat.ts": "8f6fb6e2d3c52c37fb3214204868501ff5de4959beef145fd93da1557655b4c1",
+    "adapter.ts": "adc82eecd4306b500ddc93ffa972c1e27a9c59217d71896bf3f20b29ef6b0861",
+    "chat.ts": "91fef36e0ee61a1681194fe441458cd766660277718b0ba854e2960fddc5ca1b",
     "consent.ts": "fa53601ba7d0b9a72fe8bd11ce3fd3b68db7e9697465eab33167da54377c25c2",
     "dock.css": "a96a14d471fad4104fbebc3e226104e9cf00d5e57cc04abf524ea60b4a8c520d",
-    "dock.ts": "d6513aa65c32a71bb3be650802e726cc866246a3d6751f1ac88faac90487f93c",
+    "dock.ts": "a20adeb9196d1cfbda083f00d1295645a518562672966e75eb1cce12d9ef9e7c",
     "dom.ts": "dc2adf64e70e600f28eaa2d84eed0b4ad7deadb6e200cd489ee7abb583269e62",
     "icons.ts": "a8b146eb3772621e4b4349ad143da14170d28ed3dd68aad41748dbaeb8e99988",
     "keys.ts": "f5a6f88ed2f421d728bdaed4e14bd4c09ef4c9dfcaafdcc6c61d2ef74b07246f",
     "placement.ts": "0f7e03ef0b720af07995111f30dcb5ed124529d44cf5cb67ae4bfb1f96c7f880",
-    "state.ts": "07fbb3b1728902b847890a237b9455a78f92076d5c757cac93dfc7c09f8fd062",
+    "state.ts": "bef508e8343737f67adfbd7ae8cb8efb446968dfd4e7e0aff37da11f996955d7",
     "strings.ts": "b1ad5ff88bd46e3631b12fc831fc919329ad051ba38c99927c1d5aed9eea5de8",
     "terminal.ts": "8bf886a7ad4dc69323e803acc13641a66e1d8614e9b85a6a60977fa30d8a56fc",
-    "tour.ts": "27a51aa617bbd636635eb5ec6d8afedb5b7e1215e2467f8820c634973df4af6d"
+    "tour.ts": "9b72d54ece42fd15b84054e21264453207c5e73261d387110a9abf91d29586aa"
   }
 }
