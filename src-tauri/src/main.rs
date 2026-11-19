@@ -720,7 +720,10 @@ fn main() {
                     .sidecar("formvis-engine")
                     .expect("the formvis engine sidecar is missing; bundle its binary"),
             };
-            let mut sidecar = engine.env("FORMVIS_PORT", "0").env("FORMVIS_SHELL_PID", std::process::id().to_string());
+            let mut sidecar = engine
+                .env("FORMVIS_PORT", "0")
+                .env("FORMVIS_SHELL_PID", std::process::id().to_string())
+                .env("FORMVIS_WINDOW_KEY_STDOUT", "1");
             if let Some(path) = packaged::launcher() {
                 sidecar = sidecar.env("FORMVIS_LAUNCHER", path);
             }
@@ -735,20 +738,48 @@ fn main() {
 
             tauri::async_runtime::spawn(async move {
                 let pattern = regex::Regex::new(r"http://127\.0\.0\.1:(\d+)").unwrap();
-                let mut port: Option<u16> = None;
-                while let Some(event) = rx.recv().await {
-                    let text = match event {
-                        CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
-                            String::from_utf8_lossy(&bytes).into_owned()
+                let key_pattern = regex::Regex::new(r"formvis-window-key: ([A-Za-z0-9_-]{32,})").unwrap();
+                let (tx, mut events) = tauri::async_runtime::channel::<Option<CommandEvent>>(64);
+                let late = tx.clone();
+                tauri::async_runtime::spawn(async move {
+                    while let Some(event) = rx.recv().await {
+                        if tx.send(Some(event)).await.is_err() {
+                            break;
                         }
+                    }
+                });
+                let mut port: Option<u16> = None;
+                let mut key: Option<String> = None;
+                let mut waiting = false;
+                while let Some(Some(event)) = events.recv().await {
+                    let text = match event {
+                        CommandEvent::Stdout(bytes) => {
+                            let text = String::from_utf8_lossy(&bytes).into_owned();
+                            if key.is_none() {
+                                key = key_pattern.captures(&text).map(|found| found[1].to_string());
+                            }
+                            text
+                        }
+                        CommandEvent::Stderr(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
                         CommandEvent::Terminated(_) => break,
                         _ => continue,
                     };
-                    if let Some(found) = pattern.captures(&text).and_then(|c| c[1].parse::<u16>().ok()) {
-                        port = Some(found);
+                    if port.is_none() {
+                        port = pattern.captures(&text).and_then(|c| c[1].parse::<u16>().ok());
+                    }
+                    if port.is_some() && key.is_some() {
                         break;
                     }
+                    if port.is_some() && !waiting {
+                        waiting = true;
+                        let late = late.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_secs(10));
+                            let _ = late.blocking_send(None);
+                        });
+                    }
                 }
+                drop(late);
                 match port {
                     Some(port) => {
                         let url = if std::env::args().any(|arg| arg == "--no-skin") {
@@ -779,6 +810,13 @@ fn main() {
                             // Files dropped on the window reach the page as ordinary drop events (1.86.1): Tauri's own
                             // drop handler otherwise takes them, and the Home screen and the canvas never saw a drop.
                             .disable_drag_drop_handler()
+                            .initialization_script(match &key {
+                                Some(value) => format!(
+                                    "if (window.location.origin === {:?}) {{ window.__FORMVIS_WINDOW_KEY = {value:?}; }}",
+                                    format!("http://127.0.0.1:{port}")
+                                ),
+                                None => String::new(),
+                            })
                             .on_navigation({
                                 let handle = handle.clone();
                                 move |url| match window_state::shell_choice(url) {

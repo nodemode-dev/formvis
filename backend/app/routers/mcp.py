@@ -4,7 +4,7 @@ handshake, no session; server/discover; the version on every request) and still 
 2025-11-25. The Origin header is checked (only this computer), as the specification requires. The work happens in the
 window, which collects requests from /api/mcp/bridge only while Allow outside agents is on in Preferences > Plugins;
 anything that costs money asks the user there first. The Claude Code the window's own terminal dock starts sends the
-per-run x-formvis-inapp header (agents.INAPP_TOKEN): it is never asked the Allow question and is served with outside
+x-formvis-inapp header with the token of its own tab (agents.issue_inapp): it is never asked the Allow question and is served with outside
 agents off. The terminal and Claude Code commands (WINDOW_ONLY) are refused to every agent."""
 
 import asyncio
@@ -18,7 +18,7 @@ import os
 import time
 import urllib.parse
 
-from app.core import config
+from app.core import config, window_key
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -1548,6 +1548,7 @@ async def bridge_next(request: Request) -> Response:
     window that closed or reloaded mid-poll must not take a request with it: the connection is checked before and after
     taking one, and a request taken for a gone window goes back to the front for the next poll (1.52.1)."""
     global _seen, _allowed
+    window_key.require(request)
     allowed = request.query_params.get("allowed", "1") != "0"   # 1.53.3: the window polls either way, saying which
     if allowed and not _allowed:
         globals()["_declined_until"] = 0.0

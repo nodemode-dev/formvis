@@ -13,9 +13,9 @@ import tempfile
 import time
 import uuid
 
-from app.core import config
+from app.core import config, seal
 
-INAPP_TOKEN = secrets.token_urlsafe(24)
+_inapp_tokens: set[str] = set()
 INAPP_CLIENT = "Claude Code in formvis"
 POLICIES = ("allow", "ask", "deny")
 POLICY_LABELS = {"allow": "Allow all", "ask": "Ask for risky steps", "deny": "Deny"}
@@ -28,6 +28,8 @@ _limits: dict = {"roots": [], "text_chars": 200_000, "image_bytes": 12 * 1024 * 
 _enabled = True
 _loaded = False
 _policies: dict[str, str] = {}
+_stored: dict = {"allowed": None}
+_seal: dict = {"state": "unsealed"}
 _clients: dict[str, dict] = {}
 _sessions: dict[str, tuple[str, str]] = {}
 _pending: dict[str, dict] = {}
@@ -49,7 +51,12 @@ def _load() -> None:
     _loaded = True
     try:
         data = json.loads(_file().read_text(encoding="utf-8"))
-        _policies.update({k: v for k, v in (data.get("policies") or {}).items() if v in POLICIES})
+        if not isinstance(data, dict):
+            return
+        _seal["state"] = seal.check(data)
+        broken = _seal["state"] == "broken"
+        _policies.update({k: ("ask" if broken and v == "allow" else v) for k, v in (data.get("policies") or {}).items() if v in POLICIES})
+        _stored["allowed"] = False if broken else data.get("allowed") if isinstance(data.get("allowed"), bool) else None
         saved = data.get("limits") or {}
         _limits["roots"] = [str(r) for r in saved.get("roots", []) if isinstance(r, str) and r.strip()][:32]
         for key, (low, high) in LIMIT_RANGES.items():
@@ -65,8 +72,9 @@ def _save() -> None:
     try:
         fd, temporary = tempfile.mkstemp(prefix=".agents-", suffix=".tmp", dir=path.parent)
         with os.fdopen(fd, "w", encoding="utf-8") as out:
-            out.write(json.dumps({"policies": _policies, "limits": _limits}))
+            out.write(json.dumps(seal.sign({"policies": _policies, "limits": _limits, "allowed": _stored["allowed"]})))
         os.replace(temporary, path)
+        _seal["state"] = "ok" if seal.available() else "unavailable"
     except OSError:
         if temporary:
             try:
@@ -141,7 +149,8 @@ def state() -> dict:
         clients.append({"name": name, "version": c["version"], "policy": policy_of(name), "calls": c["calls"], "last_seen": c["last_seen"],
                         "waiting": sum(1 for p in _pending.values() if p["client"] == name)})
     return {"enabled": _enabled, "clients": clients, "pending": sorted(_pending.values(), key=lambda p: p["t"]), "timeout": APPROVAL_SECONDS,
-            "policies": [{"value": v, "label": POLICY_LABELS[v]} for v in POLICIES]}
+            "policies": [{"value": v, "label": POLICY_LABELS[v]} for v in POLICIES], "allowed": _stored["allowed"],
+            "seal": "unavailable" if not seal.available() else _seal["state"], "sealBroken": _seal["state"] == "broken"}
 
 
 def _push_state() -> None:
@@ -191,8 +200,18 @@ def identity(sid: str | None, info: dict | None, fallback: str) -> tuple[str, st
 
 
 def is_inapp(token: str | None) -> bool:
-    """True for the per-run token only the engine puts in the MCP configuration of the Claude Code it starts in the window's terminal dock."""
-    return bool(token) and hmac.compare_digest(token.encode(), INAPP_TOKEN.encode())
+    """True for a token the engine gave one Claude Code it started in the window's terminal dock (one per tab or Chat run), still open."""
+    return bool(token) and any(hmac.compare_digest(token.encode(), t.encode()) for t in list(_inapp_tokens))
+
+
+def issue_inapp() -> str:
+    token = secrets.token_urlsafe(24)
+    _inapp_tokens.add(token)
+    return token
+
+
+def revoke_inapp(token: str | None) -> None:
+    _inapp_tokens.discard(token or "")
 
 
 def set_enabled(on: bool) -> None:

@@ -335,7 +335,8 @@ def start(mode: str = "ask", fresh: bool = False, port: int | None = None) -> di
     AGENT.names.clear()
     set_state("starting")
     try:
-        proc = subprocess.Popen(args, cwd=str(config.REPO_DIR), env=child_env() | ({INAPP_VAR: agents.INAPP_TOKEN} if port else {}), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        AGENT.token = agents.issue_inapp() if port else ""
+        proc = subprocess.Popen(args, cwd=str(config.REPO_DIR), env=child_env() | ({INAPP_VAR: AGENT.token} if port else {}), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
     except OSError as exc:
         set_state("exited")
         raise RuntimeError(f"Claude Code could not start: {exc}")
@@ -360,6 +361,8 @@ def stop(quiet: bool = False) -> dict:
     proc = AGENT.proc
     AGENT.gen += 1
     AGENT.proc = None
+    agents.revoke_inapp(getattr(AGENT, "token", ""))
+    AGENT.token = ""
     for gate in list(AGENT.waiting.values()):
         gate["allow"] = False
         gate["event"].set()
@@ -394,8 +397,8 @@ def inapp_mcp_config(port: int) -> str:
     return json.dumps({"mcpServers": {"formvis": {"type": "http", "url": f"http://127.0.0.1:{port}/mcp", "headers": {"x-formvis-inapp": "${" + INAPP_VAR + "}"}}}})
 
 
-def terminal_env() -> dict:
-    return {k: v for k, v in terminal.base_env().items() if not k.startswith("CLAUDE") or k in KEEP_ENV} | {INAPP_VAR: agents.INAPP_TOKEN}
+def terminal_env(token: str) -> dict:
+    return {k: v for k, v in terminal.base_env().items() if not k.startswith("CLAUDE") or k in KEEP_ENV} | {INAPP_VAR: token}
 
 
 def terminal_argv(path: str, port: int, prompt: str | None, resume: str | None) -> list[str]:
@@ -428,4 +431,11 @@ def open_terminal(port: int, prompt: str | None = None, resume: str | None = Non
             raise LookupError(MISSING)
         title = "Claude Code (from Chat)" if resume else "Claude Code"
         folder = str(config.REPO_DIR) if resume else workdir(document_folder)   # a conversation is kept per folder, and the Chat tab's runs in the repository
-        return terminal.open_session(folder, cols, rows, title, terminal_argv(path, port, prompt, resume), terminal_env(), "claude").describe()
+        token = agents.issue_inapp()
+        try:
+            session = terminal.open_session(folder, cols, rows, title, terminal_argv(path, port, prompt, resume), terminal_env(token), "claude")
+        except Exception:
+            agents.revoke_inapp(token)
+            raise
+        session.on_close.append(lambda: agents.revoke_inapp(token))
+        return session.describe()

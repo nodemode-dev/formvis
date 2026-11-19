@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The window key: the page holds it and sends it on every request to the engine · after 2.3.5, unreleased (io/window-key.ts new; io/api.ts socketTo; main.ts)
+
+- Kind: fix · logged 2026-11-19.
+- `io/window-key.ts` takes the key once at boot: the global `__FORMVIS_WINDOW_KEY` the desktop shell sets (read, then deleted), else `POST /api/window/key` (the engine run from source answers it once), else the copy kept in `sessionStorage` under `formvis-window-key` so a reload of the same tab keeps working. It replaces `window.fetch` with a wrapper that waits for the key and adds `X-Formvis-Window-Key` to every request whose URL is on the page's own origin. That one wrapper covers the request helper in `io/api.ts` and every raw `fetch(` in the page (52 calls in 26 files at the time); there is no `XMLHttpRequest`, `sendBeacon` or `EventSource` use outside the sandboxes that block them. Requests to other origins (ComfyUI, NodeMode, fal) are passed through unchanged. In a worker or under vitest (no `window`) the module does nothing.
+- `socketTo` sends `{"type": "key", "key": ...}` as the first message of every socket it opens (the agents feed, the Chat stream, the terminals): a browser cannot set headers on a WebSocket, and the engine closes a socket that does not send it within 5 seconds (4403).
+- `main.ts` waits for the key before `carryOver` and the app start, so no socket opens before the key is there. Nothing visible changes and nothing is re-rendered.
+- Replaced, quoted exactly:
+
+```ts
+void carryOver().finally(() => startLanguage().finally(() => { startApp(); startPageTranslator(); }));
+export function socketTo(path: string): WebSocket {
+  return new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api${path}`);
+}
+```
+
 ## Review and Windows-run fixes in the window: one offer per model, Escape chooses nothing, .HIF everywhere, LaMa said aloud · after 2.3.5, unreleased (ui/dialogs.ts Confirm.answer, confirmChoice; ui/model-install.ts offerModel, askAndInstall, offerRecommended; ui/panels/generative-dialog.ts toLama, LAMA_INSTEAD; io/images.ts IMAGE_ACCEPT; io/links.ts; ui/home.ts; e2e/conftest.py; e2e/test_selection_models.py)
 
 - Kind: fix · logged 2026-11-17 · the review's M5 and low findings, and the owner's Windows run of 2.3.5.

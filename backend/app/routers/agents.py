@@ -8,6 +8,7 @@ import json
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
+from app.core import window_key
 from app.routers.terminal import origin_ok, release_socket, require_local, take_socket
 from app.services import agents
 
@@ -56,6 +57,7 @@ async def write_limits(body: LimitsBody, request: Request) -> dict:
 @router.get("")
 def read(request: Request) -> dict:
     require_local(request)
+    window_key.require(request)
     return agents.state() | {"activity": agents.activity()}
 
 
@@ -111,6 +113,10 @@ async def stream(ws: WebSocket) -> None:
         await ws.close(code=4429)
         return
     await ws.accept()
+    if not await window_key.socket_admitted(ws):
+        release_socket()
+        await ws.close(code=4403)
+        return
     queue = agents.subscribe()
 
     async def outbound() -> None:
