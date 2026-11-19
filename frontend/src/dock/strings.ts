@@ -10,6 +10,8 @@ export const STRINGS = {
   claudeCode: 'Claude Code',
   restart: 'Restart this tab',
   hide: 'Hide Terminal',
+  toRight: 'Move the terminal to the right',
+  toBottom: 'Move the terminal to the bottom',
   keepRunning: 'programs keep running',
   empty: 'No terminal is open. Start a shell with the plus button, Claude Code with the agent button, or Chat with the speech bubble.',
   copy: 'Copy',

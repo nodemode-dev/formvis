@@ -9,6 +9,9 @@ import { strings, type Say } from './strings';
 
 export type { DockAdapter, DockKind } from './adapter';
 
+type DockSide = 'bottom' | 'right';
+interface DockState { open: boolean; side: DockSide; h: number; w: number; tab: string }
+
 interface Tab {
   id: string;
   term: Terminal;
@@ -63,6 +66,7 @@ export class Dock {
       <button type="button" class="${ib} ft-dock-chat" title="${s('chatAbout')}" aria-label="${s('chatWith')}">${icon('agentChat', 15)}</button>
       <button type="button" class="${ib} ft-dock-claude" title="${s('claudeCode')}" aria-label="${s('claudeCode')}">${icon('agent', 15)}</button>
       <button type="button" class="${ib} ft-dock-restart" title="${s('restart')}" aria-label="${s('restart')}">${icon('refresh', 15)}</button>
+      <button type="button" class="${ib} ft-dock-side" title="${s('toRight')}" aria-label="${s('toRight')}"><span class="ft-dock-side-right">${icon('dockRight', 15)}</span><span class="ft-dock-side-bottom">${icon('dockBottom', 15)}</span></button>
       <button type="button" class="${ib} ft-dock-hide" title="${s('hide')} (${a.shortcut.label}); ${s('keepRunning')}" aria-label="${s('hide')}">${icon('close', 15)}</button>
     </div>
     <div class="ft-dock-stage"><p class="ft-dock-empty ${c.note}" hidden>${s('empty')}</p>
@@ -87,6 +91,9 @@ export class Dock {
     q(this.root, '.ft-dock-claude').addEventListener('click', () => void this.claude());
     q(this.root, '.ft-dock-chat').addEventListener('click', () => void this.showChat());
     q(this.root, '.ft-dock-hide').addEventListener('click', () => this.toggle(false));
+    q(this.root, '.ft-dock-side').addEventListener('click', () => this.setSide(this.side() === 'right' ? 'bottom' : 'right'));
+    this.migrate();
+    this.labelSide();
     this.restartBtn.addEventListener('click', () => void this.restart());
     q(this.root, '.ft-dock-ask').addEventListener('submit', (e) => { e.preventDefault(); void this.send(); });
     q(this.root, '.ft-dock-note-x').addEventListener('click', () => this.dismiss());
@@ -108,7 +115,7 @@ export class Dock {
   toggle(on = !this.isOpen(), seed: DockKind | 'none' = 'shell'): void {
     const html = document.documentElement;
     html.setAttribute('data-ft-dock', on ? 'open' : 'closed');
-    this.keep(on, this.height());
+    this.keep();
     this.onChange();
     window.dispatchEvent(new Event('resize'));
     if (on) void this.ensure(seed);
@@ -148,16 +155,48 @@ export class Dock {
     for (const info of await this.list()) if (info.kind === 'agent') this.adopt(info);
   }
 
-  private saved(): { open: boolean; h: number } {
-    const d = this.a.sizes.defaultHeight;
-    try {
-      const s = JSON.parse(localStorage.getItem(this.a.storage.key) ?? '{}') as { open?: boolean; h?: number };
-      return { open: s.open === true, h: typeof s.h === 'number' ? s.h : d };
-    } catch { return { open: false, h: d }; }
+  private saved(): DockState {
+    const z = this.a.sizes;
+    const read = (k: string): Partial<DockState> | null => {
+      try { const v = localStorage.getItem(k); return v ? JSON.parse(v) as Partial<DockState> : null; } catch { return null; }
+    };
+    const s = read(this.a.storage.key) ?? this.a.storage.legacy.map(read).find((x) => x !== null) ?? {};
+    return {
+      open: s.open === true, side: s.side === 'right' ? 'right' : 'bottom',
+      h: typeof s.h === 'number' ? s.h : z.defaultHeight, w: typeof s.w === 'number' ? s.w : z.defaultWidth, tab: typeof s.tab === 'string' ? s.tab : '',
+    };
   }
 
-  private keep(open: boolean, h: number): void {
-    try { localStorage.setItem(this.a.storage.key, JSON.stringify({ open, h })); } catch { return; }
+  private migrate(): void {
+    try {
+      if (localStorage.getItem(this.a.storage.key) !== null || !this.a.storage.legacy.some((k) => localStorage.getItem(k) !== null)) return;
+      localStorage.setItem(this.a.storage.key, JSON.stringify(this.saved()));
+      for (const k of this.a.storage.legacy) localStorage.removeItem(k);
+    } catch { return; }
+  }
+
+  private keep(): void {
+    const state: DockState = { open: this.isOpen(), side: this.side(), h: this.height(), w: this.width(), tab: this.activeKind() ?? this.saved().tab };
+    try { localStorage.setItem(this.a.storage.key, JSON.stringify(state)); } catch { return; }
+  }
+
+  side(): DockSide { return document.documentElement.getAttribute('data-ft-dock-side') === 'right' ? 'right' : 'bottom'; }
+
+  setSide(side: DockSide): void {
+    if (side === this.side()) return;
+    document.documentElement.setAttribute('data-ft-dock-side', side);
+    this.labelSide();
+    this.keep();
+    this.onChange();
+    window.dispatchEvent(new Event('resize'));
+  }
+
+  private labelSide(): void {
+    const right = this.side() === 'right';
+    const label = right ? this.s('toBottom') : this.s('toRight');
+    const btn = q(this.root, '.ft-dock-side');
+    if (btn.title !== label) { btn.title = label; btn.setAttribute('aria-label', label); }
+    q(this.root, '.ft-dock-grip').setAttribute('aria-orientation', right ? 'vertical' : 'horizontal');
   }
 
   private height(): number {
@@ -165,13 +204,26 @@ export class Dock {
     return Number.isFinite(h) && h >= this.a.sizes.minHeight ? h : this.saved().h;
   }
 
+  private width(): number {
+    const w = Number(document.documentElement.getAttribute('data-ft-dock-w'));
+    return Number.isFinite(w) && w >= this.a.sizes.minWidth ? w : this.saved().w;
+  }
+
   private grip(grip: HTMLElement, html: HTMLElement): void {
     grip.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       grip.setPointerCapture(e.pointerId);
-      const bottom = this.root.getBoundingClientRect().bottom;
+      const box = this.root.getBoundingClientRect();
+      const z = this.a.sizes;
+      const right = this.side() === 'right';
       const move = (ev: PointerEvent): void => {
-        const h = Math.round(Math.min(window.innerHeight * this.a.sizes.maxHeightShare, Math.max(this.a.sizes.minHeight, bottom - ev.clientY)));
+        if (right) {
+          const w = Math.round(Math.min(window.innerWidth * z.maxWidthShare, Math.max(z.minWidth, box.right - ev.clientX)));
+          html.setAttribute('data-ft-dock-w', String(w));
+          html.style.setProperty('--ft-dock-wsize', `${w}px`);
+          return;
+        }
+        const h = Math.round(Math.min(window.innerHeight * z.maxHeightShare, Math.max(z.minHeight, box.bottom - ev.clientY)));
         html.setAttribute('data-ft-dock-h', String(h));
         html.style.setProperty('--ft-dock-size', `${h}px`);
       };
@@ -179,7 +231,7 @@ export class Dock {
         grip.removeEventListener('pointermove', move);
         grip.removeEventListener('pointerup', up);
         grip.removeEventListener('pointercancel', up);
-        this.keep(this.isOpen(), this.height());
+        this.keep();
         window.dispatchEvent(new Event('resize'));
       };
       grip.addEventListener('pointermove', move);
@@ -214,7 +266,10 @@ export class Dock {
       for (const info of listed) this.adopt(info);
     }
     const shown = !!this.chatTab || [...this.tabs.values()].some((x) => x.kind !== 'agent');
-    if (!shown && seed === 'shell') await this.open();
+    if (!shown && seed === 'shell') {
+      if (this.saved().tab === 'chat') await this.showChat();
+      else await this.open();
+    }
     setHidden(this.empty, !!this.chatTab || this.tabs.size > 0);
     this.fitActive();
     this.focus();
@@ -429,6 +484,7 @@ export class Dock {
     setDisabled(this.restartBtn, id === 'chat' || this.tabs.get(id)?.kind === 'agent');
     this.fitActive();
     if (focus) this.focus();
+    this.keep();
     this.onTab();
   }
 

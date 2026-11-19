@@ -1,15 +1,21 @@
 /* The terminal dock with its Chat tab and ask bar (DEV_PLAN 28.5), and Agent Connect. Open state and size live on
    documentElement (data-ft-dock, data-ft-dock-h, --ft-dock-size), written by index.html before the first paint, so the
    dock's grid row is known from the first frame and opening moves nothing. */
-:root { --ft-dock-size: 280px; --ft-dock-h: 0px; --ft-agent-w: 360px; }
-:root[data-ft-dock="open"] { --ft-dock-h: min(var(--ft-dock-size), 70vh); }
+:root { --ft-dock-size: 280px; --ft-dock-wsize: 440px; --ft-dock-h: 0px; --ft-dock-w: 0px; --ft-agent-w: 360px; }
+:root[data-ft-dock="open"]:not([data-ft-dock-side="right"]) { --ft-dock-h: min(var(--ft-dock-size), 70vh); }
+:root[data-ft-dock="open"][data-ft-dock-side="right"] { --ft-dock-w: min(var(--ft-dock-wsize), 60vw); }
 :root .cv-app { grid-template-rows: var(--cv-titlebar-h) minmax(0, 1fr) var(--ft-dock-h) var(--cv-status-h); }
-.cv-app.is-screen-menu, .cv-app.is-screen-full { --ft-dock-h: 0px; }
-:root[data-ft-dock="open"] .cv-home { bottom: calc(var(--cv-status-h) + var(--ft-dock-h)); }
+.cv-app.is-screen-menu, .cv-app.is-screen-full { --ft-dock-h: 0px; --ft-dock-w: 0px; }
+:root[data-ft-dock-side="right"] .cv-app:not(.is-screen-full) { grid-template-columns: minmax(0, 1fr) var(--ft-dock-w); }
+:root[data-ft-dock-side="right"] .cv-app:not(.is-screen-full) > .cv-titlebar { grid-area: 1 / 1 / 2 / -1; }
+:root[data-ft-dock-side="right"] .cv-app:not(.is-screen-full) > .cv-main { grid-area: 2 / 1; }
+:root[data-ft-dock-side="right"] .cv-app:not(.is-screen-full) > .ft-dock { grid-area: 2 / 2; }
+:root[data-ft-dock-side="right"] .cv-app:not(.is-screen-full) > .cv-status { grid-area: 4 / 1 / 5 / -1; }
+:root[data-ft-dock="open"] .cv-home { bottom: calc(var(--cv-status-h) + var(--ft-dock-h)); right: var(--ft-dock-w); }
 
 .cv-app.is-screen-menu .ft-dock, .cv-app.is-screen-full .ft-dock { visibility: hidden; border-top-width: 0; }
 
-.ft-connect { position: fixed; top: calc(var(--cv-titlebar-h) + var(--space-2)); right: var(--space-2); bottom: calc(var(--cv-status-h) + var(--ft-dock-h) + var(--space-2)); width: var(--ft-agent-w); max-width: calc(100vw - 16px); z-index: calc(var(--z-companion) + 21);
+.ft-connect { position: fixed; top: calc(var(--cv-titlebar-h) + var(--space-2)); right: calc(var(--ft-dock-w) + var(--space-2)); bottom: calc(var(--cv-status-h) + var(--ft-dock-h) + var(--space-2)); width: var(--ft-agent-w); max-width: calc(100vw - 16px); z-index: calc(var(--z-companion) + 21);
   display: flex; flex-direction: column; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); color: var(--text-primary); font-size: var(--fs-12); }
 .ft-connect[hidden] { display: none; }
 .ft-connect-head { flex: none; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); }

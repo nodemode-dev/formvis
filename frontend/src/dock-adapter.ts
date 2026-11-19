@@ -6,7 +6,7 @@ import { t } from './ui/i18n';
 export function formvisDock(): DockAdapter {
   return {
     app: { name: 'formvis', noun: 'picture', start: './formvis boot', examples: 'retouch it, remove an object, add text, resize, export' },
-    storage: { key: 'formvis.terminal', legacy: [] },
+    storage: { key: 'formvis.agentDock', legacy: ['formvis.terminal'] },
     sizes: { minHeight: 120, maxHeightShare: 0.7, defaultHeight: 280, minWidth: 320, maxWidthShare: 0.6, defaultWidth: 440 },
     shortcut: { code: 'KeyJ', label: `${isMac ? 'Cmd' : 'Ctrl'}+J` },
     tabs: ['chat', 'shell', 'claude'],
