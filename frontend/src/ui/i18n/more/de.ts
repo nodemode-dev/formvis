@@ -1254,6 +1254,7 @@ export const de: Record<string, string> = {
   'The edit view could not be made.': 'Die Bearbeitungsansicht konnte nicht erstellt werden.',
   'The edit view must be 16 to 8192 px on each side.': 'Die Bearbeitungsansicht muss auf jeder Seite 16 bis 8192 px groß sein.',
   'The engine is not answering': 'Die Engine antwortet nicht',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'Die gespeicherte Agentenberechtigung wurde außerhalb von formvis geändert und steht daher wieder auf Fragen.',
   'The engine is opening it': 'Die Engine öffnet es',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'Die formvis-Engine ist offline. Das Bearbeiten funktioniert; Speichern in der Bibliothek, HEIC- und TIFF-Import und Hintergrund entfernen benötigen sie (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'Die formvis-Engine ist offline: Prompt verbessern benötigt sie.',

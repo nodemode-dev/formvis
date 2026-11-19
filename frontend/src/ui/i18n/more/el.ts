@@ -1254,6 +1254,7 @@ export const el: Record<string, string> = {
   'The edit view could not be made.': 'Η προβολή επεξεργασίας δεν μπόρεσε να δημιουργηθεί.',
   'The edit view must be 16 to 8192 px on each side.': 'Η προβολή επεξεργασίας πρέπει να είναι 16 έως 8192 px σε κάθε πλευρά.',
   'The engine is not answering': 'Η μηχανή δεν ανταποκρίνεται',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'Η αποθηκευμένη άδεια των πρακτόρων άλλαξε εκτός του formvis, οπότε επανήλθε σε Ερώτηση.',
   'The engine is opening it': 'Η μηχανή το ανοίγει',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'Η μηχανή του formvis είναι εκτός σύνδεσης. Η επεξεργασία λειτουργεί. Οι αποθηκεύσεις στη βιβλιοθήκη, η εισαγωγή HEIC και TIFF και η Αφαίρεση φόντου τη χρειάζονται (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'Η μηχανή του formvis είναι εκτός σύνδεσης: η Βελτίωση prompt τη χρειάζεται.',

@@ -1254,6 +1254,7 @@ export const ptBR: Record<string, string> = {
   'The edit view could not be made.': 'Não foi possível criar a exibição de edição.',
   'The edit view must be 16 to 8192 px on each side.': 'A exibição de edição deve ter de 16 a 8192 px em cada lado.',
   'The engine is not answering': 'O mecanismo não está respondendo',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'A permissão de agentes salva foi alterada fora do formvis, então voltou para Perguntar.',
   'The engine is opening it': 'O mecanismo está abrindo',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'O mecanismo do formvis está offline. A edição funciona; salvar na biblioteca, importar HEIC e TIFF e Remover fundo precisam dele (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'O mecanismo do formvis está offline: Melhorar prompt precisa dele.',

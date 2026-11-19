@@ -225,7 +225,7 @@ export const ja: Record<string, string> = {
   'That name belongs to a built-in preset.': 'その名前は内蔵プリセットで使われています。', 'That pair is already listed.': 'そのペアは既にリストにあります。', 'That workflow is no longer kept: add it again.': 'そのワークフローは保持されていません。もう一度追加してください。',
   'The active tool has no options to save.': 'アクティブなツールには保存できるオプションがありません。', 'The checkerboard shown behind transparent pixels. None shows it plain.': '透明ピクセルの背後に表示される市松模様です。「なし」にすると無地で表示されます。',
   'The clipboard is not available here.': 'ここではクリップボードを使用できません。', 'The document is already in that profile.': 'ドキュメントは既にそのプロファイルです。', 'The edit view could not be made.': '編集ビューを作成できませんでした。',
-  'The edit view must be 16 to 8192 px on each side.': '編集ビューは各辺 16 ～ 8192 px にしてください。', 'The engine is not answering': 'エンジンが応答しません', 'The engine is opening it': 'エンジンが開いています',
+  'The edit view must be 16 to 8192 px on each side.': '編集ビューは各辺 16 ～ 8192 px にしてください。', 'The engine is not answering': 'エンジンが応答しません', 'The saved agent permission was changed outside formvis, so it is back to Ask.': '保存されたエージェントの許可が formvis の外で変更されたため、「確認」に戻しました。', 'The engine is opening it': 'エンジンが開いています',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'formvis エンジンがオフラインです。編集は可能ですが、ライブラリへの保存、HEIC と TIFF の読み込み、背景の削除にはエンジンが必要です (./formvis boot)。',
   'The formvis engine is offline: Improve Prompt needs it.': 'formvis エンジンがオフラインです。プロンプトの改善にはエンジンが必要です。', 'The formvis engine is offline: local models need it.': 'formvis エンジンがオフラインです。ローカルモデルにはエンジンが必要です。',
   'The generated image was added as a layer.': '生成した画像をレイヤーとして追加しました。', 'The image could not be encoded.': '画像をエンコードできませんでした。', 'The largest page only': '最大のページのみ',

@@ -1254,6 +1254,7 @@ export const tr: Record<string, string> = {
   'The edit view could not be made.': 'Düzenleme görünümü oluşturulamadı.',
   'The edit view must be 16 to 8192 px on each side.': 'Düzenleme görünümü her kenarda 16 ile 8192 px arasında olmalıdır.',
   'The engine is not answering': 'Motor yanıt vermiyor',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'Kayıtlı ajan izni formvis dışında değiştirildi, bu yüzden yeniden Sor olarak ayarlandı.',
   'The engine is opening it': 'Motor onu açıyor',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'formvis motoru çevrimdışı. Düzenleme çalışır; kitaplığa kaydetme, HEIC ve TIFF içe aktarma ile Arka Planı Kaldır için gereklidir (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'formvis motoru çevrimdışı: İstemi İyileştir için gereklidir.',

@@ -1254,6 +1254,7 @@ export const nb: Record<string, string> = {
   'The edit view could not be made.': 'Redigeringsvisningen kunne ikke opprettes.',
   'The edit view must be 16 to 8192 px on each side.': 'Redigeringsvisningen må være 16 til 8192 px på hver side.',
   'The engine is not answering': 'Motoren svarer ikke',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'Den lagrede agenttillatelsen ble endret utenfor formvis, så den er tilbake på Spør.',
   'The engine is opening it': 'Motoren åpner den',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'formvis-motoren er frakoblet. Redigering fungerer; lagring i biblioteket, HEIC- og TIFF-import og Fjern bakgrunn trenger den (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'formvis-motoren er frakoblet: Forbedre ledetekst trenger den.',

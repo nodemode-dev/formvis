@@ -1254,6 +1254,7 @@ export const srLatn: Record<string, string> = {
   'The edit view could not be made.': 'Prikaz za uređivanje nije mogao da se napravi.',
   'The edit view must be 16 to 8192 px on each side.': 'Prikaz za uređivanje mora imati 16 do 8192 px sa svake strane.',
   'The engine is not answering': 'Engine ne odgovara',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'Sačuvana dozvola za agente promenjena je van formvis-a, pa je vraćena na Pitaj.',
   'The engine is opening it': 'Engine ga otvara',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'Engine programa formvis je van mreže. Uređivanje radi; čuvanje u biblioteku, uvoz HEIC i TIFF i Ukloni pozadinu zahtevaju ga (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'Engine programa formvis je van mreže: Poboljšaj prompt ga zahteva.',

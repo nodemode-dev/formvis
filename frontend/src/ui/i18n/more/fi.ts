@@ -1254,6 +1254,7 @@ export const fi: Record<string, string> = {
   'The edit view could not be made.': 'Muokkausnäkymää ei voitu luoda.',
   'The edit view must be 16 to 8192 px on each side.': 'Muokkausnäkymän on oltava 16-8192 px joka sivulta.',
   'The engine is not answering': 'Moottori ei vastaa',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'Tallennettua agenttien lupaa muutettiin formvisin ulkopuolella, joten se on palautettu asetukseen Kysy.',
   'The engine is opening it': 'Moottori avaa sitä',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'formvis-moottori on offline-tilassa. Muokkaus toimii; kirjastoon tallennus, HEIC- ja TIFF-tuonti sekä taustan poisto tarvitsevat sitä (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'formvis-moottori on offline-tilassa: Paranna kehotetta tarvitsee sitä.',

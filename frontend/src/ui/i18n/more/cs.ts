@@ -1254,6 +1254,7 @@ export const cs: Record<string, string> = {
   'The edit view could not be made.': 'Zobrazení úprav se nepodařilo vytvořit.',
   'The edit view must be 16 to 8192 px on each side.': 'Zobrazení úprav musí mít na každé straně 16 až 8192 px.',
   'The engine is not answering': 'Jádro neodpovídá',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'Uložené oprávnění agentů bylo změněno mimo formvis, proto je znovu nastaveno na Ptát se.',
   'The engine is opening it': 'Jádro to otevírá',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'Jádro formvis je offline. Úpravy fungují; ukládání do knihovny, import HEIC a TIFF a Odstranit pozadí ho vyžadují (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'Jádro formvis je offline: Vylepšit výzvu ho vyžaduje.',

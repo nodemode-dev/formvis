@@ -1254,6 +1254,7 @@ export const sv: Record<string, string> = {
   'The edit view could not be made.': 'Redigeringsvyn kunde inte skapas.',
   'The edit view must be 16 to 8192 px on each side.': 'Redigeringsvyn måste vara 16 till 8192 px på varje sida.',
   'The engine is not answering': 'Motorn svarar inte',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'Den sparade agentbehörigheten ändrades utanför formvis, så den är tillbaka på Fråga.',
   'The engine is opening it': 'Motorn öppnar det',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'formvis-motorn är offline. Redigering fungerar; sparning i biblioteket, import av HEIC och TIFF och Ta bort bakgrund kräver den (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'formvis-motorn är offline: Förbättra prompt kräver den.',

@@ -1254,6 +1254,7 @@ export const ru: Record<string, string> = {
   'The edit view could not be made.': 'Не удалось создать вид редактирования.',
   'The edit view must be 16 to 8192 px on each side.': 'Вид редактирования должен быть от 16 до 8192 px с каждой стороны.',
   'The engine is not answering': 'Движок не отвечает',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'Сохранённое разрешение для агентов было изменено вне formvis, поэтому снова выбрано «Спрашивать».',
   'The engine is opening it': 'Движок открывает его',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'Движок formvis не в сети. Редактирование работает; сохранение в библиотеку, импорт HEIC и TIFF и удаление фона требуют его (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'Движок formvis не в сети: для улучшения запроса он необходим.',

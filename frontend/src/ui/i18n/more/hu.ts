@@ -1254,6 +1254,7 @@ export const hu: Record<string, string> = {
   'The edit view could not be made.': 'A szerkesztési nézetet nem sikerült létrehozni.',
   'The edit view must be 16 to 8192 px on each side.': 'A szerkesztési nézetnek minden oldalon 16 és 8192 px között kell lennie.',
   'The engine is not answering': 'A motor nem válaszol',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'A mentett ügynökengedélyt a formvisen kívül módosították, ezért visszaállt a Kérdezés beállításra.',
   'The engine is opening it': 'A motor megnyitja',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'A formvis motor nem érhető el. A szerkesztés működik; a könyvtárba mentéshez, a HEIC- és TIFF-importhoz, valamint a Háttér eltávolításához szükség van rá (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'A formvis motor nem érhető el: a Prompt javításához szükség van rá.',

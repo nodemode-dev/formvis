@@ -1254,6 +1254,7 @@ export const nl: Record<string, string> = {
   'The edit view could not be made.': 'De bewerkingsweergave kon niet worden gemaakt.',
   'The edit view must be 16 to 8192 px on each side.': 'De bewerkingsweergave moet aan elke zijde 16 tot 8192 px zijn.',
   'The engine is not answering': 'De engine antwoordt niet',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'De opgeslagen agenttoestemming is buiten formvis gewijzigd en staat daarom weer op Vragen.',
   'The engine is opening it': 'De engine opent het',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'De formvis-engine is offline. Bewerken werkt; opslaan in de bibliotheek, HEIC- en TIFF-import en Achtergrond verwijderen hebben hem nodig (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'De formvis-engine is offline: Prompt verbeteren heeft hem nodig.',

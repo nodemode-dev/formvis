@@ -1254,6 +1254,7 @@ export const pl: Record<string, string> = {
   'The edit view could not be made.': 'Nie można utworzyć widoku edycji.',
   'The edit view must be 16 to 8192 px on each side.': 'Widok edycji musi mieć od 16 do 8192 px z każdej strony.',
   'The engine is not answering': 'Silnik nie odpowiada',
+  'The saved agent permission was changed outside formvis, so it is back to Ask.': 'Zapisane uprawnienie agentów zostało zmienione poza formvis, więc wróciło do ustawienia Pytaj.',
   'The engine is opening it': 'Silnik go otwiera',
   'The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).': 'Silnik formvis jest offline. Edycja działa; zapis do biblioteki, import HEIC i TIFF oraz Usuń tło wymagają go (./formvis boot).',
   'The formvis engine is offline: Improve Prompt needs it.': 'Silnik formvis jest offline: Ulepsz monit go wymaga.',

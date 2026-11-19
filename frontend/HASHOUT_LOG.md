@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The saved agent permission changed outside formvis is said once in Agent Connect · after 2.3.5, unreleased (ui/panels/agent-connect.ts .ft-connect-seal, take, toggle; styles/terminal.css; ui/i18n/more/*)
+
+- Kind: feat · logged 2026-11-19.
+- The engine resets the stored agent choice to Ask when its seal does not match (`sealBroken` in the agents state). Agent Connect, where that choice is seen and changed, shows one sentence under the master switch: "The saved agent permission was changed outside formvis, so it is back to Ask."
+- The line is in the panel from the start, hidden. It is unhidden only while the panel is closed (from the first state message, which arrives at boot) or just before the panel opens, so nothing moves in an open panel; once shown it stays for the session. A reload after the person saves a choice no longer shows it, since the save seals the file again.
+- The sentence is in all 27 `more` tables (the regional variants fall back to them); the page translator puts it in place.
+
 ## A reload tries the kept window key before the bootstrap · after 2.3.5, unreleased (io/window-key.ts load, keyWorks)
 
 - Kind: fix · logged 2026-11-19 · the order of formpath's `frontend/src/io/window-key.ts`.
