@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock module 2.1.0, step 1: the folder type-checks with unused locals and parameters refused · after 2.3.6, unreleased (dock/placement.ts HostedPlacement; setup/agents.py DOCK_VERSION; dock/MANIFEST.json)
+
+- Kind: fix · logged 2026-11-19. Module 2.1.0 is made from what seven ports of 2.0.1 reported (formpath, formPDF, formlit, formdeck, formcel, formtxt, formtools); it stays compatible, so an adapter written for 2.0.1 compiles and behaves as before unless it uses a new member. The manifest says `2.1.0-dev` until the last step.
+- Why: `HostedPlacement` kept a field that was written and never read, so any app whose type check has `noUnusedLocals` stopped on the copied folder (formcel and formtools both did, and neither may edit the folder).
+- Removed, `dock/placement.ts`: `private told = false;` and, in `markSeen`, `this.told = true;` (the method now returns at once; a hosted dock stores nothing, as before).
+- Ran: `tsc --noEmit` under formvis's flags, clean; the dock folder alone under `noUnusedLocals`, `noUnusedParameters`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `noImplicitOverride` and `noImplicitReturns` (a tsconfig outside the repository), one error before (`placement.ts(148,11)`), none after.
+
 ## The dock module's sentences are in all 27 language tables · after 2.3.6, unreleased (ui/i18n/more/*.ts; tests/dock-i18n.test.ts TRANSLATED)
 
 - Kind: feature, text only · logged 2026-11-19. Completes the entry below, whose "Not done" line no longer holds.

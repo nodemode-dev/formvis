@@ -1,6 +1,6 @@
 {
   "module": "dock",
-  "version": "2.0.1",
+  "version": "2.1.0-dev",
   "files": {
     "CONTRACT.md": "a87dd3f86e2444269db1dcc7bd3905702a1eff635d46a27a55eba9f297cf856c",
     "adapter.ts": "d8ed37e01556e0e094a76c42a639fd18389dfc80a8e2d0300af6371b73ce468d",
@@ -11,7 +11,7 @@
     "dom.ts": "dc2adf64e70e600f28eaa2d84eed0b4ad7deadb6e200cd489ee7abb583269e62",
     "icons.ts": "a8b146eb3772621e4b4349ad143da14170d28ed3dd68aad41748dbaeb8e99988",
     "keys.ts": "f5a6f88ed2f421d728bdaed4e14bd4c09ef4c9dfcaafdcc6c61d2ef74b07246f",
-    "placement.ts": "40c7e85162ab289d77b96310aee717a58f5d169198aa7019ba31ad944535edb8",
+    "placement.ts": "0f7e03ef0b720af07995111f30dcb5ed124529d44cf5cb67ae4bfb1f96c7f880",
     "state.ts": "07fbb3b1728902b847890a237b9455a78f92076d5c757cac93dfc7c09f8fd062",
     "strings.ts": "b1ad5ff88bd46e3631b12fc831fc919329ad051ba38c99927c1d5aed9eea5de8",
     "terminal.ts": "8bf886a7ad4dc69323e803acc13641a66e1d8614e9b85a6a60977fa30d8a56fc",
