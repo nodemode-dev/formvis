@@ -2,7 +2,8 @@
 """./formvis agents (1.53.3): natural-language editing with Claude Code, Codex and Cursor.
 
   sync [--check]            generate the references that follow the code (the tool reference from the MCP catalogue,
-                            the command reference and command map from the window's command catalogue, the tool map),
+                            the command reference and command map from the window's command catalogue, the tool map,
+                            agents/manifest.json for the family spec),
                             mirror every skill under .claude/skills to .agents/skills (Codex, Cursor) and check the
                             skill files against the upload gates; --check: exit 1 if anything drifted or fails
   install [--user] [--dry-run] [claude|codex|cursor ...]
@@ -163,8 +164,28 @@ def tool_map() -> str:
     return "\n".join(out)
 
 
+MANIFEST = ROOT / "agents" / "manifest.json"
+APP = "formvis"   # the file name of formvis's entry in formcompiler apps/
+DOCK = {"present": True, "positions": ["bottom"], "tabs": ["chat", "shell", "claude", "agent"]}   # frontend/src/ui/terminal-dock.ts: the bottom band (styles/terminal.css), Chat first, then one tab per engine PTY by kind
+
+
+def manifest() -> str:
+    """agents/manifest.json (formadaptor spec/agent-manifest.schema.json): what formvis offers agents, read from the MCP
+    catalogue and its declarations, the skills folder and the extension host; only the app's name and the dock are declared here."""
+    sys.path.insert(0, str(ROOT / "backend"))
+    from app.routers import mcp
+    from app.services import formext_host
+    tools = [t["name"] for t in mcp.TOOLS]
+    transports = [kind for kind, served in (("stdio", (ROOT / "setup" / "mcp_stdio.py").is_file()), ("http", any(getattr(r, "path", "") == "/mcp" for r in mcp.router.routes))) if served]
+    skills = [{"name": n, "sub_skills": sorted(p.name for p in (SKILLS / n / "sub-skills").iterdir() if p.is_dir()) if (SKILLS / n / "sub-skills").is_dir() else []} for n in skill_names()]
+    data = {"format": "form-agent-manifest", "version": 1, "app": APP,
+            "mcp": {"tools": tools, "read_only": [n for n in tools if mcp.DECLARED[n]["read"]], "approval_gated": [n for n in tools if mcp.DECLARED[n]["asks"]], "transports": transports},
+            "skills": skills, "dock": DOCK, "extensions": {"host_api": formext_host.API}}
+    return json.dumps(data, indent=2) + "\n"
+
+
 def generated() -> dict[Path, str]:
-    want = {SKILLS / "formvis-editing" / "references" / "tools.md": tools_reference(), SKILLS / "formvis-harness" / "references" / "tool-map.md": tool_map()}
+    want = {SKILLS / "formvis-editing" / "references" / "tools.md": tools_reference(), SKILLS / "formvis-harness" / "references" / "tool-map.md": tool_map(), MANIFEST: manifest()}
     rows = _catalogue()
     if rows:
         want[SKILLS / "formvis-driving" / "references" / "commands.md"] = commands_reference(rows)

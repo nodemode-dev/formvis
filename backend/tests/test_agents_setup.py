@@ -22,6 +22,17 @@ def test_the_skill_is_in_step_with_the_catalogue():
     assert r.returncode == 0, r.stdout + r.stderr                    # a catalogue changed without ./formvis agents sync fails here
 
 
+def test_the_agent_manifest_is_what_sync_writes():
+    r = run("sync", "--check")
+    assert r.returncode == 0 and "agents/manifest.json" not in r.stdout, r.stdout + r.stderr
+    data = json.loads((ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    mcp = data["mcp"]
+    assert data["format"] == "form-agent-manifest" and data["version"] == 1 and data["app"] == "formvis"
+    assert len(mcp["tools"]) == len(set(mcp["tools"])) and set(mcp["read_only"]) <= set(mcp["tools"]) and set(mcp["approval_gated"]) <= set(mcp["tools"])
+    assert not set(mcp["read_only"]) & set(mcp["approval_gated"])
+    assert [s["name"] for s in data["skills"]] == sorted(p.name for p in (ROOT / ".claude" / "skills").iterdir() if (p / "SKILL.md").is_file())
+
+
 def test_install_keeps_what_is_there_is_idempotent_and_dry_runs(tmp_path):
     home = tmp_path / "home"
     (home / ".codex").mkdir(parents=True)

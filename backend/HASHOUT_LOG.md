@@ -2,6 +2,24 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## agents sync writes agents/manifest.json, what formvis offers agents · after 2.3.5, unreleased (setup/agents.py MANIFEST, APP, DOCK, manifest, generated; agents/manifest.json)
+
+- Kind: feat · logged 2026-11-18.
+- The family reads one file per app (formadaptor spec/agent-manifest.schema.json, docs/SPEC.md "The agent manifest") instead of hand-typed counts. `manifest()` builds it and `generated()` lists it, so `sync` writes it and `--check` names it when it drifts.
+- From the source: `mcp.tools` is `mcp.TOOLS` in the order tools/list gives them; `read_only` the tools declared `read` (the readOnlyHint the server sends); `approval_gated` the tools declared with `asks` (the gate's own data: six file writers, ui_window quit and the three that run catalogue commands, which ask only when the command is marked risky); `transports` stdio when setup/mcp_stdio.py is there and http when the router serves `/mcp`; `skills` each folder of .claude/skills with a SKILL.md and the folders in its sub-skills; `extensions.host_api` is `formext_host.API`.
+- Declared in the script: `APP` (formvis, the file name of its entry in formcompiler apps/) and `DOCK`. The dock's truth is frontend/src/ui/terminal-dock.ts: one band at the foot of the window (styles/terminal.css, `.ft-dock` under the stage, `bottom` only, no other position), the Chat tab first (`DockKind` chat), then a tab per engine terminal by `Tab.kind`: shell, claude, agent (Claude's commands, read only). Change DOCK when that file changes.
+- Not counted as approval-gated: steps the window itself asks about (set_settings, an extension's first run, a fal model that costs money, the first edit when outside agents are not allowed); they are not in the gate's data.
+- Checked by running: sync wrote the file (140 tools, 36 read-only, 10 approval-gated, stdio and http, 4 skills with 0, 13, 0 and 12 sub-skills, dock bottom with 4 tabs, host API 1); formadaptor `scripts/manifest.py check ... --app formvis` accepts it; `--check` exits 0; on a copy outside the tree with ailabel_info no longer read-only, `--check` exits 1 naming agents/manifest.json (and tools.md, tool-map.md); the engine from source on 28301 answered tools/list with the same 140 names in the same order and the same read-only set.
+- Replaced, quoted exactly:
+
+```py
+    want = {SKILLS / "formvis-editing" / "references" / "tools.md": tools_reference(), SKILLS / "formvis-harness" / "references" / "tool-map.md": tool_map()}
+```
+
+```py
+                            the command reference and command map from the window's command catalogue, the tool map),
+```
+
 ## Each MCP tool declares what it is where it is defined, and the approval gate reads that · after 2.3.5, unreleased (routers/mcp.py _tool, DECLARED, REACHES, ASKS_IF, declaration_faults, _risk, _agent_call; routers/mcp_pack.py _tool, PACK_DECLARED; services/agents.py; setup/agents.py tool_problems, sync)
 
 - Kind: refactor · logged 2026-11-18.
