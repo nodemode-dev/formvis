@@ -619,7 +619,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 - Outside agents (Claude Code, Codex, Cursor): ask them in plain language to edit what is open in formvis. In the
   formvis folder, `./formvis agents install` sets all three up for your account (the MCP server and the editing skill);
   inside the formvis repository they are already set up. formvis starts itself when an agent asks, opens a window if
-  none is open, and asks you once to allow outside agents. They get 140 tools, from opening, saving and exporting files
+  none is open, and asks you in the window before the agent changes anything (see Agents below). They get 140 tools, from opening, saving and exporting files
   to layers, text, selections, filters, the video timeline and generative fill, which uses the models on this computer
   first.
 - Either way, every change is an undoable step, anything that costs money asks you first, your keys are never shown,
@@ -634,8 +634,15 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 
 - Window > Terminal opens a terminal dock along the foot of the window (Ctrl+J, Cmd+J on a Mac, when no layer is open
   or the dock has focus; with a layer open, Ctrl+J is Layer via Copy); the same key in the dock or the
-  hide button closes it, and the shells keep running while it is hidden. Drag the grip above it to resize; its
-  height and whether it is open are remembered, and the window opens as you left it without moving.
+  hide button closes it, and the programs keep running while it is hidden. The side button in its head moves it to a
+  column at the right of the window, and back to the bottom. Drag its edge to resize; its side, its size and whether
+  it is open are remembered, and the window opens as you left it without moving.
+- Keys you type in the dock stay in the dock: a letter typed in a terminal or in the ask bar never picks a tool or
+  runs a menu command. Only the dock's own key, F1, and the keys for Preferences and the Assistant still reach formvis
+  from there.
+- The first time the dock opens, a short guide points at its parts one step at a time (Back, Next, Done; the
+  cross closes it). The menu button in the dock's head has Show me around to see it again, Outside agents to open
+  that setting, and Codex and Cursor when those programs are on this computer.
 - Each tab is a shell started in the formvis folder by the engine on this computer, with formvis's own command
   (`./formvis`) first on the path. The plus button (or Window > New Terminal) opens another tab, the restart button
   starts a tab's shell again, and the cross on a tab ends it.
@@ -654,6 +661,17 @@ other modes and depths its menu items are off, with the reason as their tooltip.
 
 ## Agents
 
+- Preferences > Plugins, Outside agents says whether other programs may change your pictures at all: Ask (the
+  default), Allowed or Blocked. On Ask, a request opens a box in the middle of the window that names the agent and what
+  it asked to do, with Deny, Allow once and Always allow. Your answer covers only the request shown: Allow once runs
+  that one request and the next one asks again; Deny refuses it, and formvis refuses that agent for ten minutes without
+  asking. Always allow is kept for agents of that one name; others are still asked. The name is what the program says
+  it is called, and any program on this computer can give any name, so choose Always allow only when you are content
+  with everything that uses that name. If the program gives up while the box is open, the box closes by itself and
+  nothing runs.
+- Blocked refuses every outside agent at once, and also the picture tools of formvis's own Claude Code tabs and Chat;
+  it holds whether or not a window is open and after a restart. A plain shell tab still opens. Only the formvis window
+  can change this choice.
 - Window > Agent Connect is where you decide what outside agents (any client that speaks MCP) may do. The master
   switch turns all of them off or on; each agent that has called formvis gets a row with its own policy: Allow, Ask (the default: a step that writes a file or that undo could not reverse waits in the panel
   for Approve or Deny, and times out after two minutes) or Deny.

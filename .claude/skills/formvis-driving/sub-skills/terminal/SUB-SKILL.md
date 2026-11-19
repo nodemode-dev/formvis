@@ -26,7 +26,7 @@ These are commands for the person to run in the formvis folder, or for you to ru
 
 1. Call `get_document`. If it works, the problem is not the connection.
 2. "formvis is not open": ask the person to run `./formvis boot` or open the formvis app; formvis may also open a browser tab by itself.
-3. "did not allow outside agents": ask them to allow it in the formvis window (the question appears once) or in Preferences > Plugins > Allow outside agents. A refusal holds for ten minutes.
+3. "did not allow outside agents": ask them to allow it in the formvis window (the question offers Deny, Allow once and Always allow) or under Preferences > Plugins, Outside agents. After a Deny that agent is refused for ten minutes. "Agents are blocked in formvis": the person set Outside agents to Blocked; do not retry, tell them.
 4. No formvis tools at all: the MCP server is not registered in this client. Ask the person to run `./formvis agents install`, then restart the client.
 5. "formvis did not answer in time": the window is busy with a long task; wait and retry once.
 

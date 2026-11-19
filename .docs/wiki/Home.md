@@ -9,7 +9,7 @@ formvis is a layered image editor for the web and the desktop, built in the Node
 | [Tools](Tools) | The tool registry and the tool modules |
 | [Brushes](Brushes) | Strokes, dynamics, `.abr` brushes, pen pressure |
 | [Colour](Colour) | Modes, depth, profiles, LittleCMS, Color Settings, DPX |
-| [Terminal](Terminal) | The terminal dock: shells, Claude Code tabs and the Chat tab |
+| [Terminal](Terminal) | The terminal dock (bottom or right): shells, Claude Code, Codex and Cursor tabs, the Chat tab, and the question an outside agent's request raises |
 | [Agents](Agents) | MCP tools, the command catalogue and CLI, Agent Connect, the skills |
 | [Extensions](Extensions) | formvis as a host of the Form Extension Contract |
 | [UI Shell](UI-Shell) | Stage, panels, menus, dialogs, themes, the zero-flash rules |
