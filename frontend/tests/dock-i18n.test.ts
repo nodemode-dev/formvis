@@ -37,7 +37,7 @@ describe('the dock module\'s sentences are in the language tables', () => {
       for (const k of KEYS) {
         expect(typeof t[k], `${lang}: ${k}`).toBe('string');
         expect(holes(t[k]), `${lang}: ${k}`).toEqual(holes(k));
-        expect(t[k].includes('—'), `${lang}: ${k}`).toBe(false);
+        expect(t[k].includes(String.fromCharCode(0x2014)), `${lang}: ${k}`).toBe(false);
       }
     });
   }
