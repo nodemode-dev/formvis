@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock module 2.1.0, step 5: a dock restored open at load takes focus once the app is revealed · after 2.3.6, unreleased (dock/dock.ts boot, awaitReveal, revealing)
+
+- Kind: fix · logged 2026-11-19. formPDF: with the dock remembered open, `boot` focuses the tab in front before the app has revealed its window, the browser refuses focus on an element that is not shown, and focus stays on the body; nothing tried again.
+- What: after `boot` has asked for focus, `awaitReveal` checks whether focus landed in the dock. Only when it did not and the dock's root is not shown (no box, or computed `visibility: hidden`) it watches the `class`, `style` and `hidden` attributes of the root's ancestors, and at the first change that leaves the root shown it calls `dock.focus()` once and stops. It also stops, without focusing, when the person has put focus somewhere else in the meantime or the dock was closed. Nothing is polled and nothing is watched when focus landed, which is every load of an app that is visible from the start (formvis).
+- Limit: an app that reveals itself by removing a covering element or by swapping a stylesheet changes no attribute on an ancestor; such an app calls `dock.focus()` after its reveal (CONTRACT.md says so).
+- Seen on the scratch page under throttling (4x CPU, slow network, cache off), the app hidden for 500 ms after load by `visibility: hidden` and by `display: none`: own pane in front, focus on the body before the reveal and in the pane's input after it (`focus` called again once, after the reveal); the module's line kept, focus in the line after; a shell in front, focus in the terminal; a page visible from the start, focus in the terminal and no observer; focus put in another field before the reveal stayed there.
+
 ## Dock module 2.1.0, step 4: the guide counts the steps it shows, an own pane can name where to ask, and a moved layout can arrive as seen · after 2.3.6, unreleased (dock/tour.ts TourStep, find, go, fill; dock/dock.ts guide; dock/chat.ts OwnChat.askTarget; dock/adapter.ts DockOwnChat.askTarget; dock/state.ts DockLegacy, jsonLegacy, moveLegacy; tests/dock-state.test.ts)
 
 - Kind: fix and feature, opt-in · logged 2026-11-19.

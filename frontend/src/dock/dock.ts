@@ -49,6 +49,7 @@ export class Dock {
   private emulator: Promise<typeof import('./terminal')> | null = null;
   private asked: Promise<DockAgentStatus | null> | null = null;
   private mounted = false;
+  private revealing = false;
   private readonly place: Placement;
   onTab: () => void = () => undefined;
   onChange: () => void = () => undefined;
@@ -394,7 +395,24 @@ export class Dock {
     void this.programs();
     this.fitActive();
     this.focus();
+    this.awaitReveal();
     this.onTab();
+  }
+
+  private awaitReveal(): void {
+    const root = this.root;
+    const hiddenNow = (): boolean => root.getClientRects().length === 0 || getComputedStyle(root).visibility === 'hidden';
+    const lost = document.activeElement;
+    if (this.revealing || !this.isOpen() || root.contains(lost) || !hiddenNow()) return;
+    this.revealing = true;
+    const watch = new MutationObserver(() => {
+      const moved = document.activeElement !== lost || !this.isOpen();
+      if (!moved && hiddenNow()) return;
+      watch.disconnect();
+      this.revealing = false;
+      if (!moved) this.focus();
+    });
+    for (let node: Node | null = root.parentNode; node instanceof Element; node = node.parentNode) watch.observe(node, { attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
   }
 
   focus(): void {
