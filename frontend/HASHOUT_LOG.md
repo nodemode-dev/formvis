@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock module 2.0.0, step 10: the manifest says 2.0.0 · after 2.3.5, unreleased (setup/agents.py DOCK_VERSION; frontend/src/dock/MANIFEST.json; backend/tests/test_dock_manifest.py)
+
+- Kind: feat · logged 2026-11-19 · DOCK_SPEC_2 section F item 1.
+- `DOCK_VERSION` is `2.0.0` and `./formvis agents sync` wrote MANIFEST.json for the fourteen files of the folder (adapter.ts, chat.ts, consent.ts, dock.css, dock.ts, dom.ts, icons.ts, keys.ts, placement.ts, state.ts, strings.ts, terminal.ts, tour.ts, CONTRACT.md). The commits between 1.1.0 and this one carried `2.0.0-dev`; only this state is the version the other apps take, whole.
+- `DOCK` in setup/agents.py (the dock block of agents/manifest.json) is unchanged because it is still true: positions bottom and right, tabs chat, shell, claude, codex, cursor and agent. The truth now lives in `dock-adapter.ts` (`tabs()`, `placement.mode: 'own'`) and `dock/dock.ts` (the kinds it attaches).
+- The isolation test also counts a dynamic `import()`, and a second test holds two facts that were seen in the browser's network log: `terminal.ts` is the only file that imports `@xterm/*` and `dock.ts` reaches it only through `import('./terminal')`; and nothing `consent.ts` imports, directly or through its imports, is `dock.ts`, `terminal.ts`, `chat.ts` or `tour.ts`.
+
 ## Dock module 2.0.0, steps 8 and 9: the engine contract travels with the folder; a refusal is not an outage; the app can say "not now" to the first-run guide · after 2.3.5, unreleased (dock/CONTRACT.md; dock/adapter.ts DockErrorKind, errors.kind, firstRun; dock/dock.ts warn, fail, program, toggle; dock/chat.ts paint; dock/strings.ts refused, offline, offlineStart; dock-adapter.ts errors.kind)
 
 - Kind: docs and feat, breaking for adapters · logged 2026-11-19 · DOCK_SPEC_2 sections D, A rule 9 and B "First run"; form.md "The contract" and 12 and 16 (the contract version), formweb 5, formcut 3, form.ext 11.

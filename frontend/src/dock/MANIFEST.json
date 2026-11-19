@@ -1,6 +1,6 @@
 {
   "module": "dock",
-  "version": "2.0.0-dev",
+  "version": "2.0.0",
   "files": {
     "CONTRACT.md": "a87dd3f86e2444269db1dcc7bd3905702a1eff635d46a27a55eba9f297cf856c",
     "adapter.ts": "d8ed37e01556e0e094a76c42a639fd18389dfc80a8e2d0300af6371b73ce468d",
