@@ -3884,6 +3884,7 @@ export function startApp(): void {
   const termDock = new AgentDock(formvisDock(() => dialogs.settings.show('Plugins'), () => !!engine.activeLayer));
   termDock.onChange = () => { window.dispatchEvent(new Event('resize')); };
   termDock.onTab = () => { titleTools.syncDock(termDock.isOpen(), termDock.activeKind()); };
+  termDock.mount(root, root.querySelector('.cv-status'));
   installAgentConnect(commands, engine);
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
   model3dInput.addEventListener('change', () => { const f = model3dInput.files?.[0]; model3dInput.value = ''; if (f) void model3d.load(f); });

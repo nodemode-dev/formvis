@@ -7,7 +7,8 @@ import { Consent } from './consent';
 import { cssToken as token, el, q, setDisabled, setHidden, setText } from './dom';
 import { dockIcon as icon } from './icons';
 import { chordLabel, contain, isChord, leaves } from './keys';
-import { moveLegacy, readSeen, readState, type DockSide, type DockState } from './state';
+import { placementFor, type Placement } from './placement';
+import type { DockSide } from './state';
 import { strings, type Say } from './strings';
 import { Tour, type TourStep } from './tour';
 
@@ -52,8 +53,11 @@ export class Dock {
   private started = false;
   private pending: Promise<void> | null = null;
   private look = '';
+  private mounted = false;
+  private readonly place: Placement;
   onTab: () => void = () => undefined;
   onChange: () => void = () => undefined;
+  onResize: () => void = () => undefined;
   readonly consent: Consent | null;
   private readonly tour: Tour;
 
@@ -99,14 +103,12 @@ export class Dock {
     this.noteCopy = q<HTMLButtonElement>(this.root, '.ft-dock-note-copy');
     this.ask = q<HTMLInputElement>(this.root, '.ft-dock-ask-input');
     this.restartBtn = q<HTMLButtonElement>(this.root, '.ft-dock-restart');
-    const html = document.documentElement;
+    this.place = placementFor(a);
     q(this.root, '.ft-dock-new').addEventListener('click', () => void this.open());
     q(this.root, '.ft-dock-claude').addEventListener('click', () => void this.claude());
     q(this.root, '.ft-dock-chat').addEventListener('click', () => void this.showChat());
     q(this.root, '.ft-dock-hide').addEventListener('click', () => this.toggle(false));
-    q(this.root, '.ft-dock-side').addEventListener('click', () => this.setSide(this.side() === 'right' ? 'bottom' : 'right'));
-    this.migrate();
-    this.labelSide();
+    q(this.root, '.ft-dock-side').addEventListener('click', () => { this.setSide(this.side() === 'right' ? 'bottom' : 'right'); this.focus(); });
     for (const kind of PROGRAMS) {
       q(this.root, `.ft-dock-${kind}`).addEventListener('click', () => void this.program(kind));
       q(this.root, `.ft-dock-menu-row[data-kind="${kind}"] .ft-dock-menu-go`).addEventListener('click', () => { this.menu(false); void this.program(kind); });
@@ -117,13 +119,25 @@ export class Dock {
     q(this.root, '.ft-dock-menu-tour').addEventListener('click', () => { this.menu(false); void this.guide(); });
     this.consent = parts.consent ?? (a.consent ? new Consent(a) : null);
     this.tour = new Tour(a);
-    document.addEventListener('pointerdown', (e) => { if (!(e.target as Element).closest?.('.ft-dock-menu, .ft-dock-more')) this.menu(false); }, true);
-    void this.programs();
     this.restartBtn.addEventListener('click', () => void this.restart());
     q(this.root, '.ft-dock-ask').addEventListener('submit', (e) => { e.preventDefault(); void this.send(); });
     q(this.root, '.ft-dock-note-x').addEventListener('click', () => this.dismiss());
     this.noteCopy.addEventListener('click', () => { void navigator.clipboard?.writeText(this.noteCmd.textContent ?? '').catch(() => undefined); });
     contain(this.root, a);
+  }
+
+  mount(host: HTMLElement, before: Node | null = null): void {
+    if (this.mounted) return;
+    this.mounted = true;
+    const a = this.a;
+    host.insertBefore(this.root, before);
+    this.place.start(this.root, q(this.root, '.ft-dock-grip'), {
+      changed: () => { this.labelSide(); this.onChange(); this.fitActive(); },
+      resizing: () => { this.onResize(); },
+      settled: () => { this.keep(); window.dispatchEvent(new Event('resize')); this.focus(); },
+    });
+    this.labelSide();
+    document.addEventListener('pointerdown', (e) => { if (!(e.target as Element).closest?.('.ft-dock-menu, .ft-dock-more')) this.menu(false); }, true);
     new ResizeObserver(() => this.fitActive()).observe(this.stage);
     document.addEventListener('keydown', (e) => {
       if (!isChord(a, e)) return;
@@ -132,21 +146,32 @@ export class Dock {
       if (!e.repeat) this.toggle();
     }, true);
     a.onTheme(() => this.retheme());
-    new MutationObserver(() => this.retheme()).observe(html, { attributes: true, attributeFilter: ['style', 'class', 'data-theme'] });
-    this.grip(q(this.root, '.ft-dock-grip'), html);
-    a.mount(this.root);
+    new MutationObserver(() => this.retheme()).observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-theme'] });
     if (this.isOpen()) void this.ensure();
   }
 
-  isOpen(): boolean { return document.documentElement.getAttribute('data-ft-dock') === 'open'; }
+  isOpen(): boolean { return this.place.isOpen(); }
+
+  shown(): void {
+    this.place.shown(true);
+    void this.ensure();
+    this.onTab();
+  }
+
+  hidden(): void {
+    this.place.shown(false);
+    this.tour.end(false);
+    this.onTab();
+  }
 
   toggle(on = !this.isOpen(), seed: DockKind | 'none' = 'shell'): void {
-    const html = document.documentElement;
-    html.setAttribute('data-ft-dock', on ? 'open' : 'closed');
+    const p = this.a.placement;
+    if (p.mode === 'hosted') { p.request(on); return; }
+    this.place.setOpen(on);
     this.keep();
     this.onChange();
     window.dispatchEvent(new Event('resize'));
-    if (on && !readSeen(localStorage, this.a.storage.key) && !this.tour.isRunning()) void this.guide();
+    if (on && !this.place.seen() && !this.tour.isRunning()) void this.guide();
     if (!on) this.tour.end(false);
     if (on) void this.ensure(seed);
     this.onTab();
@@ -203,7 +228,7 @@ export class Dock {
     try {
       const info = await this.a.terminal.open(kind, { cols: size.cols, rows: size.rows });
       if (!this.isOpen()) this.toggle(true, 'none');
-      this.mount(info, true);
+      await this.attach(info, true);
       this.dismiss();
       return true;
     } catch (err) {
@@ -223,23 +248,11 @@ export class Dock {
     for (const info of await this.list()) if (info.kind === 'agent') this.adopt(info);
   }
 
-  private saved(): DockState {
-    return readState(localStorage, this.a.storage.key, this.a.storage.legacy, { h: this.a.sizes.defaultHeight, w: this.a.sizes.defaultWidth });
-  }
-
-  private migrate(): void {
-    moveLegacy(localStorage, this.a.storage.key, this.a.storage.legacy, { h: this.a.sizes.defaultHeight, w: this.a.sizes.defaultWidth });
-  }
-
-  private keep(): void {
-    const state: DockState = { open: this.isOpen(), side: this.side(), h: this.height(), w: this.width(), tab: this.activeKind() ?? this.saved().tab };
-    const seen = readSeen(localStorage, this.a.storage.key);
-    try { localStorage.setItem(this.a.storage.key, JSON.stringify(seen ? { ...state, seen } : state)); } catch { return; }
-  }
+  private keep(): void { this.place.keep(this.activeKind()); }
 
   async guide(): Promise<void> {
     if (!this.isOpen()) {
-      const first = !readSeen(localStorage, this.a.storage.key);
+      const first = !this.place.seen();
       this.toggle(true, 'none');
       if (first) return;
     }
@@ -256,17 +269,16 @@ export class Dock {
       ...(this.consent ? [{ target: '.ft-dock-more', title: 'tourAskTitle', body: 'tourAskBody' } as TourStep] : []),
       { target: '.ft-dock-side', title: 'tourSideTitle', body: 'tourSideBody' },
     ];
-    this.tour.start(steps, () => {
-      const state = this.saved();
-      try { localStorage.setItem(this.a.storage.key, JSON.stringify({ ...state, seen: true })); } catch { return; }
-    });
+    this.tour.start(steps, () => this.place.markSeen());
   }
 
-  side(): DockSide { return document.documentElement.getAttribute('data-ft-dock-side') === 'right' ? 'right' : 'bottom'; }
+  side(): DockSide { return this.place.side(); }
+
+  storedSide(): DockSide { return this.place.storedSide(); }
 
   setSide(side: DockSide): void {
-    if (side === this.side()) return;
-    document.documentElement.setAttribute('data-ft-dock-side', side);
+    if (side === this.place.storedSide() && side === this.side()) return;
+    this.place.setSide(side);
     this.labelSide();
     this.keep();
     this.onChange();
@@ -279,47 +291,7 @@ export class Dock {
     const btn = q(this.root, '.ft-dock-side');
     if (btn.title !== label) { btn.title = label; btn.setAttribute('aria-label', label); }
     q(this.root, '.ft-dock-grip').setAttribute('aria-orientation', right ? 'vertical' : 'horizontal');
-  }
-
-  private height(): number {
-    const h = Number(document.documentElement.getAttribute('data-ft-dock-h'));
-    return Number.isFinite(h) && h >= this.a.sizes.minHeight ? h : this.saved().h;
-  }
-
-  private width(): number {
-    const w = Number(document.documentElement.getAttribute('data-ft-dock-w'));
-    return Number.isFinite(w) && w >= this.a.sizes.minWidth ? w : this.saved().w;
-  }
-
-  private grip(grip: HTMLElement, html: HTMLElement): void {
-    grip.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      grip.setPointerCapture(e.pointerId);
-      const box = this.root.getBoundingClientRect();
-      const z = this.a.sizes;
-      const right = this.side() === 'right';
-      const move = (ev: PointerEvent): void => {
-        if (right) {
-          const w = Math.round(Math.min(window.innerWidth * z.maxWidthShare, Math.max(z.minWidth, box.right - ev.clientX)));
-          html.setAttribute('data-ft-dock-w', String(w));
-          html.style.setProperty('--ft-dock-wsize', `${w}px`);
-          return;
-        }
-        const h = Math.round(Math.min(window.innerHeight * z.maxHeightShare, Math.max(z.minHeight, box.bottom - ev.clientY)));
-        html.setAttribute('data-ft-dock-h', String(h));
-        html.style.setProperty('--ft-dock-size', `${h}px`);
-      };
-      const up = (): void => {
-        grip.removeEventListener('pointermove', move);
-        grip.removeEventListener('pointerup', up);
-        grip.removeEventListener('pointercancel', up);
-        this.keep();
-        window.dispatchEvent(new Event('resize'));
-      };
-      grip.addEventListener('pointermove', move);
-      grip.addEventListener('pointerup', up);
-      grip.addEventListener('pointercancel', up);
-    });
+    setHidden(btn, !this.place.canRight());
   }
 
   private retheme(): void {
@@ -349,10 +321,11 @@ export class Dock {
     }
     const shown = !!this.chatTab || [...this.tabs.values()].some((x) => x.kind !== 'agent');
     if (!shown && seed === 'shell') {
-      if (this.saved().tab === 'chat') await this.showChat();
+      if (this.place.savedTab() === 'chat') await this.showChat();
       else await this.open();
     }
     setHidden(this.empty, !!this.chatTab || this.tabs.size > 0);
+    void this.programs();
     this.fitActive();
     this.focus();
     this.onTab();
@@ -456,13 +429,13 @@ export class Dock {
 
   private adopt(info: DockTerminal): void {
     if (this.tabs.has(info.id)) return;
-    this.mount(info, this.active === null || info.kind !== 'agent');
+    void this.attach(info, this.active === null || info.kind !== 'agent');
   }
 
   private async open(): Promise<void> {
     try {
       const info = await this.a.terminal.open('shell', { cols: 100, rows: 24 });
-      this.mount(info, true);
+      await this.attach(info, true);
       this.dismiss();
     } catch (err) { await this.fail(err, 'shell'); }
   }
@@ -473,7 +446,7 @@ export class Dock {
       const info = await this.a.terminal.open('claude', { prompt: prompt || undefined, resume: resume || undefined, cols: size.cols, rows: size.rows });
       if (!this.isOpen()) this.toggle(true, 'none');
       if (this.tabs.has(info.id)) this.select(info.id);
-      else this.mount(info, true);
+      else await this.attach(info, true);
       this.dismiss();
       return true;
     } catch (err) {
@@ -487,7 +460,7 @@ export class Dock {
     return tab ? { cols: tab.term.cols, rows: tab.term.rows } : { cols: 100, rows: 20 };
   }
 
-  private mount(info: DockTerminal, show: boolean): void {
+  private async attach(info: DockTerminal, show: boolean): Promise<void> {
     if (this.tabs.has(info.id)) { if (show) this.select(info.id); return; }
     const kind: PtyKind = ['claude', 'agent', 'codex', 'cursor'].includes(info.kind) ? info.kind : 'shell';
     const agent = kind === 'agent';

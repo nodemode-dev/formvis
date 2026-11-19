@@ -35,4 +35,13 @@ describe('dock state', () => {
     expect(readSeen(store({ 'formvis.agentDock': JSON.stringify({ open: true, seen: true }) }), 'formvis.agentDock')).toBe(true);
     expect(readSeen(store({ 'formvis.agentDock': '{not json' }), 'formvis.agentDock')).toBe(false);
   });
+
+  it('moves an old key that holds a bare number through the reader the app supplies', () => {
+    const s = store({ 'app.h': '312' });
+    const legacy = { keys: ['app.h'], read: (from: DockStore) => { const h = Number(from.getItem('app.h')); return h > 0 ? { h } : null; } };
+    expect(moveLegacy(s, 'app.dock', legacy, sizes)).toBe(true);
+    expect(s.data.has('app.h')).toBe(false);
+    expect(JSON.parse(s.data.get('app.dock') ?? '')).toEqual({ open: false, side: 'bottom', h: 312, w: 440, tab: '' });
+    expect(readState(store({ 'app.h': '312' }), 'app.dock', undefined, sizes).h).toBe(280);
+  });
 });

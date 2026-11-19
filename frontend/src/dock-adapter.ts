@@ -1,4 +1,5 @@
 import type { ConsentChoice, ConsentRequest, DockAdapter, DockAgentStatus, DockTerminal, StoredChoice, StoredChoiceState } from './dock/adapter';
+import { jsonLegacy } from './dock/state';
 import { api, ApiError, socketTo } from './io/api';
 import { isMac } from './ui/dom';
 import { t } from './ui/i18n';
@@ -88,17 +89,16 @@ export const outsideAgents = {
 export function formvisDock(openSettings: () => void = () => undefined, layerOpen: () => boolean = () => false): DockAdapter {
   return {
     app: { name: 'formvis', noun: 'picture', start: './formvis boot', examples: 'retouch it, remove an object, add text, resize, export' },
-    storage: { key: 'formvis.agentDock', legacy: ['formvis.terminal'] },
-    sizes: { minHeight: 120, maxHeightShare: 0.7, defaultHeight: 280, minWidth: 320, maxWidthShare: 0.6, defaultWidth: 440 },
+    placement: {
+      mode: 'own',
+      storage: { key: 'formvis.agentDock', legacy: jsonLegacy(['formvis.terminal']) },
+      sizes: { minHeight: 120, maxHeightShare: 0.7, defaultHeight: 280, minWidth: 320, maxWidthShare: 0.6, defaultWidth: 440 },
+    },
     isDockChord: (e) => (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !(layerOpen() && !(e.target instanceof Element && e.target.closest('.ft-dock'))),
     chordLabel: () => `${isMac ? 'Cmd' : 'Ctrl'}+J`,
     passKey: (e) => e.key === 'F1' || ((e.metaKey || e.ctrlKey) && (e.key === ',' || (e.altKey && e.code === 'KeyJ'))),
     tabs: ['chat', 'shell', 'claude', 'codex', 'cursor'],
     classes: { iconButton: 'cv-tt-btn', button: 'cv-btn', primaryButton: 'cv-btn-primary', input: 'cv-input', select: 'cv-select', note: 'cv-note' },
-    mount: (dock) => {
-      const app = document.querySelector('.cv-app');
-      app?.insertBefore(dock, app.querySelector('.cv-status'));
-    },
     t: (_key, english) => t(english),
     onTheme: (handler) => { document.addEventListener('nm:ui-settings-changed', handler); },
     keyHeaders: (): Record<string, string> => {

@@ -1,3 +1,6 @@
+import type { DockLegacy } from './state';
+
+export type { DockLegacy, DockSide, DockState, DockStore } from './state';
 export type DockKind = 'shell' | 'claude' | 'codex' | 'cursor' | 'chat';
 export type DockProgram = 'claude' | 'codex' | 'cursor';
 export type PtyKind = 'shell' | 'claude' | 'codex' | 'cursor' | 'agent';
@@ -20,16 +23,31 @@ export type DockChatEvent =
   | { type: 'result'; ok: boolean; text: string }
   | { type: 'notice'; text: string };
 
+export interface DockSizes {
+  minHeight: number;
+  minWidth: number;
+  defaultHeight: number;
+  defaultWidth: number;
+  maxHeightShare: number;
+  maxWidthShare: number;
+  keepHeight?: number;
+  keepWidth?: number;
+  maxHeight?(): number;
+  maxWidth?(): number;
+}
+export interface DockStorage { key: string; legacy?: DockLegacy | string[] }
+export type DockPlacement =
+  | { mode: 'own'; storage: DockStorage; sizes: DockSizes; canDockRight?(): boolean }
+  | { mode: 'hosted'; request(open: boolean): void };
+
 export interface DockAdapter {
   app: { name: string; noun: string; start: string; examples: string };
-  storage: { key: string; legacy: string[] };
-  sizes: { minHeight: number; maxHeightShare: number; defaultHeight: number; minWidth: number; maxWidthShare: number; defaultWidth: number };
+  placement: DockPlacement;
   passKey?(event: KeyboardEvent): boolean;
   isDockChord?(event: KeyboardEvent): boolean;
   chordLabel?(): string;
   tabs: DockKind[];
   classes: { iconButton: string; button: string; primaryButton: string; input: string; select: string; note: string };
-  mount(dock: HTMLElement): void;
   t(key: string, english: string): string;
   onTheme(handler: () => void): void;
   keyHeaders(): Record<string, string>;
