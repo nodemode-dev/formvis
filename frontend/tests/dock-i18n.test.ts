@@ -7,7 +7,7 @@ const UI = join(__dirname, '../src/ui/i18n');
 const adapter = readFileSync(join(__dirname, '../src/dock-adapter.ts'), 'utf8');
 const WORDS: Record<string, string> = { app: 'formvis', noun: 'picture', start: './formvis boot' };
 const NAMES = new Set(['Codex', 'Cursor']);
-const TRANSLATED = ['ar', 'cs', 'da', 'de', 'es', 'fi', 'fr', 'it', 'ja', 'nb', 'nl', 'pl', 'pt-BR', 'ru', 'sv'];
+const TRANSLATED = ['ar', 'cs', 'da', 'de', 'el', 'es', 'fi', 'fr', 'hu', 'it', 'ja', 'nb', 'nl', 'pl', 'pt-BR', 'ru', 'sr-Latn', 'sv', 'tr', 'uk', 'zh-CN'];
 
 const own = (pattern: RegExp): string => (adapter.match(pattern)?.[1] ?? '').replace(/\\'/g, "'");
 const OVERRIDES: Record<string, string> = { tourChatBody: own(/tourChatBody: '((?:[^'\\]|\\.)*)'/) };
