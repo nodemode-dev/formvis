@@ -13,11 +13,17 @@ function remember(value: string): void {
   try { sessionStorage.setItem(STORE, value); } catch { return; }
 }
 
+async function keyWorks(value: string): Promise<boolean> {
+  try { return (await plain('/api/agents', { headers: { [HEADER]: value } })).ok; } catch { return false; }
+}
+
 async function load(): Promise<void> {
   const holder = window as unknown as { __FORMVIS_WINDOW_KEY?: unknown };
   const given = holder.__FORMVIS_WINDOW_KEY;
   delete holder.__FORMVIS_WINDOW_KEY;
   if (typeof given === 'string' && given) { key = given; return; }
+  const kept = remembered();
+  if (kept && await keyWorks(kept)) { key = kept; return; }
   try {
     const res = await plain('/api/window/key', { method: 'POST' });
     const body = res.ok ? await res.json() as { key?: unknown } : {};

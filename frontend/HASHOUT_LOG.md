@@ -2,6 +2,11 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A reload tries the kept window key before the bootstrap · after 2.3.5, unreleased (io/window-key.ts load, keyWorks)
+
+- Kind: fix · logged 2026-11-19 · the order of formpath's `frontend/src/io/window-key.ts`.
+- `load` asked `POST /api/window/key` first on every load, so each reload in development was refused (409) and the engine noted a second claim that had not happened. Now the order is: the shell's global; the key kept in `sessionStorage`, if a keyed read (`GET /api/agents`, which has no side effect) answers with it; then the bootstrap; then the kept copy as before. The check goes through the unwrapped fetch, since the wrapped one waits for the key.
+
 ## The engine gets as long to start as before; the 10 seconds cover only the key · after 2.3.5, unreleased (src-tauri/src/main.rs setup, the loop that reads the engine's first lines)
 
 - Kind: fix · logged 2026-11-19.
