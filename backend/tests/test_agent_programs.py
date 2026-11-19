@@ -4,32 +4,30 @@ import time
 import pytest
 
 from app.core import window_key
+from tests.conftest import stand_in
+
+pytestmark = pytest.mark.skipif(os.name == "nt", reason="the stand-ins are shell scripts")
 
 
 @pytest.fixture
-def stand_ins(tmp_path, monkeypatch):
+def stand_ins(tmp_path, monkeypatch, dock_start):
     folder = tmp_path / "bin"
-    folder.mkdir()
     for name in ("codex", "cursor-agent"):
-        script = folder / name
-        script.write_text('#!/bin/sh\necho "stand-in started"\nread line\n')
-        script.chmod(0o755)
+        stand_in(folder / name)
     monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ.get('PATH', '')}")
     return folder
 
 
 @pytest.fixture
-def no_login_shell(monkeypatch):
-    from app.services import agent_programs
-
-    monkeypatch.setattr(agent_programs.terminal, "login_shell", lambda: ["/bin/sh", "-c", "exit 1", "--"])
+def no_login_shell(dock_start):
+    return dock_start
 
 
 def test_the_status_says_codex_and_cursor_are_missing_with_how_to_get_them(client, no_login_shell, monkeypatch):
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     agents = client.get("/api/claude-code/status").json()["agents"]
-    assert set(agents) == {"codex", "cursor"}
-    for kind in ("codex", "cursor"):
+    assert set(agents) == {"codex", "cursor", "antigravity"}
+    for kind in ("codex", "cursor", "antigravity"):
         assert agents[kind]["installed"] is False and agents[kind]["path"] is None and agents[kind]["install"]
 
 

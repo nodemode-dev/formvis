@@ -58,5 +58,48 @@ def png_bytes(size=(8, 6), color=(200, 100, 50, 255)) -> bytes:
     return buf.getvalue()
 
 
+STAND_IN_SHELL = """#!/bin/sh
+script=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = "-c" ]; then shift; script="$1"; fi
+  shift
+done
+if [ -f "$HOME/.shell-path" ]; then PATH="$(cat "$HOME/.shell-path"):$PATH"; export PATH; fi
+exec /bin/sh -c "$script"
+"""
+STAND_IN = """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "9.9.9 (stand-in)"; exit 0; fi
+echo "stand-in started"
+read line
+"""
+
+
+def stand_in(path, text=STAND_IN):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    path.chmod(0o755)
+    return path
+
+
+@pytest.fixture()
+def dock_start(tmp_path, monkeypatch):
+    """What an app started from the Dock has: the system's four folders on PATH, here with a made-up home, a stand-in
+    login shell whose PATH gains what the home's .shell-path file names, and no system install folders."""
+    from app.services import agent_lookup, claude_code
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("SHELL", str(stand_in(tmp_path / "zsh", STAND_IN_SHELL)))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+    for name in ("FORMVIS_CLAUDE_BIN", "FORMVIS_CODEX_BIN", "FORMVIS_CURSOR_BIN", "FORMVIS_ANTIGRAVITY_BIN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(agent_lookup, "system_folders", lambda platform=None: [])
+    monkeypatch.setitem(claude_code._cache, "value", None)
+    agent_lookup.forget()
+    yield home
+    agent_lookup.forget()
+
+
 def manifest(width=8, height=6, layers=None) -> dict:
     return {"format": "com.nodemode.formvis", "version": 1, "width": width, "height": height, "layers": layers or []}
