@@ -1,4 +1,5 @@
 import type { DockLegacy } from './state';
+import type { StringKey } from './strings';
 
 export type { DockLegacy, DockSide, DockState, DockStore } from './state';
 export type DockKind = 'shell' | 'claude' | 'codex' | 'cursor' | 'chat';
@@ -69,18 +70,22 @@ export interface DockSizes {
   maxHeight?(): number;
   maxWidth?(): number;
 }
+export interface DockWords { app: string; noun: string; lead: string; example: string; start?: string }
+export interface DockAppTab { id: string; label: string; icon: string; mount(host: HTMLElement): void | (() => void) }
+export interface DockTabs { builtin: DockKind[]; own?: DockAppTab[] }
 export interface DockStorage { key: string; legacy?: DockLegacy | string[] }
 export type DockPlacement =
   | { mode: 'own'; storage: DockStorage; sizes: DockSizes; canDockRight?(): boolean }
   | { mode: 'hosted'; request(open: boolean): void };
 
 export interface DockAdapter {
-  app: { name: string; noun: string; start: string; examples: string };
+  words: DockWords;
+  strings?: Partial<Record<StringKey, string>>;
   placement: DockPlacement;
   passKey?(event: KeyboardEvent): boolean;
   isDockChord?(event: KeyboardEvent): boolean;
   chordLabel?(): string;
-  tabs: DockKind[];
+  tabs(): DockTabs;
   classes: { iconButton: string; button: string; primaryButton: string; input: string; select: string; note: string };
   t(key: string, english: string): string;
   onTheme(handler: () => void): void;
@@ -121,4 +126,4 @@ export interface ConsentRequest {
   notes?: string[];
 }
 export interface StoredChoiceState { value: StoredChoice; changedOutside: boolean }
-export type ConsentHost = Pick<DockAdapter, 'app' | 't' | 'classes' | 'consent' | 'storedChoice'>;
+export type ConsentHost = Pick<DockAdapter, 'words' | 'strings' | 't' | 'classes' | 'consent' | 'storedChoice'>;

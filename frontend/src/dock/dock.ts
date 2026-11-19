@@ -1,4 +1,4 @@
-import type { DockAdapter, DockAgentStatus, DockChannel, DockKind, DockTerminal, PtyKind } from './adapter';
+import type { DockAdapter, DockAgentStatus, DockAppTab, DockChannel, DockKind, DockTerminal, PtyKind } from './adapter';
 import { ChatPane, OwnChat, type DockChatView } from './chat';
 import { Consent } from './consent';
 import { el, q, setClass, setDisabled, setHidden, setText } from './dom';
@@ -39,6 +39,7 @@ export class Dock {
   private readonly ask: HTMLInputElement;
   private readonly restartBtn: HTMLButtonElement;
   private readonly tabs = new Map<string, Tab>();
+  private readonly owned = new Map<string, { spec: DockAppTab; tab: HTMLElement; host: HTMLElement; mounted: boolean; off: (() => void) | undefined }>();
   private chat: DockChatView | null = null;
   private chatTab: HTMLElement | null = null;
   private active: string | null = null;
@@ -72,7 +73,7 @@ export class Dock {
       <button type="button" class="${ib} ft-dock-more" title="${s('moreAgents')}" aria-label="${s('moreAgents')}" aria-haspopup="true" aria-expanded="false">${icon('menu', 15)}</button>
       <button type="button" class="${ib} ft-dock-restart" title="${s('restart')}" aria-label="${s('restart')}">${icon('refresh', 15)}</button>
       <button type="button" class="${ib} ft-dock-side" title="${s('toRight')}" aria-label="${s('toRight')}"><span class="ft-dock-side-right">${icon('dockRight', 15)}</span><span class="ft-dock-side-bottom">${icon('dockBottom', 15)}</span></button>
-      <button type="button" class="${ib} ft-dock-hide" title="${s('hide')} (${chordLabel(a)}); ${s('keepRunning')}" aria-label="${s('hide')}">${icon('close', 15)}</button>
+      <button type="button" class="${ib} ft-dock-hide" title="${s('hideTitle', { chord: chordLabel(a) })}" aria-label="${s('hide')}">${icon('close', 15)}</button>
     </div>
     <div class="ft-dock-menu" role="menu" hidden>
       <div class="ft-dock-menu-row" data-kind="codex"><button type="button" class="${c.button} ft-dock-menu-go" role="menuitem">${icon('codex', 13)}<span>${s('codex')}</span></button><p class="ft-dock-menu-how ${c.note}"></p><code class="ft-dock-menu-cmd"></code></div>
@@ -131,6 +132,7 @@ export class Dock {
       settled: () => { this.keep(); window.dispatchEvent(new Event('resize')); this.focus(); },
     });
     this.labelSide();
+    this.refresh();
     document.addEventListener('pointerdown', (e) => { if (!(e.target as Element).closest?.('.ft-dock-menu, .ft-dock-more')) this.menu(false); }, true);
     new ResizeObserver(() => this.fitActive()).observe(this.stage);
     document.addEventListener('keydown', (e) => {
@@ -199,14 +201,55 @@ export class Dock {
     const status = await this.agents();
     for (const kind of PROGRAMS) {
       const st = status?.[kind];
-      const found = !!st?.installed && this.a.tabs.includes(kind);
+      const offered = this.offers(kind);
+      const found = offered && !!st?.installed;
       const row = q(this.root, `.ft-dock-menu-row[data-kind="${kind}"]`);
+      setHidden(row, !offered || !st);
       setHidden(q(this.root, `.ft-dock-${kind}`), !found);
       setHidden(q(row, '.ft-dock-menu-go'), !found);
-      setText(q(row, '.ft-dock-menu-how'), `${this.s(kind)} ${found ? this.s('programReady') : this.s('programMissing')}`);
+      setText(q(row, '.ft-dock-menu-how'), this.s(found ? 'programReady' : 'programMissing', { program: this.s(kind) }));
       setText(q(row, '.ft-dock-menu-cmd'), found ? '' : st?.install ?? '');
       setHidden(q(row, '.ft-dock-menu-cmd'), found || !st?.install);
     }
+  }
+
+  private offers(kind: DockKind): boolean {
+    return this.a.tabs().builtin.includes(kind) && (kind !== 'chat' || !!this.a.chat);
+  }
+
+  activeTab(): string | null { return this.active; }
+
+  refresh(): void {
+    setHidden(q(this.root, '.ft-dock-new'), !this.offers('shell'));
+    setHidden(q(this.root, '.ft-dock-chat'), !this.offers('chat'));
+    setHidden(q(this.root, '.ft-dock-claude'), !this.offers('claude'));
+    setHidden(this.restartBtn, !this.a.terminal.restart);
+    setClass(this.root, 'has-no-ask', !this.offers('claude') && !this.offers('chat'));
+    const want = new Map((this.a.tabs().own ?? []).map((spec) => [spec.id, spec]));
+    for (const [id, o] of [...this.owned]) {
+      if (want.has(id)) continue;
+      o.off?.();
+      o.tab.remove();
+      o.host.remove();
+      this.owned.delete(id);
+      if (this.active !== `own:${id}`) continue;
+      this.active = null;
+      const next = [...this.tabs.keys()].pop() ?? (this.chatTab ? 'chat' : undefined);
+      if (next) this.select(next); else { setHidden(this.empty, false); this.onTab(); }
+    }
+    for (const spec of want.values()) {
+      if (this.owned.has(spec.id)) continue;
+      const tab = el('<button type="button" class="ft-dock-tab is-app" role="tab" aria-selected="false"><span class="ft-icon ft-dock-tab-icon" aria-hidden="true"></span><span class="ft-dock-tab-title"></span></button>');
+      q(tab, '.ft-dock-tab-icon').innerHTML = spec.icon;
+      setText(q(tab, '.ft-dock-tab-title'), spec.label);
+      const host = el('<div class="ft-dock-pane" hidden></div>');
+      tab.addEventListener('click', () => this.select(`own:${spec.id}`));
+      this.tabsEl.appendChild(tab);
+      this.stage.appendChild(host);
+      this.owned.set(spec.id, { spec, tab, host, mounted: false, off: undefined });
+      setHidden(this.empty, true);
+    }
+    if (this.started) void this.programs();
   }
 
   private menu(open: boolean): void {
@@ -254,7 +297,8 @@ export class Dock {
     const claude = (await this.agents())?.claude ?? null;
     const middle: TourStep = !claude?.installed ? { target: '.ft-dock-claude', title: 'tourMissingTitle', body: 'tourMissingBody', cmd: claude?.install || 'npm install -g @anthropic-ai/claude-code' }
       : claude.signedIn === false ? { target: '.ft-dock-claude', title: 'tourSignInTitle', body: 'tourSignInBody' }
-        : { target: '.ft-dock-claude', title: 'tourReadyTitle', body: 'tourReadyBody' };
+        : claude.signedIn === true ? { target: '.ft-dock-claude', title: 'tourReadyTitle', body: 'tourReadyBody' }
+          : { target: '.ft-dock-claude', title: 'tourInstalledTitle', body: 'tourInstalledBody' };
     const steps: TourStep[] = [
       { target: '.ft-dock', title: 'tourPanelTitle', body: 'tourPanelBody' },
       { target: '.ft-dock-ask-input', title: 'tourChatTitle', body: 'tourChatBody' },
@@ -322,8 +366,10 @@ export class Dock {
     }
     const shown = !!this.chatTab || [...this.tabs.values()].some((x) => x.kind !== 'agent');
     if (!shown && seed === 'shell') {
-      if (this.place.savedTab() === 'chat') await this.showChat();
-      else await this.open();
+      const first = this.owned.keys().next();
+      if (this.offers('chat') && (this.place.savedTab() === 'chat' || !this.offers('shell'))) await this.showChat();
+      else if (this.offers('shell')) await this.open();
+      else if (!first.done) this.select(`own:${first.value}`);
     }
     setHidden(this.empty, !!this.chatTab || this.tabs.size > 0);
     void this.programs();
@@ -535,8 +581,15 @@ export class Dock {
       this.chatTab.classList.toggle('is-on', id === 'chat');
       this.chatTab.setAttribute('aria-selected', String(id === 'chat'));
     }
+    for (const [oid, o] of this.owned) {
+      const on = `own:${oid}` === id;
+      if (on && !o.mounted) { o.mounted = true; const off = o.spec.mount(o.host); o.off = typeof off === 'function' ? off : undefined; }
+      setHidden(o.host, !on);
+      setClass(o.tab, 'is-on', on);
+      o.tab.setAttribute('aria-selected', String(on));
+    }
     this.syncAsk();
-    setDisabled(this.restartBtn, id === 'chat' || this.tabs.get(id)?.kind === 'agent');
+    setDisabled(this.restartBtn, !this.tabs.has(id) || this.tabs.get(id)?.kind === 'agent');
     this.fitActive();
     if (focus) this.focus();
     this.keep();

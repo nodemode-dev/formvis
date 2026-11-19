@@ -112,7 +112,11 @@ function socketChannel(socket: WebSocket): DockChannel {
 
 export function formvisDock(openSettings: () => void = () => undefined, layerOpen: () => boolean = () => false): DockAdapter {
   return {
-    app: { name: 'formvis', noun: 'picture', start: './formvis boot', examples: 'retouch it, remove an object, add text, resize, export' },
+    words: {
+      app: 'formvis', noun: 'picture', example: 'make the sky bluer', start: './formvis boot',
+      lead: "Ask Claude about your picture in the line below: retouch it, remove an object, add text, resize, export. It works through formvis's tools, every change shows here and in the window, and each one can be undone.",
+    },
+    strings: { tourChatBody: 'Type what you want in this line, for example "make the sky bluer", and press Enter. Claude does it in formvis, and every change can be undone.' },
     placement: {
       mode: 'own',
       storage: { key: 'formvis.agentDock', legacy: jsonLegacy(['formvis.terminal']) },
@@ -121,9 +125,9 @@ export function formvisDock(openSettings: () => void = () => undefined, layerOpe
     isDockChord: (e) => (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !(layerOpen() && !(e.target instanceof Element && e.target.closest('.ft-dock'))),
     chordLabel: () => `${isMac ? 'Cmd' : 'Ctrl'}+J`,
     passKey: (e) => e.key === 'F1' || ((e.metaKey || e.ctrlKey) && (e.key === ',' || (e.altKey && e.code === 'KeyJ'))),
-    tabs: ['chat', 'shell', 'claude', 'codex', 'cursor'],
+    tabs: () => ({ builtin: ['chat', 'shell', 'claude', 'codex', 'cursor'] }),
     classes: { iconButton: 'cv-tt-btn', button: 'cv-btn', primaryButton: 'cv-btn-primary', input: 'cv-input', select: 'cv-select', note: 'cv-note' },
-    t: (_key, english) => t(english),
+    t: (_key, english) => t(english.replace(/\{(app|noun|start)\}/g, (_m, name: string) => ({ app: 'formvis', noun: 'picture', start: './formvis boot' })[name] ?? '')),
     onTheme: (handler) => { document.addEventListener('nm:ui-settings-changed', handler); },
     keyHeaders: (): Record<string, string> => {
       try { const key = sessionStorage.getItem('formvis-window-key'); return key ? { 'X-Formvis-Window-Key': key } : {}; } catch { return {}; }

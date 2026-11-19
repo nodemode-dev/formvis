@@ -1,7 +1,7 @@
 import type { ChatMode, DockAdapter, DockChatEngine, DockChatEvent, DockChatPane, DockChatStatus, DockOwnChat } from './adapter';
 import { el, q, setClass, setDisabled, setHidden, setText } from './dom';
 import { dockIcon as icon } from './icons';
-import { strings, type Say, type StringKey } from './strings';
+import { lead as appLead, strings, type Say, type StringKey } from './strings';
 
 const MODES: [ChatMode, StringKey][] = [['ask', 'modeAsk'], ['auto-edits', 'modeAuto'], ['plan', 'modePlan']];
 
@@ -141,7 +141,10 @@ export class ChatPane implements DockChatView {
     let status: string;
     let lead: string;
     if (this.offline || !i) {
-      status = s('offline');
+      status = this.a.words.start ? s('offlineStart') : s('offline');
+      lead = status;
+    } else if (i.refused !== undefined) {
+      status = i.refused || s('refused');
       lead = status;
     } else if (!i.installed) {
       status = s('missing');
@@ -152,7 +155,7 @@ export class ChatPane implements DockChatView {
       else if (i.signedIn === false) parts.push(s('notSignedIn'));
       parts.push(this.running ? (this.state === 'busy' ? s('working') : s('ready')) : s('idle'));
       status = parts.join(' · ');
-      lead = s('lead');
+      lead = i.lead ?? appLead(this.a);
     }
     setText(this.statusEl, status);
     this.statusEl.title = status;
@@ -209,7 +212,7 @@ export class ChatPane implements DockChatView {
   }
 
   private add(cls: string): HTMLElement {
-    const node = el(`<div class="${cls}"></div>`);
+    const node = el(/is-note|is-error|ft-chat-ask/.test(cls) ? `<div class="${cls}"></div>` : `<div class="${cls} ft-notranslate" translate="no"></div>`);
     setHidden(this.empty, true);
     const stick = this.log.scrollHeight - this.log.scrollTop - this.log.clientHeight < 40;
     this.log.append(node);
@@ -311,9 +314,9 @@ export class ChatPane implements DockChatView {
     if (this.asks.has(id)) return;
     const c = this.a.classes;
     const card = this.add('ft-chat-ask');
-    card.append(el('<div class="ft-chat-ask-text"></div>'), el('<code class="ft-chat-ask-sum"></code>'),
+    card.append(el('<div class="ft-chat-ask-text"></div>'), el('<code class="ft-chat-ask-sum ft-notranslate" translate="no"></code>'),
       el(`<div class="ft-chat-ask-row"><button type="button" class="${c.button} ${c.primaryButton} ft-chat-allow">${this.s('consentOnce')}</button><button type="button" class="${c.button} ft-chat-deny">${this.s('deny')}</button><span class="ft-chat-ask-state"></span></div>`));
-    setText(q(card, '.ft-chat-ask-text'), `${this.s('asksToUse')} ${toolName(tool)}`);
+    setText(q(card, '.ft-chat-ask-text'), this.s('asksToUse', { tool: toolName(tool) }));
     setText(q(card, '.ft-chat-ask-sum'), summary);
     q(card, '.ft-chat-allow').addEventListener('click', () => { void this.a.chat.answer?.(id, true).catch(() => undefined); });
     q(card, '.ft-chat-deny').addEventListener('click', () => { void this.a.chat.answer?.(id, false).catch(() => undefined); });

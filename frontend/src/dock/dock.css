@@ -1,3 +1,6 @@
+.ft-dock [hidden], .ft-consent [hidden], .ft-tour [hidden] { display: none; }
+.ft-dock.has-no-ask .ft-dock-ask { display: none; }
+.ft-dock-pane { position: absolute; inset: 0; overflow: auto; background: var(--dock-bg); user-select: text; -webkit-user-select: text; }
 .ft-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .ft-icon svg { width: 100%; height: 100%; }
 

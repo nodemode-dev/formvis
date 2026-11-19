@@ -13,11 +13,11 @@ export const STRINGS = {
   codex: 'Codex',
   cursor: 'Cursor',
   moreAgents: 'More agents',
-  programMissing: 'is not on this computer yet: install it with the command below, then sign in once in a terminal.',
-  programReady: 'is installed. Start it in a new tab.',
+  programMissing: '{program} is not on this computer yet: install it with the command below, then sign in once in a terminal.',
+  programReady: '{program} is installed. Start it in a new tab.',
   toRight: 'Move the terminal to the right',
   toBottom: 'Move the terminal to the bottom',
-  keepRunning: 'programs keep running',
+  hideTitle: 'Hide Terminal ({chord}); programs keep running',
   empty: 'No terminal is open. Start a shell with the plus button, Claude Code with the agent button, or Chat with the speech bubble.',
   copy: 'Copy',
   dismiss: 'Dismiss',
@@ -44,14 +44,15 @@ export const STRINGS = {
   modeAuto: 'Auto-accept edits',
   modePlan: 'Plan',
   sendFailed: 'The message could not be sent.',
-  offline: 'The {app} engine is not reachable. Start it with {start}.',
+  offline: 'The {app} engine is not reachable.',
+  offlineStart: 'The {app} engine is not reachable. Start it with {start}.',
+  refused: 'This is not allowed for you here.',
   missing: 'Claude Code is not installed',
   signedIn: 'signed in',
   notSignedIn: 'not signed in: run claude in a terminal and sign in with /login',
   working: 'working',
   ready: 'ready',
   idle: 'not started',
-  lead: "Ask Claude about your {noun} in the line below: {examples}. It works through {app}'s tools, every change shows here and in the window, and each one can be undone.",
   handoffFirst: 'Start a conversation here first; then it can continue in Claude Code',
   handoffBusy: 'Wait for Claude to finish, or press Stop, before moving the conversation',
   allowed: 'Allowed',
@@ -59,7 +60,7 @@ export const STRINGS = {
   stoppedError: 'Claude Code stopped with an error.',
   allow: 'Allow',
   deny: 'Deny',
-  asksToUse: 'Claude Code asks to use',
+  asksToUse: 'Claude Code asks to use {tool}',
   consentTitle: 'Allow {agent} to make changes in {app}?',
   consentTitleUnnamed: 'Allow an outside agent to make changes in {app}?',
   consentWhat: 'It asked to {what}.',
@@ -80,7 +81,9 @@ export const STRINGS = {
   tourPanelTitle: 'This is your helper panel',
   tourPanelBody: 'This panel is where you talk to Claude, an assistant that can work on your {noun} for you. It stays out of the way until you open it.',
   tourChatTitle: 'Ask for something in plain words',
-  tourChatBody: 'Type what you want in this line, for example "make the sky bluer", and press Enter. Claude does it in {app}, and every change can be undone.',
+  tourChatBody: 'Type what you want in this line, for example "{example}", and press Enter. Claude does it in {app}.',
+  tourInstalledTitle: 'Claude Code is installed',
+  tourInstalledBody: 'Claude Code is installed. The robot button here opens it; the first time, it may ask you to sign in.',
   tourMissingTitle: 'Claude Code is not on this computer yet',
   tourMissingBody: 'For the bigger jobs, {app} uses a free program called Claude Code. To add it, copy the line below, open your computer\'s command window, paste it and press Enter.',
   tourSignInTitle: 'Sign in to Claude Code once',
@@ -94,13 +97,18 @@ export const STRINGS = {
 } as const;
 
 export type StringKey = keyof typeof STRINGS;
-export type Say = (key: StringKey) => string;
+export type Say = (key: StringKey, vars?: Record<string, string | number>) => string;
+export const SENTENCES: readonly string[] = Object.values(STRINGS);
 
 export function fill(text: string, vars: Record<string, string | number>): string {
   return text.replace(/\{(\w+)\}/g, (m, name: string) => { const v = vars[name]; return v === undefined ? m : String(v); });
 }
 
-export function strings(a: Pick<DockAdapter, 'app' | 't'>): Say {
-  const vars: Record<string, string> = { app: a.app.name, noun: a.app.noun, start: a.app.start, examples: a.app.examples };
-  return (key) => a.t(key, STRINGS[key].replace(/\{(\w+)\}/g, (m, name: string) => vars[name] ?? m));
+export function strings(a: Pick<DockAdapter, 'words' | 'strings' | 't'>): Say {
+  const words = { app: a.words.app, noun: a.words.noun, example: a.words.example, start: a.words.start ?? '' };
+  return (key, vars) => fill(a.t(key, a.strings?.[key] ?? STRINGS[key]), { ...words, ...vars });
+}
+
+export function lead(a: Pick<DockAdapter, 'words' | 't'>): string {
+  return fill(a.t('lead', a.words.lead), { app: a.words.app, noun: a.words.noun, example: a.words.example });
 }
