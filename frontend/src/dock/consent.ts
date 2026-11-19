@@ -1,110 +1,144 @@
-import type { ConsentChoice, ConsentRequest, DockAdapter } from './adapter';
-import { el, q, setHidden, setText } from './dom';
-import { strings, type Say } from './strings';
+import type { ConsentChoice, ConsentHost, ConsentRequest } from './adapter';
+import { el, q, setClass, setHidden, setText } from './dom';
+import { fill, strings, type Say } from './strings';
 
-const fill = (text: string, vars: Record<string, string | number>): string => text.replace(/\{(\w+)\}/g, (m, name: string) => (name in vars ? String(vars[name]) : m));
+const CHOICES: ConsentChoice[] = ['deny', 'once', 'always'];
 
 export class Consent {
-  readonly root: HTMLElement;
+  private root: HTMLDialogElement | null = null;
   private readonly s: Say;
-  private readonly title: HTMLElement;
-  private readonly count: HTMLElement;
-  private readonly what: HTMLElement;
-  private readonly notice: HTMLElement;
-  private readonly buttons: HTMLButtonElement[];
   private readonly queue: ConsentRequest[] = [];
-  private back: HTMLElement | null = null;
   private busy = false;
   private opening = false;
+  private ours = false;
+  private timer = 0;
+  onChange: (open: boolean) => void = () => undefined;
+  private readonly onKey = (e: KeyboardEvent): void => {
+    const at = e.target as Node;
+    if (this.root && (this.root.contains(at) || at === document.body || at === document.documentElement)) e.stopPropagation();
+  };
 
-  constructor(private readonly a: DockAdapter) {
-    const s = strings(a);
-    const c = a.classes;
-    this.s = s;
-    this.root = el(`<div class="ft-consent" hidden>
-    <div class="ft-consent-box" role="alertdialog" aria-modal="true" aria-labelledby="ft-consent-title" aria-describedby="ft-consent-what">
-      <h2 class="ft-consent-title" id="ft-consent-title"></h2>
-      <p class="ft-consent-count ${c.note}"></p>
-      <p class="ft-consent-what" id="ft-consent-what"></p>
-      <p class="ft-consent-notice ${c.note}" role="status" hidden>${s('consentChanged')}</p>
-      <div class="ft-consent-buttons">
-        <button type="button" class="${c.button} ft-consent-deny" data-choice="deny">${s('consentDeny')}</button>
-        <button type="button" class="${c.button} ft-consent-once" data-choice="once">${s('consentOnce')}</button>
-        <button type="button" class="${c.button} ${c.primaryButton} ft-consent-always" data-choice="always">${s('consentAlways')}</button>
-      </div>
-    </div>
-  </div>`);
-    this.title = q(this.root, '.ft-consent-title');
-    this.count = q(this.root, '.ft-consent-count');
-    this.what = q(this.root, '.ft-consent-what');
-    this.notice = q(this.root, '.ft-consent-notice');
-    this.buttons = [...this.root.querySelectorAll<HTMLButtonElement>('.ft-consent-buttons button')];
-    for (const b of this.buttons) b.addEventListener('click', () => void this.pick(b.dataset.choice as ConsentChoice));
-    window.addEventListener('keydown', (e) => { if (!this.root.hidden) this.key(e); }, true);
-    document.body.append(this.root);
-    a.consent.subscribe((request) => this.add(request));
+  constructor(private readonly a: ConsentHost) {
+    this.s = strings(a);
+    a.consent?.subscribe((request) => this.add(request), (id) => this.withdraw(id));
   }
 
   get waiting(): number { return this.queue.length; }
 
-  isOpen(): boolean { return !this.root.hidden; }
+  isOpen(): boolean { return this.root?.open === true; }
+
+  private build(): HTMLDialogElement {
+    if (this.root) return this.root;
+    const s = this.s;
+    const c = this.a.classes;
+    const root = el<HTMLDialogElement>(`<dialog class="ft-consent" aria-labelledby="ft-consent-title" aria-describedby="ft-consent-what">
+    <div class="ft-consent-box">
+      <h2 class="ft-consent-title" id="ft-consent-title"></h2>
+      <p class="ft-consent-count ${c.note}"></p>
+      <p class="ft-consent-what" id="ft-consent-what"></p>
+      <p class="ft-consent-notes" hidden></p>
+      <p class="ft-consent-notice ${c.note}" role="status" hidden>${s('consentChanged')}</p>
+      <div class="ft-consent-buttons">
+        <button type="button" class="${c.button} ft-consent-btn ft-consent-deny" data-choice="deny">${s('consentDeny')}</button>
+        <button type="button" class="${c.button} ft-consent-btn ft-consent-once" data-choice="once">${s('consentOnce')}</button>
+        <button type="button" class="${c.button} ${c.primaryButton} ft-consent-btn ft-consent-always" data-choice="always"></button>
+      </div>
+    </div>
+  </dialog>`);
+    for (const b of root.querySelectorAll<HTMLButtonElement>('.ft-consent-btn')) b.addEventListener('click', () => void this.pick(b.dataset.choice as ConsentChoice));
+    root.addEventListener('cancel', (e) => { e.preventDefault(); this.escape(); });
+    root.addEventListener('close', () => this.closed());
+    document.body.append(root);
+    this.root = root;
+    return root;
+  }
 
   private add(request: ConsentRequest): void {
     if (this.queue.some((r) => r.id === request.id)) return;
     this.queue.push(request);
-    void this.show();
+    this.watch();
+    void this.render();
   }
 
-  private async show(): Promise<void> {
+  withdraw(id: string): void {
+    const at = this.queue.findIndex((r) => r.id === id);
+    if (at < 0) return;
+    this.queue.splice(at, 1);
+    this.watch();
+    void this.render();
+  }
+
+  private watch(): void {
+    window.clearTimeout(this.timer);
+    const now = Date.now();
+    for (const r of this.queue.filter((x) => x.expires !== undefined && x.expires <= now)) this.queue.splice(this.queue.indexOf(r), 1);
+    const next = Math.min(...this.queue.map((r) => r.expires ?? Infinity));
+    if (Number.isFinite(next)) this.timer = window.setTimeout(() => { this.watch(); void this.render(); }, Math.max(50, next - now));
+  }
+
+  private async render(): Promise<void> {
     const r = this.queue[0];
-    if (!r) { this.hide(); return; }
-    setText(this.title, fill(this.s('consentTitle'), { agent: r.agent || this.s('consentAgent') }));
-    setText(this.what, fill(this.s('consentWhat'), { what: r.what }));
-    setText(this.count, fill(this.s('consentCount'), { n: 1, total: this.queue.length }));
-    const many = this.queue.length > 1 ? 'visible' : 'hidden';
-    if (this.count.style.visibility !== many) this.count.style.visibility = many;
-    if (!this.root.hidden || this.opening) return;
+    if (!r) { this.shut(); return; }
+    const d = this.build();
+    const s = this.s;
+    setText(q(d, '.ft-consent-title'), r.agent ? fill(s('consentTitle'), { agent: r.agent }) : s('consentTitleUnnamed'));
+    setText(q(d, '.ft-consent-what'), fill(s('consentWhat'), { what: r.what }));
+    const notes = q(d, '.ft-consent-notes');
+    setText(notes, (r.notes ?? []).join('\n'));
+    setHidden(notes, !r.notes?.length);
+    const count = q(d, '.ft-consent-count');
+    setText(count, fill(s('consentCount'), { n: 1, total: this.queue.length }));
+    setClass(count, 'is-one', this.queue.length < 2);
+    for (const choice of CHOICES) setHidden(q(d, `.ft-consent-${choice}`), !r.offers.includes(choice));
+    setText(q(d, '.ft-consent-always'), r.always === 'all' ? s('consentAlwaysAll') : r.agent ? fill(s('consentAlways'), { agent: r.agent }) : s('consentAlwaysUnnamed'));
+    if (d.open || this.opening) return;
     this.opening = true;
     let changed = false;
-    try { changed = (await this.a.storedChoice.get()).changedOutside; } catch { changed = false; }
+    try { changed = (await this.a.storedChoice?.get())?.changedOutside === true; } catch { changed = false; }
     this.opening = false;
-    if (!this.queue.length) return;
-    setHidden(this.notice, !changed);
-    const active = document.activeElement;
-    this.back = active instanceof HTMLElement && active !== document.body ? active : null;
-    setHidden(this.root, false);
-    this.buttons[0].focus();
+    if (!this.queue.length || d.open) return;
+    setHidden(q(d, '.ft-consent-notice'), !changed);
+    window.addEventListener('keydown', this.onKey, true);
+    d.showModal();
+    this.onChange(true);
   }
 
-  private hide(): void {
-    if (this.root.hidden) return;
-    setHidden(this.root, true);
-    const back = this.back;
-    this.back = null;
-    if (back?.isConnected) back.focus();
+  private shut(): void {
+    const d = this.root;
+    if (!d?.open) return;
+    this.ours = true;
+    d.close();
+  }
+
+  private closed(): void {
+    const ours = this.ours;
+    this.ours = false;
+    if (this.root?.open) return;
+    window.removeEventListener('keydown', this.onKey, true);
+    this.onChange(false);
+    if (ours || this.busy || !this.queue.length) return;
+    this.queue.shift();
+    this.watch();
+    void this.render();
   }
 
   private async pick(choice: ConsentChoice): Promise<void> {
-    if (this.busy) return;
     const r = this.queue[0];
-    if (!r) return;
+    if (this.busy || !r || !r.offers.includes(choice)) return;
     this.busy = true;
-    try {
-      await this.a.consent.answer(r.id, choice).catch(() => undefined);
-      this.queue.shift();
-      if (choice === 'always') for (const rest of this.queue.splice(0)) await this.a.consent.answer(rest.id, 'always').catch(() => undefined);
-    } finally { this.busy = false; }
-    void this.show();
+    try { await this.a.consent?.answer(r.id, choice); } catch { this.busy = false; } finally { this.busy = false; }
+    const at = this.queue.indexOf(r);
+    if (at >= 0) this.queue.splice(at, 1);
+    this.watch();
+    void this.render();
   }
 
-  private key(e: KeyboardEvent): void {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); void this.pick('deny'); return; }
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const at = this.buttons.indexOf(document.activeElement as HTMLButtonElement);
-      const next = (at + (e.shiftKey ? -1 : 1) + this.buttons.length) % this.buttons.length;
-      this.buttons[at < 0 ? 0 : next].focus();
-    }
-    e.stopPropagation();
+  private escape(): void {
+    const r = this.queue[0];
+    if (!r || this.busy) return;
+    if (r.escape === 'deny' && r.offers.includes('deny')) { void this.pick('deny'); return; }
+    this.queue.shift();
+    this.watch();
+    void this.render();
   }
 }

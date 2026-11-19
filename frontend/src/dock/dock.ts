@@ -54,10 +54,10 @@ export class Dock {
   onTab: () => void = () => undefined;
   onChange: () => void = () => undefined;
   yieldsKey: () => boolean = () => false;
-  readonly consent: Consent;
+  readonly consent: Consent | null;
   private readonly tour: Tour;
 
-  constructor(private readonly a: DockAdapter) {
+  constructor(private readonly a: DockAdapter, parts: { consent?: Consent } = {}) {
     const s = strings(a);
     const c = a.classes;
     const ib = `${c.iconButton} ft-dock-ibtn`;
@@ -112,9 +112,10 @@ export class Dock {
       q(this.root, `.ft-dock-menu-row[data-kind="${kind}"] .ft-dock-menu-go`).addEventListener('click', () => { this.menu(false); void this.program(kind); });
     }
     q(this.root, '.ft-dock-more').addEventListener('click', () => { this.menu(q(this.root, '.ft-dock-menu').hidden === true); });
-    q(this.root, '.ft-dock-menu-settings').addEventListener('click', () => { this.menu(false); a.openSettings(); });
+    q(this.root, '.ft-dock-menu-settings').addEventListener('click', () => { this.menu(false); a.openSettings?.(); });
+    setHidden(q(this.root, '.ft-dock-menu-settings'), !a.openSettings);
     q(this.root, '.ft-dock-menu-tour').addEventListener('click', () => { this.menu(false); void this.guide(); });
-    this.consent = new Consent(a);
+    this.consent = parts.consent ?? (a.consent ? new Consent(a) : null);
     this.tour = new Tour(a);
     document.addEventListener('pointerdown', (e) => { if (!(e.target as Element).closest?.('.ft-dock-menu, .ft-dock-more')) this.menu(false); }, true);
     void this.programs();
@@ -249,7 +250,7 @@ export class Dock {
       { target: '.ft-dock', title: 'tourPanelTitle', body: 'tourPanelBody' },
       { target: '.ft-dock-ask-input', title: 'tourChatTitle', body: 'tourChatBody' },
       middle,
-      { target: '.ft-dock-more', title: 'tourAskTitle', body: 'tourAskBody' },
+      ...(this.consent ? [{ target: '.ft-dock-more', title: 'tourAskTitle', body: 'tourAskBody' } as TourStep] : []),
       { target: '.ft-dock-side', title: 'tourSideTitle', body: 'tourSideBody' },
     ];
     this.tour.start(steps, () => {

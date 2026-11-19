@@ -3665,7 +3665,7 @@ export function startApp(): void {
   const psdReportDialog = new PsdReportDialog();
   // Allow, asked in the window when an agent first calls (1.53.3), is the same setting as Preferences > Plugins.
   const agents = new AgentBridge(engine, {
-    ask: (title, text) => agentConfirm.ask(title, text), note: (t) => toast(t, 'info'), consent: (id, tool, client) => outsideAgents.arrive(id, tool, client),
+    ask: (title, text) => agentConfirm.ask(title, text), note: (t) => toast(t, 'info'), consent: (id, tool, client, seconds) => outsideAgents.arrive(id, tool, client, seconds),
     allow: () => { savePrefs({ ...loadPrefs(), agentsAllowed: true }); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: true })); },
     // 1.53.3: what agents reach through the app, the same paths as its menus.
     openFile: (f) => openFiles([f]),
@@ -3686,7 +3686,8 @@ export function startApp(): void {
     log: () => [...errorLog.entries, ...engine.failures],
     status: (note, seconds) => status.setAgentNote(note, seconds),
   });
-  void fetch('/api/agents').then((r) => (r.ok ? r.json() as Promise<{ allowed?: unknown }> : null)).then((s) => {
+  void fetch('/api/agents').then((r) => (r.ok ? r.json() as Promise<{ allowed?: unknown; blocked?: unknown }> : null)).then((s) => {
+    outsideAgents.adopt(s?.blocked === true);
     const stored = outsideAgents.blocked() ? false : typeof s?.allowed === 'boolean' ? s.allowed : null;
     if (stored !== null && stored !== loadPrefs().agentsAllowed) savePrefs({ ...loadPrefs(), agentsAllowed: stored });
     agents.setEnabled(stored ?? loadPrefs().agentsAllowed);

@@ -62,12 +62,14 @@ export const STRINGS = {
   deny: 'Deny',
   asksToUse: 'Claude Code asks to use',
   consentTitle: 'Allow {agent} to make changes in {app}?',
-  consentAgent: 'an outside agent',
+  consentTitleUnnamed: 'Allow an outside agent to make changes in {app}?',
   consentWhat: 'It asked to {what}.',
   consentCount: 'Request {n} of {total}',
   consentDeny: 'Deny',
   consentOnce: 'Allow once',
-  consentAlways: 'Always allow',
+  consentAlways: 'Always allow {agent}',
+  consentAlwaysUnnamed: 'Always allow this agent',
+  consentAlwaysAll: 'Always allow all outside agents',
   consentChanged: 'The Outside agents setting was changed outside {app}, so {app} asks again.',
   outsideAgents: 'Outside agents',
   showAround: 'Show me around',
@@ -95,7 +97,11 @@ export const STRINGS = {
 export type StringKey = keyof typeof STRINGS;
 export type Say = (key: StringKey) => string;
 
-export function strings(a: DockAdapter): Say {
+export function fill(text: string, vars: Record<string, string | number>): string {
+  return text.replace(/\{(\w+)\}/g, (m, name: string) => { const v = vars[name]; return v === undefined ? m : String(v); });
+}
+
+export function strings(a: Pick<DockAdapter, 'app' | 't'>): Say {
   const vars: Record<string, string> = { app: a.app.name, noun: a.app.noun, start: a.app.start, examples: a.app.examples };
   return (key) => a.t(key, STRINGS[key].replace(/\{(\w+)\}/g, (m, name: string) => vars[name] ?? m));
 }

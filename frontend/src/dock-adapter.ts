@@ -5,31 +5,81 @@ import { t } from './ui/i18n';
 import { loadPrefs, savePrefs } from './ui/prefs';
 
 const BLOCKED = 'formvis.agentsBlocked';
-const handlers: Array<(r: ConsentRequest) => void> = [];
+interface Question { id: string; tool: string; client: string; wait: number }
+const adders: Array<(r: ConsentRequest) => void> = [];
+const withdrawers: Array<(id: string) => void> = [];
 const early: ConsentRequest[] = [];
-const blocked = (): boolean => { try { return localStorage.getItem(BLOCKED) === '1'; } catch { return false; } };
-const reply = (id: string, result: Record<string, boolean>): Promise<void> =>
-  fetch('/api/mcp/bridge/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, result }) }).then(() => undefined);
+const open = new Map<string, ConsentRequest>();
+const legacyBlocked = (): boolean => { try { return localStorage.getItem(BLOCKED) === '1'; } catch { return false; } };
+let isBlocked = legacyBlocked();
+let watching = 0;
+const post = (path: string, body: unknown): Promise<Response> => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const reply = (id: string, result: Record<string, boolean>): Promise<void> => post('/api/mcp/bridge/result', { id, result }).then(() => undefined);
+const drop = (id: string): void => { if (open.delete(id)) for (const w of withdrawers) w(id); };
+const questions = async (): Promise<Question[]> => {
+  const r = await fetch('/api/mcp/bridge/questions');
+  if (!r.ok) throw new Error(r.statusText);
+  return ((await r.json()) as { questions?: Question[] }).questions ?? [];
+};
+const watch = (): void => {
+  if (watching || !open.size) return;
+  watching = window.setInterval(() => {
+    if (!open.size) { window.clearInterval(watching); watching = 0; return; }
+    void questions().then((list) => { const live = new Set(list.map((x) => x.id)); for (const id of [...open.keys()]) if (!live.has(id)) drop(id); }, () => undefined);
+  }, 2000);
+};
 
 export const outsideAgents = {
-  blocked,
-  arrive(id: string, tool: string, client: string): void {
-    if (blocked()) { void reply(id, { allowed: false }).catch(() => undefined); return; }
-    const request: ConsentRequest = { id, agent: client, what: tool ? `use ${tool.replace(/_/g, ' ')}` : 'make changes' };
-    if (handlers.length) for (const h of handlers) h(request); else early.push(request);
+  blocked: (): boolean => isBlocked,
+  adopt(stored: boolean): void {
+    const legacy = legacyBlocked();
+    isBlocked = stored || legacy;
+    if (legacy && !stored) void outsideAgents.set('blocked');
   },
-  subscribe(handler: (r: ConsentRequest) => void): void { handlers.push(handler); for (const r of early.splice(0)) handler(r); },
+  arrive(id: string, tool: string, client: string, seconds = 0): void {
+    if (isBlocked) { void reply(id, { allowed: false }).catch(() => undefined); return; }
+    if (open.has(id)) return;
+    const request: ConsentRequest = {
+      id, agent: client, what: tool ? `use ${tool.replace(/_/g, ' ')}` : 'make changes', offers: ['deny', 'once', 'always'], always: client ? 'agent' : 'all', escape: 'deny',
+      ...(seconds > 0 ? { expires: Date.now() + seconds * 1000 } : {}),
+    };
+    open.set(id, request);
+    watch();
+    if (adders.length) for (const h of adders) h(request); else early.push(request);
+  },
+  subscribe(add: (r: ConsentRequest) => void, withdraw: (id: string) => void): void {
+    adders.push(add);
+    withdrawers.push(withdraw);
+    for (const r of early.splice(0)) add(r);
+    void outsideAgents.recover();
+  },
+  async recover(): Promise<void> {
+    try { for (const x of await questions()) outsideAgents.arrive(x.id, x.tool, x.client, x.wait); } catch { return; }
+  },
   async answer(id: string, choice: ConsentChoice): Promise<void> {
-    if (choice === 'always') await outsideAgents.set('allowed');
-    await reply(id, choice === 'deny' ? { allowed: false } : { allowed: true, once: true });
+    const request = open.get(id);
+    open.delete(id);
+    const yes = { allowed: true, once: true };
+    if (choice === 'always' && request?.agent) {
+      const kept = await post('/api/agents/policy', { client: request.agent, policy: 'allow' }).then((r) => r.ok, () => false);
+      if (kept) for (const [other, r] of [...open]) if (r.agent === request.agent) { void reply(other, yes).catch(() => undefined); drop(other); }
+    } else if (choice === 'always') await outsideAgents.set('allowed');
+    await reply(id, choice === 'deny' ? { allowed: false } : yes);
   },
   async get(): Promise<StoredChoiceState> {
     let changedOutside = false;
-    try { changedOutside = ((await (await fetch('/api/agents')).json()) as { sealBroken?: unknown }).sealBroken === true; } catch { changedOutside = false; }
-    return { value: blocked() ? 'blocked' : loadPrefs().agentsAllowed ? 'allowed' : 'ask', changedOutside };
+    try {
+      const s = (await (await fetch('/api/agents')).json()) as { sealBroken?: unknown; blocked?: unknown };
+      changedOutside = s.sealBroken === true;
+      if (typeof s.blocked === 'boolean') isBlocked = s.blocked || legacyBlocked();
+    } catch { changedOutside = false; }
+    return { value: isBlocked ? 'blocked' : loadPrefs().agentsAllowed ? 'allowed' : 'ask', changedOutside };
   },
   async set(value: StoredChoice): Promise<void> {
-    try { if (value === 'blocked') localStorage.setItem(BLOCKED, '1'); else localStorage.removeItem(BLOCKED); } catch { /* kept for this session only */ }
+    isBlocked = value === 'blocked';
+    const kept = await post('/api/agents/blocked', { blocked: isBlocked }).then((r) => r.ok, () => false);
+    try { if (isBlocked && !kept) localStorage.setItem(BLOCKED, '1'); else localStorage.removeItem(BLOCKED); } catch { isBlocked = value === 'blocked'; }
+    if (isBlocked) for (const id of [...open.keys()]) { void reply(id, { allowed: false }).catch(() => undefined); drop(id); }
     if (loadPrefs().agentsAllowed !== (value === 'allowed')) savePrefs({ ...loadPrefs(), agentsAllowed: value === 'allowed' });
     window.dispatchEvent(new CustomEvent('formvis:agents', { detail: value === 'allowed' }));
   },
@@ -84,7 +134,7 @@ export function formvisDock(openSettings: () => void = () => undefined): DockAda
       answer: (id, allow) => api.claudeAllow(id, allow),
       socket: () => socketTo('/agent/claude/stream'),
     },
-    consent: { subscribe: (handler) => outsideAgents.subscribe(handler), answer: (id, choice) => outsideAgents.answer(id, choice) },
+    consent: { subscribe: (add, withdraw) => outsideAgents.subscribe(add, withdraw), answer: (id, choice) => outsideAgents.answer(id, choice) },
     storedChoice: { get: () => outsideAgents.get(), set: (value) => outsideAgents.set(value) },
     openSettings,
   };
