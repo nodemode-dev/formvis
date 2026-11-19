@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock module 2.1.0, step 6: the question's buttons stay inside the dialog, in both directions · after 2.3.6, unreleased (dock/dock.css .ft-consent-buttons, .ft-consent-btn)
+
+- Kind: fix, stylesheet only · logged 2026-11-19. Noted at the end of the language work: with the page right to left and a long third label, Deny sat past the dialog's edge. Measured on the scratch page before the change, it was not only right to left: the row is one flex line that cannot wrap and its buttons cannot shrink, so whenever the three labels are wider than the box the row hangs out of the side where the row starts (left when left to right: Deny at x 399 with the box from 483; right when right to left: Deny at 984 to 1041 with the box ending at 957).
+- What: the row may wrap (`flex-wrap: wrap`, still packed to the end, so the second line is mirrored with the direction), and a single button is never wider than the row (`max-width: 100%`, `min-width: 0`, the overflow cut with an ellipsis where the app's button is a block). When the three fit on one line nothing changes.
+- Removed, `dock/dock.css`: `.ft-consent-buttons { display: flex; justify-content: flex-end; gap: var(--dock-space-2); margin-top: var(--dock-space-2); }` (the same line now has `flex-wrap: wrap`).
+- Seen on the scratch page with `dir="rtl"` on the page and without, a long agent name, and a third label made longer still: before, two or three buttons outside the box in all four cases; after, none outside in any (right to left: Deny 597 to 653 and Allow once 500 to 589 on the first line, the long button 500 to 940 on the second, box 483 to 957). Not throttled: the dialog is in the top layer and is laid out before it is shown.
+
 ## Dock module 2.1.0, step 5: a dock restored open at load takes focus once the app is revealed · after 2.3.6, unreleased (dock/dock.ts boot, awaitReveal, revealing)
 
 - Kind: fix · logged 2026-11-19. formPDF: with the dock remembered open, `boot` focuses the tab in front before the app has revealed its window, the browser refuses focus on an element that is not shown, and focus stays on the body; nothing tried again.

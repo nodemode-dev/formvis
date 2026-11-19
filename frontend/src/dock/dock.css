@@ -112,7 +112,8 @@
 .ft-consent-count, .ft-consent-notice { margin: 0; color: var(--dock-text-dim); font-size: var(--dock-fs-sm); }
 .ft-consent-notice[hidden] { display: none; }
 .ft-consent-what { margin: 0; color: var(--dock-text); font-size: var(--dock-fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
-.ft-consent-buttons { display: flex; justify-content: flex-end; gap: var(--dock-space-2); margin-top: var(--dock-space-2); }
+.ft-consent-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--dock-space-2); margin-top: var(--dock-space-2); }
+.ft-consent-buttons > .ft-consent-btn { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
 .ft-tour { position: fixed; inset: 0; z-index: var(--z-overlay); pointer-events: none; contain: strict; }
 .ft-tour[hidden] { display: none; }
