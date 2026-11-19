@@ -6,7 +6,15 @@ export type DockProgram = 'claude' | 'codex' | 'cursor';
 export type PtyKind = 'shell' | 'claude' | 'codex' | 'cursor' | 'agent';
 export type ChatMode = 'ask' | 'auto-edits' | 'plan';
 
-export interface DockTerminal { id: string; title: string; alive: boolean; kind: PtyKind }
+export interface DockTerminal { id: string; title: string; alive: boolean; kind: PtyKind; tip?: string }
+export interface DockChannel {
+  send(data: string): void;
+  resize(cols: number, rows: number): void;
+  onData(handler: (data: string | Uint8Array) => void): void;
+  onExit(handler: () => void): void;
+  onClose?(handler: () => void): void;
+  close(): void;
+}
 export interface DockOpen { cols: number; rows: number; prompt?: string; resume?: string }
 export interface DockProgramStatus { installed: boolean; version: string | null; install: string; signedIn: boolean | null }
 export type DockAgentStatus = Partial<Record<DockProgram, DockProgramStatus>>;
@@ -55,9 +63,10 @@ export interface DockAdapter {
   terminal: {
     list(): Promise<DockTerminal[]>;
     open(kind: Exclude<PtyKind, 'agent'>, options: DockOpen): Promise<DockTerminal>;
-    restart(id: string): Promise<void>;
+    restart?(id: string): Promise<void>;
     close(id: string): Promise<void>;
-    socket(id: string): WebSocket;
+    channel(id: string): DockChannel | Promise<DockChannel>;
+    scrollback?: number;
   };
   agentStatus(): Promise<DockAgentStatus | null>;
   chat: {

@@ -2,17 +2,18 @@
   "module": "dock",
   "version": "2.0.0-dev",
   "files": {
-    "adapter.ts": "19feb9e46b4d849e0d12fdb129ef0d4983b3568d7a7dca76862d83a65da30d71",
+    "adapter.ts": "fa902732e8458b9497724ec3422d70b9b7afdca9972f435d8100f5dc324a6a53",
     "chat.ts": "6e7a8f91edc2d2fdf5b5219973fe6986c4073b765ab4f7de75cabe5ff6c31543",
     "consent.ts": "fa53601ba7d0b9a72fe8bd11ce3fd3b68db7e9697465eab33167da54377c25c2",
-    "dock.css": "207aa6cb5b6314809154d4d8ce52cbaee137261d84b38f807b6e3d810a95f3a2",
-    "dock.ts": "ea68e9f8454eb2271685298cafa9a4a42bbc503cec5175b9b5727b90b7959726",
+    "dock.css": "c4da49ce53fdcc438c837320df18d541adc245f2c7066539aeebdf8ef404d294",
+    "dock.ts": "cadec96e98440ecef9a3455ac9b617d0157ba9b04f042a98fa89311d11f5ff4a",
     "dom.ts": "dc2adf64e70e600f28eaa2d84eed0b4ad7deadb6e200cd489ee7abb583269e62",
     "icons.ts": "e5b6a5732ee5ab8ab1e682b6806c1493c0c167c2d9161733277bb179cfbc179b",
     "keys.ts": "f5a6f88ed2f421d728bdaed4e14bd4c09ef4c9dfcaafdcc6c61d2ef74b07246f",
     "placement.ts": "40c7e85162ab289d77b96310aee717a58f5d169198aa7019ba31ad944535edb8",
     "state.ts": "07fbb3b1728902b847890a237b9455a78f92076d5c757cac93dfc7c09f8fd062",
-    "strings.ts": "742d72ec5a6a382d93642a58244f5a07b78c780bc323469c7b133042574fc4ad",
+    "strings.ts": "f34fd24a0b4dc5e23e90a127c2e2806cb90f45d9fcaf2f6a3fb1e3b7a272c1ef",
+    "terminal.ts": "8bf886a7ad4dc69323e803acc13641a66e1d8614e9b85a6a60977fa30d8a56fc",
     "tour.ts": "b6b13a4480f749497016ddf2fa06c49d5b17a747f653050e71ed2ac11db44c09"
   }
 }

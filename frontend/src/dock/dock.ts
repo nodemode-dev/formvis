@@ -1,14 +1,12 @@
-import { FitAddon } from '@xterm/addon-fit';
-import { Terminal } from '@xterm/xterm';
-import '@xterm/xterm/css/xterm.css';
-import type { DockAdapter, DockKind, DockTerminal, PtyKind } from './adapter';
+import type { DockAdapter, DockAgentStatus, DockChannel, DockKind, DockTerminal, PtyKind } from './adapter';
 import { ChatPane } from './chat';
 import { Consent } from './consent';
-import { cssToken as token, el, q, setDisabled, setHidden, setText } from './dom';
+import { el, q, setClass, setDisabled, setHidden, setText } from './dom';
 import { dockIcon as icon } from './icons';
 import { chordLabel, contain, isChord, leaves } from './keys';
 import { placementFor, type Placement } from './placement';
 import type { DockSide } from './state';
+import type { DockTerm } from './terminal';
 import { strings, type Say } from './strings';
 import { Tour, type TourStep } from './tour';
 
@@ -19,19 +17,13 @@ type Program = typeof PROGRAMS[number];
 
 interface Tab {
   id: string;
-  term: Terminal;
-  fit: FitAddon;
+  term: DockTerm | null;
   host: HTMLElement;
   tab: HTMLElement;
-  socket: WebSocket | null;
+  channel: DockChannel | null;
   kind: PtyKind;
   seen: boolean;
   closed: boolean;
-}
-
-function termFontSize(): number {
-  const n = parseFloat(token('--dock-term-font-size', '13'));
-  return n > 0 ? n : 13;
 }
 
 export class Dock {
@@ -52,7 +44,8 @@ export class Dock {
   private active: string | null = null;
   private started = false;
   private pending: Promise<void> | null = null;
-  private look = '';
+  private emulator: Promise<typeof import('./terminal')> | null = null;
+  private asked: Promise<DockAgentStatus | null> | null = null;
   private mounted = false;
   private readonly place: Placement;
   onTab: () => void = () => undefined;
@@ -202,7 +195,7 @@ export class Dock {
   }
 
   private async programs(): Promise<void> {
-    const status = await this.a.agentStatus().catch(() => null);
+    const status = await this.agents();
     for (const kind of PROGRAMS) {
       const st = status?.[kind];
       const found = !!st?.installed && this.a.tabs.includes(kind);
@@ -257,8 +250,7 @@ export class Dock {
       if (first) return;
     }
     await this.showChat();
-    let claude = null;
-    try { claude = (await this.a.agentStatus())?.claude ?? null; } catch { claude = null; }
+    const claude = (await this.agents())?.claude ?? null;
     const middle: TourStep = !claude?.installed ? { target: '.ft-dock-claude', title: 'tourMissingTitle', body: 'tourMissingBody', cmd: claude?.install || 'npm install -g @anthropic-ai/claude-code' }
       : claude.signedIn === false ? { target: '.ft-dock-claude', title: 'tourSignInTitle', body: 'tourSignInBody' }
         : { target: '.ft-dock-claude', title: 'tourReadyTitle', body: 'tourReadyBody' };
@@ -295,13 +287,21 @@ export class Dock {
   }
 
   private retheme(): void {
-    const theme = this.theme();
-    const size = termFontSize();
-    const look = JSON.stringify([theme, size]);
-    if (look === this.look) return;
-    this.look = look;
-    for (const x of this.tabs.values()) { x.term.options.theme = theme; if (x.term.options.fontSize !== size) x.term.options.fontSize = size; }
+    for (const x of this.tabs.values()) x.term?.retheme();
     this.fitActive();
+  }
+
+  private load(): Promise<typeof import('./terminal')> {
+    this.emulator ??= import('./terminal');
+    return this.emulator;
+  }
+
+  private agents(): Promise<DockAgentStatus | null> {
+    if (!this.asked) {
+      this.asked = this.a.agentStatus().catch(() => null);
+      void this.asked.then(() => window.setTimeout(() => { this.asked = null; }, 1500));
+    }
+    return this.asked;
   }
 
   private async list(): Promise<DockTerminal[]> {
@@ -333,7 +333,7 @@ export class Dock {
 
   focus(): void {
     if (this.active === 'chat') this.ask.focus({ preventScroll: true });
-    else if (this.active) this.tabs.get(this.active)?.term.focus();
+    else if (this.active) this.tabs.get(this.active)?.term?.focus();
   }
 
   async showChat(): Promise<void> {
@@ -408,7 +408,7 @@ export class Dock {
 
   private async fail(err: unknown, what: 'shell' | 'claude'): Promise<void> {
     if (what === 'shell') { this.warn(err); return; }
-    const status = (await this.a.agentStatus())?.claude;
+    const status = (await this.agents())?.claude;
     if (status && !status.installed) {
       this.say(this.s('notInstalled'), status.install);
       return;
@@ -417,14 +417,11 @@ export class Dock {
     else this.say(`${this.s('notStarted')} ${err instanceof Error ? err.message : ''}`.trim());
   }
 
-  private theme() {
-    return {
-      background: token('--dock-term-bg', '#111111'),
-      foreground: token('--dock-term-fg', '#f7f7f7'),
-      cursor: token('--dock-term-cursor', '#f97316'),
-      cursorAccent: token('--dock-term-bg', '#111111'),
-      selectionBackground: token('--dock-term-selection', '#f9731633'),
-    };
+  private ended(x: Tab, on: boolean): void {
+    setClass(x.tab, 'is-ended', on);
+    if (x.kind === 'agent') return;
+    const tip = on ? this.s('endedTab') : x.tab.dataset.tip ?? '';
+    if (x.tab.title !== tip) x.tab.title = tip;
   }
 
   private adopt(info: DockTerminal): void {
@@ -457,7 +454,7 @@ export class Dock {
 
   private size(): { cols: number; rows: number } {
     const tab = this.active ? this.tabs.get(this.active) : null;
-    return tab ? { cols: tab.term.cols, rows: tab.term.rows } : { cols: 100, rows: 20 };
+    return tab?.term ? { cols: tab.term.cols(), rows: tab.term.rows() } : { cols: 100, rows: 20 };
   }
 
   private async attach(info: DockTerminal, show: boolean): Promise<void> {
@@ -465,14 +462,7 @@ export class Dock {
     const kind: PtyKind = ['claude', 'agent', 'codex', 'cursor'].includes(info.kind) ? info.kind : 'shell';
     const agent = kind === 'agent';
     const mark = kind === 'claude' ? 'agent' : kind === 'codex' || kind === 'cursor' ? kind : 'terminal';
-    const term = new Terminal({
-      fontFamily: token('--dock-font-mono', 'monospace'), fontSize: termFontSize(), lineHeight: 1.25, cursorBlink: !agent, disableStdin: agent,
-      scrollback: 5000, theme: this.theme(), overviewRuler: { width: 0 },
-    });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.attachCustomKeyEventHandler((e) => !leaves(this.a, e));
-    const host = el('<div class="ft-term" hidden></div>');
+    const host = el('<div class="ft-term" translate="no" dir="ltr" hidden></div>');
     const tab = el(`<button type="button" class="ft-dock-tab${kind === 'shell' || agent ? '' : ` is-${kind}`}${agent ? ' is-agent' : ''}" role="tab" aria-selected="false">${icon(mark, 13)}<span class="ft-dock-tab-title"></span><span class="ft-dock-tab-x" role="button" aria-label="${this.s('closeTab')}">${icon('close', 11)}</span></button>`);
     setText(q(tab, '.ft-dock-tab-title'), info.title);
     if (agent) tab.title = this.s('agentTab');
@@ -482,46 +472,42 @@ export class Dock {
     });
     this.stage.appendChild(host);
     this.tabsEl.appendChild(tab);
-    const entry: Tab = { id: info.id, term, fit, host, tab, socket: null, kind, seen: false, closed: false };
+    if (info.tip) tab.dataset.tip = info.tip;
+    const entry: Tab = { id: info.id, term: null, host, tab, channel: null, kind, seen: false, closed: false };
     this.tabs.set(info.id, entry);
     setHidden(this.empty, true);
+    this.ended(entry, !info.alive);
+    if (show) this.select(info.id, false);
+    const { createTerm } = await this.load();
+    if (entry.closed) return;
+    const term = createTerm({ agent, scrollback: this.a.terminal.scrollback, leaves: (e) => leaves(this.a, e) });
+    entry.term = term;
     term.open(host);
-    if (agent) term.write('\x1b[?25l');
-    if (show) this.select(info.id, !agent);
-    this.connect(entry);
+    term.onInput((data) => entry.channel?.send(data));
+    if (this.active === info.id) { this.fitActive(); if (show && !agent) term.focus(); }
+    await this.connect(entry);
   }
 
-  private connect(entry: Tab): void {
-    const socket = this.a.terminal.socket(entry.id);
-    socket.binaryType = 'arraybuffer';
-    entry.socket = socket;
-    socket.addEventListener('open', () => this.sendSize(entry));
-    socket.addEventListener('message', (msg) => {
-      entry.seen = true;
-      if (typeof msg.data === 'string') { entry.term.write(msg.data); return; }
-      try {
-        const ctl = JSON.parse(new TextDecoder().decode(msg.data as ArrayBuffer)) as { type?: string };
-        if (ctl.type === 'exit') entry.term.write(`\r\n\x1b[2m[${entry.kind === 'claude' ? 'Claude Code' : entry.kind === 'codex' || entry.kind === 'cursor' ? this.s(entry.kind) : 'shell'} ${this.s('exited')} · ${this.s('restartAgain')}]\x1b[0m\r\n`);
-      } catch { return; }
-    });
-    socket.addEventListener('close', () => {
-      if (!entry.seen && !entry.closed) entry.term.write(`\r\n\x1b[2m[${this.s('noAnswer')}]\x1b[0m\r\n`);
-    });
-    entry.term.onData((data) => {
-      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'input', data }));
-    });
+  private async connect(entry: Tab): Promise<void> {
+    const silent = (): void => { if (!entry.seen && !entry.closed) this.say(this.s('noAnswer')); };
+    let channel: DockChannel;
+    try { channel = await this.a.terminal.channel(entry.id); } catch { silent(); return; }
+    if (entry.closed) { channel.close(); return; }
+    entry.channel = channel;
+    channel.onData((data) => { entry.seen = true; entry.term?.write(data); });
+    channel.onExit(() => { entry.seen = true; this.ended(entry, true); });
+    channel.onClose?.(() => { if (entry.channel === channel) entry.channel = null; silent(); });
+    this.sendSize(entry);
   }
 
   private sendSize(x: Tab): void {
-    if (x.socket?.readyState === WebSocket.OPEN) x.socket.send(JSON.stringify({ type: 'resize', cols: x.term.cols, rows: x.term.rows }));
+    if (x.term) x.channel?.resize(x.term.cols(), x.term.rows());
   }
 
   private fitActive(): void {
     const x = this.active ? this.tabs.get(this.active) : null;
-    if (!x || x.host.hidden || this.stage.clientHeight < 20) return;
-    const before = `${x.term.cols}x${x.term.rows}`;
-    x.fit.fit();
-    if (`${x.term.cols}x${x.term.rows}` !== before) this.sendSize(x);
+    if (!x?.term || x.host.hidden || this.stage.clientHeight < 20) return;
+    if (x.term.fit()) this.sendSize(x);
   }
 
   private select(id: string, focus = true): void {
@@ -547,18 +533,20 @@ export class Dock {
 
   private async restart(): Promise<void> {
     const x = this.active ? this.tabs.get(this.active) : null;
-    if (!x || x.kind === 'agent') return;
+    if (!x || x.kind === 'agent' || !this.a.terminal.restart) return;
     try { await this.a.terminal.restart(x.id); } catch (err) { this.warn(err); return; }
+    this.ended(x, false);
+    if (!x.channel) { x.term?.reset(); x.seen = false; await this.connect(x); }
     this.sendSize(x);
-    x.term.focus();
+    x.term?.focus();
   }
 
   private async close(id: string): Promise<void> {
     const x = this.tabs.get(id);
     if (!x) return;
     x.closed = true;
-    x.socket?.close();
-    x.term.dispose();
+    x.channel?.close();
+    x.term?.dispose();
     x.host.remove();
     x.tab.remove();
     this.tabs.delete(id);

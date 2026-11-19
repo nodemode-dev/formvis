@@ -27,6 +27,7 @@
 .ft-dock-menu-how { margin: 0; line-height: 1.4; }
 .ft-dock-menu-cmd { padding: var(--dock-space-1) var(--dock-space-2); border-radius: var(--dock-radius-sm); background: var(--dock-input-bg); font-family: var(--dock-font-mono); font-size: var(--dock-fs-xs); overflow-wrap: anywhere; }
 .ft-dock-tab.is-agent .ft-dock-tab-title { color: var(--dock-accent-ink); }
+.ft-dock-tab.is-ended .ft-dock-tab-title { text-decoration: line-through; color: var(--dock-text-muted); }
 .ft-dock-tab-x { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: var(--dock-radius-xs); color: var(--dock-text-muted); }
 .ft-dock-tab-x:hover { background: var(--dock-hover); color: var(--dock-text); }
 .ft-dock-head .ft-dock-ibtn { width: 26px; height: 26px; flex: none; }

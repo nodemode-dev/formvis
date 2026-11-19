@@ -1,4 +1,4 @@
-import type { ConsentChoice, ConsentRequest, DockAdapter, DockAgentStatus, DockTerminal, StoredChoice, StoredChoiceState } from './dock/adapter';
+import type { ConsentChoice, ConsentRequest, DockAdapter, DockAgentStatus, DockChannel, DockProgramStatus, DockTerminal, StoredChoice, StoredChoiceState } from './dock/adapter';
 import { jsonLegacy } from './dock/state';
 import { api, ApiError, socketTo } from './io/api';
 import { isMac } from './ui/dom';
@@ -86,6 +86,30 @@ export const outsideAgents = {
   },
 };
 
+function socketChannel(socket: WebSocket): DockChannel {
+  let data = (_chunk: string | Uint8Array): void => undefined;
+  let exit = (): void => undefined;
+  let closed = (): void => undefined;
+  socket.binaryType = 'arraybuffer';
+  socket.addEventListener('message', (msg) => {
+    if (typeof msg.data === 'string') { data(msg.data); return; }
+    try { if ((JSON.parse(new TextDecoder().decode(msg.data as ArrayBuffer)) as { type?: string }).type === 'exit') exit(); } catch { return; }
+  });
+  socket.addEventListener('close', () => closed());
+  const send = (text: string): void => {
+    if (socket.readyState === WebSocket.OPEN) socket.send(text);
+    else if (socket.readyState === WebSocket.CONNECTING) socket.addEventListener('open', () => socket.send(text), { once: true });
+  };
+  return {
+    send: (chunk) => send(JSON.stringify({ type: 'input', data: chunk })),
+    resize: (cols, rows) => send(JSON.stringify({ type: 'resize', cols, rows })),
+    onData: (handler) => { data = handler; },
+    onExit: (handler) => { exit = handler; },
+    onClose: (handler) => { closed = handler; },
+    close: () => socket.close(),
+  };
+}
+
 export function formvisDock(openSettings: () => void = () => undefined, layerOpen: () => boolean = () => false): DockAdapter {
   return {
     app: { name: 'formvis', noun: 'picture', start: './formvis boot', examples: 'retouch it, remove an object, add text, resize, export' },
@@ -120,13 +144,16 @@ export function formvisDock(openSettings: () => void = () => undefined, layerOpe
       },
       restart: (id) => api.restartTerminal(id),
       close: (id) => api.closeTerminal(id),
-      socket: (id) => socketTo(`/terminal/${id}/stream`),
+      channel: (id) => socketChannel(socketTo(`/terminal/${id}/stream`)),
     },
     agentStatus: async () => {
-      const claude = await api.claudeCodeStatus();
-      let others: DockAgentStatus = {};
-      try { others = ((await (await fetch('/api/claude-code/status')).json()) as { agents?: DockAgentStatus }).agents ?? {}; } catch { others = {}; }
-      return claude || others.codex || others.cursor ? { ...others, ...(claude ? { claude } : {}) } : null;
+      let now: (Partial<DockProgramStatus> & { agents?: DockAgentStatus }) | null = null;
+      try { const r = await fetch('/api/claude-code/status'); now = r.ok ? (await r.json()) as Partial<DockProgramStatus> & { agents?: DockAgentStatus } : null; } catch { now = null; }
+      if (!now) {
+        const old = await api.claudeStatus();
+        return old ? { claude: { installed: old.installed === true, version: old.version ?? null, install: old.install || '', signedIn: old.signedIn ?? null } } : null;
+      }
+      return { ...(now.agents ?? {}), claude: { installed: now.installed === true, version: now.version ?? null, install: now.install ?? '', signedIn: now.signedIn ?? null } };
     },
     chat: {
       status: () => api.claudeStatus(),
