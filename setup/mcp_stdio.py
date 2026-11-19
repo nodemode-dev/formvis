@@ -44,6 +44,7 @@ CONTROL = {"app.open": "open_file", "app.save": "save_project", "app.export": "e
 MENUS = {"ui_menu_list", "ui_menu_invoke"}
 _out = threading.Lock()
 _watching = False
+HEADLESS_FAILED = ""   # --headless: why the window with no screen could not start, given to the client on each tool call
 
 
 def emit(text: str) -> None:
@@ -136,7 +137,9 @@ def forward(line: str) -> str | None:
     refused = outside_roots(msg)
     if refused:
         return json.dumps({"jsonrpc": "2.0", "id": msg.get("id"), "result": {"content": [{"type": "text", "text": refused}], "isError": True}}) if msg.get("id") is not None else None
-    version = ((msg.get("params") or {}).get("_meta") or {}).get("io.modelcontextprotocol/protocolVersion") or (msg.get("params") or {}).get("protocolVersion") or "2025-11-25"
+    if HEADLESS_FAILED and msg.get("method") == "tools/call" and msg.get("id") is not None:
+        return json.dumps({"jsonrpc": "2.0", "id": msg.get("id"), "error": {"code": -32000, "message": f"formvis mcp --headless: {HEADLESS_FAILED}"}})
+    version =((msg.get("params") or {}).get("_meta") or {}).get("io.modelcontextprotocol/protocolVersion") or (msg.get("params") or {}).get("protocolVersion") or "2025-11-25"
     headers = {"Content-Type": "application/json", "Accept": "application/json", "MCP-Protocol-Version": version}
     if _session:
         headers["Mcp-Session-Id"] = _session
@@ -328,17 +331,22 @@ def main() -> None:
 
 
 def start_headless():
-    """The engine started if need be, then a window with no screen when none is open; None when none was needed or it could not start (said on stderr)."""
+    """The engine started if need be, then a window with no screen when none is open; None when none was needed or it could
+    not start (said on stderr, and kept in HEADLESS_FAILED so every tool call gets it back as an MCP error)."""
+    global HEADLESS_FAILED
     import headless as window_host
+    window_host.ENGINE = URL.rsplit("/mcp", 1)[0]
     try:
-        urllib.request.urlopen(URL.rsplit("/mcp", 1)[0] + "/api/version", timeout=2).close()
+        urllib.request.urlopen(window_host.ENGINE + "/api/version", timeout=2).close()
     except (urllib.error.URLError, OSError):
         if not start_engine():
-            print("[formvis mcp] --headless: the engine is not running and could not be started.", file=sys.stderr, flush=True)
+            HEADLESS_FAILED = "the engine is not running and could not be started."
+            print(f"[formvis mcp] --headless: {HEADLESS_FAILED}", file=sys.stderr, flush=True)
             return None
     try:
         return window_host.ensure()
     except RuntimeError as exc:
+        HEADLESS_FAILED = str(exc)
         print(f"[formvis mcp] --headless: {exc}", file=sys.stderr, flush=True)
         return None
 

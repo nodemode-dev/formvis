@@ -2,6 +2,30 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## mcp --headless uses the session's engine and tells the client when the window could not start · after 2.3.5, unreleased (setup/mcp_stdio.py HEADLESS_FAILED, forward, start_headless)
+
+- Kind: fix · logged 2026-11-19.
+- headless.py finds the engine through `FORMVIS_URL` or `FORMVIS_PORT` (8190 by default), while the stdio session uses `FORMVIS_MCP_URL` or the packaged port file. Confirmed by running the old code with `FORMVIS_MCP_URL` on port 21040: it reported "not answering at http://127.0.0.1:8190". `start_headless` now sets `headless.ENGINE` to the session's own address before it checks or starts anything.
+- A failure was said only on standard error, which MCP clients usually hide, and the session went on with no window. The reason is now kept in `HEADLESS_FAILED`, still printed on stderr, and every `tools/call` gets it back as a JSON-RPC error (-32000, "formvis mcp --headless: ..."); initialize, tools/list and the rest still answer, so the client connects and sees why. It holds for the whole session: a window opened later is not picked up until the client restarts the server.
+- Checked by running `mcp_stdio.py --headless` against an engine on 21040 whose key was taken: the tool call came back as that error, and initialize answered.
+- Replaced, quoted exactly:
+
+```py
+    """The engine started if need be, then a window with no screen when none is open; None when none was needed or it could not start (said on stderr)."""
+    import headless as window_host
+    try:
+        urllib.request.urlopen(URL.rsplit("/mcp", 1)[0] + "/api/version", timeout=2).close()
+    except (urllib.error.URLError, OSError):
+        if not start_engine():
+            print("[formvis mcp] --headless: the engine is not running and could not be started.", file=sys.stderr, flush=True)
+            return None
+    try:
+        return window_host.ensure()
+    except RuntimeError as exc:
+        print(f"[formvis mcp] --headless: {exc}", file=sys.stderr, flush=True)
+        return None
+```
+
 ## The window with no screen follows the stored choice and refuses at once where it would ask · after 2.3.5, unreleased (services/agents.py set_outside_allowed, outside_allowed; routers/mcp.py _headless, _screenless, bridge_next, _call, _agent_call; setup/headless.py key_taken, host, ensure, release; frontend app.ts AgentBridge start)
 
 - Kind: fix · logged 2026-11-19.
