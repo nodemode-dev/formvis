@@ -9,8 +9,8 @@ export class AgentConfirmDialog extends Dialog {
   constructor() {
     super('An agent asks', 400);
     this.body.append(this.text);
-    this.button("Don't", 'ghost', () => this.settle(false));
-    this.button('Allow', 'primary', () => this.settle(true));
+    this.button('Deny', 'ghost', () => this.settle(false));
+    this.button('Allow once', 'primary', () => this.settle(true));
   }
 
   ask(title: string, text: string): Promise<boolean> {

@@ -33,6 +33,8 @@ import { TILE_SIZES } from '../engine/tiled';
 import { toggleRow as checkRow, toggleOf, numberRow, selectRow, sliderRow, type Row } from './panels/controls';
 import { PagePrefsRows } from './panels/page-prefs';
 import { SIZES, atClass, generationModels, shapesFor } from './panels/generate-image';
+import { outsideAgents } from '../dock-adapter';
+import type { StoredChoice } from '../dock/adapter';
 
 /** New Document presets by category (Phase 21, UI_SPEC.md section 4, the target's s02 to s14): name, width, height in
  *  pixels and resolution in ppi; common sizes for each kind of work (the Web set as the target lists it). */
@@ -805,9 +807,9 @@ export class SettingsDialog extends Dialog {
     const tFiles = new TemplateFiles(() => this.tplPick.value, this.tplNote, (name) => this.fillTemplates(name));
     tp.append(lmRow('Template', this.tplPick), lmRow('Name', this.tplName), this.tplText, tButtons, tFiles.el, this.tplNote);
     // Outside agents over MCP (1.52.1): off unless turned on here; how to connect Claude Code and Claude Desktop.
-    this.agents.addEventListener('change', () => { this.change({ agentsAllowed: this.agents.checked }); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: this.agents.checked })); });
-    const ag = el('<label class="cv-dialog-row"><span>Allow outside agents (MCP)</span></label>');
-    ag.append(toggleOf(this.agents));
+    this.agents.addEventListener('change', () => { const v = this.agents.value as StoredChoice; this.change({ agentsAllowed: v === 'allowed' }); void outsideAgents.set(v); });
+    const ag = el('<label class="cv-dialog-row"><span>Outside agents</span></label>');
+    ag.append(this.agents);
     const agNote = el('<p class="cv-note">Lets Claude Code, Claude Desktop or another MCP client work in the open document; each change is an undoable step, and anything that costs money asks you first. Claude Code: <code>claude mcp add --transport http formvis <span class="cv-mcp-url">http://127.0.0.1:8190/mcp</span></code>. Claude Desktop: a server whose command is <code>./formvis mcp</code> in the formvis folder. The control port is the engine\'s own port, chosen when the engine starts (FORMVIS_PORT, 8190 unless set): <span class="cv-mcp-port">8190</span>. It cannot change while formvis runs.</p>');
     this.mcpUrlNode = agNote.querySelector('.cv-mcp-url'); this.mcpPortNode = agNote.querySelector('.cv-mcp-port');
     add('Enhanced Controls', grp('Gestures and Sliders', ...this.pageRows.enhanced));
@@ -815,7 +817,7 @@ export class SettingsDialog extends Dialog {
       grp('Panels and Extensions', ...this.pageRows.plugins, this.pluginSwitches.el, this.pluginsFolder.el),
       grp('Connected Apps', nm, this.nodemodeNote, cu, this.comfyuiNote, this.comfyAuth.el, this.recipesList.el),
       grp('Prompts', lm, tp),
-      grp('Outside Agents', ag, agNote),
+      grp('Outside Agents', ag, this.agentsChanged, agNote),
       grp('Keys and Models', this.keysNote, this.apiKeys.el, this.modelFolder.el, this.hfToken.el, this.localModels.el, this.localFiles.el),
       grp('Updates', this.updates.el));
     add('Generative', grp('Models and Layers', this.genPrefs.el));
@@ -1118,7 +1120,8 @@ export class SettingsDialog extends Dialog {
   private readonly libMove = el<HTMLInputElement>('<input type="checkbox" aria-label="Move my projects there" checked>');
   private readonly libApply = el<HTMLButtonElement>('<button class="cv-btn" type="button">Use this folder</button>');
   private libDefault = '';
-  private readonly agents = el<HTMLInputElement>('<input type="checkbox" aria-label="Allow outside agents">');
+  private readonly agents = el<HTMLSelectElement>(`<select class="cv-input" aria-label="${t('Outside agents')}"><option value="ask">${t('Ask')}</option><option value="allowed">${t('Allowed')}</option><option value="blocked">${t('Blocked')}</option></select>`);
+  private readonly agentsChanged = el(`<p class="cv-note" role="status" hidden>${t('The Outside agents setting was changed outside formvis, so formvis asks again.')}</p>`);
   private mcpUrlNode: Element | null = null;
   private mcpPortNode: Element | null = null;
   /** The engine's real MCP address and port, from the engine itself (the port is set when it starts). */
@@ -1242,7 +1245,8 @@ export class SettingsDialog extends Dialog {
     void this.localFiles.refresh();
     this.recipesList.refresh();
     this.showBudget();
-    this.agents.checked = this.prefs.agentsAllowed;
+    this.agents.value = this.prefs.agentsAllowed ? 'allowed' : 'ask';
+    void outsideAgents.get().then((st) => { this.agents.value = st.value; setHidden(this.agentsChanged, !st.changedOutside); });
     if (!this.tplPick.options.length) this.fillTemplates();
     const c = readChoice();
     setValue(this.accent, c.accentColor);

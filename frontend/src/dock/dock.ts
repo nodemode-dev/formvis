@@ -3,10 +3,12 @@ import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import type { DockAdapter, DockKind, DockTerminal, PtyKind } from './adapter';
 import { ChatPane } from './chat';
+import { Consent } from './consent';
 import { cssToken as token, el, q, setDisabled, setHidden, setText } from './dom';
 import { dockIcon as icon } from './icons';
-import { moveLegacy, readState, type DockSide, type DockState } from './state';
+import { moveLegacy, readSeen, readState, type DockSide, type DockState } from './state';
 import { strings, type Say } from './strings';
+import { Tour, type TourStep } from './tour';
 
 export type { DockAdapter, DockKind } from './adapter';
 
@@ -52,6 +54,8 @@ export class Dock {
   onTab: () => void = () => undefined;
   onChange: () => void = () => undefined;
   yieldsKey: () => boolean = () => false;
+  readonly consent: Consent;
+  private readonly tour: Tour;
 
   constructor(private readonly a: DockAdapter) {
     const s = strings(a);
@@ -76,6 +80,7 @@ export class Dock {
     <div class="ft-dock-menu" role="menu" hidden>
       <div class="ft-dock-menu-row" data-kind="codex"><button type="button" class="${c.button} ft-dock-menu-go" role="menuitem">${icon('codex', 13)}<span>${s('codex')}</span></button><p class="ft-dock-menu-how ${c.note}"></p><code class="ft-dock-menu-cmd"></code></div>
       <div class="ft-dock-menu-row" data-kind="cursor"><button type="button" class="${c.button} ft-dock-menu-go" role="menuitem">${icon('cursor', 13)}<span>${s('cursor')}</span></button><p class="ft-dock-menu-how ${c.note}"></p><code class="ft-dock-menu-cmd"></code></div>
+      <div class="ft-dock-menu-row ft-dock-menu-links"><button type="button" class="${c.button} ft-dock-menu-settings" role="menuitem">${s('outsideAgents')}</button><button type="button" class="${c.button} ft-dock-menu-tour" role="menuitem">${s('showAround')}</button></div>
     </div>
     <div class="ft-dock-stage"><p class="ft-dock-empty ${c.note}" hidden>${s('empty')}</p>
       <div class="ft-dock-note" role="status" hidden><span class="ft-dock-note-text"></span><code class="ft-dock-note-cmd" hidden></code><button type="button" class="${c.button} ft-dock-note-copy" hidden>${s('copy')}</button><button type="button" class="${ib} ft-dock-note-x" title="${s('dismiss')}" aria-label="${s('dismiss')}">${icon('close', 12)}</button></div></div>
@@ -107,6 +112,10 @@ export class Dock {
       q(this.root, `.ft-dock-menu-row[data-kind="${kind}"] .ft-dock-menu-go`).addEventListener('click', () => { this.menu(false); void this.program(kind); });
     }
     q(this.root, '.ft-dock-more').addEventListener('click', () => { this.menu(q(this.root, '.ft-dock-menu').hidden === true); });
+    q(this.root, '.ft-dock-menu-settings').addEventListener('click', () => { this.menu(false); a.openSettings(); });
+    q(this.root, '.ft-dock-menu-tour').addEventListener('click', () => { this.menu(false); void this.guide(); });
+    this.consent = new Consent(a);
+    this.tour = new Tour(a);
     document.addEventListener('pointerdown', (e) => { if (!(e.target as Element).closest?.('.ft-dock-menu, .ft-dock-more')) this.menu(false); }, true);
     void this.programs();
     this.restartBtn.addEventListener('click', () => void this.restart());
@@ -133,6 +142,8 @@ export class Dock {
     this.keep();
     this.onChange();
     window.dispatchEvent(new Event('resize'));
+    if (on && !readSeen(localStorage, this.a.storage.key) && !this.tour.isRunning()) void this.guide();
+    if (!on) this.tour.end(false);
     if (on) void this.ensure(seed);
     this.onTab();
   }
@@ -218,7 +229,33 @@ export class Dock {
 
   private keep(): void {
     const state: DockState = { open: this.isOpen(), side: this.side(), h: this.height(), w: this.width(), tab: this.activeKind() ?? this.saved().tab };
-    try { localStorage.setItem(this.a.storage.key, JSON.stringify(state)); } catch { return; }
+    const seen = readSeen(localStorage, this.a.storage.key);
+    try { localStorage.setItem(this.a.storage.key, JSON.stringify(seen ? { ...state, seen } : state)); } catch { return; }
+  }
+
+  async guide(): Promise<void> {
+    if (!this.isOpen()) {
+      const first = !readSeen(localStorage, this.a.storage.key);
+      this.toggle(true, 'none');
+      if (first) return;
+    }
+    await this.showChat();
+    let claude = null;
+    try { claude = (await this.a.agentStatus())?.claude ?? null; } catch { claude = null; }
+    const middle: TourStep = !claude?.installed ? { target: '.ft-dock-claude', title: 'tourMissingTitle', body: 'tourMissingBody', cmd: claude?.install || 'npm install -g @anthropic-ai/claude-code' }
+      : claude.signedIn === false ? { target: '.ft-dock-claude', title: 'tourSignInTitle', body: 'tourSignInBody' }
+        : { target: '.ft-dock-claude', title: 'tourReadyTitle', body: 'tourReadyBody' };
+    const steps: TourStep[] = [
+      { target: '.ft-dock', title: 'tourPanelTitle', body: 'tourPanelBody' },
+      { target: '.ft-dock-ask-input', title: 'tourChatTitle', body: 'tourChatBody' },
+      middle,
+      { target: '.ft-dock-more', title: 'tourAskTitle', body: 'tourAskBody' },
+      { target: '.ft-dock-side', title: 'tourSideTitle', body: 'tourSideBody' },
+    ];
+    this.tour.start(steps, () => {
+      const state = this.saved();
+      try { localStorage.setItem(this.a.storage.key, JSON.stringify({ ...state, seen: true })); } catch { return; }
+    });
   }
 
   side(): DockSide { return document.documentElement.getAttribute('data-ft-dock-side') === 'right' ? 'right' : 'bottom'; }

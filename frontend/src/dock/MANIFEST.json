@@ -1,14 +1,16 @@
 {
   "module": "dock",
-  "version": "1.0.0-stage1",
+  "version": "1.1.0",
   "files": {
-    "adapter.ts": "a396742bba31fc4a45b8918a9557931c6c40b2fce1f1db8c127082a869b2b4dd",
-    "chat.ts": "93b951ab3f5b0d64968d464647bdc596d7018e03bf0addc07099dca9fe6c45fe",
-    "dock.css": "26575bf288415542b0edc3da108b901a653cd17565c4a5d1d840c0b39ff5642e",
-    "dock.ts": "ba36be8c89e73c9364e45a2bad38169253dc006e28a276562b81d7c32a68041a",
+    "adapter.ts": "86c4c15172dacab174aa414730ea6f6d8c8d2e7c524de0a1f614db91f3d32755",
+    "chat.ts": "6e7a8f91edc2d2fdf5b5219973fe6986c4073b765ab4f7de75cabe5ff6c31543",
+    "consent.ts": "5bacf07db3160f5662ee66fa27314c3bd7430e60880150d59026e6d37a4b0411",
+    "dock.css": "6b1df904f9cfa87055b92a351c6e9b7574c3d7a8a154310b38b869d728c742b7",
+    "dock.ts": "ae23a18290fcc9555f99fd2fb8f0c1eaf6bc0acbc7e7f79b1eae1a7d2e78ace3",
     "dom.ts": "dc2adf64e70e600f28eaa2d84eed0b4ad7deadb6e200cd489ee7abb583269e62",
     "icons.ts": "e5b6a5732ee5ab8ab1e682b6806c1493c0c167c2d9161733277bb179cfbc179b",
-    "state.ts": "e0f53583f87aa69d338823187d82f67b5fb563426e9229beec6d751c8e413580",
-    "strings.ts": "2f00d5b69c53b8dcce45b08fdb48300c2f24f92ced3fa0ecfe9bf529b3d5252d"
+    "state.ts": "e21135745a621f97a9948538c5b41ddc980f551bf70afe1a10d7818a4c487977",
+    "strings.ts": "dc30b37507fc7286fc9ae759c509ddda4fe5494a0b7eed94b353ac37fdcb9599",
+    "tour.ts": "99bde478d11dd55a24218392fd5d47e8f6a5184a510df624a04ef455679c0895"
   }
 }

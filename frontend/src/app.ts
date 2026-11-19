@@ -217,7 +217,7 @@ import { AssistantPanel } from './ui/panels/assistant';
 import { installAgentConnect } from './ui/panels/agent-connect';
 import { installColorSettings } from './ui/panels/colour-settings-dialog';
 import { Dock as AgentDock } from './dock/dock';
-import { formvisDock } from './dock-adapter';
+import { formvisDock, outsideAgents } from './dock-adapter';
 import { HelpDialog } from './ui/panels/help';
 import { VERSION } from './version';
 import { WhatsNewDialog } from './ui/panels/whats-new';
@@ -3665,7 +3665,7 @@ export function startApp(): void {
   const psdReportDialog = new PsdReportDialog();
   // Allow, asked in the window when an agent first calls (1.53.3), is the same setting as Preferences > Plugins.
   const agents = new AgentBridge(engine, {
-    ask: (title, text) => agentConfirm.ask(title, text), note: (t) => toast(t, 'info'),
+    ask: (title, text) => agentConfirm.ask(title, text), note: (t) => toast(t, 'info'), consent: (id, tool, client) => outsideAgents.arrive(id, tool, client),
     allow: () => { savePrefs({ ...loadPrefs(), agentsAllowed: true }); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: true })); },
     // 1.53.3: what agents reach through the app, the same paths as its menus.
     openFile: (f) => openFiles([f]),
@@ -3687,7 +3687,7 @@ export function startApp(): void {
     status: (note, seconds) => status.setAgentNote(note, seconds),
   });
   void fetch('/api/agents').then((r) => (r.ok ? r.json() as Promise<{ allowed?: unknown }> : null)).then((s) => {
-    const stored = typeof s?.allowed === 'boolean' ? s.allowed : null;
+    const stored = outsideAgents.blocked() ? false : typeof s?.allowed === 'boolean' ? s.allowed : null;
     if (stored !== null && stored !== loadPrefs().agentsAllowed) savePrefs({ ...loadPrefs(), agentsAllowed: stored });
     agents.setEnabled(stored ?? loadPrefs().agentsAllowed);
   }, () => agents.setEnabled(loadPrefs().agentsAllowed));
@@ -3880,7 +3880,7 @@ export function startApp(): void {
   document.body.appendChild(assistant.el);
   // The terminal dock (DEV_PLAN 28.5) with its Claude Code tabs, Chat tab and ask bar: its grid row sits above the status
   // bar and is reserved by terminal.css from the first frame; the title bar's two buttons follow its active tab.
-  const termDock = new AgentDock(formvisDock());
+  const termDock = new AgentDock(formvisDock(() => dialogs.settings.show('Plugins')));
   termDock.onChange = () => { window.dispatchEvent(new Event('resize')); };
   termDock.onTab = () => { titleTools.syncDock(termDock.isOpen(), termDock.activeKind()); };
   installAgentConnect(commands, engine);

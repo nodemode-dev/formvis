@@ -48,4 +48,18 @@ export interface DockAdapter {
     answer(id: string, allow: boolean): Promise<void>;
     socket(): WebSocket;
   };
+  consent: {
+    subscribe(handler: (request: ConsentRequest) => void): void;
+    answer(id: string, choice: ConsentChoice): Promise<void>;
+  };
+  storedChoice: {
+    get(): Promise<StoredChoiceState>;
+    set(value: StoredChoice): Promise<void>;
+  };
+  openSettings(): void;
 }
+
+export type ConsentChoice = 'deny' | 'once' | 'always';
+export type StoredChoice = 'ask' | 'allowed' | 'blocked';
+export interface ConsentRequest { id: string; agent: string; what: string }
+export interface StoredChoiceState { value: StoredChoice; changedOutside: boolean }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moveLegacy, readState, type DockStore } from '../src/dock/state';
+import { moveLegacy, readSeen, readState, type DockStore } from '../src/dock/state';
 
 function store(init: Record<string, string> = {}): DockStore & { data: Map<string, string> } {
   const data = new Map(Object.entries(init));
@@ -28,5 +28,11 @@ describe('dock state', () => {
     const s = store({ 'formvis.agentDock': '{not json' });
     expect(readState(s, 'formvis.agentDock', [], sizes)).toEqual({ open: false, side: 'bottom', h: 280, w: 440, tab: '' });
     expect(moveLegacy(store(), 'formvis.agentDock', ['formvis.terminal'], sizes)).toBe(false);
+  });
+
+  it('reads the guide as seen only when the stored state says so', () => {
+    expect(readSeen(store(), 'formvis.agentDock')).toBe(false);
+    expect(readSeen(store({ 'formvis.agentDock': JSON.stringify({ open: true, seen: true }) }), 'formvis.agentDock')).toBe(true);
+    expect(readSeen(store({ 'formvis.agentDock': '{not json' }), 'formvis.agentDock')).toBe(false);
   });
 });

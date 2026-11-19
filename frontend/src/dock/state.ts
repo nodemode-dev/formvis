@@ -13,6 +13,10 @@ export function readState(store: DockStore, key: string, legacy: string[], defau
   };
 }
 
+export function readSeen(store: DockStore, key: string): boolean {
+  try { const v = store.getItem(key); return v ? (JSON.parse(v) as { seen?: unknown }).seen === true : false; } catch { return false; }
+}
+
 export function moveLegacy(store: DockStore, key: string, legacy: string[], defaults: { h: number; w: number }): boolean {
   try {
     if (store.getItem(key) !== null || !legacy.some((k) => store.getItem(k) !== null)) return false;

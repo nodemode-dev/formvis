@@ -3,7 +3,7 @@ import { transformBounds, type Engine } from '../../engine';
 import type { Commands } from '../commands';
 import { el, patchList, q, setChecked, setClass, setHidden, setText, setValue } from '../dom';
 import { icon } from '../icons';
-import { loadPrefs, savePrefs } from '../prefs';
+import { outsideAgents } from '../../dock-adapter';
 import { toast } from '../toast';
 
 const KEY = 'formvis.agentConnect';
@@ -123,8 +123,7 @@ export class AgentConnect {
 
   private switchAgents(on: boolean): void {
     void post('/enabled', { enabled: on });
-    savePrefs({ ...loadPrefs(), agentsAllowed: on });
-    window.dispatchEvent(new CustomEvent('formvis:agents', { detail: on }));
+    void outsideAgents.set(on ? 'allowed' : 'ask');
   }
 
   private connect(): void {
@@ -193,7 +192,7 @@ export class AgentConnect {
       key: (a) => a.id,
       create: (a) => {
         const row = el(`<div class="ft-connect-ask"><span class="ft-connect-ask-what"></span><span class="ft-connect-ask-why"></span><span class="ft-connect-ask-sum"></span>
-          <div class="ft-connect-ask-row"><button type="button" class="cv-btn cv-btn-ghost" data-act="deny">Decline</button><button type="button" class="cv-btn cv-btn-primary" data-act="allow">Approve</button></div></div>`);
+          <div class="ft-connect-ask-row"><button type="button" class="cv-btn cv-btn-ghost" data-act="deny">Deny</button><button type="button" class="cv-btn cv-btn-primary" data-act="allow">Allow once</button></div></div>`);
         q(row, '[data-act="deny"]').addEventListener('click', () => void post('/approve', { id: a.id, allow: false }));
         q(row, '[data-act="allow"]').addEventListener('click', () => void post('/approve', { id: a.id, allow: true }));
         this.fillAsk(row, a);

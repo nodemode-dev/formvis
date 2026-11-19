@@ -1,9 +1,41 @@
-import type { DockAdapter, DockAgentStatus, DockTerminal } from './dock/adapter';
+import type { ConsentChoice, ConsentRequest, DockAdapter, DockAgentStatus, DockTerminal, StoredChoice, StoredChoiceState } from './dock/adapter';
 import { api, ApiError, socketTo } from './io/api';
 import { isMac } from './ui/dom';
 import { t } from './ui/i18n';
+import { loadPrefs, savePrefs } from './ui/prefs';
 
-export function formvisDock(): DockAdapter {
+const BLOCKED = 'formvis.agentsBlocked';
+const handlers: Array<(r: ConsentRequest) => void> = [];
+const early: ConsentRequest[] = [];
+const blocked = (): boolean => { try { return localStorage.getItem(BLOCKED) === '1'; } catch { return false; } };
+const reply = (id: string, result: Record<string, boolean>): Promise<void> =>
+  fetch('/api/mcp/bridge/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, result }) }).then(() => undefined);
+
+export const outsideAgents = {
+  blocked,
+  arrive(id: string, tool: string, client: string): void {
+    if (blocked()) { void reply(id, { allowed: false }).catch(() => undefined); return; }
+    const request: ConsentRequest = { id, agent: client, what: tool ? `use ${tool.replace(/_/g, ' ')}` : 'make changes' };
+    if (handlers.length) for (const h of handlers) h(request); else early.push(request);
+  },
+  subscribe(handler: (r: ConsentRequest) => void): void { handlers.push(handler); for (const r of early.splice(0)) handler(r); },
+  async answer(id: string, choice: ConsentChoice): Promise<void> {
+    if (choice === 'always') await outsideAgents.set('allowed');
+    await reply(id, choice === 'deny' ? { allowed: false } : { allowed: true, once: true });
+  },
+  async get(): Promise<StoredChoiceState> {
+    let changedOutside = false;
+    try { changedOutside = ((await (await fetch('/api/agents')).json()) as { sealBroken?: unknown }).sealBroken === true; } catch { changedOutside = false; }
+    return { value: blocked() ? 'blocked' : loadPrefs().agentsAllowed ? 'allowed' : 'ask', changedOutside };
+  },
+  async set(value: StoredChoice): Promise<void> {
+    try { if (value === 'blocked') localStorage.setItem(BLOCKED, '1'); else localStorage.removeItem(BLOCKED); } catch { /* kept for this session only */ }
+    if (loadPrefs().agentsAllowed !== (value === 'allowed')) savePrefs({ ...loadPrefs(), agentsAllowed: value === 'allowed' });
+    window.dispatchEvent(new CustomEvent('formvis:agents', { detail: value === 'allowed' }));
+  },
+};
+
+export function formvisDock(openSettings: () => void = () => undefined): DockAdapter {
   return {
     app: { name: 'formvis', noun: 'picture', start: './formvis boot', examples: 'retouch it, remove an object, add text, resize, export' },
     storage: { key: 'formvis.agentDock', legacy: ['formvis.terminal'] },
@@ -52,5 +84,8 @@ export function formvisDock(): DockAdapter {
       answer: (id, allow) => api.claudeAllow(id, allow),
       socket: () => socketTo('/agent/claude/stream'),
     },
+    consent: { subscribe: (handler) => outsideAgents.subscribe(handler), answer: (id, choice) => outsideAgents.answer(id, choice) },
+    storedChoice: { get: () => outsideAgents.get(), set: (value) => outsideAgents.set(value) },
+    openSettings,
   };
 }

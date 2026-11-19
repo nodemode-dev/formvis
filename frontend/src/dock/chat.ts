@@ -258,7 +258,7 @@ export class ChatPane {
     const c = this.a.classes;
     const card = this.add('ft-chat-ask');
     card.append(el('<div class="ft-chat-ask-text"></div>'), el('<code class="ft-chat-ask-sum"></code>'),
-      el(`<div class="ft-chat-ask-row"><button type="button" class="${c.button} ${c.primaryButton} ft-chat-allow">${this.s('allow')}</button><button type="button" class="${c.button} ft-chat-deny">${this.s('deny')}</button><span class="ft-chat-ask-state"></span></div>`));
+      el(`<div class="ft-chat-ask-row"><button type="button" class="${c.button} ${c.primaryButton} ft-chat-allow">${this.s('consentOnce')}</button><button type="button" class="${c.button} ft-chat-deny">${this.s('deny')}</button><span class="ft-chat-ask-state"></span></div>`));
     setText(q(card, '.ft-chat-ask-text'), `${this.s('asksToUse')} ${toolName(tool)}`);
     setText(q(card, '.ft-chat-ask-sum'), summary);
     q(card, '.ft-chat-allow').addEventListener('click', () => { void this.a.chat.answer(id, true).catch(() => undefined); });

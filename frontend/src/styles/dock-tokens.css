@@ -31,4 +31,7 @@
   --dock-term-cursor: var(--accent-color);
   --dock-term-selection: var(--accent-color-dim);
   --dock-term-font-size: var(--fs-13);
+  --dock-fs-md: var(--fs-14);
+  --dock-scrim: var(--bg-scrim);
+  --dock-outline: var(--border-light);
 }
