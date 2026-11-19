@@ -1,6 +1,6 @@
 ---
 name: export
-description: Saving and delivering work from formvis through its MCP tools. Use to export a picture as PNG, JPEG or WebP at an absolute path, export at a particular width or height, save an editable .fmv project, keep a transparent PNG, hand back a file for a destination such as a thumbnail, social post or web page, or render a video timeline to mp4, gif or frames.
+description: Saving and delivering work from formvis through its MCP tools. Use to export a picture as PNG, JPEG or WebP at an absolute path, export at a particular width or height, save an editable .fvd project, keep a transparent PNG, hand back a file for a destination such as a thumbnail, social post or web page, or render a video timeline to mp4, gif or frames.
 ---
 
 # export
@@ -12,7 +12,7 @@ Tools: `export_image`, `save_project`, `timeline_render`. All three write a file
 | Tool | Parameters | Notes |
 | --- | --- | --- |
 | `export_image` | `path` (absolute, ending `.png`, `.jpg`, `.jpeg` or `.webp`), `quality` (0.1 to 1, default 0.92) | Writes the document as it looks: visible layers, masks, adjustments, styles flattened. The type comes from the extension; `quality` matters for JPEG and WebP |
-| `save_project` | `path` (absolute, ending `.fmv`) | Keeps every layer, mask, adjustment and text editable. Reopen with `open_file` |
+| `save_project` | `path` (absolute, ending `.fvd`) | Keeps every layer, mask, adjustment and text editable. Reopen with `open_file` |
 | `timeline_render` | `path` (`.mp4`, `.gif`, `.zip`), `from`, `to`, `scale` | See `timeline-and-video` |
 
 `export_image` has no size parameter. To deliver at a size, resize first (and undo afterwards if the document should stay full size).
@@ -46,7 +46,7 @@ Tools: `export_image`, `save_project`, `timeline_render`. All three write a file
 For each target: `resize_image`, `export_image` to a separately named file, `undo`. Always `undo` before the next size so each resize starts from the original, never from an already shrunk copy.
 
 ### Keep working tomorrow
-`save_project` with a `.fmv` path next to the original; tell the person the path. Reopen with `open_file`.
+`save_project` with a `.fvd` path next to the original; tell the person the path. Reopen with `open_file`.
 
 ### Web-friendly photo
 `resize_image` to the display width (1600 is typical), apply `unsharpMask` lightly if wanted (see `adjustments-and-filters`), `export_image` as `.webp` with `quality: 0.85`, or `.jpg` at 0.85.
@@ -61,6 +61,6 @@ PDF, TIFF, EXR, HDR, AVIF, animated GIF from a frame animation, PSD, CMYK and 16
 ## When it fails
 
 - "Give an absolute path": use a full path such as `/Users/you/Pictures/photo.png`.
-- "formvis takes .fmv here" or ".png, .jpg, .jpeg, .webp here": fix the extension.
+- "formvis takes .fvd here" or ".png, .jpg, .jpeg, .webp here": fix the extension.
 - "The folder ... does not exist": choose an existing folder.
 - "Could not write the file": permission or disk; tell the person the message.
