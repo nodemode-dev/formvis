@@ -123,12 +123,14 @@ def test_the_status_route_reports_the_four_programs_with_how_each_was_found_and_
     stand_in(dock_start / "odd" / "cursor-agent")
     (dock_start / ".shell-path").write_text(str(dock_start / "odd"))
     status = client.get("/api/claude-code/status?fresh=true").json()
-    assert (status["installed"], status["state"], status["how"], status["version"], status["signedIn"]) == (True, "runs", "folder", "2.9.9", True)
+    assert (status["installed"], status["finding"], status["how"], status["version"], status["signedIn"]) == (True, "runs", "folder", "2.9.9", True)
+    chat = client.get("/api/agent/claude/status").json()
+    assert (chat["finding"], chat["state"], chat["how"]) == ("runs", "idle", "folder")
     agents = status["agents"]
-    assert (agents["codex"]["state"], agents["codex"]["how"], agents["codex"]["version"], agents["codex"]["install"]) == ("runs", "folder", "9.9.9", "")
-    assert (agents["cursor"]["state"], agents["cursor"]["how"], agents["cursor"]["path"]) == ("runs", "shell", str(dock_start / "odd" / "cursor-agent"))
+    assert (agents["codex"]["finding"], agents["codex"]["how"], agents["codex"]["version"], agents["codex"]["install"]) == ("runs", "folder", "9.9.9", "")
+    assert (agents["cursor"]["finding"], agents["cursor"]["how"], agents["cursor"]["path"]) == ("runs", "shell", str(dock_start / "odd" / "cursor-agent"))
     missing = agents["antigravity"]
-    assert (missing["installed"], missing["state"], missing["path"], missing["title"]) == (False, "missing", None, "Antigravity")
+    assert (missing["installed"], missing["finding"], missing["path"], missing["title"]) == (False, "missing", None, "Antigravity")
     assert missing["looked"][0] == "PATH (/usr/bin:/bin:/usr/sbin:/sbin)" and missing["looked"][-1] == "your shell (zsh, login and interactive)"
     assert missing["said"].startswith("Antigravity was not found. Looked in: PATH (/usr/bin:/bin:/usr/sbin:/sbin); ~/.local/bin, ") and missing["install"] in missing["said"]
 

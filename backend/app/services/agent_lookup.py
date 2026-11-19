@@ -437,6 +437,7 @@ def sentence(found: Found, install: str = "", otherwise: str = "") -> str:
 
 
 def answer(found: Found, install: str = "", otherwise: str = "") -> dict:
-    """The fields a status route adds for one program: installed is true only when the program runs."""
-    return {"installed": found.state == "runs", "path": found.path, "version": found.version, "state": found.state, "how": found.how,
+    """The fields a status route adds for one program: installed is true only when the program runs, and finding is
+    the three-way answer (runs, broken, missing)."""
+    return {"installed": found.state == "runs", "path": found.path, "version": found.version, "finding": found.state, "how": found.how,
             "looked": list(found.looked), "error": found.error, "said": sentence(found, install, otherwise)}
