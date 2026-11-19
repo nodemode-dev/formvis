@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock module 2.2.0, step 2: Antigravity has its picture, and a tab of any listed kind takes the accent · after 2.4.0, unreleased (dock/icons.ts antigravity; dock/dock.css .ft-dock-tab.is-program; dock/dock.ts attach, toggleKind)
+
+- Kind: feature · logged 2026-11-19 · DOCK_MODULE_2_2_BRIEF item 2.
+- The picture is drawn by hand for this module, inline, in `currentColor`: a ball held above a ground line with three short lift strokes. It is not Google's mark. Antigravity's label is the name `antigravity` in `strings.ts` (step 1); its line in the menu and its "not found" sentence are the list's `programReady` and `programMissing` with its name filled in, which the 27 tables already hold, so no sentence was added. The first-run guide names no program but Claude Code, as before: a step for each kind would change the count in every app that offers Codex or Cursor.
+- A tab of a kind from the list carries `is-program` beside `is-[kind]`, and the accent rule names that class, so a later kind needs no rule. `toggleKind` takes the kinds an app adds, like `show`.
+- DOM: the head is a fixed 36 px row and the menu is laid over the stage, so neither moves anything when a kind is found or missing. Seen under 4 times CPU slowdown in formvis with the adapter of the next commit, every animation frame recorded from load, across opening the menu and across opening the tab: with a stand-in agy the head box was `0,593,1440,36` in all 236, 160 and 250 frames, the menu box `1092,633,340,254.17` in every frame it was shown, the stage `0,629,1440,203`; without agy the head was the same in 232 and 161 frames and the menu `1092,633,340,384.44` in every frame it was shown (taller because the row holds the sentence and the command). The Antigravity button is made hidden and shown when the status says the program runs, as the Codex and Cursor buttons are.
+- Ran: `tsc --noEmit` clean, the strict set clean; `./formvis agents sync` rewrote MANIFEST.json.
+
 ## Dock module 2.2.0, step 1: the agent kinds are a list, and the adapter says which of them it offers · after 2.4.0, unreleased (dock/agents.ts DockAgentKind, DOCK_AGENTS, DOCK_PLAIN, agentKind, agentKinds; dock/adapter.ts DockAdapter, DockTabs, DockTerminal, DockAgentStatus, DockProgramStatus label and note, DockOwnAsk, DockChatPane; dock/dock.ts Dock, Program, kinds, label, listPrograms, programs, offers, show, activeKind, program, attach, refresh; dock/strings.ts antigravity; dock/tour.ts and dock/chat.ts adapter type; tests/dock-i18n.test.ts NAMES)
 
 - Kind: feature · logged 2026-11-19 · DOCK_MODULE_2_2_BRIEF item 1.

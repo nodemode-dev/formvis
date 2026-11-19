@@ -323,7 +323,7 @@ export class Dock<K extends string = never> {
     }
   }
 
-  async toggleKind(kind: DockKind): Promise<void> {
+  async toggleKind(kind: DockKind | K): Promise<void> {
     if (this.isShowing(kind)) this.toggle(false);
     else await this.show(kind);
   }
@@ -603,7 +603,7 @@ export class Dock<K extends string = never> {
     const agent = kind === 'agent';
     const mark = program ? agentKind(kind).icon : 'terminal';
     const host = el('<div class="ft-term" translate="no" dir="ltr" hidden></div>');
-    const tab = el(`<button type="button" class="ft-dock-tab${kind === 'shell' || agent ? '' : ` is-${kind}`}${agent ? ' is-agent' : ''}" role="tab" aria-selected="false">${icon(mark, 13)}<span class="ft-dock-tab-title"></span><span class="ft-dock-tab-x" role="button" aria-label="${this.s('closeTab')}">${icon('close', 11)}</span></button>`);
+    const tab = el(`<button type="button" class="ft-dock-tab${kind === 'shell' || agent ? '' : ` is-${kind}`}${agent ? ' is-agent' : ''}${program ? ' is-program' : ''}" role="tab" aria-selected="false">${icon(mark, 13)}<span class="ft-dock-tab-title"></span><span class="ft-dock-tab-x" role="button" aria-label="${this.s('closeTab')}">${icon('close', 11)}</span></button>`);
     setText(q(tab, '.ft-dock-tab-title'), info.title);
     if (agent) tab.title = this.s('agentTab');
     tab.addEventListener('click', (e) => {
