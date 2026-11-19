@@ -19,6 +19,10 @@ class EnabledBody(BaseModel):
     enabled: bool
 
 
+class BlockedBody(BaseModel):
+    blocked: bool
+
+
 class PolicyBody(BaseModel):
     client: str = Field(min_length=1, max_length=80)
     policy: str = Field(max_length=20)
@@ -77,6 +81,13 @@ def feed(request: Request, limit: int = 100) -> list[dict]:
 async def enable(body: EnabledBody, request: Request) -> dict:
     require_local(request)
     agents.set_enabled(body.enabled)
+    return agents.state()
+
+
+@router.post("/blocked")
+async def block(body: BlockedBody, request: Request) -> dict:
+    require_local(request)
+    agents.set_blocked(body.blocked)
     return agents.state()
 
 

@@ -643,6 +643,8 @@ _taken: dict[str, float] = {}   # requests the window took and has not answered 
 _allowed = False
 _headless = False
 _declined_until = 0.0
+_declined: dict[str, float] = {}
+_questions: dict[str, dict] = {}
 _opened_at = 0.0
 # Calls waiting on the window, by (client, JSON-RPC request id), so notifications/cancelled can stop one.
 _inflight: dict[tuple[str, str], asyncio.Task] = {}
@@ -723,12 +725,15 @@ async def _ask(name: str, args: dict, timeout: float, once: bool = False) -> dic
     if _sink.get() is not None:
         _sinks[rid] = _sink.get()
     item = {"id": rid, "name": name, "arguments": args, **({"inapp": True} if _inapp_call.get() else {}), **({"once": True} if once else {})}
+    if name == "__consent__":
+        _questions[rid] = {"id": rid, "tool": args.get("tool", ""), "client": args.get("client", ""), "until": time.monotonic() + timeout}
     _put(item)
     try:
         return await asyncio.wait_for(fut, timeout=timeout)
     except asyncio.TimeoutError:
         return None
     finally:
+        _questions.pop(rid, None)
         _waiting.pop(rid, None)
         _sinks.pop(rid, None)
         _taken.pop(rid, None)
@@ -1120,13 +1125,19 @@ async def _call(name: str, args: dict) -> dict:
         if not _live():
             return _fail("formvis is not open. Start it with ./formvis boot (or open the formvis app), then retry.")
     if not _allowed and not _inapp_call.get():
+        who = _caller.get()
+        if agents.standing(who):
+            out = await _ask(name, args, 600, once=True)
+            return out if out is not None else _fail("formvis did not answer in time: it may be busy with a long task. Check the formvis window, then retry.")
         if _screenless():
             return _fail("Outside agents are not allowed in formvis, and the formvis window running now has no screen to ask in. Ask the person to allow them in formvis (Preferences > Plugins), then retry.")
-        if time.monotonic() < _declined_until:
+        if time.monotonic() < max(_declined_until, _declined.get(who, 0.0)):
             return _fail("The person chose not to allow outside agents in formvis just now. Ask them to turn on Allow outside agents (Preferences > Plugins), then retry.")
-        answer = await _ask("__consent__", {"tool": name, "client": _caller.get()}, 180)
-        if not (answer or {}).get("allowed"):
-            _declined_until = time.monotonic() + 600
+        answer = await _ask("__consent__", {"tool": name, "client": who, "wait": 180}, 180)
+        if answer is None:
+            return _fail("Nobody answered the question in the formvis window in time. Ask the person to look at the formvis window, then retry.")
+        if not answer.get("allowed"):
+            _declined[who] = time.monotonic() + 600
             return _fail("The person did not allow outside agents in formvis. Ask them to allow it (the question in the formvis window, or Preferences > Plugins), then retry.")
         if (answer or {}).get("once") is True:
             out = await _ask(name, args, 600, once=True)
@@ -1602,6 +1613,7 @@ async def bridge_next(request: Request) -> Response:
         agents.set_outside_allowed(allowed)
     if allowed and not _allowed:
         globals()["_declined_until"] = 0.0
+        _declined.clear()
     _allowed = allowed
     deadline = time.monotonic() + 20
     eligible = lambda it: allowed or it.get("name") == "__consent__" or it.get("inapp") is True or it.get("once") is True   # not allowed: only the question, a call allowed once and the window's own Claude Code go out
@@ -1626,6 +1638,13 @@ async def bridge_next(request: Request) -> Response:
         _taken[str(item.get("id"))] = time.monotonic()
         return Response(content=json.dumps(item), media_type="application/json")
     return Response(status_code=204)
+
+
+@router.get("/api/mcp/bridge/questions")
+async def bridge_questions(request: Request) -> dict:
+    window_key.require(request)
+    now = time.monotonic()
+    return {"questions": [{"id": q["id"], "tool": q["tool"], "client": q["client"], "wait": max(0, round(q["until"] - now))} for q in _questions.values()]}
 
 
 @router.post("/api/mcp/bridge/result")

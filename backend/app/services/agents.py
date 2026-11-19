@@ -27,7 +27,7 @@ _limits: dict = {"roots": [], "text_chars": 200_000, "image_bytes": 12 * 1024 * 
 _enabled = True
 _loaded = False
 _policies: dict[str, str] = {}
-_stored: dict = {"allowed": None}
+_stored: dict = {"allowed": None, "blocked": False}
 _seal: dict = {"state": "unsealed"}
 _clients: dict[str, dict] = {}
 _sessions: dict[str, tuple[str, str]] = {}
@@ -56,6 +56,7 @@ def _load() -> None:
         broken = _seal["state"] == "broken"
         _policies.update({k: ("ask" if broken and v == "allow" else v) for k, v in (data.get("policies") or {}).items() if v in POLICIES})
         _stored["allowed"] = False if broken else data.get("allowed") if isinstance(data.get("allowed"), bool) else None
+        _stored["blocked"] = data.get("blocked") is True
         saved = data.get("limits") or {}
         _limits["roots"] = [str(r) for r in saved.get("roots", []) if isinstance(r, str) and r.strip()][:32]
         for key, (low, high) in LIMIT_RANGES.items():
@@ -71,7 +72,7 @@ def _save() -> None:
     try:
         fd, temporary = tempfile.mkstemp(prefix=".agents-", suffix=".tmp", dir=path.parent)
         with os.fdopen(fd, "w", encoding="utf-8") as out:
-            out.write(json.dumps(seal.sign({"policies": _policies, "limits": _limits, "allowed": _stored["allowed"]})))
+            out.write(json.dumps(seal.sign({"policies": _policies, "limits": _limits, "allowed": _stored["allowed"], "blocked": _stored["blocked"]})))
         os.replace(temporary, path)
         _seal["state"] = "ok" if seal.available() else "unavailable"
     except OSError:
@@ -148,7 +149,7 @@ def state() -> dict:
         clients.append({"name": name, "version": c["version"], "policy": policy_of(name), "calls": c["calls"], "last_seen": c["last_seen"],
                         "waiting": sum(1 for p in _pending.values() if p["client"] == name)})
     return {"enabled": _enabled, "clients": clients, "pending": sorted(_pending.values(), key=lambda p: p["t"]), "timeout": APPROVAL_SECONDS,
-            "policies": [{"value": v, "label": POLICY_LABELS[v]} for v in POLICIES], "allowed": _stored["allowed"],
+            "policies": [{"value": v, "label": POLICY_LABELS[v]} for v in POLICIES], "allowed": _stored["allowed"], "blocked": _stored["blocked"],
             "seal": "unavailable" if not seal.available() else _seal["state"], "sealBroken": _seal["state"] == "broken"}
 
 
@@ -224,6 +225,26 @@ def set_outside_allowed(on: bool) -> None:
 def outside_allowed() -> bool | None:
     _load()
     return _stored["allowed"]
+
+
+def set_blocked(on: bool) -> None:
+    _load()
+    if _stored["blocked"] is not bool(on):
+        _stored["blocked"] = bool(on)
+        _save()
+    if on:
+        stop(None)
+    _push_state()
+
+
+def blocked() -> bool:
+    _load()
+    return _stored["blocked"] is True
+
+
+def standing(name: str) -> bool:
+    _load()
+    return bool(name) and _policies.get(name) == "allow"
 
 
 def set_enabled(on: bool) -> None:
@@ -315,6 +336,8 @@ def activity(limit: int = 100) -> list[dict]:
 
 def admit(client: str) -> str | None:
     """A reason the call is refused outright, written as what the agent should do next; None when it may go on."""
+    if blocked():
+        return "Agents are blocked in formvis (Preferences > Plugins, Outside agents is set to Blocked). Do not retry; ask the person to change that setting if you should continue."
     if not _enabled:
         return "Outside agents are switched off in formvis (Window > Agent Connect). Ask the person to switch them on, then retry."
     if policy_of(client) == "deny":

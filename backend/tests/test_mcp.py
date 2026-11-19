@@ -98,7 +98,7 @@ def test_the_stdio_bridge_against_a_running_engine():
 
 
 def _reset():
-    M._pending.clear(); M._ready = None; M._allowed = False; M._declined_until = 0.0; M._seen = 0.0; M._opened_at = 0.0
+    M._pending.clear(); M._ready = None; M._allowed = False; M._declined_until = 0.0; M._declined.clear(); M._questions.clear(); M._seen = 0.0; M._opened_at = 0.0
 
 
 def test_not_allowed_asks_once_in_the_window_then_runs(monkeypatch):
