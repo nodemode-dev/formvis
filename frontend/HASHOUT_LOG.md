@@ -2,7 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
-## Open terminals re-colour on any theme change, with or without the app's signal · after 2.3.5, unreleased (dock/dock.ts Dock constructor, retheme, look)
+## The dock's own icons, with marks for Codex and Cursor · after 2.3.5, unreleased (dock/icons.ts ICONS, dockIcon)
+
+- Kind: feat · logged 2026-11-19 · DOCK_SPEC section 4.
+- `dock/icons.ts` holds every icon the dock draws, inline SVG with `currentColor` on the 24 unit box: Terminal, Claude Code (the robot) and Chat as formvis draws them (byte-identical to `ui/icons.ts` `terminal`, `agent`, `agentChat`), and plus (new tab), close, refresh and send, which the dock took from `ui/icons.ts` before. New, at stroke 1.75 with round caps and joins: `codex` (two angle brackets around a filled dot), `cursor` (a text caret with a small pointer), `dockRight` and `dockBottom` (the window frame with the column or band the dock would move to, and an arrow into it) and `menu` (three dots). The two marks are plain glyphs of our own and draw on neither company's logo.
+- Seen: all twelve rendered at 72 and 15 pixels in headless Chrome on `#111`.
+ on any theme change, with or without the app's signal · after 2.3.5, unreleased (dock/dock.ts Dock constructor, retheme, look)
 
 - Kind: feat · logged 2026-11-19 · formcel's `frontend/src/ui/terminal-dock.ts` observer (its lines 103-104 and 303-309), the approach DOCK_FACTS C4 credits.
 - formvis already re-coloured open terminals on `nm:ui-settings-changed`, now reached through `DockAdapter.onTheme`. The shared module also watches the root element's `style`, `class` and `data-theme` attributes, so an app whose adapter has no theme signal still re-colours in place. `retheme` keeps the last look (the five terminal colours and the font size) and does nothing when it is unchanged, so the two paths and every grip drag (which writes `--ft-dock-size` on the root) cost one comparison. formcel's cache left the font size out; here it is part of the look, so a text size change still reaches open terminals.
