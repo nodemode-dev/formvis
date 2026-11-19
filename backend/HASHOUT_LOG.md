@@ -2,6 +2,18 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## No answer and Stop are their own statuses, and the activity record is kept on disk · after 2.3.5, unreleased (services/agents.py approval, end, _record, ACTIVITY_FILE, ACTIVITY_MAX_BYTES, ACTIVITY_KEEP; frontend ui/panels/agent-connect.ts STATUS)
+
+- Kind: fix · logged 2026-11-19.
+- `approval` ended a step that timed out, was stopped and was declined all as `denied`; only the message differed. It now ends them as `timeout`, `stopped` and `denied`. The window's Agent Connect labels the two new ones "No answer in time" and "Stopped" (no style change). A step refused at once because no window is open to approve it stays `denied` (mcp.py `_no_window_to_approve`).
+- The activity feed lived only in memory (deque of 200). `end` now appends every finished step (any status but running and waiting) as one JSON line to `agents-activity.jsonl` in the data folder beside agents.json: t, client, tool, command, summary, status, message. Past 1 MB (`ACTIVITY_MAX_BYTES`) the file becomes `.1`, the older `.2` and `.3`, and the oldest is dropped (`ACTIVITY_KEEP` 3). A write error is ignored, as `_save` does.
+- Checked by running approval with no answer, Stop, Decline and Allow (timeout, stopped, denied, ok, each on disk) and 30 steps with a 600-byte cap (four files, none over the cap). tests/test_agent_approvals.py.
+- Replaced, quoted exactly:
+
+```py
+    end(entry, "denied", message)
+```
+
 ## export_mask and export_layer ask like export_image · after 2.3.5, unreleased (services/agents.py RISKY_TOOLS)
 
 - Kind: fix · logged 2026-11-19.

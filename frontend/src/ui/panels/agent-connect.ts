@@ -9,7 +9,7 @@ import { toast } from '../toast';
 const KEY = 'formvis.agentConnect';
 const FEED_LIMIT = 200;
 const POLICIES: Array<{ value: string; label: string }> = [{ value: 'allow', label: 'Allow all' }, { value: 'ask', label: 'Ask for risky steps' }, { value: 'deny', label: 'Deny' }];
-const STATUS: Record<string, string> = { running: 'Running', ok: 'Done', error: 'Failed', denied: 'Declined', waiting: 'Waiting for you' };
+const STATUS: Record<string, string> = { running: 'Running', ok: 'Done', error: 'Failed', denied: 'Declined', timeout: 'No answer in time', stopped: 'Stopped', waiting: 'Waiting for you' };
 const NEW_LAYER_TOOLS = new Set(['add_layer', 'add_text', 'draw_shape', 'place_image', 'generate_image', 'generative_fill', 'duplicate_layer', 'add_adjustment', 'add_film_layer']);
 
 interface Agent { name: string; version: string; policy: string; calls: number; waiting: number }

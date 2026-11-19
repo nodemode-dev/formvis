@@ -270,6 +270,31 @@ def end(entry: dict, status: str, message: str = "") -> None:
     entry["status"] = status
     entry["message"] = message[:300]
     _emit({"type": "activity", "entry": entry})
+    if status not in ("running", "waiting"):
+        _record(entry)
+
+
+ACTIVITY_FILE = "agents-activity.jsonl"
+ACTIVITY_MAX_BYTES = 1024 * 1024
+ACTIVITY_KEEP = 3
+
+
+def _record(entry: dict) -> None:
+    """Appends a finished step to agents-activity.jsonl beside agents.json; past ACTIVITY_MAX_BYTES the file becomes .1
+    (the older ones .2 and .3, the oldest dropped), so the record survives a restart and stays small."""
+    path = config.data_dir() / ACTIVITY_FILE
+    line = json.dumps({k: entry.get(k) for k in ("t", "client", "tool", "command", "summary", "status", "message")}, ensure_ascii=False) + "\n"
+    try:
+        if path.is_file() and path.stat().st_size + len(line.encode("utf-8")) > ACTIVITY_MAX_BYTES:
+            for n in range(ACTIVITY_KEEP, 0, -1):
+                older = path.with_name(f"{ACTIVITY_FILE}.{n}")
+                newer = path if n == 1 else path.with_name(f"{ACTIVITY_FILE}.{n - 1}")
+                if newer.is_file():
+                    os.replace(newer, older)
+        with path.open("a", encoding="utf-8") as out:
+            out.write(line)
+    except OSError:
+        return
 
 
 def activity(limit: int = 100) -> list[dict]:
@@ -311,7 +336,7 @@ async def approval(entry: dict, why: str) -> str | None:
         message = "The person pressed Stop in formvis, so this step did not run. Wait for their next instruction."
     else:
         message = f"The person declined this step ({why}). Do not retry it; ask what they want instead."
-    end(entry, "denied", message)
+    end(entry, {"timeout": "timeout", "stop": "stopped"}.get(verdict, "denied"), message)
     return message
 
 
