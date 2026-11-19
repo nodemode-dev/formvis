@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The dock module's sentences are in all 27 language tables · after 2.3.6, unreleased (ui/i18n/more/*.ts; tests/dock-i18n.test.ts TRANSLATED)
+
+- Kind: feature, text only · logged 2026-11-19. Completes the entry below, whose "Not done" line no longer holds.
+- What: the same block of 79 sentences now ends every file in `ui/i18n/more/` (24 more tables, in four commits of six). `es-MX` and `fr-CA` still hold nothing of their own for these and fall back to `es` and `fr`; the Spanish block says "este equipo" for "this computer", as the rest of the Spanish table does, so it reads the same in Mexico. `Codex` and `Cursor` stay names in every table.
+- The test now also fails when a file in `more/` is not on its list, so a new language cannot arrive without the block.
+- Seen in headless Chrome through the real `/mcp` endpoint after the last table: Arabic, Mexican Spanish (through the fallback) and Hindi each showed the question, its three buttons, the five guide steps and the dock menu in the language, with no module sentence left in English.
+- Arabic and direction: formvis's page direction follows its own right-to-left layout setting (`formvis.rtl` in `app.ts` `applyRtl`), not the language, so Arabic alone shows the dock left to right. With that setting on, the dialog reads right to left and its buttons are mirrored; the first button then sits a few pixels past the dialog's edge when the third label is long. That is the module's stylesheet and was not changed here (the folder is frozen).
+- The other 24 tables were translated without a native reader; the terms for "agent" (for example Greek, Vietnamese, Turkish, Hungarian) are the ones most worth a native check.
+
 ## The dock module's sentences in the language tables: German, Japanese and Arabic · after 2.3.6, unreleased (ui/i18n/more/de.ts, ja.ts, ar.ts; tests/dock-i18n.test.ts)
 
 - Kind: feature, text only · logged 2026-11-19.
