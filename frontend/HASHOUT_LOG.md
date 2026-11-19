@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The dock module's sentences in the language tables: German, Japanese and Arabic · after 2.3.6, unreleased (ui/i18n/more/de.ts, ja.ts, ar.ts; tests/dock-i18n.test.ts)
+
+- Kind: feature, text only · logged 2026-11-19.
+- Why: the adapter's `t` looks the module's English sentence up in the tables after filling `{app}` (formvis), `{noun}` (picture) and `{start}` (./formvis boot) and nothing else, so a table key keeps `{agent}`, `{program}`, `{tool}`, `{chord}`, `{what}`, `{n}` and `{total}`. Compared that way, each of the 27 tables held 13 of the module's 94 sentences (the adapter's own `tourChatBody` and `lead` counted) and lacked 81, not only the ones 2.0.0 and 2.0.1 added or changed.
+- What: one block of 79 sentences at the end of `more/de.ts`, `more/ja.ts` and `more/ar.ts`. Left out on purpose: `Codex` and `Cursor`, product names that read the same in every language (and `Cursor` must stay free for the pointer). `es-MX` and `fr-CA` hold only regional differences and fall back to their parents.
+- Not done: the other 24 tables still show these 81 sentences in English. `tests/dock-i18n.test.ts` names the tables that are complete (`TRANSLATED`); add a language there when its block lands.
+- Not translated by design of the module: what the agent asked to do (`{what}`, for example "use add layer") arrives in English from the adapter.
+- Seen in headless Chrome through the real `/mcp` endpoint, for each of the three: the question's title with the agent's name, its three buttons, the five steps of the first-run guide and the dock's menu, with no module sentence left in English.
+
 ## Dock module 2.0.1: the question says the name is the agent's own claim · after 2.3.5, unreleased (dock/strings.ts consentTitle, consentAlways; setup/agents.py DOCK_VERSION; frontend/src/dock/MANIFEST.json; backend/tests/test_dock_manifest.py)
 
 - Kind: fix, wording only · logged 2026-11-19.
