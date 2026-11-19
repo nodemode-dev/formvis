@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## formvis offers the Antigravity tab · after 2.4.0, unreleased (dock-adapter.ts formvisDock return type, tabs, agentStatus)
+
+- Kind: feature · logged 2026-11-19 · DOCK_MODULE_2_2_BRIEF item 3. Nothing in `src/dock/` changed.
+- The adapter is `DockAdapter<'antigravity'>`, lists `antigravity` in `tabs().builtin` (before: `['chat', 'shell', 'claude', 'codex', 'cursor']`), and gives the engine's sentence for a program that is missing or does not start as the status `note`, which the panel shows in the row. `terminal.open` already sent any other kind to `/api/terminal/agent`.
+- Seen in headless Chrome at 1440 by 900 under 4 times CPU slowdown, dev window on port 4720, engine on 4721 with stand-ins. With a stand-in agy: a fourth head button titled Antigravity, the row "Antigravity is installed. Start it in a new tab.", and the tab (classes `is-antigravity is-program`) showing the stand-in's banner. Without it: the button hidden and the row reading "Antigravity was not found. Looked in: PATH (...); ~/.local/bin, ...; your shell (zsh, login and interactive). Install it with: curl -fsSL https://antigravity.google/cli/install.sh | bash." with the command under it. No page error.
+- Ran: `tsc --noEmit` clean. Not seen: the desktop window, another language, a real agy.
+
 ## Dock module 2.2.0, step 2: Antigravity has its picture, and a tab of any listed kind takes the accent · after 2.4.0, unreleased (dock/icons.ts antigravity; dock/dock.css .ft-dock-tab.is-program; dock/dock.ts attach, toggleKind)
 
 - Kind: feature · logged 2026-11-19 · DOCK_MODULE_2_2_BRIEF item 2.

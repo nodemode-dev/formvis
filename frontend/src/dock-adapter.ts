@@ -126,7 +126,7 @@ function socketChannel(socket: WebSocket): DockChannel {
   };
 }
 
-export function formvisDock(openSettings: () => void = () => undefined, layerOpen: () => boolean = () => false): DockAdapter {
+export function formvisDock(openSettings: () => void = () => undefined, layerOpen: () => boolean = () => false): DockAdapter<'antigravity'> {
   return {
     words: {
       app: 'formvis', noun: 'picture', example: 'make the sky bluer', start: './formvis boot',
@@ -141,7 +141,7 @@ export function formvisDock(openSettings: () => void = () => undefined, layerOpe
     isDockChord: (e) => (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !(layerOpen() && !(e.target instanceof Element && e.target.closest('.ft-dock'))),
     chordLabel: () => `${isMac ? 'Cmd' : 'Ctrl'}+J`,
     passKey: (e) => e.key === 'F1' || ((e.metaKey || e.ctrlKey) && (e.key === ',' || (e.altKey && e.code === 'KeyJ'))),
-    tabs: () => ({ builtin: ['chat', 'shell', 'claude', 'codex', 'cursor'] }),
+    tabs: () => ({ builtin: ['chat', 'shell', 'claude', 'codex', 'cursor', 'antigravity'] }),
     classes: { iconButton: 'cv-tt-btn', button: 'cv-btn', primaryButton: 'cv-btn-primary', input: 'cv-input', select: 'cv-select', note: 'cv-note' },
     t: (key, english) => ownWords(key) ?? t(english.replace(/\{(app|noun|start)\}/g, (_m, name: string) => ({ app: 'formvis', noun: 'picture', start: './formvis boot' })[name] ?? '')),
     onTheme: (handler) => { document.addEventListener('nm:ui-settings-changed', handler); },
@@ -183,7 +183,8 @@ export function formvisDock(openSettings: () => void = () => undefined, layerOpe
       tell('claude', now);
       tell('codex', now.agents?.codex);
       tell('cursor', now.agents?.cursor);
-      return { ...(now.agents ?? {}), claude: { installed: now.installed === true, version: now.version ?? null, install: now.install ?? '', signedIn: now.signedIn ?? null } };
+      const agy = (now.agents as { antigravity?: DockProgramStatus & Told } | undefined)?.antigravity;
+      return { ...(now.agents ?? {}), ...(agy ? { antigravity: { ...agy, ...(agy.finding !== 'runs' && typeof agy.said === 'string' ? { note: agy.said } : {}) } } : {}), claude: { installed: now.installed === true, version: now.version ?? null, install: now.install ?? '', signedIn: now.signedIn ?? null } };
     },
     chat: {
       status: async () => { const now = await api.claudeStatus(); tell('claude', now); return now; },
