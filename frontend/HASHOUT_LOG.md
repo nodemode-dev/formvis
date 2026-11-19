@@ -2,7 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
-## The dock is the family's shared module behind an adapter · after 2.3.5, unreleased (dock/*, dock-adapter.ts formvisDock, styles/dock-tokens.css, styles/terminal.css, app.ts termDock, index.html)
+## Open terminals re-colour on any theme change, with or without the app's signal · after 2.3.5, unreleased (dock/dock.ts Dock constructor, retheme, look)
+
+- Kind: feat · logged 2026-11-19 · formcel's `frontend/src/ui/terminal-dock.ts` observer (its lines 103-104 and 303-309), the approach DOCK_FACTS C4 credits.
+- formvis already re-coloured open terminals on `nm:ui-settings-changed`, now reached through `DockAdapter.onTheme`. The shared module also watches the root element's `style`, `class` and `data-theme` attributes, so an app whose adapter has no theme signal still re-colours in place. `retheme` keeps the last look (the five terminal colours and the font size) and does nothing when it is unchanged, so the two paths and every grip drag (which writes `--ft-dock-size` on the root) cost one comparison. formcel's cache left the font size out; here it is part of the look, so a text size change still reaches open terminals.
+- Verified under 4x CPU throttle: with a shell open, Studio Dark to AMOLED Black and back through `setTheme`, the same `.ft-term` element showed `#111111`, `#000000`, `#111111`; a root style change with no event re-coloured it too.
+ behind an adapter · after 2.3.5, unreleased (dock/*, dock-adapter.ts formvisDock, styles/dock-tokens.css, styles/terminal.css, app.ts termDock, index.html)
 
 - Kind: refactor · logged 2026-11-19 · DOCK_SPEC sections 1 and 8, stage 1 step 1.
 - `ui/terminal-dock.ts` (TerminalDock) and `ui/chat-pane.ts` (ChatPane) moved, method for method, into `dock/dock.ts` (class `Dock`, imported in app.ts as `AgentDock` because app.ts already has the panel `Dock`) and `dock/chat.ts`. Nothing is removed: the code is the same with each outside import replaced by a call through `DockAdapter` (`dock/adapter.ts`): routes, sockets, Claude Code status, error tests (`errors.message`, `errors.missingRoute` stand for `instanceof ApiError`), host classes (`cv-tt-btn`, `cv-btn`, `cv-btn-primary`, `cv-input`, `cv-select`, `cv-note`), `t()`, the theme signal (`nm:ui-settings-changed`), the storage key (still `formvis.terminal` here) and the mount point (before `.cv-status` in `.cv-app`). The old files are in git history at the parent of this commit.

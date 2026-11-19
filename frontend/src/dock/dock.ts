@@ -44,6 +44,7 @@ export class Dock {
   private active: string | null = null;
   private started = false;
   private pending: Promise<void> | null = null;
+  private look = '';
   onTab: () => void = () => undefined;
   onChange: () => void = () => undefined;
   yieldsKey: () => boolean = () => false;
@@ -96,6 +97,7 @@ export class Dock {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === a.shortcut.code && !e.repeat && !(this.yieldsKey() && !this.root.contains(e.target as Node))) { e.preventDefault(); e.stopPropagation(); this.toggle(); }
     }, true);
     a.onTheme(() => this.retheme());
+    new MutationObserver(() => this.retheme()).observe(html, { attributes: true, attributeFilter: ['style', 'class', 'data-theme'] });
     this.grip(q(this.root, '.ft-dock-grip'), html);
     a.mount(this.root);
     if (this.isOpen()) void this.ensure();
@@ -187,8 +189,12 @@ export class Dock {
   }
 
   private retheme(): void {
+    const theme = this.theme();
     const size = termFontSize();
-    for (const x of this.tabs.values()) { x.term.options.theme = this.theme(); if (x.term.options.fontSize !== size) x.term.options.fontSize = size; }
+    const look = JSON.stringify([theme, size]);
+    if (look === this.look) return;
+    this.look = look;
+    for (const x of this.tabs.values()) { x.term.options.theme = theme; if (x.term.options.fontSize !== size) x.term.options.fontSize = size; }
     this.fitActive();
   }
 
