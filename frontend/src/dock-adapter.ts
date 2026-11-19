@@ -1,4 +1,4 @@
-import type { ConsentChoice, ConsentRequest, DockAdapter, DockAgentStatus, DockChannel, DockProgramStatus, DockTerminal, StoredChoice, StoredChoiceState } from './dock/adapter';
+import type { ConsentChoice, ConsentRequest, DockAdapter, DockAgentStatus, DockChannel, DockChatEvent, DockProgramStatus, DockTerminal, StoredChoice, StoredChoiceState } from './dock/adapter';
 import { jsonLegacy } from './dock/state';
 import { api, ApiError, socketTo } from './io/api';
 import { isMac } from './ui/dom';
@@ -157,11 +157,18 @@ export function formvisDock(openSettings: () => void = () => undefined, layerOpe
     },
     chat: {
       status: () => api.claudeStatus(),
-      start: (mode, fresh) => api.claudeStart(mode, fresh),
+      start: (mode, fresh) => api.claudeStart(mode ?? 'ask', fresh),
       send: (text) => api.claudeSend(text),
       stop: () => api.claudeStop(),
       answer: (id, allow) => api.claudeAllow(id, allow),
-      socket: () => socketTo('/agent/claude/stream'),
+      modes: ['ask', 'auto-edits', 'plan'],
+      subscribe: (handlers) => {
+        const socket = socketTo('/agent/claude/stream');
+        socket.addEventListener('open', () => handlers.open());
+        socket.addEventListener('message', (msg) => { try { handlers.event(JSON.parse(String(msg.data)) as DockChatEvent); } catch { return; } });
+        socket.addEventListener('close', () => handlers.close());
+        return () => socket.close();
+      },
     },
     consent: { subscribe: (add, withdraw) => outsideAgents.subscribe(add, withdraw), answer: (id, choice) => outsideAgents.answer(id, choice) },
     storedChoice: { get: () => outsideAgents.get(), set: (value) => outsideAgents.set(value) },

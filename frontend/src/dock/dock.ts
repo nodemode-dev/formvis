@@ -1,5 +1,5 @@
 import type { DockAdapter, DockAgentStatus, DockChannel, DockKind, DockTerminal, PtyKind } from './adapter';
-import { ChatPane } from './chat';
+import { ChatPane, OwnChat, type DockChatView } from './chat';
 import { Consent } from './consent';
 import { el, q, setClass, setDisabled, setHidden, setText } from './dom';
 import { dockIcon as icon } from './icons';
@@ -39,7 +39,7 @@ export class Dock {
   private readonly ask: HTMLInputElement;
   private readonly restartBtn: HTMLButtonElement;
   private readonly tabs = new Map<string, Tab>();
-  private chat: ChatPane | null = null;
+  private chat: DockChatView | null = null;
   private chatTab: HTMLElement | null = null;
   private active: string | null = null;
   private started = false;
@@ -117,6 +117,7 @@ export class Dock {
     q(this.root, '.ft-dock-note-x').addEventListener('click', () => this.dismiss());
     this.noteCopy.addEventListener('click', () => { void navigator.clipboard?.writeText(this.noteCmd.textContent ?? '').catch(() => undefined); });
     contain(this.root, a);
+    setClass(this.root, 'has-own-chat', !!a.chat && 'pane' in a.chat);
   }
 
   mount(host: HTMLElement, before: Node | null = null): void {
@@ -332,18 +333,29 @@ export class Dock {
   }
 
   focus(): void {
-    if (this.active === 'chat') this.ask.focus({ preventScroll: true });
+    if (this.active === 'chat' && this.chat?.focus) this.chat.focus();
+    else if (this.active === 'chat') this.ask.focus({ preventScroll: true });
     else if (this.active) this.tabs.get(this.active)?.term?.focus();
   }
 
+  async sendChat(text: string): Promise<void> {
+    await this.show('chat');
+    await this.chat?.send(text);
+  }
+
   async showChat(): Promise<void> {
+    const c = this.a.chat;
+    if (!c) return;
     if (!this.chat) {
-      const chat = new ChatPane(this.a);
-      chat.onFail = (err) => this.warn(err);
-      chat.onHandoff = (session) => void this.claude(undefined, session);
-      chat.onBash = () => void this.sync();
-      this.chat = chat;
-      this.stage.appendChild(chat.root);
+      if ('pane' in c) this.chat = new OwnChat(c);
+      else {
+        const chat = new ChatPane({ ...this.a, chat: c });
+        chat.onFail = (err) => this.warn(err);
+        chat.onHandoff = (session) => void this.claude(undefined, session);
+        chat.onBash = () => void this.sync();
+        this.chat = chat;
+      }
+      this.stage.appendChild(this.chat.root);
     }
     if (!this.chatTab) {
       const tab = el(`<button type="button" class="ft-dock-tab is-chat" role="tab" aria-selected="false">${icon('agentChat', 13)}<span class="ft-dock-tab-title">${this.s('chat')}</span><span class="ft-dock-tab-x" role="button" aria-label="${this.s('closeChat')}">${icon('close', 11)}</span></button>`);

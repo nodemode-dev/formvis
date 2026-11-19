@@ -52,7 +52,14 @@
 .ft-dock-ask .ft-dock-ibtn { width: 28px; height: 28px; flex: none; }
 
 .ft-chat { position: absolute; inset: 0; display: grid; grid-template-rows: 36px minmax(0, 1fr); background: var(--dock-bg); }
-.ft-chat[hidden] { display: none; }
+.ft-chat.is-own { display: block; overflow: auto; }
+.ft-chat[hidden], .ft-chat.is-own[hidden], .ft-chat-mode[hidden], .ft-chat-stop[hidden] { display: none; }
+.ft-dock.has-own-chat .ft-dock-ask { display: none; }
+.ft-chat-meter { margin: 0; flex: none; white-space: nowrap; }
+.ft-chat-meter:empty { display: none; }
+.ft-chat-meter.is-high { color: var(--dock-accent); }
+.ft-chat-msg-note { display: block; margin-top: 2px; color: var(--dock-text-muted); font-size: var(--dock-fs-xs); }
+.ft-chat-msg.is-meta { color: var(--dock-text-muted); font-size: var(--dock-fs-xs); }
 .ft-chat-bar { display: flex; align-items: center; gap: var(--dock-space-2); padding: 0 var(--dock-space-3); border-bottom: 1px solid var(--dock-border); min-width: 0; }
 .ft-chat-status { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ft-chat-bar .ft-chat-btn, .ft-chat-bar .ft-chat-mode { flex: none; height: 26px; min-height: 26px; padding: 0 var(--dock-space-3); font-size: var(--dock-fs-sm); white-space: nowrap; }
