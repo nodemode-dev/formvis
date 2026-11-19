@@ -6,13 +6,14 @@ origin is refused, because a WebSocket is not covered by CORS."""
 import asyncio
 import json
 import os
+from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from app.core import config, window_key
-from app.services import claude_code, terminal
+from app.services import agent_programs, claude_code, terminal
 
 router = APIRouter(prefix="/api/terminal", tags=["terminal"])
 
@@ -60,6 +61,12 @@ class OpenBody(BaseModel):
     cols: int = Field(100, ge=10, le=500)
     rows: int = Field(30, ge=4, le=200)
     title: str | None = Field(None, max_length=60)
+
+
+class AgentBody(BaseModel):
+    kind: Literal["codex", "cursor"]
+    cols: int = Field(100, ge=10, le=500)
+    rows: int = Field(30, ge=4, le=200)
 
 
 class SizeBody(BaseModel):
@@ -116,6 +123,17 @@ def open_claude(body: ClaudeBody, request: Request) -> dict:
         raise HTTPException(status_code=404, detail=str(exc))
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Claude Code could not start: {exc}")
+
+
+@router.post("/agent")
+def open_agent(body: AgentBody, request: Request) -> dict:
+    require_local(request)
+    try:
+        return agent_programs.open_terminal(body.kind, server_port(request), body.cols, body.rows, document_folder())
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"The program could not start: {exc}")
 
 
 @router.post("/{sid}/resize")

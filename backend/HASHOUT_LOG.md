@@ -2,7 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
-## agents sync writes agents/manifest.json, what formvis offers agents · after 2.3.5, unreleased (setup/agents.py MANIFEST, APP, DOCK, manifest, generated; agents/manifest.json)
+## Codex and Cursor's agent in a terminal tab, offered only when found · after 2.3.5, unreleased (services/agent_programs.py PROGRAMS, find, status, open_terminal; routers/terminal.py open_agent, AgentBody; routers/claude_code.py window_status; services/terminal.py restart)
+
+- Kind: feat · logged 2026-11-19 · DOCK_SPEC 2 and 6; launch approach from formVFX `backend/app/agent/terminals.py` (AGENTS, find_agent, open_agent).
+- `GET /api/claude-code/status` now also answers `agents`: for `codex` (program `codex`) and `cursor` (program `cursor-agent`), installed, path and the install line when missing. Found on the engine's PATH, else by `command -v` in the login shell, as `claude` is.
+- `POST /api/terminal/agent` {kind, cols, rows} starts the found program in a PTY tab of that kind (404 when it is not found, 422 for any other kind). The tab gets its own in-app token from `agents.issue_inapp()` in the child's environment as `FORMVIS_INAPP_TOKEN`, with `FORMVIS_MCP_URL` beside it; the command line carries only the program's path; the token is revoked when the tab closes. The route is a write, so the window key guard refuses it without the key like every other write. `restart` now accepts the two kinds too.
+- How each program uses the token to reach formvis's MCP server is its own configuration (Codex's `mcp_servers` entry, Cursor's `mcp.json` reading the environment); nothing is written into the person's configuration files here. Neither program is installed on this machine: verified with stand-in scripts of both names on PATH, and without them.
+- Verified by running the engine on 31001: status without the stand-ins (both missing, with install lines) and with them (both found, paths); the route without the key 403, with it 200 (a Codex tab), kind `vim` 422; the stand-in's `/proc` environ held the token, its command line did not. Tests added after: `tests/test_agent_programs.py`.
+ agents/manifest.json, what formvis offers agents · after 2.3.5, unreleased (setup/agents.py MANIFEST, APP, DOCK, manifest, generated; agents/manifest.json)
 
 - Kind: feat · logged 2026-11-18.
 - The family reads one file per app (formadaptor spec/agent-manifest.schema.json, docs/SPEC.md "The agent manifest") instead of hand-typed counts. `manifest()` builds it and `generated()` lists it, so `sync` writes it and `--check` names it when it drifts.
