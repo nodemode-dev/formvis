@@ -14,6 +14,6 @@ The window has a terminal dock: shell tabs, Claude Code tabs and a Chat tab, wit
 ## Rules
 
 - Process control belongs to the engine or the Tauri shell, never to page code; the page reaches the engine only through `frontend/src/io/api.ts`.
-- A terminal is remote code execution, so every route and socket passes `origin_ok`, and an agent's permission request is never answered for the person.
+- A terminal is remote code execution, so every route and socket passes `origin_ok`, and only the formvis window gets in: opening, resizing, restarting and closing a terminal need the window key in `X-Formvis-Window-Key` (403 "Only the formvis window can do this" without it), and the terminal, Claude Code and agent sockets must send `{"type": "key", "key": ...}` as their first message (`backend/app/core/window_key.py`). An agent's permission request is never answered for the person.
 - Terminal output is appended to xterm's own nodes, never rebuilt, and xterm's scrollbar elements are hidden by `terminal.css` (the global sheet does not name them).
 - Every child ends when its tab closes, the window goes away or the engine exits.

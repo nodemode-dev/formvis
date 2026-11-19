@@ -624,6 +624,11 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   first.
 - Either way, every change is an undoable step, anything that costs money asks you first, your keys are never shown,
   and only this computer can connect.
+- Only the formvis window can change what agents may do, answer their questions and approvals, or use the terminal
+  dock: the engine gives the window a key when it starts and refuses those requests from anything else ("Only the
+  formvis window can do this"). The saved choice is sealed; if the file is changed outside formvis, the choice reads as
+  Ask again and formvis says so once. formvis's own command line (`./formvis cli`, `./formvis headless`) is asked
+  about like any other outside agent.
 
 ## Terminal
 
@@ -665,9 +670,12 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   commands (`--group Filter` narrows by menu), `./formvis cli describe <id>` says what one does and what it takes,
   and `./formvis cli run <id> key=value ...` runs it in the open window as an undoable step. A command whose result
   undo cannot reverse (a file overwritten, say) runs only with `--yes`.
-- The window has to be open (`./formvis boot`) and outside agents allowed (Preferences > Plugins), or add `--headless` to
+- The window has to be open (`./formvis boot`); with Outside agents on Ask (Preferences > Plugins) formvis asks you in
+  the window when a command arrives. Or add `--headless` to
   `list`, `describe`, `run`, `process`, `batch`, `droplet`, `serve` or `convert`: a window with no screen (Playwright's Chromium,
-  as `./formvis bench` uses) is started for that run, allows agents for itself only, and is closed when the command ends.
+  as `./formvis bench` uses) is started for that run and is closed when the command ends. It follows the choice you saved
+  in formvis and cannot change it: set Outside agents to Allowed in the window first, because with no screen nobody can
+  answer a question, so a call that would ask, and a step that needs approval, is refused at once.
   `./formvis headless` keeps one up until Ctrl-C. It needs Playwright and its Chromium (`python3 -m pip install playwright`,
   `python3 -m playwright install chromium`); the page is the one the engine serves after `./formvis serve`, else the dev page
   (`FORMVIS_WINDOW_URL`). Commands that only read or convert flat files need no window at all. Exact actions take
@@ -776,6 +784,12 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   them. Commands that undo cannot reverse (overwriting files, closing without saving) are refused to extensions.
 - formvis notices a newly installed extension within two seconds while its window is in front; Reload Extensions reads
   every extension again at once. Developers: `docs/EXTENSIONS.md` in the repository describes what an extension can call.
+
+## Themes
+
+- Preferences > Interface has the Theme grid: click a theme to use it, right-click one to make it a favorite. The
+  grid holds dark and light themes; AMOLED Black is a true-black theme for OLED screens. Theme
+  and accent are shared with NodeMode on this device.
 
 ## Interface languages
 

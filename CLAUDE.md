@@ -32,7 +32,7 @@ Layered image editor for the web and the desktop in the NodeMode design system: 
 - `formvis-driving` · for using a running formvis through its MCP tools to edit pictures, with a sub-skill per action family.
 - `formvis-colour-science` · answers profile, intent, CMYK and Lab questions with the engine's own colour service.
 
-Always route code work through `.claude/skills/formvis-harness/SKILL.md` first: it maps the subsystems, the dependency graph and the laws, and loads the right references. `./formvis agents sync` mirrors every skill into `.agents/skills` and regenerates the references that follow the code (`formvis-editing/references/tools.md`, `formvis-driving/references/commands.md`, `formvis-harness/references/command-map.md` and `tool-map.md`); `--check` fails on drift and on a skill file over the upload gates.
+Always route code work through `.claude/skills/formvis-harness/SKILL.md` first: it maps the subsystems, the dependency graph and the laws, and loads the right references. `./formvis agents sync` mirrors every skill into `.agents/skills` and regenerates the references that follow the code (`formvis-editing/references/tools.md`, `formvis-driving/references/commands.md`, `formvis-harness/references/command-map.md` and `tool-map.md`), and writes `agents/manifest.json`, the file that says what formvis offers agents (tools, which are read-only, which wait for approval, skills, the dock, the extension host) and that the family's shared spec is built from; never type a tool count where that file can be read. `--check` fails on drift, on a manifest that is not what the sync would write, and on a skill file over the upload gates.
 
 ## Editing pictures through formvis
 
