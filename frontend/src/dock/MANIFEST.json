@@ -2,6 +2,7 @@
   "module": "dock",
   "version": "2.0.0-dev",
   "files": {
+    "CONTRACT.md": "a87dd3f86e2444269db1dcc7bd3905702a1eff635d46a27a55eba9f297cf856c",
     "adapter.ts": "38b8651af5c994b633bcc994003b6a5c0139b40088f42e28820c29f6468c41d9",
     "chat.ts": "1055582fa992ecb5b2c06950e4728699f9703359f435771666e0f7e14466e979",
     "consent.ts": "fa53601ba7d0b9a72fe8bd11ce3fd3b68db7e9697465eab33167da54377c25c2",
