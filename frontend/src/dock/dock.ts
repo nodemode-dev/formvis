@@ -1,4 +1,4 @@
-import type { DockAdapter, DockAgentStatus, DockAppTab, DockChannel, DockKind, DockTerminal, PtyKind } from './adapter';
+import type { DockAdapter, DockAgentStatus, DockAppTab, DockChannel, DockKind, DockPaneHidden, DockTerminal, PtyKind } from './adapter';
 import { ChatPane, OwnChat, type DockChatView } from './chat';
 import { Consent } from './consent';
 import { el, q, setClass, setDisabled, setHidden, setText } from './dom';
@@ -150,20 +150,27 @@ export class Dock {
 
   shown(): void {
     this.place.shown(true);
+    this.tell('dock');
     void this.ensure();
     this.onTab();
   }
 
   hidden(): void {
     this.place.shown(false);
+    this.tell('dock');
     this.tour.end(false);
     this.onTab();
+  }
+
+  private tell(why: DockPaneHidden): void {
+    this.chat?.visible?.(this.isOpen() && this.active === 'chat' && this.chatTab !== null, why);
   }
 
   toggle(on = !this.isOpen(), seed: DockKind | 'none' = 'shell'): void {
     const p = this.a.placement;
     if (p.mode === 'hosted') { p.request(on); return; }
     this.place.setOpen(on);
+    this.tell('dock');
     this.keep();
     this.onChange();
     window.dispatchEvent(new Event('resize'));
@@ -385,9 +392,9 @@ export class Dock {
     else if (this.active) this.tabs.get(this.active)?.term?.focus();
   }
 
-  async sendChat(text: string): Promise<void> {
+  async sendChat(text: string): Promise<boolean> {
     await this.show('chat');
-    await this.chat?.send(text);
+    return this.chat ? this.chat.send(text) : false;
   }
 
   async showChat(): Promise<void> {
@@ -421,6 +428,7 @@ export class Dock {
   private closeChat(): void {
     this.chatTab?.remove();
     this.chatTab = null;
+    this.tell('tab');
     this.chat?.release();
     if (this.chat) setHidden(this.chat.root, true);
     if (this.active === 'chat') {
@@ -599,6 +607,7 @@ export class Dock {
     this.fitActive();
     if (focus) this.focus();
     this.keep();
+    this.tell('tab');
     this.onTab();
   }
 

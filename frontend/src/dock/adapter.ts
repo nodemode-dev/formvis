@@ -42,7 +42,16 @@ export interface DockChatEngine {
   modes?: ChatMode[];
   renderText?(node: HTMLElement, text: string): void;
 }
-export interface DockOwnChat { send?(text: string): void; focus?(): void }
+export type DockSent = boolean | void | Promise<boolean | void>;
+export type DockPaneHidden = 'tab' | 'dock';
+export interface DockOwnChat {
+  send?(text: string): DockSent;
+  focus?(): void;
+  shown?(): void;
+  hidden?(why: DockPaneHidden): void;
+  closed?(): void;
+  busy?(): boolean;
+}
 export interface DockChatPane { pane(host: HTMLElement): DockOwnChat | void }
 export type DockChatEvent =
   | { type: 'state'; running: boolean; state: string; session: string | null; mode?: ChatMode }
