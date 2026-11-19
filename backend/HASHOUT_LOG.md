@@ -2,6 +2,25 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## ffmpeg comes from formai-binaries first, formcut-binaries second · after 2.3.5, unreleased (app/ffmpeg_fetch.py SOURCES, sources, fetch; NOTICE.md)
+
+- Kind: feat · logged 2026-11-19.
+- The binaries repository is being renamed from `nodemode-dev/formcut-binaries` to `nodemode-dev/formai-binaries`. `SOURCES` holds both release addresses, the new one first; `sources()` returns the asset address under each, or only the one under `FORMCUT_FFMPEG_RELEASE` when that is set. `fetch()` tries each in turn and installs from the first whose archive matches the SHA-256 record in `ffmpeg_record.py` (unchanged); a download error or bytes that do not match move on to the next address, and when none matches it raises with every address's reason and installs nothing. The tag, the asset names, the shared install folder (`formcut-binaries/ffmpeg-<release>`) and the variable names are unchanged.
+- Checked against a local server: the first address answering with bytes that do not match the record, the second matching (installed from the second); the first missing (404); both wrong (nothing installed); the override set (only it is tried). tests/test_ffmpeg_sources.py.
+- Replaced, quoted exactly:
+
+```py
+SOURCE = "https://github.com/nodemode-dev/formcut-binaries/releases/download"
+def source() -> str:
+    base = os.environ.get("FORMCUT_FFMPEG_RELEASE") or f"{SOURCE}/ffmpeg-{RELEASE}"
+    return f"{base.rstrip('/')}/ffmpeg-lgpl-{RELEASE}-{host_triple()}.tar.gz"
+    with tempfile.TemporaryDirectory() as scratch:
+        archive = Path(scratch) / "ffmpeg.tar.gz"
+        _download(source(), archive)
+        _install(archive, pins, folder())
+    return prefer()
+```
+
 ## The window key: only the person's window holds window rights · after 2.3.5, unreleased (core/window_key.py new; core/seal.py new; main.py; formvis_engine.py main; routers/agents.py read, stream; routers/claude_code.py stream; routers/terminal.py attach; routers/mcp.py bridge_next; services/agents.py _load, _save, state, issue_inapp, revoke_inapp, is_inapp; services/claude_code.py start, stop, terminal_env, open_terminal; services/terminal.py Session.on_close, close; setup/cli.py run_cmd, command_result; src-tauri/src/main.rs)
 
 - Kind: fix · logged 2026-11-19.
