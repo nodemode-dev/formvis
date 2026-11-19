@@ -1,4 +1,4 @@
-import type { DockAdapter, DockAgentStatus, DockAppTab, DockChannel, DockKind, DockPaneHidden, DockTerminal, PtyKind } from './adapter';
+import type { DockAdapter, DockAgentStatus, DockAppTab, DockChannel, DockKind, DockOwnAsk, DockPaneHidden, DockTerminal, PtyKind } from './adapter';
 import { ChatPane, OwnChat, type DockChatView } from './chat';
 import { Consent } from './consent';
 import { el, q, setClass, setDisabled, setHidden, setText } from './dom';
@@ -41,6 +41,7 @@ export class Dock {
   private readonly tabs = new Map<string, Tab>();
   private readonly owned = new Map<string, { spec: DockAppTab; tab: HTMLElement; host: HTMLElement; mounted: boolean; off: (() => void) | undefined }>();
   private chat: DockChatView | null = null;
+  private readonly ownAsk: DockOwnAsk | null;
   private chatTab: HTMLElement | null = null;
   private active: string | null = null;
   private started = false;
@@ -119,6 +120,15 @@ export class Dock {
     this.noteCopy.addEventListener('click', () => { void navigator.clipboard?.writeText(this.noteCmd.textContent ?? '').catch(() => undefined); });
     contain(this.root, a);
     setClass(this.root, 'has-own-chat', !!a.chat && 'pane' in a.chat);
+    const ask = a.chat && 'pane' in a.chat ? a.chat.ask : undefined;
+    this.ownAsk = !ask || ask === 'none' ? null : ask === 'line' ? {} : ask;
+    if (this.ownAsk?.element) {
+      const slot = q(this.root, '.ft-dock-ask');
+      const box = el('<div class="ft-dock-ask-own"></div>');
+      box.appendChild(this.ownAsk.element);
+      slot.classList.add('has-element');
+      slot.appendChild(box);
+    }
   }
 
   mount(host: HTMLElement, before: Node | null = null): void {
@@ -232,6 +242,7 @@ export class Dock {
     setHidden(q(this.root, '.ft-dock-claude'), !this.offers('claude'));
     setHidden(this.restartBtn, !this.a.terminal.restart);
     setClass(this.root, 'has-no-ask', !this.offers('claude') && !this.offers('chat'));
+    setClass(this.root, 'has-ask-line', this.ownAsk !== null && (this.offers('claude') || this.offers('chat')));
     const want = new Map((this.a.tabs().own ?? []).map((spec) => [spec.id, spec]));
     for (const [id, o] of [...this.owned]) {
       if (want.has(id)) continue;
@@ -387,7 +398,8 @@ export class Dock {
   }
 
   focus(): void {
-    if (this.active === 'chat' && this.chat?.focus) this.chat.focus();
+    if (this.active === 'chat' && this.ownAsk && !this.ownAsk.element) this.ask.focus({ preventScroll: true });
+    else if (this.active === 'chat' && this.chat?.focus) this.chat.focus();
     else if (this.active === 'chat') this.ask.focus({ preventScroll: true });
     else if (this.active) this.tabs.get(this.active)?.term?.focus();
   }
@@ -448,6 +460,15 @@ export class Dock {
   private async send(): Promise<void> {
     const text = this.ask.value.trim();
     if (!text) return;
+    const chat = this.chat;
+    if (this.ownAsk && (this.ownAsk.send || (this.active === 'chat' && chat))) {
+      const route = this.ownAsk.send;
+      if (!route && chat?.isBusy()) return;
+      this.ask.value = '';
+      const went = route ? (await route(text, this.activeKind())) !== false : chat ? await chat.send(text) : false;
+      if (!went && !this.ask.value) this.ask.value = text;
+      return;
+    }
     if (this.active === 'chat' && this.chat) {
       if (this.chat.isBusy()) return;
       this.ask.value = '';

@@ -52,7 +52,8 @@ export interface DockOwnChat {
   closed?(): void;
   busy?(): boolean;
 }
-export interface DockChatPane { pane(host: HTMLElement): DockOwnChat | void }
+export interface DockOwnAsk { send?(text: string, tab: DockKind | null): DockSent; element?: HTMLElement }
+export interface DockChatPane { pane(host: HTMLElement): DockOwnChat | void; ask?: 'none' | 'line' | DockOwnAsk }
 export type DockChatEvent =
   | { type: 'state'; running: boolean; state: string; session: string | null; mode?: ChatMode }
   | { type: 'user'; text: string; note?: string }
@@ -124,7 +125,7 @@ export interface DockAdapter {
 }
 
 export const DOCK_PUBLIC = {
-  classes: ['ft-dock', 'ft-consent', 'ft-tour', 'ft-term', 'ft-chat', 'ft-dock-pane', 'ft-notranslate', 'is-hosted', 'has-own-chat', 'has-no-ask'],
+  classes: ['ft-dock', 'ft-consent', 'ft-tour', 'ft-term', 'ft-chat', 'ft-dock-pane', 'ft-notranslate', 'is-hosted', 'has-own-chat', 'has-no-ask', 'has-ask-line', 'ft-dock-ask', 'ft-dock-ask-own'],
   rootAttributes: ['data-ft-dock', 'data-ft-dock-side', 'data-ft-dock-h', 'data-ft-dock-w'],
   rootProperties: ['--ft-dock-size', '--ft-dock-wsize'],
   tokens: [

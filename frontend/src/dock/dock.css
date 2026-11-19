@@ -63,6 +63,9 @@
 .ft-chat.is-own { display: block; overflow: auto; }
 .ft-chat[hidden], .ft-chat.is-own[hidden], .ft-chat-mode[hidden], .ft-chat-stop[hidden] { display: none; }
 .ft-dock.has-own-chat .ft-dock-ask { display: none; }
+.ft-dock.has-own-chat.has-ask-line .ft-dock-ask { display: flex; }
+.ft-dock-ask.has-element > .ft-dock-ask-mark, .ft-dock-ask.has-element > .ft-dock-ask-input, .ft-dock-ask.has-element > .ft-dock-ask-send { display: none; }
+.ft-dock-ask-own { flex: 1 1 auto; display: flex; align-items: center; min-width: 0; height: 100%; }
 .ft-chat-meter { margin: 0; flex: none; white-space: nowrap; }
 .ft-chat-meter:empty { display: none; }
 .ft-chat-meter.is-high { color: var(--dock-accent); }
