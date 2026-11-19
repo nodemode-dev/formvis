@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Windows release build of 2.3.6 stopped at HEIC: the build step held the library it was replacing · 2.4.0 (setup/heif_decode.py main, _child_status, _verify; tests/test_heif_build_rules.py)
+
+- Kind: fix (build) · logged 2026-11-19.
+- What happened: on the Windows runner `setup/heif_decode.py` built libde265 and libheif, then asked pip to reinstall pillow-heif from source, and pip failed with "[WinError 5] Access is denied" on `_pillow_heif.cp312-win_amd64.pyd`. `main` had called `status()` first, which imports pillow-heif in the script's own process to see whether the wanted build is already there. Windows does not let a file be replaced while a running process has it loaded, so the script was holding the very file its own pip call had to replace. macOS and Linux allow it, which is why only Windows failed.
+- Now: `main` asks a fresh Python (`_child_status`, the same `--status` call `_verify` already used after the build), so the script's process never loads pillow-heif. A status that cannot be read counts as "not built" and the build runs.
+- Seen on Linux with the build itself stubbed: the released script has `pillow_heif` in `sys.modules` when the build starts; this one does not. The pip step on Windows itself was not run here.
+- Removed line, in full: `    current = status()`.
+
 ## Always allow is one agent's standing yes, Blocked is kept by the engine and stops every agent, and a waiting question can be listed again · after 2.3.5, unreleased (services/agents.py _stored, _load, _save, state, set_blocked, blocked, standing, admit; routers/agents.py BlockedBody, block; routers/mcp.py _declined, _questions, _ask, _call, bridge_next, bridge_questions)
 
 - Kind: feat · logged 2026-11-19 · DOCK_SPEC_2 section A rules 1 to 4.

@@ -86,6 +86,37 @@ def test_the_right_build_passes():
     assert formvis_engine.heic_problem(GOOD, True) == ""
 
 
+def test_the_build_step_never_loads_pillow_heif_itself(monkeypatch):
+    hd = heif_decode()
+    asked = []
+
+    def child(*args, **kwargs):
+        asked.append(1)
+        return {"installed": True, "version": "0", "libheif": "0", "encoders": ["x265"], "decoders": [], "decode_only": False}
+
+    def in_process():
+        raise AssertionError("the build step imported pillow-heif in its own process")
+
+    monkeypatch.setattr(hd, "_child_status", child)
+    monkeypatch.setattr(hd, "status", in_process)
+    monkeypatch.setattr(hd.shutil, "which", lambda name: "cmake")
+    monkeypatch.setattr(hd, "build", lambda: {"version": "x", "libheif": "y", "decoders": [], "encoders": []})
+    assert hd.main([]) == 0 and asked == [1]
+
+
+def test_a_status_that_cannot_be_read_means_build(monkeypatch):
+    hd = heif_decode()
+    built = []
+
+    def child():
+        raise ValueError("no JSON")
+
+    monkeypatch.setattr(hd, "_child_status", child)
+    monkeypatch.setattr(hd.shutil, "which", lambda name: "cmake")
+    monkeypatch.setattr(hd, "build", lambda: built.append(1) or {"version": "x", "libheif": "y", "decoders": [], "encoders": []})
+    assert hd.main([]) == 0 and built == [1]
+
+
 def test_the_freeze_scripts_require_heic_when_they_built_it():
     sh = (ROOT / "setup" / "freeze_backend").read_text(encoding="utf-8")
     bat = (ROOT / "setup" / "freeze_backend.bat").read_text(encoding="utf-8")
