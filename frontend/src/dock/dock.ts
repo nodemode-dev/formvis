@@ -167,7 +167,7 @@ export class Dock {
     this.keep();
     this.onChange();
     window.dispatchEvent(new Event('resize'));
-    if (on && !this.place.seen() && !this.tour.isRunning()) void this.guide();
+    if (on && !this.place.seen() && !this.tour.isRunning() && this.a.firstRun?.() !== false) void this.guide();
     if (!on) this.tour.end(false);
     if (on) void this.ensure(seed);
     this.onTab();
@@ -269,7 +269,8 @@ export class Dock {
       this.dismiss();
       return true;
     } catch (err) {
-      if (this.a.errors.missingRoute(err) || /not installed/i.test(this.a.errors.message(err) ?? '')) { void this.programs(); this.menu(true); }
+      const kind = this.a.errors.kind?.(err);
+      if (kind === 'oldEngine' || kind === 'notInstalled') { void this.programs(); this.menu(true); }
       else this.warn(err);
       return false;
     }
@@ -461,17 +462,22 @@ export class Dock {
   private dismiss(): void { setHidden(this.note, true); }
 
   private warn(err: unknown): void {
-    this.say(err instanceof Error ? err.message : this.s('failed'));
+    const kind = this.a.errors.kind?.(err);
+    const said = this.a.errors.message(err) ?? (err instanceof Error ? err.message : '');
+    if (kind === 'unreachable') this.say(this.a.words.start ? this.s('offlineStart') : this.s('offline'));
+    else if (kind === 'refused') this.say(said || this.s('refused'));
+    else this.say(said || this.s('failed'));
   }
 
   private async fail(err: unknown, what: 'shell' | 'claude'): Promise<void> {
-    if (what === 'shell') { this.warn(err); return; }
+    const kind = this.a.errors.kind?.(err);
+    if (what === 'shell' || kind === 'refused' || kind === 'unreachable') { this.warn(err); return; }
     const status = (await this.agents())?.claude;
     if (status && !status.installed) {
       this.say(this.s('notInstalled'), status.install);
       return;
     }
-    if (this.a.errors.missingRoute(err)) this.say(this.s('oldEngine'));
+    if (kind === 'oldEngine') this.say(this.s('oldEngine'));
     else this.say(`${this.s('notStarted')} ${err instanceof Error ? err.message : ''}`.trim());
   }
 

@@ -70,6 +70,7 @@ export interface DockSizes {
   maxHeight?(): number;
   maxWidth?(): number;
 }
+export type DockErrorKind = 'refused' | 'unreachable' | 'notInstalled' | 'oldEngine' | 'busy';
 export interface DockWords { app: string; noun: string; lead: string; example: string; start?: string }
 export interface DockAppTab { id: string; label: string; icon: string; mount(host: HTMLElement): void | (() => void) }
 export interface DockTabs { builtin: DockKind[]; own?: DockAppTab[] }
@@ -90,7 +91,8 @@ export interface DockAdapter {
   t(key: string, english: string): string;
   onTheme(handler: () => void): void;
   keyHeaders(): Record<string, string>;
-  errors: { message(err: unknown): string | null; missingRoute(err: unknown): boolean };
+  errors: { message(err: unknown): string | null; kind?(err: unknown): DockErrorKind | null };
+  firstRun?(): boolean;
   terminal: {
     list(): Promise<DockTerminal[]>;
     open(kind: Exclude<PtyKind, 'agent'>, options: DockOpen): Promise<DockTerminal>;

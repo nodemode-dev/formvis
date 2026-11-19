@@ -134,7 +134,13 @@ export function formvisDock(openSettings: () => void = () => undefined, layerOpe
     },
     errors: {
       message: (err) => (err instanceof ApiError ? err.message : null),
-      missingRoute: (err) => err instanceof ApiError && (err.status === 404 || err.status === 405) && /^(Not Found|Method Not Allowed)$/i.test(err.message),
+      kind: (err) => {
+        if (err instanceof TypeError) return 'unreachable';
+        if (!(err instanceof ApiError)) return null;
+        if (err.status === 403) return 'refused';
+        if ((err.status === 404 || err.status === 405) && /^(Not Found|Method Not Allowed)$/i.test(err.message)) return 'oldEngine';
+        return /not installed/i.test(err.message) ? 'notInstalled' : err.status === 502 || err.status === 503 || err.status === 504 ? 'unreachable' : null;
+      },
     },
     terminal: {
       list: () => api.terminals(),
