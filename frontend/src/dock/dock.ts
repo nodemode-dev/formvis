@@ -5,14 +5,13 @@ import type { DockAdapter, DockKind, DockTerminal, PtyKind } from './adapter';
 import { ChatPane } from './chat';
 import { cssToken as token, el, q, setDisabled, setHidden, setText } from './dom';
 import { dockIcon as icon } from './icons';
+import { moveLegacy, readState, type DockSide, type DockState } from './state';
 import { strings, type Say } from './strings';
 
 export type { DockAdapter, DockKind } from './adapter';
 
-type DockSide = 'bottom' | 'right';
 const PROGRAMS = ['codex', 'cursor'] as const;
 type Program = typeof PROGRAMS[number];
-interface DockState { open: boolean; side: DockSide; h: number; w: number; tab: string }
 
 interface Tab {
   id: string;
@@ -210,23 +209,11 @@ export class Dock {
   }
 
   private saved(): DockState {
-    const z = this.a.sizes;
-    const read = (k: string): Partial<DockState> | null => {
-      try { const v = localStorage.getItem(k); return v ? JSON.parse(v) as Partial<DockState> : null; } catch { return null; }
-    };
-    const s = read(this.a.storage.key) ?? this.a.storage.legacy.map(read).find((x) => x !== null) ?? {};
-    return {
-      open: s.open === true, side: s.side === 'right' ? 'right' : 'bottom',
-      h: typeof s.h === 'number' ? s.h : z.defaultHeight, w: typeof s.w === 'number' ? s.w : z.defaultWidth, tab: typeof s.tab === 'string' ? s.tab : '',
-    };
+    return readState(localStorage, this.a.storage.key, this.a.storage.legacy, { h: this.a.sizes.defaultHeight, w: this.a.sizes.defaultWidth });
   }
 
   private migrate(): void {
-    try {
-      if (localStorage.getItem(this.a.storage.key) !== null || !this.a.storage.legacy.some((k) => localStorage.getItem(k) !== null)) return;
-      localStorage.setItem(this.a.storage.key, JSON.stringify(this.saved()));
-      for (const k of this.a.storage.legacy) localStorage.removeItem(k);
-    } catch { return; }
+    moveLegacy(localStorage, this.a.storage.key, this.a.storage.legacy, { h: this.a.sizes.defaultHeight, w: this.a.sizes.defaultWidth });
   }
 
   private keep(): void {
