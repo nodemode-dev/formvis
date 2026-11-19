@@ -106,7 +106,8 @@
 .ft-consent::backdrop { background: var(--dock-scrim, rgba(0, 0, 0, 0.5)); }
 .ft-consent-count.is-one { visibility: hidden; }
 .ft-consent-notes { margin: 0; color: var(--dock-text-dim); font-size: var(--dock-fs-sm); line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
-.ft-consent-notes[hidden], .ft-consent-btn[hidden] { display: none; }
+.ft-consent-note { display: block; }
+.ft-consent-notes[hidden], .ft-consent-note[hidden], .ft-consent-btn[hidden] { display: none; }
 .ft-consent-box { display: flex; flex-direction: column; gap: var(--dock-space-2); width: min(440px, calc(100vw - 32px)); padding: var(--dock-space-4); border: 1px solid var(--dock-outline, var(--dock-border)); border-radius: var(--dock-radius-md); background: var(--dock-bg); color: var(--dock-text); box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45); user-select: text; -webkit-user-select: text; }
 .ft-consent-title { margin: 0; font-size: var(--dock-fs-md, 15px); font-weight: 600; line-height: 1.35; }
 .ft-consent-count, .ft-consent-notice { margin: 0; color: var(--dock-text-dim); font-size: var(--dock-fs-sm); }

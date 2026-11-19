@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock module 2.1.0, step 8: each note of a question is its own element · after 2.3.6, unreleased (dock/consent.ts render; dock/dock.css .ft-consent-note)
+
+- Kind: fix · logged 2026-11-19. Four ports (formPDF, formlit, formdeck, formtxt): `ConsentRequest.notes` were joined with a line break into one text node, so a translator that matches whole sentences in the page could not match any of them (formPDF's three sentences are in its 25 tables and still showed in English).
+- What: `p.ft-consent-notes` holds one `span.ft-consent-note` per note, each a block. The spans are kept and reused from one question to the next (text set in place, extras hidden), so the open dialog is never rebuilt. The look is the same: the line breaks fall where they fell.
+- Removed, `dock/consent.ts` `render`: `setText(notes, (r.notes ?? []).join('\n'));` and `setHidden(notes, !r.notes?.length);`.
+- Seen on the scratch page: a question with two notes had two spans with one sentence each; the capture of that dialog (page right to left, long label) against the one taken before this change, 0 differing pixels.
+
 ## Dock module 2.1.0, step 7: three tokens, six public class names, and dock.keeps for capture-phase listeners · after 2.3.6, unreleased (dock/dock.css .ft-dock-stage, .ft-dock-ask-input, .ft-dock-ask .ft-dock-ibtn, .ft-dock-tab icon colour; dock/adapter.ts DOCK_PUBLIC; dock/keys.ts keeps; dock/dock.ts keeps)
 
 - Kind: feature, opt-in · logged 2026-11-19. Only what two or more ports asked for.
