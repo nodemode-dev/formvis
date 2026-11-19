@@ -1,6 +1,6 @@
 ---
 name: formvis-colour-science
-description: Answers colour management questions with formvis's own colour service (LittleCMS through Pillow), not from memory. Use when someone asks which rendering intent to use, what a colour becomes in CMYK, whether a colour is inside a print profile's gamut, how sRGB converts to FOGRA39, what a Lab value or an ICC profile contains, how big a delta E is between two colours, or how formvis's Convert to Profile, Proof Colors and Gamut Warning compute their results. Also use before changing backend/app/services/colour.py or routers/colour.py.
+description: Answers colour management questions with formvis's own colour service (LittleCMS through Pillow), not from memory. Use when someone asks which rendering intent to use, what a colour becomes in CMYK, whether a colour is inside a print profile's gamut, how sRGB converts to FOGRA39, what a Lab value or an ICC profile contains, how big a delta E is between two colours, or how formvis's Convert to Profile, Proof Colors and Gamut Warning compute their results. Also use before changing backend/app/services/colour.py or routers/colour.py. Not for editing or exporting a picture (use formvis-driving) and not for other changes to formvis's own source code (use formvis-harness).
 ---
 
 # formvis-colour-science
