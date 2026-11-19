@@ -1,6 +1,6 @@
 {
   "module": "dock",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "files": {
     "CONTRACT.md": "a87dd3f86e2444269db1dcc7bd3905702a1eff635d46a27a55eba9f297cf856c",
     "adapter.ts": "d8ed37e01556e0e094a76c42a639fd18389dfc80a8e2d0300af6371b73ce468d",
@@ -13,7 +13,7 @@
     "keys.ts": "f5a6f88ed2f421d728bdaed4e14bd4c09ef4c9dfcaafdcc6c61d2ef74b07246f",
     "placement.ts": "40c7e85162ab289d77b96310aee717a58f5d169198aa7019ba31ad944535edb8",
     "state.ts": "07fbb3b1728902b847890a237b9455a78f92076d5c757cac93dfc7c09f8fd062",
-    "strings.ts": "551f63866b9fb95a79096e76c6516ef502040ff450528c22960713c25b0ac515",
+    "strings.ts": "b1ad5ff88bd46e3631b12fc831fc919329ad051ba38c99927c1d5aed9eea5de8",
     "terminal.ts": "8bf886a7ad4dc69323e803acc13641a66e1d8614e9b85a6a60977fa30d8a56fc",
     "tour.ts": "27a51aa617bbd636635eb5ec6d8afedb5b7e1215e2467f8820c634973df4af6d"
   }

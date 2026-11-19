@@ -12,7 +12,7 @@ DOCK = ROOT / "frontend" / "src" / "dock"
 
 def test_the_shared_dock_files_match_their_manifest():
     kept = json.loads((DOCK / "MANIFEST.json").read_text(encoding="utf-8"))
-    assert kept["module"] == "dock" and kept["version"] == "2.0.0"
+    assert kept["module"] == "dock" and kept["version"] == "2.0.1"
     now = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in DOCK.iterdir() if p.is_file() and p.name != "MANIFEST.json"}
     assert kept["files"] == now
 

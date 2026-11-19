@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock module 2.0.1: the question says the name is the agent's own claim · after 2.3.5, unreleased (dock/strings.ts consentTitle, consentAlways; setup/agents.py DOCK_VERSION; frontend/src/dock/MANIFEST.json; backend/tests/test_dock_manifest.py)
+
+- Kind: fix, wording only · logged 2026-11-19.
+- Why: the name in the question is whatever the calling program gives for itself, and any program on the machine can give any name. "Allow {agent} ..." read as if the app knew who was calling. The title is now "Allow an agent calling itself {agent} to make changes in {app}?" and the standing answer is "Always allow any agent named {agent}", which is exactly what the engine stores.
+- Removed text, in full: `consentTitle: 'Allow {agent} to make changes in {app}?',` and `consentAlways: 'Always allow {agent}',`.
+- Nothing else in the folder changed; `./formvis agents sync` wrote the manifest. In the 29 language tables these two sentences show in English until the tables are brought up.
+
 ## Dock module 2.0.0, step 10: the manifest says 2.0.0 · after 2.3.5, unreleased (setup/agents.py DOCK_VERSION; frontend/src/dock/MANIFEST.json; backend/tests/test_dock_manifest.py)
 
 - Kind: feat · logged 2026-11-19 · DOCK_SPEC_2 section F item 1.
