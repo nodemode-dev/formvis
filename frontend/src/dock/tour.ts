@@ -71,7 +71,7 @@ export class Tour {
       <p class="ft-tour-count"></p>
       <h2 class="ft-tour-title" id="ft-tour-title"></h2>
       <p class="ft-tour-body" id="ft-tour-body"></p>
-      <div class="ft-tour-cmd" hidden><code></code><button type="button" class="${c.button} ft-tour-copy">${s('copy')}</button></div>
+      <div class="ft-tour-cmd" hidden><code class="ft-tour-cmd-text ft-notranslate" translate="no"></code><button type="button" class="${c.button} ft-tour-copy">${s('copy')}</button></div>
       <div class="ft-tour-nav">
         <button type="button" class="${c.button} ft-tour-x">${s('tourClose')}</button>
         <button type="button" class="${c.button} ft-tour-back">${s('tourBack')}</button>
@@ -101,7 +101,8 @@ export class Tour {
 
   private go(from: number, dir: 1 | -1): boolean {
     for (let i = from; i >= 0 && i < this.steps.length; i += dir) {
-      const node = document.querySelector(this.steps[i].target);
+      const at = this.steps[i];
+      const node = at ? document.querySelector(at.target) : null;
       if (!shown(node)) continue;
       this.at = i;
       this.watch.disconnect();
@@ -115,6 +116,7 @@ export class Tour {
 
   private fill(): void {
     const step = this.steps[this.at];
+    if (!step) return;
     const total = this.steps.length;
     setText(this.count, this.s('tourCount').replace('{n}', String(this.at + 1)).replace('{total}', String(total)));
     setText(this.title, this.s(step.title));

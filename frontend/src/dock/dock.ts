@@ -498,7 +498,7 @@ export class Dock {
   async claude(prompt?: string, resume?: string): Promise<boolean> {
     const size = this.size();
     try {
-      const info = await this.a.terminal.open('claude', { prompt: prompt || undefined, resume: resume || undefined, cols: size.cols, rows: size.rows });
+      const info = await this.a.terminal.open('claude', { cols: size.cols, rows: size.rows, ...(prompt ? { prompt } : {}), ...(resume ? { resume } : {}) });
       if (!this.isOpen()) this.toggle(true, 'none');
       if (this.tabs.has(info.id)) this.select(info.id);
       else await this.attach(info, true);

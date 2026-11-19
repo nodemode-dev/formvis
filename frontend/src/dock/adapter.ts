@@ -112,6 +112,21 @@ export interface DockAdapter {
   openSettings?(): void;
 }
 
+export const DOCK_PUBLIC = {
+  classes: ['ft-dock', 'ft-consent', 'ft-tour', 'ft-term', 'ft-chat', 'ft-dock-pane', 'ft-notranslate', 'is-hosted', 'has-own-chat', 'has-no-ask'],
+  rootAttributes: ['data-ft-dock', 'data-ft-dock-side', 'data-ft-dock-h', 'data-ft-dock-w'],
+  rootProperties: ['--ft-dock-size', '--ft-dock-wsize'],
+  tokens: [
+    '--dock-bg', '--dock-bar-bg', '--dock-raised', '--dock-hover', '--dock-input-bg', '--dock-border', '--dock-edge', '--dock-divider', '--dock-tab-border', '--dock-outline', '--dock-scrim',
+    '--dock-text', '--dock-text-dim', '--dock-text-muted', '--dock-tab-text', '--dock-accent', '--dock-accent-line', '--dock-accent-ink', '--dock-danger', '--dock-danger-text',
+    '--dock-space-1', '--dock-space-2', '--dock-space-3', '--dock-space-4', '--dock-radius-xs', '--dock-radius-sm', '--dock-radius', '--dock-radius-md', '--dock-tab-radius',
+    '--dock-head-h', '--dock-tab-h', '--dock-ibtn', '--dock-ask-h', '--dock-chat-bar-h', '--dock-ctl-h', '--dock-icon', '--dock-icon-sm', '--dock-icon-xs', '--dock-icon-note', '--dock-icon-send',
+    '--dock-fs-xs', '--dock-fs-sm', '--dock-fs-md', '--dock-font-mono',
+    '--dock-term-bg', '--dock-term-fg', '--dock-term-cursor', '--dock-term-selection', '--dock-term-font-size', '--dock-term-line-height', '--dock-term-contrast',
+  ],
+  layers: ['--z-raised', '--z-overlay'],
+} as const;
+
 export type ConsentChoice = 'deny' | 'once' | 'always';
 export type ConsentScope = 'agent' | 'all';
 export type StoredChoice = 'ask' | 'allowed' | 'blocked';
