@@ -191,6 +191,33 @@ def dock_problems() -> list[str]:
     return [f"{rel}/{name}: does not match MANIFEST.json (the shared dock module changes only as a whole new version)" for name in sorted(set(kept) | set(now)) if kept.get(name) != now.get(name)]
 
 
+LOOKUP = ROOT / "backend" / "app" / "services" / "agent_lookup.py"
+LOOKUP_HASHES = {"1.0.0": "252ea9bb9419d4990f174f91914f09800497bc69e98f849f5643bbf4217cc3f3"}   # the family's record: the SHA-256 of the shared finder at each of its versions
+
+
+def lookup_problems() -> list[str]:
+    rel = LOOKUP.relative_to(ROOT).as_posix()
+    try:
+        raw = LOOKUP.read_bytes()
+    except OSError:
+        return [f"{rel}: missing (the shared finder for the agent programs)"]
+    said = re.search(rb'^VERSION = "([^"\r\n]+)"\r?$', raw, re.M)
+    version = said.group(1).decode("ascii", "replace") if said else "unknown"
+    if LOOKUP_HASHES.get(version) != hashlib.sha256(raw).hexdigest():
+        return [f"{rel}: does not match the hash recorded for version {version} (the shared finder changes only as a whole new version)"]
+    return []
+
+
+def lookup():
+    """The shared finder, loaded from its file: it imports nothing from the app, so this script needs no engine."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("formvis_agent_lookup", LOOKUP)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def manifest() -> str:
     """agents/manifest.json (formadaptor spec/agent-manifest.schema.json): what formvis offers agents, read from the MCP
     catalogue and its declarations, the skills folder and the extension host; only the app's name and the dock are declared here."""
@@ -305,7 +332,7 @@ def sync(check: bool) -> int:
         drift.append(str(stale.relative_to(ROOT)) + " (removed skill)")
         if not check:
             shutil.rmtree(stale, ignore_errors=True)
-    problems = skill_problems() + routing_problems() + tool_problems() + (dock_problems() if check else [])
+    problems = skill_problems() + routing_problems() + tool_problems() + (dock_problems() if check else []) + lookup_problems()
     if CATALOGUE.exists() is False:
         print("agents: no command catalogue in " + str(CATALOGUE.parent) + " (open the formvis window once); commands.md and command-map.md left as they are")
     if check:
@@ -339,19 +366,22 @@ def _copy_skill(root: Path, dry: bool, said: list) -> None:
 
 def install_claude(home: Path, dry: bool, said: list) -> None:
     said.append("Claude Code:")
-    claude = shutil.which("claude")
+    finder = lookup()
+    found = finder.check(finder.find("claude", override_vars=("FORMVIS_CLAUDE_BIN",), home=home))
+    claude = found.path if found.state == "runs" else None
     if claude:
-        have = subprocess.run([claude, "mcp", "get", "formvis"], capture_output=True, text=True)
+        env = finder.child_env(claude, home=home)
+        have = finder.run([claude, "mcp", "get", "formvis"], env, 60)
         if have.returncode == 0 and LAUNCH in have.stdout:
             said.append("  MCP server formvis already set (user scope)")
         else:
             said.append(f"  claude mcp add --scope user formvis -- {subprocess.list2cmdline([LAUNCH, *ARGS])}")
             if not dry:
                 if have.returncode == 0:
-                    subprocess.run([claude, "mcp", "remove", "formvis", "--scope", "user"], capture_output=True)
-                subprocess.run([claude, "mcp", "add", "--scope", "user", "formvis", "--", LAUNCH, *ARGS], check=True, capture_output=True)
+                    finder.run([claude, "mcp", "remove", "formvis", "--scope", "user"], env, 60)
+                finder.run([claude, "mcp", "add", "--scope", "user", "formvis", "--", LAUNCH, *ARGS], env, 60).check_returncode()
     else:
-        said.append(f"  the claude command is not installed here; once it is, run: claude mcp add --scope user formvis -- {subprocess.list2cmdline([LAUNCH, *ARGS])}")
+        said.append(f"  {finder.sentence(found, finder.install('claude'))} Once it runs: claude mcp add --scope user formvis -- {subprocess.list2cmdline([LAUNCH, *ARGS])}")
     _copy_skill(home / ".claude" / "skills", dry, said)
 
 
