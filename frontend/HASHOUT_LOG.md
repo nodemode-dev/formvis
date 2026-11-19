@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The dock is the family's shared module behind an adapter · after 2.3.5, unreleased (dock/*, dock-adapter.ts formvisDock, styles/dock-tokens.css, styles/terminal.css, app.ts termDock, index.html)
+
+- Kind: refactor · logged 2026-11-19 · DOCK_SPEC sections 1 and 8, stage 1 step 1.
+- `ui/terminal-dock.ts` (TerminalDock) and `ui/chat-pane.ts` (ChatPane) moved, method for method, into `dock/dock.ts` (class `Dock`, imported in app.ts as `AgentDock` because app.ts already has the panel `Dock`) and `dock/chat.ts`. Nothing is removed: the code is the same with each outside import replaced by a call through `DockAdapter` (`dock/adapter.ts`): routes, sockets, Claude Code status, error tests (`errors.message`, `errors.missingRoute` stand for `instanceof ApiError`), host classes (`cv-tt-btn`, `cv-btn`, `cv-btn-primary`, `cv-input`, `cv-select`, `cv-note`), `t()`, the theme signal (`nm:ui-settings-changed`), the storage key (still `formvis.terminal` here) and the mount point (before `.cv-status` in `.cv-app`). The old files are in git history at the parent of this commit.
+- Every string is in `dock/strings.ts` by key, in the English that formvis's i18n tables are keyed on; `{noun}`, `{app}`, `{start}` and `{examples}` are filled from the adapter before `t()`, so each string reaches `t()` exactly as before and the 29 tables still match.
+- The dock's rules moved from `styles/terminal.css` to `dock/dock.css`, written only against `--dock-*` and `--z-*`; `styles/dock-tokens.css` maps each `--dock-*` onto formvis's tokens, declared on both `:root` (the terminal theme is read from the root, as before) and `.ft-dock` (so a theme that sets tokens on `body` still reaches the dock's rules as before). The shared icons carry the class `ft-icon` with `.icon`'s two rules restated in dock.css; buttons carry the host class plus `ft-dock-ibtn` or `ft-chat-btn`, which dock.css sizes where it sized `.cv-tt-btn` and `.cv-btn` before. The `is-screen-menu` and `is-screen-full` hiding stays in terminal.css: it is formvis's layout.
+- Verified: headless Chrome at 1440 by 900 against the dev server and the engine, dock closed, open on a shell (terminal text masked) and open on Chat: 0 differing pixels in each against captures taken before the change. The element count is 2 higher in each (the two new stylesheet links in `<head>`).
+
 ## The saved agent permission changed outside formvis is said once in Agent Connect · after 2.3.5, unreleased (ui/panels/agent-connect.ts .ft-connect-seal, take, toggle; styles/terminal.css; ui/i18n/more/*)
 
 - Kind: feat · logged 2026-11-19.

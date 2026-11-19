@@ -216,7 +216,8 @@ import { setPixelBudget } from './engine/types';
 import { AssistantPanel } from './ui/panels/assistant';
 import { installAgentConnect } from './ui/panels/agent-connect';
 import { installColorSettings } from './ui/panels/colour-settings-dialog';
-import { TerminalDock } from './ui/terminal-dock';
+import { Dock as AgentDock } from './dock/dock';
+import { formvisDock } from './dock-adapter';
 import { HelpDialog } from './ui/panels/help';
 import { VERSION } from './version';
 import { WhatsNewDialog } from './ui/panels/whats-new';
@@ -3879,8 +3880,7 @@ export function startApp(): void {
   document.body.appendChild(assistant.el);
   // The terminal dock (DEV_PLAN 28.5) with its Claude Code tabs, Chat tab and ask bar: its grid row sits above the status
   // bar and is reserved by terminal.css from the first frame; the title bar's two buttons follow its active tab.
-  const termDock = new TerminalDock();
-  root.insertBefore(termDock.root, q(root, '.cv-status'));
+  const termDock = new AgentDock(formvisDock());
   termDock.onChange = () => { window.dispatchEvent(new Event('resize')); };
   termDock.onTab = () => { titleTools.syncDock(termDock.isOpen(), termDock.activeKind()); };
   installAgentConnect(commands, engine);
