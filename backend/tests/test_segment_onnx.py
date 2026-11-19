@@ -34,7 +34,8 @@ def test_the_real_model_selects_by_click_and_by_box_without_torch(monkeypatch):
     monkeypatch.setattr(segment, "torch_available", lambda: False)             # as a base install: no torch
     need_model("sam2-onnx", download=True)
     assert segment.available() and segment.backend() == "onnx"
-    client = TestClient(app, base_url="http://127.0.0.1:8190")
+    from app.core import window_key
+    client = TestClient(app, base_url="http://127.0.0.1:8190", headers={window_key.HEADER: window_key.KEY})
     cap = client.get("/api/capabilities").json()
     assert cap["selectObject"]["available"] and "ONNX Runtime" in cap["selectObject"]["reason"]
     data = picture()

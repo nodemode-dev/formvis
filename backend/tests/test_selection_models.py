@@ -31,7 +31,8 @@ def _ready(*models):
 
 
 def client():
-    return TestClient(app, base_url="http://127.0.0.1:8190")
+    from app.core import window_key
+    return TestClient(app, base_url="http://127.0.0.1:8190", headers={window_key.HEADER: window_key.KEY})
 
 
 @pytest.mark.parametrize("kind", ["subject", "object"])

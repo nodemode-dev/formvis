@@ -32,7 +32,8 @@ ROUTES = [
 def test_a_missing_model_is_named_in_the_answer(monkeypatch, path, model, fields, data):
     monkeypatch.setattr(model_manager, "ready", lambda _model: False)
     files = {f: (f"{f}.png", _png(), "image/png") for f in fields}
-    r = TestClient(app, base_url="http://127.0.0.1:8190").post(path, files=files, data=data, headers={"x-formvis-local": "1"})
+    from app.core import window_key
+    r = TestClient(app, base_url="http://127.0.0.1:8190").post(path, files=files, data=data, headers={"x-formvis-local": "1", window_key.HEADER: window_key.KEY})
     assert r.status_code == 409, r.text
     assert r.headers.get("x-formvis-model") == model
     assert "Preferences > Plugins > Local models" in r.json()["detail"]

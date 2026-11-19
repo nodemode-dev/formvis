@@ -10,6 +10,7 @@ read with a margin of context.
 import numpy as np
 from app.localgen import ai_upscale, model_manager
 from app.main import app
+from app.core.window_key import HEADER as WINDOW_HEADER, KEY as WINDOW_KEY
 from fastapi.testclient import TestClient
 from PIL import Image
 from tests.conftest import need_model
@@ -55,7 +56,7 @@ def test_an_image_keeps_its_alpha_and_takes_the_asked_size():
 def test_ai_upscaling_waits_for_its_model(monkeypatch):
     """formvis's route (formcut's is its media library's): refused, saying why, until the model is downloaded."""
     monkeypatch.setattr(model_manager, "ready", lambda model: False)
-    client = TestClient(app, base_url="http://127.0.0.1:8123", headers={"x-formvis-local": "1"})
+    client = TestClient(app, base_url="http://127.0.0.1:8123", headers={"x-formvis-local": "1", WINDOW_HEADER: WINDOW_KEY})
     b = io.BytesIO(); Image.new("RGB", (10, 10)).save(b, "PNG")
     reply = client.post("/api/upscale/local", files={"file": ("p.png", b.getvalue(), "image/png")}, data={"factor": "2"})
     assert reply.status_code == 409 and "model" in reply.json()["detail"]
@@ -71,7 +72,7 @@ def test_the_real_model_downloads_pinned_and_upscales_through_the_route(monkeypa
     route as a job: four times larger, the alpha kept, the colours of a flat picture kept."""
     import time
     need_model("ai-upscale", download=True)
-    client = TestClient(app, base_url="http://127.0.0.1:8123", headers={"x-formvis-local": "1"})
+    client = TestClient(app, base_url="http://127.0.0.1:8123", headers={"x-formvis-local": "1", WINDOW_HEADER: WINDOW_KEY})
     picture = Image.new("RGBA", (40, 24), (40, 120, 200, 255)); picture.putpixel((0, 0), (40, 120, 200, 0))
     b = io.BytesIO(); picture.save(b, "PNG")
     started = client.post("/api/upscale/local", files={"file": ("p.png", b.getvalue(), "image/png")}, data={"factor": "4"})
