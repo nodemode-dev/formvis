@@ -85,12 +85,14 @@ export const outsideAgents = {
   },
 };
 
-export function formvisDock(openSettings: () => void = () => undefined): DockAdapter {
+export function formvisDock(openSettings: () => void = () => undefined, layerOpen: () => boolean = () => false): DockAdapter {
   return {
     app: { name: 'formvis', noun: 'picture', start: './formvis boot', examples: 'retouch it, remove an object, add text, resize, export' },
     storage: { key: 'formvis.agentDock', legacy: ['formvis.terminal'] },
     sizes: { minHeight: 120, maxHeightShare: 0.7, defaultHeight: 280, minWidth: 320, maxWidthShare: 0.6, defaultWidth: 440 },
-    shortcut: { code: 'KeyJ', label: `${isMac ? 'Cmd' : 'Ctrl'}+J` },
+    isDockChord: (e) => (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !(layerOpen() && !(e.target instanceof Element && e.target.closest('.ft-dock'))),
+    chordLabel: () => `${isMac ? 'Cmd' : 'Ctrl'}+J`,
+    passKey: (e) => e.key === 'F1' || ((e.metaKey || e.ctrlKey) && (e.key === ',' || (e.altKey && e.code === 'KeyJ'))),
     tabs: ['chat', 'shell', 'claude', 'codex', 'cursor'],
     classes: { iconButton: 'cv-tt-btn', button: 'cv-btn', primaryButton: 'cv-btn-primary', input: 'cv-input', select: 'cv-select', note: 'cv-note' },
     mount: (dock) => {

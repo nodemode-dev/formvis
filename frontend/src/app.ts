@@ -3881,7 +3881,7 @@ export function startApp(): void {
   document.body.appendChild(assistant.el);
   // The terminal dock (DEV_PLAN 28.5) with its Claude Code tabs, Chat tab and ask bar: its grid row sits above the status
   // bar and is reserved by terminal.css from the first frame; the title bar's two buttons follow its active tab.
-  const termDock = new AgentDock(formvisDock(() => dialogs.settings.show('Plugins')));
+  const termDock = new AgentDock(formvisDock(() => dialogs.settings.show('Plugins'), () => !!engine.activeLayer));
   termDock.onChange = () => { window.dispatchEvent(new Event('resize')); };
   termDock.onTab = () => { titleTools.syncDock(termDock.isOpen(), termDock.activeKind()); };
   installAgentConnect(commands, engine);
@@ -3971,7 +3971,6 @@ export function startApp(): void {
     return { scope: 'range', layers: n };
   };
   const layer = () => engine.activeLayer;
-  termDock.yieldsKey = () => !!layer();   // Mod+J is Layer via Copy while a layer is open; the dock keeps it inside itself and the menu opens it otherwise
   const pixel = (): boolean => { const l = engine.activeLayer; return !!l && !l.isGroup && !l.adjustment; };
   const withPixels = (): boolean => pixel() && !!engine.activeLayer?.raster;
   const selected = (): boolean => !!engine.current?.selection;

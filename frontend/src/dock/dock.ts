@@ -6,6 +6,7 @@ import { ChatPane } from './chat';
 import { Consent } from './consent';
 import { cssToken as token, el, q, setDisabled, setHidden, setText } from './dom';
 import { dockIcon as icon } from './icons';
+import { chordLabel, contain, isChord, leaves } from './keys';
 import { moveLegacy, readSeen, readState, type DockSide, type DockState } from './state';
 import { strings, type Say } from './strings';
 import { Tour, type TourStep } from './tour';
@@ -53,7 +54,6 @@ export class Dock {
   private look = '';
   onTab: () => void = () => undefined;
   onChange: () => void = () => undefined;
-  yieldsKey: () => boolean = () => false;
   readonly consent: Consent | null;
   private readonly tour: Tour;
 
@@ -75,7 +75,7 @@ export class Dock {
       <button type="button" class="${ib} ft-dock-more" title="${s('moreAgents')}" aria-label="${s('moreAgents')}" aria-haspopup="true" aria-expanded="false">${icon('menu', 15)}</button>
       <button type="button" class="${ib} ft-dock-restart" title="${s('restart')}" aria-label="${s('restart')}">${icon('refresh', 15)}</button>
       <button type="button" class="${ib} ft-dock-side" title="${s('toRight')}" aria-label="${s('toRight')}"><span class="ft-dock-side-right">${icon('dockRight', 15)}</span><span class="ft-dock-side-bottom">${icon('dockBottom', 15)}</span></button>
-      <button type="button" class="${ib} ft-dock-hide" title="${s('hide')} (${a.shortcut.label}); ${s('keepRunning')}" aria-label="${s('hide')}">${icon('close', 15)}</button>
+      <button type="button" class="${ib} ft-dock-hide" title="${s('hide')} (${chordLabel(a)}); ${s('keepRunning')}" aria-label="${s('hide')}">${icon('close', 15)}</button>
     </div>
     <div class="ft-dock-menu" role="menu" hidden>
       <div class="ft-dock-menu-row" data-kind="codex"><button type="button" class="${c.button} ft-dock-menu-go" role="menuitem">${icon('codex', 13)}<span>${s('codex')}</span></button><p class="ft-dock-menu-how ${c.note}"></p><code class="ft-dock-menu-cmd"></code></div>
@@ -123,10 +123,13 @@ export class Dock {
     q(this.root, '.ft-dock-ask').addEventListener('submit', (e) => { e.preventDefault(); void this.send(); });
     q(this.root, '.ft-dock-note-x').addEventListener('click', () => this.dismiss());
     this.noteCopy.addEventListener('click', () => { void navigator.clipboard?.writeText(this.noteCmd.textContent ?? '').catch(() => undefined); });
-    this.ask.addEventListener('keydown', (e) => { e.stopPropagation(); });
+    contain(this.root, a);
     new ResizeObserver(() => this.fitActive()).observe(this.stage);
     document.addEventListener('keydown', (e) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === a.shortcut.code && !e.repeat && !(this.yieldsKey() && !this.root.contains(e.target as Node))) { e.preventDefault(); e.stopPropagation(); this.toggle(); }
+      if (!isChord(a, e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) this.toggle();
     }, true);
     a.onTheme(() => this.retheme());
     new MutationObserver(() => this.retheme()).observe(html, { attributes: true, attributeFilter: ['style', 'class', 'data-theme'] });
@@ -495,6 +498,7 @@ export class Dock {
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
+    term.attachCustomKeyEventHandler((e) => !leaves(this.a, e));
     const host = el('<div class="ft-term" hidden></div>');
     const tab = el(`<button type="button" class="ft-dock-tab${kind === 'shell' || agent ? '' : ` is-${kind}`}${agent ? ' is-agent' : ''}" role="tab" aria-selected="false">${icon(mark, 13)}<span class="ft-dock-tab-title"></span><span class="ft-dock-tab-x" role="button" aria-label="${this.s('closeTab')}">${icon('close', 11)}</span></button>`);
     setText(q(tab, '.ft-dock-tab-title'), info.title);

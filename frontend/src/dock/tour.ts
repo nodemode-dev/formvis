@@ -1,5 +1,6 @@
 import type { DockAdapter } from './adapter';
 import { el, q, setHidden, setText } from './dom';
+import { contain } from './keys';
 import { strings, type Say, type StringKey } from './strings';
 
 export interface TourStep { target: string; title: StringKey; body: StringKey; cmd?: string }
@@ -87,6 +88,7 @@ export class Tour {
     this.cmd = q(this.cmdRow, 'code');
     this.back = q<HTMLButtonElement>(this.root, '.ft-tour-back');
     this.next = q<HTMLButtonElement>(this.root, '.ft-tour-next');
+    contain(this.card, this.a);
     q(this.root, '.ft-tour-copy').addEventListener('click', () => { void navigator.clipboard?.writeText(this.cmd.textContent ?? '').catch(() => undefined); });
     q(this.root, '.ft-tour-x').addEventListener('click', () => this.end(true));
     this.back.addEventListener('click', () => { this.go(this.at - 1, -1); this.place(); });

@@ -24,7 +24,9 @@ export interface DockAdapter {
   app: { name: string; noun: string; start: string; examples: string };
   storage: { key: string; legacy: string[] };
   sizes: { minHeight: number; maxHeightShare: number; defaultHeight: number; minWidth: number; maxWidthShare: number; defaultWidth: number };
-  shortcut: { code: string; label: string };
+  passKey?(event: KeyboardEvent): boolean;
+  isDockChord?(event: KeyboardEvent): boolean;
+  chordLabel?(): string;
   tabs: DockKind[];
   classes: { iconButton: string; button: string; primaryButton: string; input: string; select: string; note: string };
   mount(dock: HTMLElement): void;
