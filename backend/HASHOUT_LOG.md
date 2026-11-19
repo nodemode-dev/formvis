@@ -2,6 +2,50 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Each MCP tool declares what it is where it is defined, and the approval gate reads that · after 2.3.5, unreleased (routers/mcp.py _tool, DECLARED, REACHES, ASKS_IF, declaration_faults, _risk, _agent_call; routers/mcp_pack.py _tool, PACK_DECLARED; services/agents.py; setup/agents.py tool_problems, sync)
+
+- Kind: refactor · logged 2026-11-18.
+- Why: the gate ran on hand lists kept apart from the 140 definitions (`agents.RISKY_TOOLS`, `HEADLESS_TOOLS`), so a new tool missing from a list was treated as needing no approval. Each `_tool(...)` (both copies) now takes keyword-only `reach` (document, app, reads files, writes files: the open document; formvis itself; files at paths, which `_path` keeps inside the folders agents may use), `asks` (what the person approves, the words that were in RISKY_TOOLS), `asks_if` (empty: always; overwrite: only when replacing a file, convert_file; quit: ui_window; a risky command: run_command, run_commands, ui_menu_invoke) and `headless` (runs in the engine with no window: convert_file, file_info), beside the existing `read`. They go into `DECLARED` (mcp_pack's into `PACK_DECLARED`, merged after `TOOLS.extend`), never into the tools/list reply.
+- `_risk` and `_agent_call` read `DECLARED`; RISKY_TOOLS and HEADLESS_TOOLS are gone. setup/mcp_stdio.py keeps `WRITES` and `MENUS` because it runs without the engine's packages; `tool_problems` checks them against the declarations (WRITES: writes files with no output_path; MENUS: a `path` that is not a file), and `CONTROL` against `CONTROL_METHODS`.
+- `declaration_faults` names a tool with no declaration or no reach, read-only with asks, read-only and destructive, read-only that writes files, writes files without asks, an unknown asks_if or one with no asks, headless on the document, output_path not declared as writing, files without a path, and a `_FILES` tool whose reach disagrees with its read flag there. `sync` adds `tool_problems` to its problems, so `--check` exits 1.
+- control_call is declared document: the gate judges it as the tool it names (it is swapped before the gate), so its own declaration only says it has no file path.
+- Behaviour unchanged, checked by running: the gate's branches for all 140 tools (`_agent_call` under Ask with a window, a screenless window and none, overwrite false and true, a stand-in window answering commands as risky; `_refused`; stdio `outside_roots`) dumped before and after, byte-identical; and the engine from source on 28300 through `/mcp` with a stand-in window and person, 45 calls (get_document, set_layer, export_image, convert_file new and overwrite, file_info, under ask, allow and deny, with no window, a window and a screenless window), identical before and after. `--check` on a copy with delete_layer's reach removed, asks on file_info and none on export_layer names all three and exits 1; with save_project left out of WRITES, names it.
+- Replaced, quoted exactly:
+
+```py
+from app.routers.mcp_pack import PACK_TOOLS, PACK_USE_WHEN
+```
+
+```py
+def _tool(name: str, description: str, props: dict, required: list[str] | None = None, **hints: bool) -> dict:
+    return {"name": name,
+```
+
+(the same two lines in mcp_pack.py), and on each of the 140 definitions the closing `..., read=True, idempotent=True),` or `...),` without the new keywords.
+
+```py
+    if name in agents.RISKY_TOOLS and (name != "convert_file" or args.get("overwrite") is True):   # a new file replaces nothing
+        return f"{name} {agents.RISKY_TOOLS[name]} at {args.get('output_path') or args.get('path', 'a path')}, which Undo cannot restore"
+    if name == "ui_window" and args.get("action") == "quit":
+        return "ui_window quit closes formvis, which Undo cannot reverse"
+```
+
+```py
+HEADLESS_TOOLS = {"convert_file", "file_info"}
+```
+
+```py
+            if why and name in HEADLESS_TOOLS and not _live():
+```
+
+```py
+RISKY_TOOLS = {"save_project": "overwrites a project file", "export_image": "overwrites a picture file", "export_mask": "overwrites a picture file", "export_layer": "overwrites a picture file", "timeline_render": "overwrites a video file", "convert_file": "writes a picture file"}
+```
+
+```py
+    problems = skill_problems() + routing_problems()
+```
+
 ## agents sync --check also checks each skill's routing table against its sub-skill folders · after 2.3.5, unreleased (setup/agents.py routing_problems, sync)
 
 - Kind: feat · logged 2026-11-19.

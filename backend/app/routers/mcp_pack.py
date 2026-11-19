@@ -2,7 +2,11 @@
 the window runs them (frontend/src/automation/pack-tools.ts), and glb_place and glb_info with a path are read here."""
 
 
-def _tool(name: str, description: str, props: dict, required: list[str] | None = None, **hints: bool) -> dict:
+PACK_DECLARED: dict[str, dict] = {}
+
+
+def _tool(name: str, description: str, props: dict, required: list[str] | None = None, *, reach: str = "", asks: str = "", asks_if: str = "", headless: bool = False, **hints: bool) -> dict:
+    PACK_DECLARED[name] = {"read": hints.get("read", False), "destructive": hints.get("destructive", False), "reach": reach, "asks": asks, "asks_if": asks_if, "headless": headless}
     return {"name": name, "description": description, "inputSchema": {"type": "object", "properties": props, "required": required or [], "additionalProperties": False},
             "annotations": {"readOnlyHint": hints.get("read", False), "destructiveHint": hints.get("destructive", False), "idempotentHint": hints.get("idempotent", False), "openWorldHint": False}}
 
@@ -34,24 +38,24 @@ PACK_TOOLS = [
            "anchor": {"type": "string", "enum": ["top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"], "default": "bottom-right"},
            "style": {"type": "string", "enum": ["dark", "light", "outline"], "default": "dark"},
            "size": {"type": "number", "minimum": 2, "maximum": 30, "default": 6, "description": "Badge height, percent of the shorter side of the document."},
-           "opacity": {"type": "number", "minimum": 0.05, "maximum": 1, "default": 1}, "text": {"type": "string", "maxLength": 40, "description": "The badge's words; the default follows kind."}}),
-    _tool("ailabel_remove", "Removes the document's AI label: the metadata mark and every badge layer named EU AI label. One undoable step.", {}, destructive=True, idempotent=True),
-    _tool("ailabel_info", "Whether the document is marked as AI content: the label (generated, edited or none), the IPTC digital source type it writes, the badge layers and the export formats that carry it.", {}, read=True, idempotent=True),
-    _tool("film_looks", "Lists the film looks (id, name, kind negative|slide|bw|cine, ISO, curve points) and the film layers in the document with their look, strength and curve points. A look is a tone curve with editable points, a colour matrix and grain that grows with its speed.", {}, read=True, idempotent=True),
+           "opacity": {"type": "number", "minimum": 0.05, "maximum": 1, "default": 1}, "text": {"type": "string", "maxLength": 40, "description": "The badge's words; the default follows kind."}}, reach="document"),
+    _tool("ailabel_remove", "Removes the document's AI label: the metadata mark and every badge layer named EU AI label. One undoable step.", {}, reach="document", destructive=True, idempotent=True),
+    _tool("ailabel_info", "Whether the document is marked as AI content: the label (generated, edited or none), the IPTC digital source type it writes, the badge layers and the export formats that carry it.", {}, reach="document", read=True, idempotent=True),
+    _tool("film_looks", "Lists the film looks (id, name, kind negative|slide|bw|cine, ISO, curve points) and the film layers in the document with their look, strength and curve points. A look is a tone curve with editable points, a colour matrix and grain that grows with its speed.", {}, reach="document", read=True, idempotent=True),
     _tool("film_apply_look", "Adds a film layer (an adjustment layer named Film: ...) with a film look from film_looks, or with id changes an existing one. strength 0 to 100 mixes the look with the picture (default 100), grain 0 to 100 (default 40; the look's speed scales it), grain_size in pixels (1 to 8). Changing the look of a layer resets its custom curve points. Returns the layer id.",
           {"look": {"type": "string", "description": "A film look id from film_looks."}, "id": {"type": "string", "description": "An existing film layer to change; leave out to add a new one."},
-           "strength": {"type": "number", "minimum": 0, "maximum": 100}, "grain": {"type": "number", "minimum": 0, "maximum": 100}, "grain_size": {"type": "number", "minimum": 1, "maximum": 8}}),
+           "strength": {"type": "number", "minimum": 0, "maximum": 100}, "grain": {"type": "number", "minimum": 0, "maximum": 100}, "grain_size": {"type": "number", "minimum": 1, "maximum": 8}}, reach="document"),
     _tool("film_add_point", "Adds a point to a film layer's tone curve, or moves the point already at that x: x is the input tone and y the curve's output, both 0 to 255 (a layer starts from its look's points; at most 16 points).",
-          {"id": _ID, "x": {"type": "integer", "minimum": 0, "maximum": 255}, "y": {"type": "integer", "minimum": 0, "maximum": 255}}, ["id", "x", "y"]),
-    _tool("film_copy_points", "Copies a film layer's curve points into the clipboard (for film_paste_points). Changes nothing in the document.", {"id": _ID}, ["id"], read=True, idempotent=True),
+          {"id": _ID, "x": {"type": "integer", "minimum": 0, "maximum": 255}, "y": {"type": "integer", "minimum": 0, "maximum": 255}}, ["id", "x", "y"], reach="document"),
+    _tool("film_copy_points", "Copies a film layer's curve points into the clipboard (for film_paste_points). Changes nothing in the document.", {"id": _ID}, ["id"], reach="document", read=True, idempotent=True),
     _tool("film_paste_points", "Puts the copied curve points on a film layer: mode replace (default) makes them its curve, merge adds them to the points it has (a point at the same x is overwritten).",
-          {"id": _ID, "mode": {"type": "string", "enum": ["replace", "merge"], "default": "replace"}}, ["id"]),
+          {"id": _ID, "mode": {"type": "string", "enum": ["replace", "merge"], "default": "replace"}}, ["id"], reach="document"),
     _tool("glb_place", "Places a 3D model (.glb, or a .gltf with no outside files) as a new layer the size of the document, posed and lit by turn, tilt, roll, size, x, y, z, fov, sun light, ambient, room light and a ground contact shadow; with depth true also a Depth Map layer. From path (absolute) or data (base64). The layer is pixels; while the window stays open glb_edit poses it again. Returns the layer id and the model's facts.",
-          {"path": {"type": "string", "description": "Absolute path to a .glb or .gltf file."}, "data": {"type": "string", "description": "Base64 .glb data, when there is no file."}, "name": {"type": "string", "maxLength": 120}, **_POSE}),
+          {"path": {"type": "string", "description": "Absolute path to a .glb or .gltf file."}, "data": {"type": "string", "description": "Base64 .glb data, when there is no file."}, "name": {"type": "string", "maxLength": 120}, **_POSE}, reach="reads files"),
     _tool("glb_edit", "Poses a 3D layer from glb_place again (give only what changes; the rest stays as it was) and redraws its pixels as one undoable step; depth true adds or refreshes its Depth Map layer. Works for layers placed since the window opened.",
-          {"id": _ID, **_POSE}, ["id"], idempotent=True),
+          {"id": _ID, **_POSE}, ["id"], reach="document", idempotent=True),
     _tool("glb_info", "Facts about a 3D model: meshes, triangles, vertices, materials, textures, animations, nodes, size in its own units, generator and glTF extensions. Give path (an absolute .glb or .gltf file) or id of a 3D layer, which also returns its current pose.",
-          {"path": {"type": "string", "description": "Absolute path to a .glb or .gltf file."}, "id": {"type": "string", "description": "A 3D layer id from glb_place."}}, read=True, idempotent=True),
+          {"path": {"type": "string", "description": "Absolute path to a .glb or .gltf file."}, "id": {"type": "string", "description": "A 3D layer id from glb_place."}}, reach="reads files", read=True, idempotent=True),
 ]
 
 PACK_USE_WHEN = {

@@ -75,3 +75,36 @@ def test_the_activity_record_rotates_and_keeps_three_old_files(tmp_path, monkeyp
     names = sorted(p.name for p in tmp_path.iterdir() if p.name.startswith(agents.ACTIVITY_FILE))
     assert names == [agents.ACTIVITY_FILE, *(f"{agents.ACTIVITY_FILE}.{n}" for n in (1, 2, 3))]
     assert all((tmp_path / n).stat().st_size <= 600 for n in names)
+
+
+def test_every_tool_declares_what_it_is_and_nothing_impossible():
+    assert set(M.DECLARED) == M.NAMES and len(M.NAMES) == len(M.TOOLS)
+    assert M.declaration_faults() == []
+    assert all(M.DECLARED[t["name"]]["read"] == t["annotations"]["readOnlyHint"] for t in M.TOOLS)
+
+
+@pytest.mark.parametrize("name, change, fault", [
+    ("delete_layer", {"reach": ""}, "delete_layer declares no reach"),
+    ("file_info", {"asks": "reads a file"}, "file_info is read-only and asks for approval"),
+    ("export_layer", {"asks": ""}, "export_layer writes files without asking for approval"),
+    ("convert_file", {"reach": "reads files"}, "convert_file has an output_path but does not declare that it writes files"),
+    ("get_document", {"headless": True}, "get_document runs with no window but acts on the open document"),
+    ("open_file", {"reach": "document"}, "open_file takes a file path but declares no files"),
+])
+def test_a_missing_or_impossible_declaration_is_named(name, change, fault, monkeypatch):
+    monkeypatch.setitem(M.DECLARED, name, {**M.DECLARED[name], **change})
+    assert any(f.startswith(fault) for f in M.declaration_faults())
+    monkeypatch.delitem(M.DECLARED, name)
+    assert f"{name} has no declaration" in M.declaration_faults()
+
+
+def test_the_gate_asks_for_what_each_tool_declares_and_nothing_else(monkeypatch):
+    async def window(name, args):
+        return {"structuredContent": {"id": "cmd.risky", "risky": True, "label": "Risky"}}
+
+    monkeypatch.setattr(M, "_call", window)
+    args = {"path": "/tmp/formvis-test/x.png", "overwrite": True, "action": "quit", "id": "cmd.risky", "commands": [{"id": "cmd.risky"}]}
+    asked = {n for n in M.NAMES if asyncio.run(M._risk(n, args))}
+    assert asked == {n for n, d in M.DECLARED.items() if d["asks"]}
+    assert asyncio.run(M._risk("convert_file", {**args, "overwrite": False})) is None
+    assert asyncio.run(M._risk("ui_window", {"action": "size"})) is None

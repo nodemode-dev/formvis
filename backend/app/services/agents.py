@@ -21,7 +21,6 @@ POLICIES = ("allow", "ask", "deny")
 POLICY_LABELS = {"allow": "Allow all", "ask": "Ask for risky steps", "deny": "Deny"}
 APPROVAL_SECONDS = 120.0
 LOG_LIMIT = 200
-RISKY_TOOLS = {"save_project": "overwrites a project file", "export_image": "overwrites a picture file", "export_mask": "overwrites a picture file", "export_layer": "overwrites a picture file", "timeline_render": "overwrites a video file", "convert_file": "writes a picture file"}
 
 LIMIT_RANGES = {"text_chars": (1_000, 5_000_000), "image_bytes": (100_000, 64 * 1024 * 1024)}
 _limits: dict = {"roots": [], "text_chars": 200_000, "image_bytes": 12 * 1024 * 1024}

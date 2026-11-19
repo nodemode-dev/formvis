@@ -218,6 +218,26 @@ def routing_problems() -> list[str]:
     return bad
 
 
+def tool_problems() -> list[str]:
+    """Each MCP tool says in its own definition what it is (mcp.py DECLARED): a missing or impossible declaration is a
+    problem, and so is a list in setup/mcp_stdio.py (which cannot import the engine) that says otherwise."""
+    sys.path.insert(0, str(ROOT / "backend"))
+    sys.path.insert(0, str(ROOT / "setup"))
+    from app.routers import mcp
+    import mcp_stdio
+    bad = ["backend/app/routers/mcp.py: " + f for f in mcp.declaration_faults()]
+    said = mcp.DECLARED
+    writes = {n for n, d in said.items() if d["reach"] == "writes files" and "output_path" not in mcp.SCHEMAS[n]["properties"]}
+    menus = {n for n, d in said.items() if "path" in mcp.SCHEMAS[n]["properties"] and d["reach"] not in ("reads files", "writes files")}
+    for name, have, want in (("WRITES", mcp_stdio.WRITES, writes), ("MENUS", mcp_stdio.MENUS, menus)):
+        if set(have) != want:
+            bad.append(f"setup/mcp_stdio.py: {name} is {sorted(have)}, the tools' declarations say {sorted(want)}")
+    for method, name in mcp_stdio.CONTROL.items():
+        if mcp.CONTROL_METHODS.get(method) != name:
+            bad.append(f"setup/mcp_stdio.py: CONTROL sends {method} to {name}, the engine to {mcp.CONTROL_METHODS.get(method)}")
+    return bad
+
+
 def _files(folder: Path) -> dict:
     return {str(p.relative_to(folder)): p.read_bytes() for p in sorted(folder.rglob("*")) if p.is_file()}
 
@@ -242,7 +262,7 @@ def sync(check: bool) -> int:
         drift.append(str(stale.relative_to(ROOT)) + " (removed skill)")
         if not check:
             shutil.rmtree(stale, ignore_errors=True)
-    problems = skill_problems() + routing_problems()
+    problems = skill_problems() + routing_problems() + tool_problems()
     if CATALOGUE.exists() is False:
         print("agents: no command catalogue in " + str(CATALOGUE.parent) + " (open the formvis window once); commands.md and command-map.md left as they are")
     if check:
