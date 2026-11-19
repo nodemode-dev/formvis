@@ -170,7 +170,7 @@ APP = "formvis"   # the file name of formvis's entry in formcompiler apps/
 DOCK = {"present": True, "positions": ["bottom", "right"], "tabs": ["chat", "shell", "claude", "codex", "cursor", "agent"]}   # frontend/src/dock/dock.ts with dock-adapter.ts tabs: the bottom band or the right column, Chat, a tab per engine PTY by kind (codex and cursor when found), Claude's read-only commands
 DOCK_DIR = ROOT / "frontend" / "src" / "dock"
 DOCK_MANIFEST = DOCK_DIR / "MANIFEST.json"
-DOCK_VERSION = "2.1.0"
+DOCK_VERSION = "2.2.0-dev"
 
 
 def _dock_files() -> dict[str, str]:

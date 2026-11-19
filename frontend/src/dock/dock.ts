@@ -1,4 +1,5 @@
-import type { DockAdapter, DockAgentStatus, DockAppTab, DockChannel, DockKind, DockOwnAsk, DockPaneHidden, DockTerminal, PtyKind } from './adapter';
+import type { DockAdapter, DockAgentStatus, DockAppTab, DockChannel, DockKind, DockOwnAsk, DockPaneHidden, DockProgramStatus, DockTerminal } from './adapter';
+import { DOCK_AGENTS, agentKind, agentKinds, type DockAgentKind } from './agents';
 import { ChatPane, OwnChat, type DockChatView } from './chat';
 import { Consent } from './consent';
 import { el, q, setClass, setDisabled, setHidden, setText } from './dom';
@@ -12,22 +13,23 @@ import { Tour, type TourStep } from './tour';
 
 export type { DockAdapter, DockKind } from './adapter';
 
-const PROGRAMS = ['codex', 'cursor'] as const;
-type Program = typeof PROGRAMS[number];
-
 interface Tab {
   id: string;
   term: DockTerm | null;
   host: HTMLElement;
   tab: HTMLElement;
   channel: DockChannel | null;
-  kind: PtyKind;
+  kind: string;
   seen: boolean;
   closed: boolean;
 }
 
-export class Dock {
+interface Program { kind: DockAgentKind; button: HTMLButtonElement; row: HTMLElement }
+
+export class Dock<K extends string = never> {
+  private readonly a: DockAdapter<string>;
   private readonly s: Say;
+  private readonly kinds = new Map<string, Program>();
   readonly root: HTMLElement;
   private readonly tabsEl: HTMLElement;
   private readonly stage: HTMLElement;
@@ -41,13 +43,13 @@ export class Dock {
   private readonly tabs = new Map<string, Tab>();
   private readonly owned = new Map<string, { spec: DockAppTab; tab: HTMLElement; host: HTMLElement; mounted: boolean; off: (() => void) | undefined }>();
   private chat: DockChatView | null = null;
-  private readonly ownAsk: DockOwnAsk | null;
+  private readonly ownAsk: DockOwnAsk<string> | null;
   private chatTab: HTMLElement | null = null;
   private active: string | null = null;
   private started = false;
   private pending: Promise<void> | null = null;
   private emulator: Promise<typeof import('./terminal')> | null = null;
-  private asked: Promise<DockAgentStatus | null> | null = null;
+  private asked: Promise<DockAgentStatus<string> | null> | null = null;
   private mounted = false;
   private revealing = false;
   private readonly place: Placement;
@@ -57,18 +59,18 @@ export class Dock {
   readonly consent: Consent | null;
   private readonly tour: Tour;
 
-  constructor(private readonly a: DockAdapter, parts: { consent?: Consent } = {}) {
+  constructor(adapter: DockAdapter<K>, parts: { consent?: Consent } = {}) {
+    const a = adapter as unknown as DockAdapter<string>;
     const s = strings(a);
     const c = a.classes;
     const ib = `${c.iconButton} ft-dock-ibtn`;
+    this.a = a;
     this.s = s;
     this.root = el(`<section class="ft-dock" aria-label="${s('terminal')}">
     <div class="ft-dock-grip" role="separator" aria-orientation="horizontal" aria-label="${s('resize')}"></div>
     <div class="ft-dock-head">
       <div class="ft-dock-tabs" role="tablist" aria-label="${s('terminals')}"></div>
       <span class="ft-dock-spacer"></span>
-      <button type="button" class="${ib} ft-dock-codex" title="${s('codex')}" aria-label="${s('codex')}" hidden>${icon('codex', 15)}</button>
-      <button type="button" class="${ib} ft-dock-cursor" title="${s('cursor')}" aria-label="${s('cursor')}" hidden>${icon('cursor', 15)}</button>
       <button type="button" class="${ib} ft-dock-new" title="${s('newTerminal')}" aria-label="${s('newTerminal')}">${icon('plus', 15)}</button>
       <button type="button" class="${ib} ft-dock-chat" title="${s('chatAbout')}" aria-label="${s('chatWith')}">${icon('agentChat', 15)}</button>
       <button type="button" class="${ib} ft-dock-claude" title="${s('claudeCode')}" aria-label="${s('claudeCode')}">${icon('agent', 15)}</button>
@@ -78,8 +80,6 @@ export class Dock {
       <button type="button" class="${ib} ft-dock-hide" title="${s('hideTitle', { chord: chordLabel(a) })}" aria-label="${s('hide')}">${icon('close', 15)}</button>
     </div>
     <div class="ft-dock-menu" role="menu" hidden>
-      <div class="ft-dock-menu-row" data-kind="codex"><button type="button" class="${c.button} ft-dock-menu-go" role="menuitem">${icon('codex', 13)}<span>${s('codex')}</span></button><p class="ft-dock-menu-how ${c.note}"></p><code class="ft-dock-menu-cmd"></code></div>
-      <div class="ft-dock-menu-row" data-kind="cursor"><button type="button" class="${c.button} ft-dock-menu-go" role="menuitem">${icon('cursor', 13)}<span>${s('cursor')}</span></button><p class="ft-dock-menu-how ${c.note}"></p><code class="ft-dock-menu-cmd"></code></div>
       <div class="ft-dock-menu-row ft-dock-menu-links"><button type="button" class="${c.button} ft-dock-menu-settings" role="menuitem">${s('outsideAgents')}</button><button type="button" class="${c.button} ft-dock-menu-tour" role="menuitem">${s('showAround')}</button></div>
     </div>
     <div class="ft-dock-stage"><p class="ft-dock-empty ${c.note}" hidden>${s('empty')}</p>
@@ -105,10 +105,6 @@ export class Dock {
     q(this.root, '.ft-dock-chat').addEventListener('click', () => void this.showChat());
     q(this.root, '.ft-dock-hide').addEventListener('click', () => this.toggle(false));
     q(this.root, '.ft-dock-side').addEventListener('click', () => { this.setSide(this.side() === 'right' ? 'bottom' : 'right'); this.focus(); });
-    for (const kind of PROGRAMS) {
-      q(this.root, `.ft-dock-${kind}`).addEventListener('click', () => void this.program(kind));
-      q(this.root, `.ft-dock-menu-row[data-kind="${kind}"] .ft-dock-menu-go`).addEventListener('click', () => { this.menu(false); void this.program(kind); });
-    }
     q(this.root, '.ft-dock-more').addEventListener('click', () => { this.menu(q(this.root, '.ft-dock-menu').hidden === true); });
     q(this.root, '.ft-dock-menu-settings').addEventListener('click', () => { this.menu(false); a.openSettings?.(); });
     setHidden(q(this.root, '.ft-dock-menu-settings'), !a.openSettings);
@@ -198,48 +194,78 @@ export class Dock {
     else await this.open();
   }
 
-  activeKind(): DockKind | null {
+  activeKind(): DockKind | K | null {
     if (this.active === 'chat') return 'chat';
     const kind = this.active ? this.tabs.get(this.active)?.kind : undefined;
-    return kind && kind !== 'agent' ? kind : null;
+    return kind && kind !== 'agent' ? kind as DockKind | K : null;
   }
 
-  isShowing(kind: DockKind): boolean { return this.isOpen() && this.activeKind() === kind; }
+  isShowing(kind: DockKind | K): boolean { return this.isOpen() && this.activeKind() === kind; }
 
-  async show(kind: DockKind): Promise<void> {
+  async show(kind: DockKind | K): Promise<void> {
     if (!this.isOpen()) this.toggle(true, 'none');
     await this.ensure('none');
     if (kind === 'chat') { await this.showChat(); return; }
     const own = [...this.tabs.values()].find((x) => x.kind === kind);
     if (own) this.select(own.id);
     else if (kind === 'claude') await this.claude();
-    else if (kind === 'codex' || kind === 'cursor') await this.program(kind);
+    else if (kind !== 'shell') await this.program(kind);
     else await this.open();
+  }
+
+  private label(kind: DockAgentKind, status?: DockProgramStatus): string {
+    return kind.name ? this.s(kind.name) : this.a.t(kind.id, status?.label ?? kind.label);
+  }
+
+  private listPrograms(): void {
+    const order = agentKinds(this.a.tabs().builtin).filter((kind) => kind.id !== 'claude');
+    const c = this.a.classes;
+    for (const [at, kind] of order.entries()) {
+      if (this.kinds.has(kind.id)) continue;
+      const name = this.label(kind);
+      const button = el<HTMLButtonElement>(`<button type="button" class="${c.iconButton} ft-dock-ibtn ft-dock-${kind.id}" hidden>${icon(kind.icon, 15)}</button>`);
+      const row = el(`<div class="ft-dock-menu-row"><button type="button" class="${c.button} ft-dock-menu-go" role="menuitem">${icon(kind.icon, 13)}<span></span></button><p class="ft-dock-menu-how ${c.note}"></p><code class="ft-dock-menu-cmd"></code></div>`);
+      button.title = name;
+      button.setAttribute('aria-label', name);
+      row.dataset.kind = kind.id;
+      setText(q(row, '.ft-dock-menu-go > span:last-child'), name);
+      button.addEventListener('click', () => void this.program(kind.id));
+      q(row, '.ft-dock-menu-go').addEventListener('click', () => { this.menu(false); void this.program(kind.id); });
+      const next = order.slice(at + 1).map((later) => this.kinds.get(later.id)).find((later) => later !== undefined);
+      q(this.root, '.ft-dock-head').insertBefore(button, next?.button ?? q(this.root, '.ft-dock-new'));
+      q(this.root, '.ft-dock-menu').insertBefore(row, next?.row ?? q(this.root, '.ft-dock-menu-links'));
+      this.kinds.set(kind.id, { kind, button, row });
+    }
   }
 
   private async programs(): Promise<void> {
     const status = await this.agents();
-    for (const kind of PROGRAMS) {
-      const st = status?.[kind];
-      const offered = this.offers(kind);
+    for (const { kind, button, row } of this.kinds.values()) {
+      const st = status?.[kind.id];
+      const offered = this.offers(kind.id);
       const found = offered && !!st?.installed;
-      const row = q(this.root, `.ft-dock-menu-row[data-kind="${kind}"]`);
       setHidden(row, !offered || !st);
-      setHidden(q(this.root, `.ft-dock-${kind}`), !found);
+      setHidden(button, !found);
       setHidden(q(row, '.ft-dock-menu-go'), !found);
-      setText(q(row, '.ft-dock-menu-how'), this.s(found ? 'programReady' : 'programMissing', { program: this.s(kind) }));
+      const name = this.label(kind, st);
+      setText(q(row, '.ft-dock-menu-how'), st?.note || this.s(found ? kind.ready : kind.missing, { program: name }));
       setText(q(row, '.ft-dock-menu-cmd'), found ? '' : st?.install ?? '');
       setHidden(q(row, '.ft-dock-menu-cmd'), found || !st?.install);
+      if (kind.name || button.title === name) continue;
+      button.title = name;
+      button.setAttribute('aria-label', name);
+      setText(q(row, '.ft-dock-menu-go > span:last-child'), name);
     }
   }
 
-  private offers(kind: DockKind): boolean {
+  private offers(kind: string): boolean {
     return this.a.tabs().builtin.includes(kind) && (kind !== 'chat' || !!this.a.chat);
   }
 
   activeTab(): string | null { return this.active; }
 
   refresh(): void {
+    this.listPrograms();
     setHidden(q(this.root, '.ft-dock-new'), !this.offers('shell'));
     setHidden(q(this.root, '.ft-dock-chat'), !this.offers('chat'));
     setHidden(q(this.root, '.ft-dock-claude'), !this.offers('claude'));
@@ -281,7 +307,7 @@ export class Dock {
     q(this.root, '.ft-dock-more').setAttribute('aria-expanded', String(open));
   }
 
-  async program(kind: Program): Promise<boolean> {
+  async program(kind: string): Promise<boolean> {
     const size = this.size();
     try {
       const info = await this.a.terminal.open(kind, { cols: size.cols, rows: size.rows });
@@ -363,7 +389,7 @@ export class Dock {
     return this.emulator;
   }
 
-  private agents(): Promise<DockAgentStatus | null> {
+  private agents(): Promise<DockAgentStatus<string> | null> {
     if (!this.asked) {
       this.asked = this.a.agentStatus().catch(() => null);
       void this.asked.then(() => window.setTimeout(() => { this.asked = null; }, 1500));
@@ -371,7 +397,7 @@ export class Dock {
     return this.asked;
   }
 
-  private async list(): Promise<DockTerminal[]> {
+  private async list(): Promise<DockTerminal<string>[]> {
     try { return await this.a.terminal.list(); } catch { return []; }
   }
 
@@ -537,7 +563,7 @@ export class Dock {
     if (x.tab.title !== tip) x.tab.title = tip;
   }
 
-  private adopt(info: DockTerminal): void {
+  private adopt(info: DockTerminal<string>): void {
     if (this.tabs.has(info.id)) return;
     void this.attach(info, this.active === null || info.kind !== 'agent');
   }
@@ -570,11 +596,12 @@ export class Dock {
     return tab?.term ? { cols: tab.term.cols(), rows: tab.term.rows() } : { cols: 100, rows: 20 };
   }
 
-  private async attach(info: DockTerminal, show: boolean): Promise<void> {
+  private async attach(info: DockTerminal<string>, show: boolean): Promise<void> {
     if (this.tabs.has(info.id)) { if (show) this.select(info.id); return; }
-    const kind: PtyKind = ['claude', 'agent', 'codex', 'cursor'].includes(info.kind) ? info.kind : 'shell';
+    const program = DOCK_AGENTS.some((k) => k.id === info.kind) || this.kinds.has(info.kind);
+    const kind: string = program || info.kind === 'agent' ? info.kind : 'shell';
     const agent = kind === 'agent';
-    const mark = kind === 'claude' ? 'agent' : kind === 'codex' || kind === 'cursor' ? kind : 'terminal';
+    const mark = program ? agentKind(kind).icon : 'terminal';
     const host = el('<div class="ft-term" translate="no" dir="ltr" hidden></div>');
     const tab = el(`<button type="button" class="ft-dock-tab${kind === 'shell' || agent ? '' : ` is-${kind}`}${agent ? ' is-agent' : ''}" role="tab" aria-selected="false">${icon(mark, 13)}<span class="ft-dock-tab-title"></span><span class="ft-dock-tab-x" role="button" aria-label="${this.s('closeTab')}">${icon('close', 11)}</span></button>`);
     setText(q(tab, '.ft-dock-tab-title'), info.title);

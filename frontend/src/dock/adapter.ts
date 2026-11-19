@@ -7,7 +7,7 @@ export type DockProgram = 'claude' | 'codex' | 'cursor';
 export type PtyKind = 'shell' | 'claude' | 'codex' | 'cursor' | 'agent';
 export type ChatMode = 'ask' | 'auto-edits' | 'plan';
 
-export interface DockTerminal { id: string; title: string; alive: boolean; kind: PtyKind; tip?: string }
+export interface DockTerminal<K extends string = never> { id: string; title: string; alive: boolean; kind: PtyKind | K; tip?: string }
 export interface DockChannel {
   send(data: string): void;
   resize(cols: number, rows: number): void;
@@ -17,8 +17,8 @@ export interface DockChannel {
   close(): void;
 }
 export interface DockOpen { cols: number; rows: number; prompt?: string; resume?: string }
-export interface DockProgramStatus { installed: boolean; version: string | null; install: string; signedIn: boolean | null }
-export type DockAgentStatus = Partial<Record<DockProgram, DockProgramStatus>>;
+export interface DockProgramStatus { installed: boolean; version: string | null; install: string; signedIn: boolean | null; label?: string; note?: string }
+export type DockAgentStatus<K extends string = never> = Partial<Record<DockProgram | K, DockProgramStatus>>;
 export interface DockChatStatus {
   installed: boolean;
   version: string | null;
@@ -53,8 +53,8 @@ export interface DockOwnChat {
   busy?(): boolean;
   askTarget?: HTMLElement;
 }
-export interface DockOwnAsk { send?(text: string, tab: DockKind | null): DockSent; element?: HTMLElement }
-export interface DockChatPane { pane(host: HTMLElement): DockOwnChat | void; ask?: 'none' | 'line' | DockOwnAsk }
+export interface DockOwnAsk<K extends string = never> { send?(text: string, tab: DockKind | K | null): DockSent; element?: HTMLElement }
+export interface DockChatPane<K extends string = never> { pane(host: HTMLElement): DockOwnChat | void; ask?: 'none' | 'line' | DockOwnAsk<K> }
 export type DockChatEvent =
   | { type: 'state'; running: boolean; state: string; session: string | null; mode?: ChatMode }
   | { type: 'user'; text: string; note?: string }
@@ -84,20 +84,20 @@ export interface DockSizes {
 export type DockErrorKind = 'refused' | 'unreachable' | 'notInstalled' | 'oldEngine' | 'busy';
 export interface DockWords { app: string; noun: string; lead: string; example: string; start?: string }
 export interface DockAppTab { id: string; label: string; icon: string; mount(host: HTMLElement): void | (() => void) }
-export interface DockTabs { builtin: DockKind[]; own?: DockAppTab[] }
+export interface DockTabs<K extends string = never> { builtin: Array<DockKind | K>; own?: DockAppTab[] }
 export interface DockStorage { key: string; legacy?: DockLegacy | string[] }
 export type DockPlacement =
   | { mode: 'own'; storage: DockStorage; sizes: DockSizes; canDockRight?(): boolean }
   | { mode: 'hosted'; request(open: boolean): void };
 
-export interface DockAdapter {
+export interface DockAdapter<K extends string = never> {
   words: DockWords;
   strings?: Partial<Record<StringKey, string>>;
   placement: DockPlacement;
   passKey?(event: KeyboardEvent): boolean;
   isDockChord?(event: KeyboardEvent): boolean;
   chordLabel?(): string;
-  tabs(): DockTabs;
+  tabs(): DockTabs<K>;
   classes: { iconButton: string; button: string; primaryButton: string; input: string; select: string; note: string };
   t(key: string, english: string): string;
   onTheme(handler: () => void): void;
@@ -105,15 +105,15 @@ export interface DockAdapter {
   errors: { message(err: unknown): string | null; kind?(err: unknown): DockErrorKind | null };
   firstRun?(): boolean;
   terminal: {
-    list(): Promise<DockTerminal[]>;
-    open(kind: Exclude<PtyKind, 'agent'>, options: DockOpen): Promise<DockTerminal>;
+    list(): Promise<DockTerminal<K>[]>;
+    open(kind: Exclude<PtyKind, 'agent'> | K, options: DockOpen): Promise<DockTerminal<K>>;
     restart?(id: string): Promise<void>;
     close(id: string): Promise<void>;
     channel(id: string): DockChannel | Promise<DockChannel>;
     scrollback?: number;
   };
-  agentStatus(): Promise<DockAgentStatus | null>;
-  chat?: DockChatEngine | DockChatPane;
+  agentStatus(): Promise<DockAgentStatus<K> | null>;
+  chat?: DockChatEngine | DockChatPane<K>;
   consent?: {
     subscribe(add: (request: ConsentRequest) => void, withdraw: (id: string) => void): void;
     answer(id: string, choice: ConsentChoice): Promise<void>;

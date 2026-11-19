@@ -6,7 +6,7 @@ import { STRINGS } from '../src/dock/strings';
 const UI = join(__dirname, '../src/ui/i18n');
 const adapter = readFileSync(join(__dirname, '../src/dock-adapter.ts'), 'utf8');
 const WORDS: Record<string, string> = { app: 'formvis', noun: 'picture', start: './formvis boot' };
-const NAMES = new Set(['Codex', 'Cursor']);
+const NAMES = new Set(['Codex', 'Cursor', 'Antigravity']);
 const TRANSLATED = ['ar', 'cs', 'da', 'de', 'el', 'es', 'fi', 'fr', 'hi', 'hu', 'id', 'it', 'ja', 'ko', 'nb', 'nl', 'pl', 'pt-BR', 'ru', 'sr-Latn', 'sv', 'th', 'tr', 'uk', 'vi', 'zh-CN', 'zh-TW'];
 
 const own = (pattern: RegExp): string => (adapter.match(pattern)?.[1] ?? '').replace(/\\'/g, "'");
