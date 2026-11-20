@@ -12,7 +12,7 @@ DOCK = ROOT / "frontend" / "src" / "dock"
 
 def test_the_shared_dock_files_match_their_manifest():
     kept = json.loads((DOCK / "MANIFEST.json").read_text(encoding="utf-8"))
-    assert kept["module"] == "dock" and kept["version"] == "2.1.0"
+    assert kept["module"] == "dock" and kept["version"] == "2.2.0"
     now = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in DOCK.iterdir() if p.is_file() and p.name != "MANIFEST.json"}
     assert kept["files"] == now
     assert f"Module version {kept['version']}." in (DOCK / "CONTRACT.md").read_text(encoding="utf-8")
@@ -30,6 +30,43 @@ def test_the_check_names_a_shared_file_edited_in_place(tmp_path):
     with open(copy / "frontend" / "src" / "dock" / "dock.ts", "a", encoding="utf-8") as f:
         f.write("\n")
     assert module.dock_problems() == ["frontend/src/dock/dock.ts: does not match MANIFEST.json (the shared dock module changes only as a whole new version)"]
+
+
+LOOKUP = "backend/app/services/agent_lookup.py"
+
+
+def _agents(root):
+    spec = importlib.util.spec_from_file_location("checked_agents", root / "setup" / "agents.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_shared_finder_matches_the_hash_recorded_for_its_version():
+    module = _agents(ROOT)
+    version = re.search(r'^VERSION = "([^"]+)"$', (ROOT / LOOKUP).read_text(encoding="utf-8"), re.M).group(1)
+    assert module.LOOKUP_HASHES[version] == hashlib.sha256((ROOT / LOOKUP).read_bytes()).hexdigest()
+    assert module.lookup_problems() == []
+
+
+def test_the_check_names_the_shared_finder_edited_in_place_or_missing(tmp_path):
+    copy = tmp_path / "repo"
+    (copy / "backend" / "app" / "services").mkdir(parents=True)
+    shutil.copytree(ROOT / "setup", copy / "setup")
+    shutil.copy(ROOT / LOOKUP, copy / LOOKUP)
+    module = _agents(copy)
+    assert module.lookup_problems() == []
+    with open(copy / LOOKUP, "a", encoding="utf-8") as f:
+        f.write("\n")
+    version = re.search(r'^VERSION = "([^"]+)"$', (ROOT / LOOKUP).read_text(encoding="utf-8"), re.M).group(1)
+    assert module.lookup_problems() == [f"{LOOKUP}: does not match the hash recorded for version {version} (the shared finder changes only as a whole new version)"]
+    (copy / LOOKUP).unlink()
+    assert module.lookup_problems() == [f"{LOOKUP}: missing (the shared finder for the agent programs)"]
+
+
+def test_the_shared_finder_imports_nothing_from_the_app():
+    imports = set(re.findall(r"^\s*(?:from|import)\s+([\w.]+)", (ROOT / LOOKUP).read_text(encoding="utf-8"), re.M))
+    assert imports == {"__future__", "dataclasses", "os", "pathlib", "re", "shutil", "signal", "subprocess", "sys", "threading", "time", "winreg"}
 
 
 def test_the_shared_dock_imports_nothing_from_the_app():

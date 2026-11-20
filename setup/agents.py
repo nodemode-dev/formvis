@@ -6,11 +6,12 @@
                             agents/manifest.json for the family spec),
                             mirror every skill under .claude/skills to .agents/skills (Codex, Cursor) and check the
                             skill files against the upload gates; --check: exit 1 if anything drifted or fails
-  install [--user] [--dry-run] [claude|codex|cursor ...]
-                            set the three up for this user account (all by default; --user says so): the MCP server
+  install [--user] [--dry-run] [claude|codex|cursor|antigravity ...]
+                            set them up for this user account (all by default; --user says so): the MCP server
                             (./formvis mcp at this folder's absolute path; Claude Code's user scope when the claude
                             command is on the path) and every skill; files backed up before changing; running
-                            it again changes nothing
+                            it again changes nothing. Antigravity gets the MCP server only, in
+                            ~/.gemini/config/mcp_config.json; a server named formvis that formvis did not write is left alone
 """
 from __future__ import annotations
 
@@ -167,10 +168,10 @@ def tool_map() -> str:
 
 MANIFEST = ROOT / "agents" / "manifest.json"
 APP = "formvis"   # the file name of formvis's entry in formcompiler apps/
-DOCK = {"present": True, "positions": ["bottom", "right"], "tabs": ["chat", "shell", "claude", "codex", "cursor", "agent"]}   # frontend/src/dock/dock.ts with dock-adapter.ts tabs: the bottom band or the right column, Chat, a tab per engine PTY by kind (codex and cursor when found), Claude's read-only commands
+DOCK = {"present": True, "positions": ["bottom", "right"], "tabs": ["chat", "shell", "claude", "codex", "cursor", "antigravity", "agent"]}   # frontend/src/dock/dock.ts with dock-adapter.ts tabs: the bottom band or the right column, Chat, a tab per engine PTY by kind (codex and cursor when found), Claude's read-only commands
 DOCK_DIR = ROOT / "frontend" / "src" / "dock"
 DOCK_MANIFEST = DOCK_DIR / "MANIFEST.json"
-DOCK_VERSION = "2.1.0"
+DOCK_VERSION = "2.2.0"
 
 
 def _dock_files() -> dict[str, str]:
@@ -189,6 +190,33 @@ def dock_problems() -> list[str]:
     now = _dock_files()
     rel = DOCK_DIR.relative_to(ROOT)
     return [f"{rel}/{name}: does not match MANIFEST.json (the shared dock module changes only as a whole new version)" for name in sorted(set(kept) | set(now)) if kept.get(name) != now.get(name)]
+
+
+LOOKUP = ROOT / "backend" / "app" / "services" / "agent_lookup.py"
+LOOKUP_HASHES = {"1.0.0": "252ea9bb9419d4990f174f91914f09800497bc69e98f849f5643bbf4217cc3f3", "1.0.1": "62667f9b68b7d101e1896ce617240424e33b7e498c560bc79d45f0ab26c77d51"}   # the family's record: the SHA-256 of the shared finder at each of its versions
+
+
+def lookup_problems() -> list[str]:
+    rel = LOOKUP.relative_to(ROOT).as_posix()
+    try:
+        raw = LOOKUP.read_bytes()
+    except OSError:
+        return [f"{rel}: missing (the shared finder for the agent programs)"]
+    said = re.search(rb'^VERSION = "([^"\r\n]+)"\r?$', raw, re.M)
+    version = said.group(1).decode("ascii", "replace") if said else "unknown"
+    if LOOKUP_HASHES.get(version) != hashlib.sha256(raw).hexdigest():
+        return [f"{rel}: does not match the hash recorded for version {version} (the shared finder changes only as a whole new version)"]
+    return []
+
+
+def lookup():
+    """The shared finder, loaded from its file: it imports nothing from the app, so this script needs no engine."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("formvis_agent_lookup", LOOKUP)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def manifest() -> str:
@@ -305,7 +333,7 @@ def sync(check: bool) -> int:
         drift.append(str(stale.relative_to(ROOT)) + " (removed skill)")
         if not check:
             shutil.rmtree(stale, ignore_errors=True)
-    problems = skill_problems() + routing_problems() + tool_problems() + (dock_problems() if check else [])
+    problems = skill_problems() + routing_problems() + tool_problems() + (dock_problems() if check else []) + lookup_problems()
     if CATALOGUE.exists() is False:
         print("agents: no command catalogue in " + str(CATALOGUE.parent) + " (open the formvis window once); commands.md and command-map.md left as they are")
     if check:
@@ -339,19 +367,22 @@ def _copy_skill(root: Path, dry: bool, said: list) -> None:
 
 def install_claude(home: Path, dry: bool, said: list) -> None:
     said.append("Claude Code:")
-    claude = shutil.which("claude")
+    finder = lookup()
+    found = finder.check(finder.find("claude", override_vars=("FORMVIS_CLAUDE_BIN",), home=home))
+    claude = found.path if found.state == "runs" else None
     if claude:
-        have = subprocess.run([claude, "mcp", "get", "formvis"], capture_output=True, text=True)
+        env = finder.child_env(claude, home=home)
+        have = finder.run([claude, "mcp", "get", "formvis"], env, 60)
         if have.returncode == 0 and LAUNCH in have.stdout:
             said.append("  MCP server formvis already set (user scope)")
         else:
             said.append(f"  claude mcp add --scope user formvis -- {subprocess.list2cmdline([LAUNCH, *ARGS])}")
             if not dry:
                 if have.returncode == 0:
-                    subprocess.run([claude, "mcp", "remove", "formvis", "--scope", "user"], capture_output=True)
-                subprocess.run([claude, "mcp", "add", "--scope", "user", "formvis", "--", LAUNCH, *ARGS], check=True, capture_output=True)
+                    finder.run([claude, "mcp", "remove", "formvis", "--scope", "user"], env, 60)
+                finder.run([claude, "mcp", "add", "--scope", "user", "formvis", "--", LAUNCH, *ARGS], env, 60).check_returncode()
     else:
-        said.append(f"  the claude command is not installed here; once it is, run: claude mcp add --scope user formvis -- {subprocess.list2cmdline([LAUNCH, *ARGS])}")
+        said.append(f"  {finder.sentence(found, finder.install('claude'))} Once it runs: claude mcp add --scope user formvis -- {subprocess.list2cmdline([LAUNCH, *ARGS])}")
     _copy_skill(home / ".claude" / "skills", dry, said)
 
 
@@ -390,6 +421,40 @@ def install_cursor(home: Path, dry: bool, said: list) -> None:
     _copy_skill(home / ".agents" / "skills", dry, said)   # Cursor reads ~/.agents/skills
 
 
+def _ours(entry: object) -> bool:
+    return isinstance(entry, dict) and entry.get("args") == ARGS and Path(str(entry.get("command", ""))).name == Path(LAUNCH).name
+
+
+def install_antigravity(home: Path, dry: bool, said: list) -> None:
+    said.append("Antigravity:")
+    cfg = home / ".gemini" / "config" / "mcp_config.json"
+    older = home / ".gemini" / "antigravity-cli" / "mcp_config.json"
+    if older.exists() and not cfg.exists():
+        said.append(f"  an older file was seen at {older} and left alone; the documented file is {cfg}")
+    try:
+        data = json.loads(cfg.read_text(encoding="utf-8") or "{}") if cfg.exists() else {}
+    except ValueError:
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("mcpServers", {}), dict):
+        said.append(f"  {cfg} is not an MCP servers file formvis can read; left alone")
+        return
+    entry = {"command": LAUNCH, "args": ARGS}
+    have = data.get("mcpServers", {}).get("formvis")
+    if have == entry:
+        said.append(f"  MCP server formvis already in {cfg}")
+    elif have is not None and not _ours(have):
+        said.append(f"  {cfg} has a server named formvis that formvis did not write; left alone")
+    else:
+        said.append(f"  MCP server formvis -> {cfg}")
+        if not dry:
+            _backup(cfg, dry)
+            data.setdefault("mcpServers", {})["formvis"] = entry
+            cfg.parent.mkdir(parents=True, exist_ok=True)
+            part = cfg.with_name(cfg.name + f".part-{os.getpid()}")
+            part.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            os.replace(part, cfg)
+
+
 def main(argv: list[str]) -> int:
     cmd = argv[0] if argv else "install"
     rest = argv[1:]
@@ -401,14 +466,14 @@ def main(argv: list[str]) -> int:
         if unknown:
             print(f"agents: unknown option {', '.join(unknown)} (--user or --dry-run)", file=sys.stderr)
             return 2
-        which = [a for a in rest if not a.startswith("--")] or ["claude", "codex", "cursor"]
-        bad = [w for w in which if w not in ("claude", "codex", "cursor")]
+        which = [a for a in rest if not a.startswith("--")] or ["claude", "codex", "cursor", "antigravity"]
+        bad = [w for w in which if w not in ("claude", "codex", "cursor", "antigravity")]
         if bad:
-            print(f"agents: unknown client {', '.join(bad)} (claude, codex or cursor)", file=sys.stderr)
+            print(f"agents: unknown client {', '.join(bad)} (claude, codex, cursor or antigravity)", file=sys.stderr)
             return 2
         home, said = Path(os.environ.get("HOME", str(Path.home()))), []
         for w in which:
-            {"claude": install_claude, "codex": install_codex, "cursor": install_cursor}[w](home, dry, said)
+            {"claude": install_claude, "codex": install_codex, "cursor": install_cursor, "antigravity": install_antigravity}[w](home, dry, said)
         print(("Would do (dry run):\n" if dry else "") + "\n".join(said))
         if not dry:
             print("\nRestart the clients. The first edit asks you once, in the formvis window, to allow outside agents.")

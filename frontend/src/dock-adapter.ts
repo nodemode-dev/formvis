@@ -14,7 +14,23 @@ const open = new Map<string, ConsentRequest>();
 const legacyBlocked = (): boolean => { try { return localStorage.getItem(BLOCKED) === '1'; } catch { return false; } };
 let isBlocked = legacyBlocked();
 let watching = 0;
-const post = (path: string, body: unknown): Promise<Response> => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+type Program = 'claude' | 'codex' | 'cursor';
+interface Told { said?: unknown; finding?: unknown }
+const told: Partial<Record<Program, { said: string; finding: string }>> = {};
+let lastProgram: Program = 'claude';
+const tell = (kind: Program, status: object | null | undefined): void => {
+  const st = status as Told | null | undefined;
+  if (st && typeof st.said === 'string' && typeof st.finding === 'string' && st.finding !== 'runs') told[kind] = { said: st.said, finding: st.finding };
+  else if (st) delete told[kind];
+};
+const ownWords = (key: string): string | null => {
+  if (key === 'claude' || key === 'codex' || key === 'cursor') { lastProgram = key; return null; }
+  if (key === 'notInstalled') return told.claude?.said ?? null;
+  if (key === 'programMissing') return told[lastProgram]?.said ?? null;
+  if (key === 'missing' && told.claude?.finding === 'broken') return 'Claude Code does not start';
+  return null;
+};
+const post =(path: string, body: unknown): Promise<Response> => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const reply = (id: string, result: Record<string, boolean>): Promise<void> => post('/api/mcp/bridge/result', { id, result }).then(() => undefined);
 const drop = (id: string): void => { if (open.delete(id)) for (const w of withdrawers) w(id); };
 const questions = async (): Promise<Question[]> => {
@@ -110,7 +126,7 @@ function socketChannel(socket: WebSocket): DockChannel {
   };
 }
 
-export function formvisDock(openSettings: () => void = () => undefined, layerOpen: () => boolean = () => false): DockAdapter {
+export function formvisDock(openSettings: () => void = () => undefined, layerOpen: () => boolean = () => false): DockAdapter<'antigravity'> {
   return {
     words: {
       app: 'formvis', noun: 'picture', example: 'make the sky bluer', start: './formvis boot',
@@ -125,9 +141,9 @@ export function formvisDock(openSettings: () => void = () => undefined, layerOpe
     isDockChord: (e) => (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !(layerOpen() && !(e.target instanceof Element && e.target.closest('.ft-dock'))),
     chordLabel: () => `${isMac ? 'Cmd' : 'Ctrl'}+J`,
     passKey: (e) => e.key === 'F1' || ((e.metaKey || e.ctrlKey) && (e.key === ',' || (e.altKey && e.code === 'KeyJ'))),
-    tabs: () => ({ builtin: ['chat', 'shell', 'claude', 'codex', 'cursor'] }),
+    tabs: () => ({ builtin: ['chat', 'shell', 'claude', 'codex', 'cursor', 'antigravity'] }),
     classes: { iconButton: 'cv-tt-btn', button: 'cv-btn', primaryButton: 'cv-btn-primary', input: 'cv-input', select: 'cv-select', note: 'cv-note' },
-    t: (_key, english) => t(english.replace(/\{(app|noun|start)\}/g, (_m, name: string) => ({ app: 'formvis', noun: 'picture', start: './formvis boot' })[name] ?? '')),
+    t: (key, english) => ownWords(key) ?? t(english.replace(/\{(app|noun|start)\}/g, (_m, name: string) => ({ app: 'formvis', noun: 'picture', start: './formvis boot' })[name] ?? '')),
     onTheme: (handler) => { document.addEventListener('nm:ui-settings-changed', handler); },
     keyHeaders: (): Record<string, string> => {
       try { const key = sessionStorage.getItem('formvis-window-key'); return key ? { 'X-Formvis-Window-Key': key } : {}; } catch { return {}; }
@@ -139,7 +155,7 @@ export function formvisDock(openSettings: () => void = () => undefined, layerOpe
         if (!(err instanceof ApiError)) return null;
         if (err.status === 403) return 'refused';
         if ((err.status === 404 || err.status === 405) && /^(Not Found|Method Not Allowed)$/i.test(err.message)) return 'oldEngine';
-        return /not installed/i.test(err.message) ? 'notInstalled' : err.status === 502 || err.status === 503 || err.status === 504 ? 'unreachable' : null;
+        return /not installed|was not found\. Looked in|but does not start/i.test(err.message) ? 'notInstalled' : err.status === 502 || err.status === 503 || err.status === 504 ? 'unreachable' : null;
       },
     },
     terminal: {
@@ -161,12 +177,17 @@ export function formvisDock(openSettings: () => void = () => undefined, layerOpe
       try { const r = await fetch('/api/claude-code/status'); now = r.ok ? (await r.json()) as Partial<DockProgramStatus> & { agents?: DockAgentStatus } : null; } catch { now = null; }
       if (!now) {
         const old = await api.claudeStatus();
+        tell('claude', old);
         return old ? { claude: { installed: old.installed === true, version: old.version ?? null, install: old.install || '', signedIn: old.signedIn ?? null } } : null;
       }
-      return { ...(now.agents ?? {}), claude: { installed: now.installed === true, version: now.version ?? null, install: now.install ?? '', signedIn: now.signedIn ?? null } };
+      tell('claude', now);
+      tell('codex', now.agents?.codex);
+      tell('cursor', now.agents?.cursor);
+      const agy = (now.agents as { antigravity?: DockProgramStatus & Told } | undefined)?.antigravity;
+      return { ...(now.agents ?? {}), ...(agy ? { antigravity: { ...agy, ...(agy.finding !== 'runs' && typeof agy.said === 'string' ? { note: agy.said } : {}) } } : {}), claude: { installed: now.installed === true, version: now.version ?? null, install: now.install ?? '', signedIn: now.signedIn ?? null } };
     },
     chat: {
-      status: () => api.claudeStatus(),
+      status: async () => { const now = await api.claudeStatus(); tell('claude', now); return now; },
       start: (mode, fresh) => api.claudeStart(mode ?? 'ask', fresh),
       send: (text) => api.claudeSend(text),
       stop: () => api.claudeStop(),
