@@ -16,7 +16,7 @@
   <img alt="Python" src="https://img.shields.io/badge/Python-FastAPI-3776ab?style=flat-square">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
   <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-3a3a3a?style=flat-square">
-  <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-d69e2e?style=flat-square">
+  <img alt="Status: released" src="https://img.shields.io/badge/status-released-d69e2e?style=flat-square">
 </p>
 
 <p align="center">
@@ -142,7 +142,7 @@ cd formvis
 On Windows use `formvis.bat install` and `formvis.bat boot`. The engine listens on http://127.0.0.1:8190; `FORMVIS_DATA_DIR` moves the project library (default `~/Formvis`).
 
 > [!IMPORTANT]
-> **Status:** alpha. The desktop bundles and the GPU paths on real hardware are not verified yet; see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/ALPHA_REVIEW.md`](docs/ALPHA_REVIEW.md).
+> **Status:** released. FormVis is built and bundled for macOS, Windows and Linux and has been tested on all three; see [`CHANGELOG.md`](CHANGELOG.md).
 
 **Contributing:** branch from `main`, keep changes to source here, and leave packaging and releases to FormCompiler. See [`.docs/BRANCHING.md`](.docs/BRANCHING.md) and [`AGENTS.md`](AGENTS.md).
 
