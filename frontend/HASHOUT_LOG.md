@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The window's sentences that list the agent programs name all four · after 2.6.0, unreleased (automation/agent-bridge.ts the outside-agent question; docs/MANUAL.md, shown in Help; backend/formvis_engine.py run_agents)
+
+- Kind: fix · logged 2026-11-20 · WAVE7_BRIEF item D, the sentences.
+- Found with a search for "Cursor" and "Codex" across `frontend/src`, the language tables and `docs/MANUAL.md` (the Help panel reads it). Every table line that names Codex already named Antigravity; the outside-agent question in `agent-bridge.ts` has no table entry, so it is English in every language as before.
+- Replaced, quoted exactly: agent-bridge.ts `(such as Claude Code, Codex or Cursor)`; MANUAL.md `- Outside agents (Claude Code, Codex, Cursor): ask them` with `sets all three up`, `that setting, and Codex and Cursor when those programs are on this computer.`, `registers that program with Claude Code, Codex and Cursor, and Window`; formvis_engine.py `agents install [claude|codex|cursor] [--dry-run]` (a terminal line of the packaged app, which `setup/agents.py` already serves for Antigravity too).
+- Program path: FormVis has no Preferences field or stored value for where Claude Code is (`services/claude_code.py` `setting` answers None for every kind; the four development overrides `FORMVIS_*_BIN` already exist), so there is nothing to add.
+- Seen: `src/help/markdown.test.ts` 2 passed; `tests/test_readme.py` 2 passed.
+
 ## Dock module 2.2.1: the guide's two sentences name the other three programs · after 2.6.0, unreleased (dock/strings.ts tourInstalledBody, tourReadyBody; dock/CONTRACT.md; dock/MANIFEST.json; setup/agents.py DOCK_VERSION; ui/i18n/more, 27 tables; backend/tests/test_dock_manifest.py)
 
 - Kind: fix · logged 2026-11-20 · WAVE7_BRIEF item D, the panel's guide. No app version changes with this commit.

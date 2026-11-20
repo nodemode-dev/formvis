@@ -616,8 +616,8 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   to use formvis's own commands, and the row names come from the command labels. Undo This Turn takes back everything
   since your last message. It uses the language model set in Preferences > Plugins; a local model needs to support
   tool calling.
-- Outside agents (Claude Code, Codex, Cursor): ask them in plain language to edit what is open in formvis. In the
-  formvis folder, `./formvis agents install` sets all three up for your account (the MCP server and the editing skill);
+- Outside agents (Claude Code, Codex, Cursor, Antigravity): ask them in plain language to edit what is open in formvis. In the
+  formvis folder, `./formvis agents install` sets all four up for your account (the MCP server and the editing skill);
   inside the formvis repository they are already set up. formvis starts itself when an agent asks, opens a window if
   none is open, and asks you in the window before the agent changes anything (see Agents below). They get 140 tools, from opening, saving and exporting files
   to layers, text, selections, filters, the video timeline and generative fill, which uses the models on this computer
@@ -642,7 +642,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   from there.
 - The first time the dock opens, a short guide points at its parts one step at a time (Back, Next, Done; the
   cross closes it). The menu button in the dock's head has Show me around to see it again, Outside agents to open
-  that setting, and Codex and Cursor when those programs are on this computer.
+  that setting, and Codex, Cursor and Antigravity when those programs are on this computer.
 - Each tab is a shell started in the formvis folder by the engine on this computer, with formvis's own command
   (`./formvis`) first on the path. The plus button (or Window > New Terminal) opens another tab, the restart button
   starts a tab's shell again, and the cross on a tab ends it.
@@ -750,7 +750,7 @@ other modes and depths its menu items are off, with the reason as their tooltip.
   the engine comes back.
 - The installed app has the same server without the repository: its program takes `mcp` as the first argument (`formvis mcp`,
   or `./formvis.AppImage mcp` for the AppImage), finds the app's engine, and starts the app when none is running. `formvis agents
-  install` registers that program with Claude Code, Codex and Cursor, and Window > Agent Connect shows the same line to paste.
+  install` registers that program with Claude Code, Codex, Cursor and Antigravity, and Window > Agent Connect shows the same line to paste.
   The AppImage offers once, on its first run, to add itself to the applications menu; `--remove-launcher` takes it out again.
 
 ## Script Console

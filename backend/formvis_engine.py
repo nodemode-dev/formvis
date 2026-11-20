@@ -192,7 +192,7 @@ def run_agents(argv: list[str]) -> int:
     """`agents install [claude|codex|cursor]` of the packaged app: setup/agents.py, which registers this app's own binary
     (`mcp` as its argument) with Claude Code, Codex and Cursor."""
     if argv and argv[0] != "install":
-        print("formvis agents: the packaged app offers install only (agents install [claude|codex|cursor] [--dry-run]).", file=sys.stderr)
+        print("formvis agents: the packaged app offers install only (agents install [claude|codex|cursor|antigravity] [--dry-run]).", file=sys.stderr)
         return 2
     setup_path()
     import agents as agent_setup
