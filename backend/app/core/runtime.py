@@ -2,10 +2,11 @@
 import json
 import logging
 import os
-import sys
 import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+from app.core import startup
 
 LOG_NAME = "formvis-engine.log"
 LOCK_NAME = "engine.lock"
@@ -16,8 +17,7 @@ _FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 _LOGGERS = ("formvis", "uvicorn", "uvicorn.error", "uvicorn.access")
 
 
-class AlreadyRunning(RuntimeError):
-    pass
+AlreadyRunning = startup.Busy
 
 
 def apply_switches(argv: list[str]) -> list[str]:
@@ -64,9 +64,17 @@ def log_path(data: Path) -> Path:
 
 def start_logging(data: Path) -> Path:
     """Logs the engine and the server to Logs/formvis-engine.log in the data folder, about a megabyte each, three older
-    files kept (FORMVIS_LOG_BYTES changes the size, FORMVIS_LOG_LEVEL the level)."""
-    stop_logging()
+    files kept (FORMVIS_LOG_BYTES changes the size, FORMVIS_LOG_LEVEL the level). The entry calls this before the lock is
+    asked for and the web app calls it again at startup: a second call for the same file keeps the handler and puts it
+    back on the server's loggers, which the server's own log setup clears."""
     path = log_path(data)
+    for held in logging.getLogger("formvis").handlers:
+        if held.get_name() == "formvis-file" and getattr(held, "baseFilename", "") == os.path.abspath(path):
+            for name in _LOGGERS:
+                if held not in logging.getLogger(name).handlers:
+                    logging.getLogger(name).addHandler(held)
+            return path
+    stop_logging()
     try:
         size = int(os.environ.get("FORMVIS_LOG_BYTES", "") or LOG_BYTES)
     except ValueError:
@@ -107,38 +115,16 @@ def log_tail(data: Path, lines: int = 200) -> str:
 
 
 def _alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    if sys.platform == "win32":
-        import ctypes
-        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
-        if handle:
-            ctypes.windll.kernel32.CloseHandle(handle)
-        return bool(handle)
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    try:
-        with open(f"/proc/{pid}/stat") as f:
-            return f.read().rpartition(")")[2].split()[0] != "Z"
-    except (OSError, IndexError):
-        return True
+    return startup.alive(pid)
 
 
 def claim(data: Path) -> Path:
-    """Takes the data folder for this process. Raises AlreadyRunning when another live engine holds it; a lock left by
-    a process that is gone is replaced."""
-    lock = data / LOCK_NAME
-    try:
-        held = int(json.loads(lock.read_text()).get("pid", 0))
-    except (OSError, ValueError, AttributeError):
-        held = 0
-    if held and held != os.getpid() and _alive(held):
-        raise AlreadyRunning(f"formvis is already running on {data} (engine process {held}).")
-    lock.write_text(json.dumps({"pid": os.getpid(), "started": int(STARTED)}))
+    """Takes the data folder for this process (core/startup.py claim). Raises AlreadyRunning when an engine whose app is
+    still there holds it; a lock left by a process that is gone is replaced, and an engine left running without its app
+    is ended first."""
+    lock, replaced = startup.claim(data, startup.shell_pid())
+    if replaced:
+        logging.getLogger("formvis").warning("an engine left running without its app was stopped (process %s)", replaced)
     return lock
 
 
