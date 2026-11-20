@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## An engine that has ended but was not yet collected counts as gone where there is no /proc · after 2.6.0, unreleased (`app/core/startup.py` :: `finished`, `gone_by`)
+
+- Kind: fix · logged 2026-11-20 · carried by hand from FormCut's fix for its 2.18.0 macOS job, with this app's names.
+- **Why.** Ending a leftover engine waits until it is gone. `_alive_posix` asks `kill(pid, 0)`, which still answers for a process that has ended and whose parent has not collected it, and it tells such a process apart only by reading `/proc`, which macOS does not have. FormCut's macOS job saw the wait run out and the start refused with "could not stop an engine that was left running".
+- **The change.** `finished(pid)` asks `ps -o stat= -p <pid>` where there is no `/proc` (never on Windows, never on Linux) and answers true for a state that starts with `Z`. `gone_by` stops waiting when the process is not alive or is finished. `alive` itself is unchanged, so the two second watch on the app starts no program.
+- **Seen.** New test `test_an_engine_that_has_ended_but_is_not_yet_collected_counts_as_gone_where_there_is_no_proc`: a child `sleep 0` left uncollected, `PROC` pointed at a folder that does not exist. Before the change `gone_by(pid, 1.0)` answered False (the test failed on that line); after it, the test passes and `end` answers True. `tests/test_startup.py`: 14 passed. Not run on macOS.
+
 ## The engine's start and stop have their tests, and the shell's Windows module type-checks · after 2.5.0, unreleased (tests/test_startup.py new)
 
 - Kind: test · logged 2026-11-19 · follows the two entries below, which say "not run" for these.

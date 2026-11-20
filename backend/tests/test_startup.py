@@ -126,6 +126,20 @@ def test_the_two_ways_of_reading_a_start_time_agree(monkeypatch):
     assert startup.created(4_000_000) == 0.0
 
 
+def test_an_engine_that_has_ended_but_is_not_yet_collected_counts_as_gone_where_there_is_no_proc(monkeypatch):
+    from app.core import startup
+
+    ended = subprocess.Popen(["sleep", "0"])
+    try:
+        assert wait_for(lambda: subprocess.run(["ps", "-o", "stat=", "-p", str(ended.pid)], capture_output=True, text=True).stdout.strip().startswith("Z"))
+        monkeypatch.setattr(startup, "PROC", "/nonexistent")
+        assert startup.alive(ended.pid)
+        assert startup.gone_by(ended.pid, 1.0)
+        assert startup.end(ended.pid)
+    finally:
+        ended.wait(timeout=10)
+
+
 def test_the_engine_serves_and_logs_with_its_three_streams_closed(tmp_path):
     proc = subprocess.Popen(["sh", "-c", 'exec "$0" formvis_engine.py <&- >&- 2>&-', sys.executable], cwd=BACKEND, env=engine_env(tmp_path))
     log = tmp_path / "Logs" / "formvis-engine.log"
