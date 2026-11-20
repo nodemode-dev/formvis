@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock module 2.2.1: the guide's two sentences name the other three programs · after 2.6.0, unreleased (dock/strings.ts tourInstalledBody, tourReadyBody; dock/CONTRACT.md; dock/MANIFEST.json; setup/agents.py DOCK_VERSION; ui/i18n/more, 27 tables; backend/tests/test_dock_manifest.py)
+
+- Kind: fix · logged 2026-11-20 · WAVE7_BRIEF item D, the panel's guide. No app version changes with this commit.
+- The first-run guide named only Claude Code, so a person with Codex, Cursor or Antigravity installed was never told that each has a button in the panel's head. `tourInstalledBody` and `tourReadyBody` each end with one more sentence: "Codex, Cursor and Antigravity each get a button of their own here when they are on this computer." Before, they ended at "it may ask you to sign in." and "when you want it to take on a bigger job.". No step was added (a step per program would change the step count in every app), and no other file of the folder's code changed.
+- `DOCK_VERSION` is `2.2.1` and `./formvis agents sync` wrote MANIFEST.json. CONTRACT.md's version line says 2.2.1 and a section "Module 2.2.1" before "The manifest" says an adapter written for 2.2.0 needs no change.
+- The two sentences are the lookup keys of the language tables, so both keys changed in all 27 tables of `ui/i18n/more`, each with its translation of the new sentence added at the end. No native speaker has read the 27 new sentences.
+- Ran: `./formvis agents sync --check` in step; `backend/tests/test_dock_manifest.py`; vitest `dock-i18n` and `dock-state`. Not seen in a window with this commit.
+
 ## Dock module 2.2.0, step 6: the manifest says 2.2.0 and CONTRACT.md says how a kind is offered · after 2.4.0, unreleased (setup/agents.py DOCK_VERSION; dock/MANIFEST.json; dock/CONTRACT.md)
 
 - Kind: chore · logged 2026-11-19 · DOCK_MODULE_2_2_BRIEF item 6. No app version changes.
