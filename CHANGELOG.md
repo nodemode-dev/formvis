@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.5.0 · 2026-11-19
+
+formvis finds your agent programs however it was started, and Google's Antigravity is the fourth beside Claude Code, Codex and Cursor.
+
+- Claude Code, Codex, Cursor and Antigravity are found when formvis is started from the Dock, the Finder or the Start menu, and not only from a terminal. formvis looks in the PATH it was started with, in the folders these programs are usually installed in, and in the PATH of your own shell. The terminal panel, Chat and `./formvis agents install` all look the same way.
+- When a program is not found, the terminal panel and Chat say where formvis looked and how to install it. When it is found and does not start, they say why, in the program's own words (a missing Node, for example).
+- A program started from formvis has its own folder first on its PATH, so one that was installed beside its own Node finds it.
+- `FORMVIS_CODEX_BIN`, `FORMVIS_CURSOR_BIN` and `FORMVIS_ANTIGRAVITY_BIN` name a program's file outright, as `FORMVIS_CLAUDE_BIN` already did.
+- New: an Antigravity tab in the terminal panel, for Google's `agy` program. Its button and its line in the More agents menu appear when `agy` is on this computer; when it is not, the menu says where formvis looked and how to install it. formvis shows that Antigravity is installed and its version, and cannot tell whether you are signed in until Antigravity itself says so.
+- The Antigravity tab starts in a folder inside formvis's own data folder, not in the picture's folder, so nothing is written among your files. It reaches formvis's tools as a Codex or Cursor tab does while it is open, and its access ends when the tab is closed.
+- `./formvis agents install antigravity` adds formvis to Antigravity, and `./formvis agents install` with no program named now sets up all four. It changes only formvis's own entry in Antigravity's MCP settings file (`~/.gemini/config/mcp_config.json`), keeps a copy of the file first, and writes nothing on a second run. An entry named formvis that something else set up is left alone and reported.
+- The first-run guide of the terminal panel still names only Claude Code.
+- For the people who build on the terminal panel: its shared files are at 2.2.0. The agent programs it offers are a list, so a further one needs no change to the panel; every control has a stable name for automation (`data-dock-part`); a tab can show a short status line in the panel's head. `./formvis agents sync --check` now also fails when the shared file that finds the programs has been changed, and `agents/manifest.json` lists the Antigravity tab.
+
 ## 2.4.0 · 2026-11-19
 
 The Form family update: the terminal panel is the one every Form app now shares, formvis asks you before an outside agent changes a picture, and only the formvis window can change what agents may do.
