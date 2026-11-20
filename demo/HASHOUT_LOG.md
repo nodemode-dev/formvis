@@ -2,6 +2,11 @@
 
 Living log for the offline browser demo. Entries are anchored by file and symbol.
 
+## The demo is built again from the app's tip · after 2.6.0, unreleased (demo/index.html, demo/assets/demo.js, demo/assets/demo.css)
+
+- Kind: build · logged 2026-11-20 · WAVE7_BRIEF item E. `npm run demo` in `frontend`; no demo source changed. The bundle now carries the window as it is today: the panel module 2.2.1 with its four agent programs (the word Antigravity is in the bundle, it was not before), the OLED theme boot line, and the version 2.6.0 (the release commit sets the version string by hand, as 2.3.5's did).
+- Seen: opened from `file://` with headless Chromium (Playwright 1.63.0): the page reaches `app-ready` and draws. The console holds three "Failed to load resource" errors, for `demo/demos/paint/tray-night.jpg`, `demo/demos/retouch/golden-portrait.jpg` and `demo/demos/design/bokeh.jpg`; the demo at `origin/main` opened the same way shows the same three, so they are not this build's. Not fixed here.
+
 ## A window that does not start in time is shown, not left behind the start line · _v2.3.4 (demo/src/session.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `demo/src/session.ts` `openSession`.
