@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock module 2.2.0, step 5: part names on the module's controls, a status line for a tab, keyHeaders optional · after 2.4.0, unreleased (dock/dock.ts template, listPrograms, showChat, attach, Tab.status, connect, showStatus, select, close; dock/consent.ts build; dock/adapter.ts DOCK_PUBLIC partAttribute, parts, partsByKind, DockTerminal.status, DockChannel.onStatus, keyHeaders; dock/dock.css .ft-dock-spacer)
+
+- Kind: feature · logged 2026-11-19 · DOCK_MODULE_2_2_BRIEF item 5, the first three of four, in the order given.
+- Part names (formVFX 2, formencoder 6, formweb 4: their automation and command names were lost). Every control of the module carries `data-dock-part`: `new`, `chat`, `launch.claude`, `launch.[kind]`, `more`, `restart`, `side`, `hide`, `menu`, `menu.launch.[kind]`, `menu.settings`, `menu.guide`, `screen`, `note.copy`, `note.dismiss`, `ask`, `send`, `status`, `tab.chat`, `tab.[kind]` (`tab.shell`, `tab.agent`), `tab.close`, and in the question `consent`, `consent.deny`, `consent.once`, `consent.always`. The attribute and the names are in `DOCK_PUBLIC` (`partAttribute`, `parts`, `partsByKind`), so an app's automation layer maps its own ids onto them. An attribute changes no look.
+- A status line for a tab (formweb 3, formencoder 5). `DockTerminal.status` is the text at attach and `DockChannel.onStatus(handler)` changes it; the text of the tab in front shows in the head's spacer, the empty stretch between the tabs and the buttons, which already takes what is left of the row. Before: `.ft-dock-spacer { flex: 1; }`; now it also clips with an ellipsis and never grows the row, so a status moves no button. With no status the span is empty, as it was.
+- `keyHeaders` is optional (formweb 8, formencoder 12, formVFX 12, form.ext 10): nothing in the folder calls it.
+- Not taken, the fourth: an answer "until the engine stops" (formVFX 1, formencoder 4). Its button needs a new sentence in the 27 tables, and `ConsentChoice` would widen for every adapter's `answer`; left for a version of its own.
+- Seen in headless Chrome at 1440 by 900 in formvis: a terminal record given `status` by the test showed "reconnecting, try 2 of 5" in the spacer while its tab was in front and nothing on the other tab, and the ten head buttons kept their x positions; the menu opened by `[data-dock-part='more']` and the tabs closed by `[data-dock-part='tab.close']`. Against the captures taken before any change, formvis listing four kinds and no agy installed: dock closed 0 differing pixels, shell tab 0, Chat 6 (the known noise in the side panel), counted outside the Home greeting line, which changed from "Good evening" to "Good morning" between the two runs. Elements: 16 more in each (the hidden Antigravity button and its menu row).
+- Read, not run: `onStatus` on a live channel (no adapter here calls it; the same `showStatus` runs).
+- Ran: `tsc --noEmit` clean, strict set clean; `./formvis agents sync` rewrote MANIFEST.json.
+
 ## formvis offers the Antigravity tab · after 2.4.0, unreleased (dock-adapter.ts formvisDock return type, tabs, agentStatus)
 
 - Kind: feature · logged 2026-11-19 · DOCK_MODULE_2_2_BRIEF item 3. Nothing in `src/dock/` changed.

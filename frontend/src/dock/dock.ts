@@ -22,6 +22,7 @@ interface Tab {
   kind: string;
   seen: boolean;
   closed: boolean;
+  status: string;
 }
 
 interface Program { kind: DockAgentKind; button: HTMLButtonElement; row: HTMLElement }
@@ -70,24 +71,24 @@ export class Dock<K extends string = never> {
     <div class="ft-dock-grip" role="separator" aria-orientation="horizontal" aria-label="${s('resize')}"></div>
     <div class="ft-dock-head">
       <div class="ft-dock-tabs" role="tablist" aria-label="${s('terminals')}"></div>
-      <span class="ft-dock-spacer"></span>
-      <button type="button" class="${ib} ft-dock-new" title="${s('newTerminal')}" aria-label="${s('newTerminal')}">${icon('plus', 15)}</button>
-      <button type="button" class="${ib} ft-dock-chat" title="${s('chatAbout')}" aria-label="${s('chatWith')}">${icon('agentChat', 15)}</button>
-      <button type="button" class="${ib} ft-dock-claude" title="${s('claudeCode')}" aria-label="${s('claudeCode')}">${icon('agent', 15)}</button>
-      <button type="button" class="${ib} ft-dock-more" title="${s('moreAgents')}" aria-label="${s('moreAgents')}" aria-haspopup="true" aria-expanded="false">${icon('menu', 15)}</button>
-      <button type="button" class="${ib} ft-dock-restart" title="${s('restart')}" aria-label="${s('restart')}">${icon('refresh', 15)}</button>
-      <button type="button" class="${ib} ft-dock-side" title="${s('toRight')}" aria-label="${s('toRight')}"><span class="ft-dock-side-right">${icon('dockRight', 15)}</span><span class="ft-dock-side-bottom">${icon('dockBottom', 15)}</span></button>
-      <button type="button" class="${ib} ft-dock-hide" title="${s('hideTitle', { chord: chordLabel(a) })}" aria-label="${s('hide')}">${icon('close', 15)}</button>
+      <span class="ft-dock-spacer" data-dock-part="status" role="status"></span>
+      <button type="button" class="${ib} ft-dock-new" data-dock-part="new" title="${s('newTerminal')}" aria-label="${s('newTerminal')}">${icon('plus', 15)}</button>
+      <button type="button" class="${ib} ft-dock-chat" data-dock-part="chat" title="${s('chatAbout')}" aria-label="${s('chatWith')}">${icon('agentChat', 15)}</button>
+      <button type="button" class="${ib} ft-dock-claude" data-dock-part="launch.claude" title="${s('claudeCode')}" aria-label="${s('claudeCode')}">${icon('agent', 15)}</button>
+      <button type="button" class="${ib} ft-dock-more" data-dock-part="more" title="${s('moreAgents')}" aria-label="${s('moreAgents')}" aria-haspopup="true" aria-expanded="false">${icon('menu', 15)}</button>
+      <button type="button" class="${ib} ft-dock-restart" data-dock-part="restart" title="${s('restart')}" aria-label="${s('restart')}">${icon('refresh', 15)}</button>
+      <button type="button" class="${ib} ft-dock-side" data-dock-part="side" title="${s('toRight')}" aria-label="${s('toRight')}"><span class="ft-dock-side-right">${icon('dockRight', 15)}</span><span class="ft-dock-side-bottom">${icon('dockBottom', 15)}</span></button>
+      <button type="button" class="${ib} ft-dock-hide" data-dock-part="hide" title="${s('hideTitle', { chord: chordLabel(a) })}" aria-label="${s('hide')}">${icon('close', 15)}</button>
     </div>
-    <div class="ft-dock-menu" role="menu" hidden>
-      <div class="ft-dock-menu-row ft-dock-menu-links"><button type="button" class="${c.button} ft-dock-menu-settings" role="menuitem">${s('outsideAgents')}</button><button type="button" class="${c.button} ft-dock-menu-tour" role="menuitem">${s('showAround')}</button></div>
+    <div class="ft-dock-menu" data-dock-part="menu" role="menu" hidden>
+      <div class="ft-dock-menu-row ft-dock-menu-links"><button type="button" class="${c.button} ft-dock-menu-settings" data-dock-part="menu.settings" role="menuitem">${s('outsideAgents')}</button><button type="button" class="${c.button} ft-dock-menu-tour" data-dock-part="menu.guide" role="menuitem">${s('showAround')}</button></div>
     </div>
-    <div class="ft-dock-stage"><p class="ft-dock-empty ${c.note}" hidden>${s('empty')}</p>
-      <div class="ft-dock-note" role="status" hidden><span class="ft-dock-note-text"></span><code class="ft-dock-note-cmd" hidden></code><button type="button" class="${c.button} ft-dock-note-copy" hidden>${s('copy')}</button><button type="button" class="${ib} ft-dock-note-x" title="${s('dismiss')}" aria-label="${s('dismiss')}">${icon('close', 12)}</button></div></div>
+    <div class="ft-dock-stage" data-dock-part="screen"><p class="ft-dock-empty ${c.note}" hidden>${s('empty')}</p>
+      <div class="ft-dock-note" role="status" hidden><span class="ft-dock-note-text"></span><code class="ft-dock-note-cmd" hidden></code><button type="button" class="${c.button} ft-dock-note-copy" data-dock-part="note.copy" hidden>${s('copy')}</button><button type="button" class="${ib} ft-dock-note-x" data-dock-part="note.dismiss" title="${s('dismiss')}" aria-label="${s('dismiss')}">${icon('close', 12)}</button></div></div>
     <form class="ft-dock-ask" autocomplete="off">
       <span class="ft-dock-ask-mark">${icon('agent', 15)}</span>
-      <input class="${c.input} ft-dock-ask-input" type="text" spellcheck="false" placeholder="${s('askPlaceholder')}" aria-label="${s('askLabel')}">
-      <button type="submit" class="${ib} ft-dock-ask-send" title="${s('send')}" aria-label="${s('send')}">${icon('send', 14)}</button>
+      <input class="${c.input} ft-dock-ask-input" data-dock-part="ask" type="text" spellcheck="false" placeholder="${s('askPlaceholder')}" aria-label="${s('askLabel')}">
+      <button type="submit" class="${ib} ft-dock-ask-send" data-dock-part="send" title="${s('send')}" aria-label="${s('send')}">${icon('send', 14)}</button>
     </form>
   </section>`);
     this.tabsEl = q(this.root, '.ft-dock-tabs');
@@ -228,6 +229,8 @@ export class Dock<K extends string = never> {
       button.title = name;
       button.setAttribute('aria-label', name);
       row.dataset.kind = kind.id;
+      button.dataset.dockPart = `launch.${kind.id}`;
+      q(row, '.ft-dock-menu-go').dataset.dockPart = `menu.launch.${kind.id}`;
       setText(q(row, '.ft-dock-menu-go > span:last-child'), name);
       button.addEventListener('click', () => void this.program(kind.id));
       q(row, '.ft-dock-menu-go').addEventListener('click', () => { this.menu(false); void this.program(kind.id); });
@@ -470,7 +473,7 @@ export class Dock<K extends string = never> {
       this.stage.appendChild(this.chat.root);
     }
     if (!this.chatTab) {
-      const tab = el(`<button type="button" class="ft-dock-tab is-chat" role="tab" aria-selected="false">${icon('agentChat', 13)}<span class="ft-dock-tab-title">${this.s('chat')}</span><span class="ft-dock-tab-x" role="button" aria-label="${this.s('closeChat')}">${icon('close', 11)}</span></button>`);
+      const tab = el(`<button type="button" class="ft-dock-tab is-chat" data-dock-part="tab.chat" role="tab" aria-selected="false">${icon('agentChat', 13)}<span class="ft-dock-tab-title">${this.s('chat')}</span><span class="ft-dock-tab-x" data-dock-part="tab.close" role="button" aria-label="${this.s('closeChat')}">${icon('close', 11)}</span></button>`);
       tab.addEventListener('click', (e) => {
         if ((e.target as HTMLElement).closest('.ft-dock-tab-x')) this.closeChat();
         else this.select('chat');
@@ -603,7 +606,7 @@ export class Dock<K extends string = never> {
     const agent = kind === 'agent';
     const mark = program ? agentKind(kind).icon : 'terminal';
     const host = el('<div class="ft-term" translate="no" dir="ltr" hidden></div>');
-    const tab = el(`<button type="button" class="ft-dock-tab${kind === 'shell' || agent ? '' : ` is-${kind}`}${agent ? ' is-agent' : ''}${program ? ' is-program' : ''}" role="tab" aria-selected="false">${icon(mark, 13)}<span class="ft-dock-tab-title"></span><span class="ft-dock-tab-x" role="button" aria-label="${this.s('closeTab')}">${icon('close', 11)}</span></button>`);
+    const tab = el(`<button type="button" class="ft-dock-tab${kind === 'shell' || agent ? '' : ` is-${kind}`}${agent ? ' is-agent' : ''}${program ? ' is-program' : ''}" data-dock-part="tab.${kind}" role="tab" aria-selected="false">${icon(mark, 13)}<span class="ft-dock-tab-title"></span><span class="ft-dock-tab-x" data-dock-part="tab.close" role="button" aria-label="${this.s('closeTab')}">${icon('close', 11)}</span></button>`);
     setText(q(tab, '.ft-dock-tab-title'), info.title);
     if (agent) tab.title = this.s('agentTab');
     tab.addEventListener('click', (e) => {
@@ -613,7 +616,7 @@ export class Dock<K extends string = never> {
     this.stage.appendChild(host);
     this.tabsEl.appendChild(tab);
     if (info.tip) tab.dataset.tip = info.tip;
-    const entry: Tab = { id: info.id, term: null, host, tab, channel: null, kind, seen: false, closed: false };
+    const entry: Tab = { id: info.id, term: null, host, tab, channel: null, kind, seen: false, closed: false, status: info.status ?? '' };
     this.tabs.set(info.id, entry);
     setHidden(this.empty, true);
     this.ended(entry, !info.alive);
@@ -637,7 +640,13 @@ export class Dock<K extends string = never> {
     channel.onData((data) => { entry.seen = true; entry.term?.write(data); });
     channel.onExit(() => { entry.seen = true; this.ended(entry, true); });
     channel.onClose?.(() => { if (entry.channel === channel) entry.channel = null; silent(); });
+    channel.onStatus?.((text) => { entry.status = text; this.showStatus(); });
     this.sendSize(entry);
+  }
+
+  private showStatus(): void {
+    const x = this.active ? this.tabs.get(this.active) : undefined;
+    setText(q(this.root, '.ft-dock-spacer'), x?.status ?? '');
   }
 
   private sendSize(x: Tab): void {
@@ -671,6 +680,7 @@ export class Dock<K extends string = never> {
       o.tab.setAttribute('aria-selected', String(on));
     }
     this.syncAsk();
+    this.showStatus();
     setDisabled(this.restartBtn, !this.tabs.has(id) || this.tabs.get(id)?.kind === 'agent');
     this.fitActive();
     if (focus) this.focus();
@@ -703,7 +713,7 @@ export class Dock<K extends string = never> {
       this.active = null;
       const next = [...this.tabs.keys()].pop() ?? (this.chatTab ? 'chat' : undefined);
       if (next) this.select(next);
-      else { setDisabled(this.restartBtn, true); this.syncAsk(); this.onTab(); }
+      else { setDisabled(this.restartBtn, true); this.syncAsk(); this.showStatus(); this.onTab(); }
     }
     setHidden(this.empty, this.tabs.size > 0 || !!this.chatTab);
   }

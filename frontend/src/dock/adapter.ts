@@ -7,13 +7,14 @@ export type DockProgram = 'claude' | 'codex' | 'cursor';
 export type PtyKind = 'shell' | 'claude' | 'codex' | 'cursor' | 'agent';
 export type ChatMode = 'ask' | 'auto-edits' | 'plan';
 
-export interface DockTerminal<K extends string = never> { id: string; title: string; alive: boolean; kind: PtyKind | K; tip?: string }
+export interface DockTerminal<K extends string = never> { id: string; title: string; alive: boolean; kind: PtyKind | K; tip?: string; status?: string }
 export interface DockChannel {
   send(data: string): void;
   resize(cols: number, rows: number): void;
   onData(handler: (data: string | Uint8Array) => void): void;
   onExit(handler: () => void): void;
   onClose?(handler: () => void): void;
+  onStatus?(handler: (text: string) => void): void;
   close(): void;
 }
 export interface DockOpen { cols: number; rows: number; prompt?: string; resume?: string }
@@ -101,7 +102,7 @@ export interface DockAdapter<K extends string = never> {
   classes: { iconButton: string; button: string; primaryButton: string; input: string; select: string; note: string };
   t(key: string, english: string): string;
   onTheme(handler: () => void): void;
-  keyHeaders(): Record<string, string>;
+  keyHeaders?(): Record<string, string>;
   errors: { message(err: unknown): string | null; kind?(err: unknown): DockErrorKind | null };
   firstRun?(): boolean;
   terminal: {
@@ -128,6 +129,9 @@ export interface DockAdapter<K extends string = never> {
 export const DOCK_PUBLIC = {
   classes: ['ft-dock', 'ft-consent', 'ft-tour', 'ft-term', 'ft-chat', 'ft-dock-pane', 'ft-notranslate', 'is-hosted', 'has-own-chat', 'has-no-ask', 'has-ask-line', 'ft-dock-ask', 'ft-dock-ask-own', 'ft-dock-head', 'ft-dock-tab', 'ft-dock-stage', 'ft-icon', 'is-on', 'is-own'],
   rootAttributes: ['data-ft-dock', 'data-ft-dock-side', 'data-ft-dock-h', 'data-ft-dock-w'],
+  partAttribute: 'data-dock-part',
+  parts: ['new', 'chat', 'launch.claude', 'more', 'restart', 'side', 'hide', 'menu', 'menu.settings', 'menu.guide', 'screen', 'note.copy', 'note.dismiss', 'ask', 'send', 'tab.chat', 'tab.close', 'consent', 'consent.deny', 'consent.once', 'consent.always'],
+  partsByKind: ['launch.', 'menu.launch.', 'tab.'],
   rootProperties: ['--ft-dock-size', '--ft-dock-wsize'],
   tokens: [
     '--dock-bg', '--dock-bar-bg', '--dock-raised', '--dock-hover', '--dock-input-bg', '--dock-border', '--dock-edge', '--dock-divider', '--dock-tab-border', '--dock-outline', '--dock-scrim',
