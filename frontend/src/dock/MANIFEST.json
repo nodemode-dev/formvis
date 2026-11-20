@@ -1,8 +1,8 @@
 {
   "module": "dock",
-  "version": "2.2.0-dev",
+  "version": "2.2.0",
   "files": {
-    "CONTRACT.md": "3fa57822b0024100bd4f5db5e06525f774539c4595493da171f1bd14871d2e05",
+    "CONTRACT.md": "ccef67fcf0017569c0bf68df0eae2e1e3ddf376117ac929789b803713c427df6",
     "adapter.ts": "1128c16892424485fe68bb2bf92ebc7229a9c2ff749db2fcd2419662d9c3ada9",
     "agents.ts": "db666d1042555f8bbda4a697dbfc475df23779d0c5a25abd532bcfa43ae81043",
     "chat.ts": "994878030b9fbff729734d34e2baa5b018e7d0b8555c24bfb7c98962c50446fa",

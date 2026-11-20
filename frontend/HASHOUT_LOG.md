@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Dock module 2.2.0, step 6: the manifest says 2.2.0 and CONTRACT.md says how a kind is offered · after 2.4.0, unreleased (setup/agents.py DOCK_VERSION; dock/MANIFEST.json; dock/CONTRACT.md)
+
+- Kind: chore · logged 2026-11-19 · DOCK_MODULE_2_2_BRIEF item 6. No app version changes.
+- `DOCK_VERSION` is `2.2.0` (it was `2.2.0-dev` through steps 1 to 5, and `2.1.0` before) and `./formvis agents sync` wrote MANIFEST.json, which now lists `agents.ts` too. CONTRACT.md's version line says 2.2.0 and a new section before "The manifest" says: the list, that a kind needs both `tabs().builtin` and `agentStatus()`, what an engine needs for a further kind (clauses 10, 4 and 11, with Antigravity's file), a kind outside the list, `note`, the part names, and the status line. The sixteen clauses were not edited.
+- Checked that two apps' adapters, unchanged, compile with this folder in place of theirs (a shadow tree under /tmp, their own tsc and flags): formweb clean; formdeck clean in `src/dock` and its adapter (its only errors are four demo files outside the frontend folder that the shadow tree does not hold).
+- Ran: `./formvis agents sync --check` in step; the whole backend suite and the dock vitest files (counts in the commit).
+
 ## Dock module 2.2.0, step 5: part names on the module's controls, a status line for a tab, keyHeaders optional · after 2.4.0, unreleased (dock/dock.ts template, listPrograms, showChat, attach, Tab.status, connect, showStatus, select, close; dock/consent.ts build; dock/adapter.ts DOCK_PUBLIC partAttribute, parts, partsByKind, DockTerminal.status, DockChannel.onStatus, keyHeaders; dock/dock.css .ft-dock-spacer)
 
 - Kind: feature · logged 2026-11-19 · DOCK_MODULE_2_2_BRIEF item 5, the first three of four, in the order given.
