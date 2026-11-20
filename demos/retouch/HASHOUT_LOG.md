@@ -1,5 +1,12 @@
 # HASHOUT_LOG: demos/retouch
 
+## Built again from today's source, and Home's demo cards work from file:// · after 2.7.0, unreleased (src/pages.ts, src/main.ts, vite.config.mjs windowPage, index.html, assets/retouch.js, assets/retouch.css)
+
+- Kind: build and fix · logged 2026-11-20 · WAVE10 items 1 and 2. The bundle was 2.3.5's: nothing rebuilt it since. `npm run demos` in `frontend` (new script, the same command as the Rebuild section) builds it from the tip.
+- `windowPage`: the app page's stylesheet links under `/src/` are pointed at `../../frontend/src/` (it was only `/src/styles/`); the app page gained the panel's `/src/dock/dock.css` after 2.3.5, which the built page asked for at `file:///src/dock/dock.css`. The panel's files are read, not changed.
+- `pages.ts`: `installPacks('retouch', '../../')` (demo/HASHOUT_LOG.md), so Home's covers come from the packs and the Retouch card builds in place, the others open their pages.
+- Seen: headless Chromium from `file://`: starts, both documents built, Home's three covers drawn, the Retouch card adds its two documents (2 to 4), the Design card opens `demos/design/index.html`; console: no error, no failed request.
+
 ## A window that does not start in time is shown, not left behind the start line · _v2.3.4 (demos/retouch/src/session.ts)
 
 - Kind: fix · logged: v2.3.4 · 2026-11-11 · refers to `demos/retouch/src/session.ts` `openSession`.
