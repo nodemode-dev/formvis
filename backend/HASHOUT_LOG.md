@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## agents install adds formvis to Antigravity · after 2.4.0, unreleased (setup/agents.py module text, _ours, install_antigravity, main; tests/test_agents_setup.py)
+
+- Kind: feature · logged 2026-11-19 · ANTIGRAVITY_SPEC "MCP servers"; DOCK_MODULE_2_2_BRIEF item 4.
+- `./formvis agents install` takes `antigravity` and includes it when no client is named (before: `["claude", "codex", "cursor"]` in both places of `main`). It writes `{"command": "[this folder]/formvis", "args": ["mcp"]}` under `mcpServers.formvis` in `~/.gemini/config/mcp_config.json`, the file Google documents for the IDE and the CLI. Everything else in the file is kept; the file is backed up, then replaced whole through a part file; a second run changes nothing and says "already".
+- Its own entry is one whose `args` are `["mcp"]` and whose command is a file named like the launcher: such an entry at another path is brought up to date. Any other server named formvis is left alone and reported. A file that is not a JSON object with an object under `mcpServers` is left alone and reported. When only `~/.gemini/antigravity-cli/mcp_config.json` (the path guides for earlier versions name) exists, the documented file is still the one written, and the result says the older file was seen and left alone.
+- No skill is copied for Antigravity: nothing read says where it looks for skills.
+- Seen first with a made-up home: dry run, first run, second run, an own entry at another path, a foreign entry (file hash unchanged), only the older file, a file that is not JSON. Tests added after: two in `tests/test_agents_setup.py`. Not run: a real agy reading the file.
+
 ## An Antigravity tab: agy in its own folder, with the tab's entry in that folder's MCP file while the tab is open · after 2.4.0, unreleased (services/agent_programs.py TABS, TAB_ENTRY, TAB_HEADER, tab_folder, _mcp_file, _servers, _replace, write_tab_entry, remove_tab_entry, open_terminal; routers/terminal.py AgentBody; setup/agents.py DOCK; agents/manifest.json; tests/test_agent_programs.py)
 
 - Kind: feature · logged 2026-11-19 · ANTIGRAVITY_SPEC "A tab in the terminal panel"; DOCK_MODULE_2_2_BRIEF item 3.

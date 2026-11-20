@@ -66,6 +66,37 @@ def test_install_keeps_what_is_there_is_idempotent_and_dry_runs(tmp_path):
     assert run("install", "gemini", home=home).returncode == 2
 
 
+def test_install_adds_formvis_to_antigravity_keeps_the_rest_and_leaves_a_foreign_entry_alone(tmp_path):
+    home = tmp_path / "home"
+    cfg = home / ".gemini" / "config" / "mcp_config.json"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(json.dumps({"mcpServers": {"other": {"serverUrl": "https://example.test/mcp"}}, "theme": "dark"}))
+    ours = {"command": str(ROOT / "formvis"), "args": ["mcp"]}
+    assert "Would do" in run("install", "--dry-run", "antigravity", home=home).stdout and "formvis" not in cfg.read_text()
+    assert run("install", "antigravity", home=home).returncode == 0
+    assert json.loads(cfg.read_text()) == {"mcpServers": {"other": {"serverUrl": "https://example.test/mcp"}, "formvis": ours}, "theme": "dark"}
+    before = {p: p.read_bytes() for p in home.rglob("*") if p.is_file()}
+    assert "already" in run("install", "antigravity", home=home).stdout and {p: p.read_bytes() for p in home.rglob("*") if p.is_file()} == before
+    cfg.write_text(json.dumps({"mcpServers": {"formvis": {"command": "/an/older/place/formvis", "args": ["mcp"]}}}))
+    run("install", "antigravity", home=home)
+    assert json.loads(cfg.read_text())["mcpServers"]["formvis"] == ours                                           # its own entry, brought up to date
+    foreign = json.dumps({"mcpServers": {"formvis": {"serverUrl": "https://someone.test/mcp"}}})
+    cfg.write_text(foreign)
+    assert "did not write" in run("install", "antigravity", home=home).stdout and cfg.read_text() == foreign
+    cfg.write_text("not json")
+    assert "left alone" in run("install", "antigravity", home=home).stdout and cfg.read_text() == "not json"
+
+
+def test_install_writes_the_documented_antigravity_file_when_only_the_older_one_is_there(tmp_path):
+    home = tmp_path / "home"
+    older = home / ".gemini" / "antigravity-cli" / "mcp_config.json"
+    older.parent.mkdir(parents=True)
+    older.write_text('{"mcpServers": {"old": {"command": "old"}}}')
+    said = run("install", "antigravity", home=home).stdout
+    assert "an older file was seen" in said and older.read_text() == '{"mcpServers": {"old": {"command": "old"}}}'
+    assert json.loads((home / ".gemini" / "config" / "mcp_config.json").read_text())["mcpServers"]["formvis"] == {"command": str(ROOT / "formvis"), "args": ["mcp"]}
+
+
 def test_the_repositorys_configuration_launches_formvis_mcp():
     claude = json.loads((ROOT / ".mcp.json").read_text())["mcpServers"]["formvis"]
     assert claude["command"] == "${CLAUDE_PROJECT_DIR:-.}/formvis" and claude["args"] == ["mcp"]

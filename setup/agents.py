@@ -6,11 +6,12 @@
                             agents/manifest.json for the family spec),
                             mirror every skill under .claude/skills to .agents/skills (Codex, Cursor) and check the
                             skill files against the upload gates; --check: exit 1 if anything drifted or fails
-  install [--user] [--dry-run] [claude|codex|cursor ...]
-                            set the three up for this user account (all by default; --user says so): the MCP server
+  install [--user] [--dry-run] [claude|codex|cursor|antigravity ...]
+                            set them up for this user account (all by default; --user says so): the MCP server
                             (./formvis mcp at this folder's absolute path; Claude Code's user scope when the claude
                             command is on the path) and every skill; files backed up before changing; running
-                            it again changes nothing
+                            it again changes nothing. Antigravity gets the MCP server only, in
+                            ~/.gemini/config/mcp_config.json; a server named formvis that formvis did not write is left alone
 """
 from __future__ import annotations
 
@@ -420,6 +421,40 @@ def install_cursor(home: Path, dry: bool, said: list) -> None:
     _copy_skill(home / ".agents" / "skills", dry, said)   # Cursor reads ~/.agents/skills
 
 
+def _ours(entry: object) -> bool:
+    return isinstance(entry, dict) and entry.get("args") == ARGS and Path(str(entry.get("command", ""))).name == Path(LAUNCH).name
+
+
+def install_antigravity(home: Path, dry: bool, said: list) -> None:
+    said.append("Antigravity:")
+    cfg = home / ".gemini" / "config" / "mcp_config.json"
+    older = home / ".gemini" / "antigravity-cli" / "mcp_config.json"
+    if older.exists() and not cfg.exists():
+        said.append(f"  an older file was seen at {older} and left alone; the documented file is {cfg}")
+    try:
+        data = json.loads(cfg.read_text(encoding="utf-8") or "{}") if cfg.exists() else {}
+    except ValueError:
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("mcpServers", {}), dict):
+        said.append(f"  {cfg} is not an MCP servers file formvis can read; left alone")
+        return
+    entry = {"command": LAUNCH, "args": ARGS}
+    have = data.get("mcpServers", {}).get("formvis")
+    if have == entry:
+        said.append(f"  MCP server formvis already in {cfg}")
+    elif have is not None and not _ours(have):
+        said.append(f"  {cfg} has a server named formvis that formvis did not write; left alone")
+    else:
+        said.append(f"  MCP server formvis -> {cfg}")
+        if not dry:
+            _backup(cfg, dry)
+            data.setdefault("mcpServers", {})["formvis"] = entry
+            cfg.parent.mkdir(parents=True, exist_ok=True)
+            part = cfg.with_name(cfg.name + f".part-{os.getpid()}")
+            part.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            os.replace(part, cfg)
+
+
 def main(argv: list[str]) -> int:
     cmd = argv[0] if argv else "install"
     rest = argv[1:]
@@ -431,14 +466,14 @@ def main(argv: list[str]) -> int:
         if unknown:
             print(f"agents: unknown option {', '.join(unknown)} (--user or --dry-run)", file=sys.stderr)
             return 2
-        which = [a for a in rest if not a.startswith("--")] or ["claude", "codex", "cursor"]
-        bad = [w for w in which if w not in ("claude", "codex", "cursor")]
+        which = [a for a in rest if not a.startswith("--")] or ["claude", "codex", "cursor", "antigravity"]
+        bad = [w for w in which if w not in ("claude", "codex", "cursor", "antigravity")]
         if bad:
-            print(f"agents: unknown client {', '.join(bad)} (claude, codex or cursor)", file=sys.stderr)
+            print(f"agents: unknown client {', '.join(bad)} (claude, codex, cursor or antigravity)", file=sys.stderr)
             return 2
         home, said = Path(os.environ.get("HOME", str(Path.home()))), []
         for w in which:
-            {"claude": install_claude, "codex": install_codex, "cursor": install_cursor}[w](home, dry, said)
+            {"claude": install_claude, "codex": install_codex, "cursor": install_cursor, "antigravity": install_antigravity}[w](home, dry, said)
         print(("Would do (dry run):\n" if dry else "") + "\n".join(said))
         if not dry:
             print("\nRestart the clients. The first edit asks you once, in the formvis window, to allow outside agents.")
