@@ -104,7 +104,7 @@ formvis hosts Form extensions (the Form Extension Contract, API 1): FormPortal i
 - **Engine:** a FastAPI service for decoding, colour, PSD and the local models on ONNX Runtime.
 - **Editor:** vanilla TypeScript and Vite, with a DOM-free document engine; a Tauri 2 shell starts the engine as a sidecar.
 - **Drawing:** WebGPU or WebGL2, falling back to the CPU per document.
-- **Size:** about 173,000 lines of TypeScript, 2,600 of CSS, 24,000 of Python and 6,200 of Rust (product code, tests excluded; `./formvis counts --check` verifies it).
+- **Size:** about 173,000 lines of TypeScript, 2,600 of CSS, 24,800 of Python and 6,600 of Rust (product code, tests excluded; `./formvis counts --check` verifies it).
 - **Tested:** unit, backend and browser suites, run with `./formvis test`.
 
 ## Download

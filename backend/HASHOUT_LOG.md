@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The engine's start and stop have their tests, and the shell's Windows module type-checks · after 2.5.0, unreleased (tests/test_startup.py new)
+
+- Kind: test · logged 2026-11-19 · follows the two entries below, which say "not run" for these.
+- `tests/test_startup.py` is FormTools's file with this app's names (`BACKEND` is worked out in the file, since this app's conftest has none): the lock rows with stand-in processes, the two ways of reading a start time, the engine serving with its three streams closed, the engine leaving when its stand-in app ends, and a frozen engine started alone, with a stand-in app beside it (exit 0, the app opened, no lock, no port) and with none (exit 4 and the sentence). So the started-alone branch has now run in this app.
+- Seen: `tests/test_startup.py` and `tests/test_agent_programs.py` together, 20 passed.
+- The whole suite then ran once: 506 passed, 9 skipped, 5 failed. Four are the ones that fail on this machine on `main` too (two video tests with no ffmpeg on the test path, two local-files tests under load). The fifth was this branch's: `tests/test_readme.py` said the README's Size line no longer matched (`Python: README says 24,000, the code has 24,842`, `Rust: README says 6,200, the code has 6,622`), because of `core/startup.py`, `engine_start.rs` and `win_job.rs`. The line now says 24,800 and 6,600; `setup/line_counts.py --check` passes.
+- The scratch crate (outside the repository) has now run on the shell's two new files: `cargo check --target x86_64-pc-windows-msvc` finished with no error and no warning printed, which type-checks `win_job.rs` with `hold_pid` against windows-sys 0.61.2; `cargo test --lib` on Linux, the 5 unit tests of `engine_start.rs` passed. `main.rs` itself is still not compiled.
+
 ## The desktop shell says why the engine did not start before its last window closes, and holds the engine in a job on Windows · after 2.5.0, unreleased, NOT COMPILED (src-tauri/src/main.rs EngineStep, start_limit, engine_failed new, kill_backend, setup; src-tauri/src/engine_start.rs new; src-tauri/src/win_job.rs new; src-tauri/Cargo.toml)
 
 - Kind: fix · logged 2026-11-19 · WINDOWS_APP_SPEC section 2; a tester saw FormVis close with no message on Windows while an engine from an earlier run was still there.
