@@ -2,6 +2,12 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## An Antigravity tab whose MCP file is not valid JSON is refused with a sentence · after 2.5.0, unreleased (services/agent_programs.py _servers)
+
+- Kind: fix · logged 2026-11-19 · WAVE5 item 2, the one part that applies here.
+- `_servers` read the tab folder's `.agents/mcp_config.json` with `json.loads` outside any handler (before: `data = json.loads(path.read_text(encoding="utf-8") or "{}") if path.exists() else {}`), so a file that is not valid JSON, or not UTF-8, raised `ValueError` and the window got a bare 500. The read is now inside `try`, a `ValueError` counts as "not a file formvis can read", and the same `OSError` sentence as for a file of the wrong shape is raised: "[path] is not an MCP servers file formvis can read, so it was left alone". The file is not touched.
+- Seen: `_servers` called on a file holding `not json {` raises the `OSError` with that sentence (a direct call from `backend/`). Not run: the route itself and `tests/test_agent_programs.py` (the shared test lane was held until the session's stop time), so no test was added.
+
 ## The engine starts with no output streams, replaces an engine left without its app, and leaves when its app is gone, on Windows too · after 2.5.0, unreleased (formvis_engine.py stream guard, watch_parent, main, serve new; core/startup.py new; core/runtime.py AlreadyRunning, start_logging, _alive, claim)
 
 - Kind: fix · logged 2026-11-19 · WINDOWS_APP_SPEC sections 0 and 1; a tester saw FormVis close silently on Windows while an engine from an earlier run was still there.
