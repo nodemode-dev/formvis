@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.7.0 · 2026-11-20
+
+No console window beside formvis on Windows, a start that gives up sooner and says why, and Antigravity named wherever formvis lists the agent programs.
+
+- On Windows the engine runs with no console window of its own beside the app. For the people who build formvis: `FORMVIS_ENGINE_WINDOWED=0` builds it with a console window as before.
+- The desktop app waits up to 90 seconds for the engine to come up, in place of five minutes, and then says that it did not, with the engine's last lines and where its log is. 90 seconds is what every Form app now waits.
+- On macOS, an engine left over from an earlier run that has already ended, but that the system has not yet cleared away, counts as gone. Before, the next start could wait for it and then be refused.
+- The terminal panel's first-run guide says that Codex, Cursor and Antigravity each get a button of their own when they are on this computer. Before, it named only Claude Code.
+- The question formvis asks before an outside agent changes a picture, the Help pages on outside agents and on the terminal panel's menu, the `agents` line of the installed app's command, the README and the guides in `docs` name Claude Code, Codex, Cursor and Antigravity. Before, some named only the first three.
+- The browser demo in `demo/` shows the window as it is in this version.
+- For the people who build on the terminal panel: its shared files are at 2.2.1. A tab written for 2.2.0 needs no change.
+- The desktop app's part of this was first compiled by the release build; it had not been run on Windows or macOS when this was written.
+
 ## 2.6.0 · 2026-11-20
 
 Starting and stopping, on Windows first of all: formvis says why when it cannot start, an engine left over from an earlier run no longer keeps the next start out, and the engine leaves when the app is gone.
