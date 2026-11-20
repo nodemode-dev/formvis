@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.6.0 · 2026-11-20
+
+Starting and stopping, on Windows first of all: formvis says why when it cannot start, an engine left over from an earlier run no longer keeps the next start out, and the engine leaves when the app is gone.
+
+- When the engine does not start, the desktop app says so in a box that stays until you close it: what went wrong, the engine's last lines, and where its log is. Before, the app could close with nothing said. An engine file that is missing or cannot be started gets the same box.
+- An engine that an earlier run left behind, with its app gone, is stopped and replaced at the next start. Before, it kept the next start out until someone ended it by hand. When formvis really is open on the same data folder, the second start still says so: "formvis is already running on [folder] (engine process N)."
+- The engine leaves within about two seconds once the app that started it is gone, on Windows too, and leaves nothing of its own behind. On Windows the desktop app also ties the engine to itself, so the system ends the engine with the app however the app ends.
+- The engine starts when it has nowhere to write its messages, as is the case for a program with no console window on Windows. Before, it stopped at once. What it would have written goes to `Logs/formvis-engine-errors.log` in the data folder.
+- The engine's log (`Logs/formvis-engine.log`) begins before anything else is done, so a start that fails leaves its reason there.
+- The desktop app waits up to five minutes for the engine to come up and then says that it did not. Before, it waited without end.
+- `formvis-engine` opened by itself from the install folder opens formvis, or says that it is a part of FormVis and serves nothing on its own.
+- An Antigravity tab whose folder holds an MCP settings file that is not valid JSON is refused with a sentence that names the file, and the file is left as it is. Before, the tab failed with no reason given.
+- The desktop app's part of this is new code that was first compiled by the release build; it had not been run on Windows or macOS when this was written.
+
 ## 2.5.0 · 2026-11-19
 
 formvis finds your agent programs however it was started, and Google's Antigravity is the fourth beside Claude Code, Codex and Cursor.
