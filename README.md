@@ -48,7 +48,7 @@
     <td width="25%" valign="top"><h3>Layered</h3>Stack photos in folders, mask and clip them, and blend with 27 blend modes. History keeps 100 steps.</td>
     <td width="25%" valign="top"><h3>Non-destructive</h3>Adjustment layers, layer styles and smart objects stay editable, and layered PSD and PSB files open and save.</td>
     <td width="25%" valign="top"><h3>Local AI</h3>Krea 2 Turbo, FLUX.2 klein, LaMa and Real-ESRGAN run on this computer, with no key and no cost.</td>
-    <td width="25%" valign="top"><h3>Agent-ready</h3>The same command catalogue drives the window, a command line and an MCP server for Claude Code, Codex and Cursor.</td>
+    <td width="25%" valign="top"><h3>Agent-ready</h3>The same command catalogue drives the window, a command line and an MCP server for Claude Code, Codex, Cursor and Antigravity.</td>
   </tr>
 </table>
 
@@ -90,7 +90,7 @@ The window, the command line and the MCP server call the same command catalogue,
 ```sh
 ./formvis cli list                     # every command of the open window
 ./formvis cli describe adjust.apply    # what a command takes, with its parameters
-./formvis mcp                          # MCP server on stdio for Claude Code, Codex and Cursor
+./formvis mcp                          # MCP server on stdio for Claude Code, Codex, Cursor and Antigravity
 ```
 
 `.mcp.json`, `.codex/config.toml` and `.cursor/mcp.json` are already wired in this repo. See [`AGENTS.md`](AGENTS.md).

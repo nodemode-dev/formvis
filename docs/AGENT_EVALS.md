@@ -1,4 +1,4 @@
-# Editing with Claude Code, Codex and Cursor: evaluations and a checklist
+# Editing with Claude Code, Codex, Cursor and Antigravity: evaluations and a checklist
 
 formvis's MCP server and the `formvis-editing` skill are tested against the real formvis window by
 `e2e/test_agent_editing.py`, which plays the part of an agent. What those tests cannot run is a real client with its
@@ -8,9 +8,11 @@ evaluations with results you can check, and the skill's trigger test.
 ## Checklist, once per client
 
 1. In the formvis folder, run `./formvis agents install` (or open the formvis repository itself in the client, which
-   carries `.mcp.json`, `.cursor/mcp.json` and `.codex/config.toml`). Restart the client.
+   carries `.mcp.json`, `.cursor/mcp.json` and `.codex/config.toml`; it carries nothing for Antigravity, so run
+   `./formvis agents install antigravity` for it). Restart the client.
 2. The client lists a `formvis` MCP server with 140 tools (Claude Code: `/mcp`; Codex: `codex mcp list`; Cursor:
-   Settings > MCP). In Claude Code a project server first shows as waiting for your approval: approve it.
+   Settings > MCP; Antigravity: its MCP servers, read from `~/.gemini/config/mcp_config.json`, where step 1 put a
+   `formvis` entry). In Claude Code a project server first shows as waiting for your approval: approve it.
 3. With formvis closed, ask: "What is open in formvis?" formvis's engine starts and a formvis window opens in your
    browser (the desktop app, if that is what you run, is the window itself).
 4. formvis asks "Allow an outside agent to edit?" Click Allow. The agent's answer names the open document, or says
