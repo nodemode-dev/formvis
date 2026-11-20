@@ -13,6 +13,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "demo": "vite build --config vite.demo.config.ts",
+    "demos": "vite build --config ../demos/retouch/vite.config.mjs && vite build --config ../demos/design/vite.config.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "tauri": "tauri"

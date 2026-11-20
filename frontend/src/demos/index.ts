@@ -1,6 +1,6 @@
 import type { Engine } from '../engine';
 import { buildDesignDemo } from './design';
-import { shippedMedia, type DemoMedia } from './media';
+import { packSource, shippedMedia, type DemoMedia } from './media';
 import { buildPaintDemo } from './paint';
 import { buildRetouchDemo } from './retouch';
 
@@ -23,6 +23,11 @@ export const DEMOS: readonly DemoDef[] = [
 ];
 
 export const demoCover = (d: DemoDef): string => `${import.meta.env.BASE_URL}demos/${d.id}/${d.cover}`;
+
+export async function demoCoverSrc(id: string, url: string): Promise<string> {
+  const d = DEMOS.find((x) => x.id === id), packs = packSource();
+  return d && packs ? packs.cover(d.id, d.cover.replace(/\.\w+$/, '')) : url;
+}
 
 export function buildDemo(id: string, e: Engine, made: Set<string> = new Set()): Promise<void> | null {
   const d = DEMOS.find((x) => x.id === id);

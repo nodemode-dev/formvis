@@ -2,7 +2,7 @@ import type { Engine } from '../engine';
 import { el, setClass, setDisabled, setHidden, setText, swapMedia } from './dom';
 import { HomeFiles } from './home-files';
 import { icon } from './icons';
-import { DEMOS, demoCover } from '../demos';
+import { DEMOS, demoCover, demoCoverSrc } from '../demos';
 
 /** The Home screen: New and Open, and the files browser (Recent, Projects, Outputs as thumbnails or a list; 1.87.1),
  *  shown over the canvas at launch while no document is open (Preferences > General, "Show Home screen at launch")
@@ -160,7 +160,7 @@ export class HomeScreen {
   private covers(): void {
     if (this.coversAsked) return;
     this.coversAsked = true;
-    for (const img of Array.from(this.root.querySelectorAll<HTMLImageElement>('.cv-home-demo-pic img[data-src]'))) void swapMedia(img, img.dataset.src ?? '').catch(() => undefined);
+    for (const img of Array.from(this.root.querySelectorAll<HTMLImageElement>('.cv-home-demo-pic img[data-src]'))) void demoCoverSrc(img.closest<HTMLElement>('[data-demo-open]')?.dataset.demoOpen ?? '', img.dataset.src ?? '').then((src) => swapMedia(img, src)).catch(() => undefined);
   }
 }
 
