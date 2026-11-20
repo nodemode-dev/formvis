@@ -10,6 +10,7 @@ use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
 
 mod display;
+mod engine_start;
 #[cfg(target_os = "linux")]
 mod integration;
 mod native;
@@ -17,9 +18,35 @@ mod packaged;
 mod reveal;
 mod text_edit;
 mod traffic_lights;
+#[cfg(windows)]
+mod win_job;
 mod window_state;
 
 struct Backend(Mutex<Option<CommandChild>>);
+
+type EngineStep = Result<CommandEvent, Option<engine_start::Wait>>;
+
+fn start_limit(late: &tauri::async_runtime::Sender<EngineStep>, limit: std::time::Duration, wait: Option<engine_start::Wait>) {
+    let late = late.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(limit);
+        let _ = late.blocking_send(Err(wait));
+    });
+}
+
+fn engine_failed(handle: &tauri::AppHandle, failure: engine_start::Failure, tail: &engine_start::Tail) {
+    let text = engine_start::message(&failure, &tail.lines(), engine_start::engine_log(packaged::engine_folder().as_deref()).as_deref());
+    eprintln!("formvis: {text}");
+    let _ = handle
+        .dialog()
+        .message(text)
+        .title(engine_start::APP)
+        .kind(tauri_plugin_dialog::MessageDialogKind::Error)
+        .blocking_show();
+    close_splash(handle);
+    kill_backend(handle);
+    handle.exit(1);
+}
 
 /// Files the system asked formvis to open (a double-clicked project, a second launch). They wait here until the page
 /// has registered its listener and called take_pending_opens; after that they are sent to the page as they arrive.
@@ -93,6 +120,8 @@ fn kill_backend(handle: &tauri::AppHandle) {
                 }
             }
         }
+        #[cfg(windows)]
+        win_job::end();
         let _ = child.kill();
     }
 }
@@ -714,57 +743,84 @@ fn main() {
             open_paths(&handle, paths_from_args(&launch_args, None));
             queue_runs(&handle, runs_from_args(&launch_args, None));
             let engine = match packaged::engine_folder() {
-                Some(program) => app.shell().command(program),
-                None => app
-                    .shell()
-                    .sidecar("formvis-engine")
-                    .expect("the formvis engine sidecar is missing; bundle its binary"),
+                Some(program) => Ok(app.shell().command(program)),
+                None => app.shell().sidecar("formvis-engine").map_err(|_| engine_start::Failure::Missing),
             };
-            let mut sidecar = engine
-                .env("FORMVIS_PORT", "0")
-                .env("FORMVIS_SHELL_PID", std::process::id().to_string())
-                .env("FORMVIS_WINDOW_KEY_STDOUT", "1");
-            if let Some(path) = packaged::launcher() {
-                sidecar = sidecar.env("FORMVIS_LAUNCHER", path);
-            }
-            if let Some(dir) = user_data_dir_arg(&launch_args) {
-                sidecar = sidecar.env("FORMVIS_DATA_DIR", dir);
-            }
-            if launch_args.iter().any(|a| a == "--portable") {
-                sidecar = sidecar.env("FORMVIS_PORTABLE", "1");
-            }
-            let (mut rx, child) = sidecar.spawn().expect("the formvis engine failed to spawn");
+            let started = engine.and_then(|engine| {
+                let mut sidecar = engine
+                    .env("FORMVIS_PORT", "0")
+                    .env(engine_start::SHELL_ENV, std::process::id().to_string())
+                    .env("FORMVIS_WINDOW_KEY_STDOUT", "1");
+                if let Some(path) = packaged::launcher() {
+                    sidecar = sidecar.env("FORMVIS_LAUNCHER", path);
+                }
+                if let Some(dir) = user_data_dir_arg(&launch_args) {
+                    sidecar = sidecar.env("FORMVIS_DATA_DIR", dir);
+                }
+                if launch_args.iter().any(|a| a == "--portable") {
+                    sidecar = sidecar.env("FORMVIS_PORTABLE", "1");
+                }
+                sidecar.spawn().map_err(|err| engine_start::Failure::NotStarted(err.to_string()))
+            });
+            let (mut rx, child) = match started {
+                Ok(pair) => pair,
+                Err(failure) => {
+                    std::thread::spawn(move || engine_failed(&handle, failure, &engine_start::Tail::default()));
+                    return Ok(());
+                }
+            };
+            #[cfg(windows)]
+            win_job::hold_pid(child.pid());
             *app.state::<Backend>().0.lock().unwrap() = Some(child);
 
             tauri::async_runtime::spawn(async move {
                 let pattern = regex::Regex::new(r"http://127\.0\.0\.1:(\d+)").unwrap();
                 let key_pattern = regex::Regex::new(r"formvis-window-key: ([A-Za-z0-9_-]{32,})").unwrap();
-                let (tx, mut events) = tauri::async_runtime::channel::<Option<CommandEvent>>(64);
+                let (tx, mut events) = tauri::async_runtime::channel::<EngineStep>(64);
                 let late = tx.clone();
                 tauri::async_runtime::spawn(async move {
                     while let Some(event) = rx.recv().await {
-                        if tx.send(Some(event)).await.is_err() {
+                        if tx.send(Ok(event)).await.is_err() {
                             break;
                         }
                     }
-                    let _ = tx.send(None).await;
+                    let _ = tx.send(Err(None)).await;
                 });
+                start_limit(&late, engine_start::Wait::Address.limit(), Some(engine_start::Wait::Address));
                 let mut port: Option<u16> = None;
                 let mut key: Option<String> = None;
                 let mut waiting = false;
-                while let Some(Some(event)) = events.recv().await {
-                    let text = match event {
-                        CommandEvent::Stdout(bytes) => {
+                let mut stopped = false;
+                let mut tail = engine_start::Tail::default();
+                let mut failure = engine_start::Failure::Stopped(None);
+                while let Some(step) = events.recv().await {
+                    let text = match step {
+                        Ok(CommandEvent::Stdout(bytes)) => {
                             let text = String::from_utf8_lossy(&bytes).into_owned();
                             if key.is_none() {
                                 key = key_pattern.captures(&text).map(|found| found[1].to_string());
                             }
                             text
                         }
-                        CommandEvent::Stderr(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-                        CommandEvent::Terminated(_) => break,
-                        _ => continue,
+                        Ok(CommandEvent::Stderr(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
+                        Ok(CommandEvent::Terminated(ended)) => {
+                            failure = engine_start::Failure::Stopped(ended.code);
+                            stopped = true;
+                            start_limit(&late, engine_start::EXIT_WAIT, None);
+                            continue;
+                        }
+                        Ok(_) => continue,
+                        Err(None) => break,
+                        Err(Some(_)) if stopped => break,
+                        Err(Some(engine_start::Wait::Address)) if port.is_some() => continue,
+                        Err(Some(wait)) => {
+                            failure = engine_start::Failure::TimedOut(wait);
+                            break;
+                        }
                     };
+                    for line in text.lines() {
+                        tail.push(line);
+                    }
                     if port.is_none() {
                         port = pattern.captures(&text).and_then(|c| c[1].parse::<u16>().ok());
                     }
@@ -773,11 +829,7 @@ fn main() {
                     }
                     if port.is_some() && !waiting {
                         waiting = true;
-                        let late = late.clone();
-                        std::thread::spawn(move || {
-                            std::thread::sleep(std::time::Duration::from_secs(10));
-                            let _ = late.blocking_send(None);
-                        });
+                        start_limit(&late, engine_start::Wait::Key.limit(), Some(engine_start::Wait::Key));
                     }
                 }
                 drop(late);
@@ -850,20 +902,13 @@ fn main() {
                             window_state::restore(&window, &place);
                             window_state::watch_renderer(&window);
                         } else {
-                            close_splash(&handle);
+                            engine_failed(&handle, engine_start::Failure::Window, &engine_start::Tail::default());
+                            return;
                         }
                         #[cfg(target_os = "linux")]
                         integration::first_run(&handle);
                     }
-                    None => {
-                        close_splash(&handle);
-                        let _ = handle
-                            .dialog()
-                            .message("The formvis engine failed to start. Please relaunch the app.")
-                            .blocking_show();
-                        kill_backend(&handle);
-                        handle.exit(1);
-                    }
+                    None => engine_failed(&handle, failure, &tail),
                 }
             });
             Ok(())
