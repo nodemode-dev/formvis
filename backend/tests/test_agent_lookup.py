@@ -161,5 +161,6 @@ def test_opening_a_tab_for_a_missing_or_broken_program_answers_with_the_sentence
     assert res.status_code == 404 and " but does not start: " in res.json()["detail"]
     res = client.post("/api/agent/claude/start", json={"mode": "ask"})
     assert res.status_code == 409 and res.json()["detail"].startswith("Claude Code was found at ")
-    assert client.post("/api/terminal/agent", json={"kind": "antigravity"}).status_code == 422
-    assert set(agent_programs.PROGRAMS) == {"codex", "cursor", "antigravity"} and agent_programs.TABS == ("codex", "cursor")
+    res = client.post("/api/terminal/agent", json={"kind": "antigravity"})
+    assert res.status_code == 404 and res.json()["detail"].startswith("Antigravity was not found. Looked in: PATH (/usr/bin:/bin:/usr/sbin:/sbin); ")
+    assert set(agent_programs.PROGRAMS) == {"codex", "cursor", "antigravity"} and agent_programs.TABS == ("codex", "cursor", "antigravity")
