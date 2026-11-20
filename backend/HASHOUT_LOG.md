@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The finder is 1.0.1: a hint line from `env` is not taken as a program's error · 2.5.0 (app/services/agent_lookup.py VERSION, _last_line; setup/agents.py LOOKUP_HASHES)
+
+- Kind: fix · logged 2026-11-19 · found by the pull request's own test run for 2.5.0.
+- A program that is found and does not start is reported with the last line it printed. On the test runner's system, `env` prints two lines for a script whose interpreter is missing: `env: '[name]': No such file or directory`, then `env: use -[v]S to pass options in shebang lines`. The second was taken, so the sentence named a hint and not the missing interpreter, and `test_a_program_that_is_there_but_does_not_start_says_so_with_its_error_line` failed there (it passed where `env` prints one line).
+- `_last_line` now leaves out a line holding `use -[v]S to pass options` (before: `if line.strip()` alone). The file changed, so it is version 1.0.1, and `LOOKUP_HASHES` records `62667f9b68b7d101e1896ce617240424e33b7e498c560bc79d45f0ab26c77d51` beside the 1.0.0 hash.
+- Seen: `_last_line` given the two lines the runner printed returns the first; the test file and the hash tests pass here. Not run: the runner's own system.
+
 ## agents install adds formvis to Antigravity · after 2.4.0, unreleased (setup/agents.py module text, _ours, install_antigravity, main; tests/test_agents_setup.py)
 
 - Kind: feature · logged 2026-11-19 · ANTIGRAVITY_SPEC "MCP servers"; DOCK_MODULE_2_2_BRIEF item 4.
