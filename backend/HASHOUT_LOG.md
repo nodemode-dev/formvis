@@ -2,6 +2,20 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The shell waits 90 seconds for the engine's address, and the Windows engine opens no console window · after 2.6.0, unreleased (src-tauri/src/engine_start.rs ADDRESS_WAIT; setup/freeze_backend; setup/freeze_backend.bat)
+
+- Kind: change · logged 2026-11-20 · the owner's two decisions for every app of the family (D1 and D3 of the wave 7 brief).
+- **D1.** `ADDRESS_WAIT` is 90 seconds, the family's standard; it was 300 because this app's Windows and Linux engine is a one-file build that unpacks about a gigabyte into a temporary folder before Python starts. Replaced, quoted exactly: `pub const ADDRESS_WAIT: Duration = Duration::from_secs(300);` and, in the test `a_wait_that_runs_out_says_how_long_and_for_what`, `contains("waited 300 seconds for its engine`. Nothing was measured here: no first start of a frozen engine on a slow disk was timed. If that unpacking takes longer than 90 seconds, the person sees the loading window, then the dialog "FormVis could not start: it waited 90 seconds for its engine to say which address it serves on and that did not happen.", with the engine's last lines and the log's path; the next start reuses nothing of the unpack, so it can fail the same way on the same machine.
+- **D3.** `setup/freeze_backend` adds `--noconsole` on Windows unless `FORMVIS_ENGINE_WINDOWED=0`; `setup/freeze_backend.bat` the same. There was no switch before, so the default is the new one; macOS and Linux builds are unchanged. `formvis_engine.py` already replaces a missing stdin, stdout or stderr with the null device before anything prints (wave 4), so `--selfcheck` and the other printing modes do not fail with no console; their text is then not seen.
+- **Seen.** `bash -n setup/freeze_backend` clean; the `.bat` line read against the `FORMVIS_FREEZE_ML` line above it, which has the same shape. `engine_start.rs` unit tests in the scratch crate: 5 passed. No Windows build has run with `--noconsole`.
+
+## An engine that has ended but was not yet collected counts as gone where there is no /proc · after 2.6.0, unreleased (`app/core/startup.py` :: `finished`, `gone_by`)
+
+- Kind: fix · logged 2026-11-20 · carried by hand from FormCut's fix for its 2.18.0 macOS job, with this app's names.
+- **Why.** Ending a leftover engine waits until it is gone. `_alive_posix` asks `kill(pid, 0)`, which still answers for a process that has ended and whose parent has not collected it, and it tells such a process apart only by reading `/proc`, which macOS does not have. FormCut's macOS job saw the wait run out and the start refused with "could not stop an engine that was left running".
+- **The change.** `finished(pid)` asks `ps -o stat= -p <pid>` where there is no `/proc` (never on Windows, never on Linux) and answers true for a state that starts with `Z`. `gone_by` stops waiting when the process is not alive or is finished. `alive` itself is unchanged, so the two second watch on the app starts no program.
+- **Seen.** New test `test_an_engine_that_has_ended_but_is_not_yet_collected_counts_as_gone_where_there_is_no_proc`: a child `sleep 0` left uncollected, `PROC` pointed at a folder that does not exist. Before the change `gone_by(pid, 1.0)` answered False (the test failed on that line); after it, the test passes and `end` answers True. `tests/test_startup.py`: 14 passed. Not run on macOS.
+
 ## The engine's start and stop have their tests, and the shell's Windows module type-checks · after 2.5.0, unreleased (tests/test_startup.py new)
 
 - Kind: test · logged 2026-11-19 · follows the two entries below, which say "not run" for these.
