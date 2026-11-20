@@ -2,6 +2,13 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Home's Demos row in a browser demo page reads the page's data packs · after 2.7.0, unreleased (demos/media.ts PackSource, packSource, shippedMedia; demos/index.ts demoCoverSrc; ui/home.ts covers; package.json "demos")
+
+- Kind: fix · logged 2026-11-20 · WAVE10 item 1. The three browser demos run this window from `file://`, where `fetch` and a canvas read of a plain file are refused, and their builds copy nothing from `public/`, so the three covers (`demos/<id>/<cover>`) failed to load and a card would have failed on `media.json`.
+- Change: `PackSource` is what a demo page puts at `globalThis.FV_PACKS` before the window starts (`demo/src/media.ts` `installPacks`). When it is there, `shippedMedia(id)` takes its media from it, and `demoCoverSrc(id, url)` gives a card's picture from the pack of the same name as the cover file (`tray-night`, `golden-portrait`, `bokeh`); `HomeScreen.covers` waits for that before `swapMedia`. With no `FV_PACKS` (the app) nothing changes: the URL and `media.json` as before.
+- `package.json` `demos`: builds `demos/retouch` and `demos/design` with their own `vite.config.mjs`, as their READMEs' Rebuild sections do by hand.
+- Verified: `tsc --noEmit` for the frontend and the three demo projects, clean; the three pages from `file://` in headless Chromium (see demo/HASHOUT_LOG.md).
+
 ## The window's sentences that list the agent programs name all four · after 2.6.0, unreleased (automation/agent-bridge.ts the outside-agent question; docs/MANUAL.md, shown in Help; backend/formvis_engine.py run_agents)
 
 - Kind: fix · logged 2026-11-20 · WAVE7_BRIEF item D, the sentences.

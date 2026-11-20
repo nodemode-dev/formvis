@@ -31,8 +31,17 @@ export function greyToAlpha(c: HTMLCanvasElement): HTMLCanvasElement {
 
 type Table = Record<string, { img: string; mask?: string }>;
 
+export interface PackSource {
+  media(id: string): DemoMedia;
+  cover(id: string, name: string): Promise<string>;
+}
+
+export const packSource = (): PackSource | null => (globalThis as { FV_PACKS?: PackSource }).FV_PACKS ?? null;
+
 /** The app's copy of a demo's photographs, served beside the interface. */
 export function shippedMedia(id: string): DemoMedia {
+  const packs = packSource();
+  if (packs) return packs.media(id);
   const base = `${import.meta.env.BASE_URL}demos/${id}/`;
   let table: Promise<Table> | null = null;
   const entry = async (name: string): Promise<{ img: string; mask?: string }> => {

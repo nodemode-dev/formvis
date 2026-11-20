@@ -2,6 +2,12 @@
 
 Living log for the offline browser demo. Entries are anchored by file and symbol.
 
+## Home's three demo cards draw and open from file:// · after 2.7.0, unreleased (demo/src/media.ts loadPack, installPacks; demo/src/pages.ts; demo/src/main.ts; demo/assets/demo.js)
+
+- Kind: fix · logged 2026-11-20 · WAVE10 item 1. The window's Home screen asked for `demo/demos/{paint/tray-night,retouch/golden-portrait,design/bokeh}.jpg`, which the build never wrote (three "Failed to load resource" errors), and a card would have fetched `media.json`, which `file://` refuses.
+- Change: `loadPack(name, dir)` reads `<dir>assets/media/<name>.js`, `./` by default as before. `installPacks(own, root)` sets `window.FV_PACKS` (frontend `demos/media.ts` `PackSource`): a card's cover is the data pack of that name from the page that carries it (`<root>demo/`, `<root>demos/retouch/`, `<root>demos/design/`); the page's own demo is built in place from its packs, as the app builds it; another demo's card opens that demo's page, which builds the same session with its own shims (the design page's encoders, for one). `pages.ts` calls it with `paint` and `../`, imported after the `/api` shim and before the window, so it is set before Home asks. No picture was added: the covers are the packs already shipped (tray-night here, golden-portrait and bokeh in `demos/`).
+- Seen: `npm run demo`, then the page from `file://` in headless Chromium (Playwright 1.63.0): `app-ready`, the session drawn, Home's three covers drawn from `data:` (1600x1067, 1600x1067, 1920x1080), the Paint card builds its documents (7 to 14), the Retouch card opens `demos/retouch/index.html`, which starts; console: no error, no failed request (warnings only: no GPU adapter in headless, Canvas2D read-back hints).
+
 ## The demo is built again from the app's tip · after 2.6.0, unreleased (demo/index.html, demo/assets/demo.js, demo/assets/demo.css)
 
 - Kind: build · logged 2026-11-20 · WAVE7_BRIEF item E. `npm run demo` in `frontend`; no demo source changed. The bundle now carries the window as it is today: the panel module 2.2.1 with its four agent programs (the word Antigravity is in the bundle, it was not before), the OLED theme boot line, and the version 2.6.0 (the release commit sets the version string by hand, as 2.3.5's did).

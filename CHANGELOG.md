@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.8.0 · 2026-11-20
+
+The three browser demos show their Home screen's demo pictures and open those demos from a double-click, and all three are the window of this version.
+
+- In the browser demos, opened from `file://`, Home's Demos row shows its three pictures. Before, they were missing and the page reported three load errors.
+- Choosing a demo on that row opens it: the page's own demo is built in place as new documents, as in the app, and another demo opens that demo's page.
+- The retouching and design demos in `demos/` were built again from this version's window; before, they showed 2.3.5. They also no longer ask for a stylesheet that is not there.
+- The README's status says released: formvis is built and bundled for macOS, Windows and Linux and has been tested on all three.
+
 ## 2.7.0 · 2026-11-20
 
 No console window beside formvis on Windows, a start that gives up sooner and says why, and Antigravity named wherever formvis lists the agent programs.

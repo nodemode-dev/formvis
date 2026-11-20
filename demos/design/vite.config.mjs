@@ -40,7 +40,7 @@ const windowPage = () => ({
     const real = readFileSync(`${FRONTEND}/index.html`, 'utf8');
     return real
       .replace('<script type="module" src="/src/main.ts"></script>', '<script type="module" src="./main.ts"></script>')
-      .replace(/href="\/src\/styles\//g, 'href="../../../frontend/src/styles/')
+      .replace(/href="\/src\//g, 'href="../../../frontend/src/')
       .replace(/\s*<link rel="(?:icon|apple-touch-icon|preload)"[^>]*>/g, '')
       .replace('<html lang="en" data-theme="dark">', '<html lang="en" data-theme="dark" data-demo="building">')
       .replace(STYLE_BLOCK, `${STYLE_BLOCK}
