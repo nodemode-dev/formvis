@@ -1,6 +1,6 @@
 [package]
 name = "formvis"
-version = "2.5.0"
+version = "2.6.0"
 description = "formvis desktop shell"
 authors = ["NodeAgentc, Inc."]
 license = "Apache-2.0"
@@ -41,7 +41,7 @@ gtk = "0.18"
 
 # Windows: SHAddToRecentDocs for the taskbar jump list (MIT or Apache-2.0; already in the tree through Tauri).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_UI_Shell"] }
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
 # macOS: NSDocumentController's recent documents (Apple menu, Dock menu), through the bindings Tauri's window layer already builds (MIT or Apache-2.0 or zlib).
 [target.'cfg(target_os = "macos")'.dependencies]

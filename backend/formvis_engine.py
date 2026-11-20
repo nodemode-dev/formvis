@@ -1,6 +1,15 @@
 import json
+import logging
 import os
 import sys
+from pathlib import Path
+
+if sys.stdin is None:
+    sys.stdin = open(os.devnull, encoding="utf-8")
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
 PORT_NAME = "engine.port"
 
@@ -76,45 +85,36 @@ def heic_check() -> dict:
             "gpl": [e for e in encoders if e.lower() in ("x265", "x264")]}
 
 
-def watch_parent() -> None:
+def watch_parent(data) -> None:
     """Exits when the process that started this one is gone (1.86.2). The one-file build runs as two processes: the
     launcher unpacks about a gigabyte into a temporary _MEI folder and starts this server as its child. When the desktop
     shell had to force the launcher closed, nothing told this server, which kept running with the CPU, memory and port it
     held, and the folder stayed behind; each launch could add another. The launcher would have removed the folder, so
-    with it gone this process does."""
-    if os.name != "posix":
-        return
-    shell = os.environ.get("FORMVIS_SHELL_PID", "")
-    watched = int(shell) if shell.isdigit() and int(shell) > 0 else 0
-    parent = os.getppid()
-    if not watched and parent <= 1:
+    with it gone this process does. From 2.6.0 the shell named in FORMVIS_SHELL_PID is watched on Windows too, and the
+    lock and the port file are given up before leaving."""
+    from app.core import runtime, startup
+
+    shell = startup.shell_pid()
+    if not shell and os.name == "posix":
+        shell = os.getppid()
+    if shell <= 1:
         return
     import shutil
-    import threading
-    import time
 
-    def alive(pid: int) -> bool:
+    def leave() -> None:
+        logging.getLogger("formvis").info("the app that started this engine is gone (process %s), stopping", shell)
+        runtime.release(data)
         try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        return True
-
-    def run() -> None:
-        if watched:
-            while alive(watched):
-                time.sleep(2)
-        else:
-            while os.getppid() == parent:
-                time.sleep(2)
+            if json.loads((data / PORT_NAME).read_text(encoding="utf-8")).get("pid") == os.getpid():
+                (data / PORT_NAME).unlink()
+        except (OSError, ValueError, AttributeError):
+            pass
         unpacked = getattr(sys, "_MEIPASS", "")
-        if os.path.basename(unpacked).startswith("_MEI"):
+        if os.name == "posix" and os.path.basename(unpacked).startswith("_MEI"):
             shutil.rmtree(unpacked, ignore_errors=True)
         os._exit(0)
 
-    threading.Thread(target=run, name="formvis-parent-watch", daemon=True).start()
+    startup.watch(shell, leave)
 
 
 def sweep_stale_unpacks() -> None:
@@ -232,14 +232,39 @@ def main() -> int:
     from app.core import runtime
 
     runtime.apply_switches(sys.argv[1:])
-    from app.core import config
+    try:
+        return serve()
+    except Exception:
+        logging.getLogger("formvis").exception("the engine stopped on an error")
+        raise
+
+
+def serve() -> int:
+    from app.core import config, runtime, startup
 
     try:
-        runtime.claim(config.data_dir())
+        data = config.data_dir()
+        logs = runtime.start_logging(data).parent
+    except OSError as err:
+        print(f"formvis cannot use its data folder: {err}", file=sys.stderr)
+        return 5
+    startup.keep_errors(logs)
+    log = logging.getLogger("formvis")
+    if startup.alone():
+        beside = startup.app_beside(Path(sys.executable))
+        if beside is not None and startup.open_app(beside):
+            log.info("started without its app, so it opened %s and stopped", beside)
+            return 0
+        log.error("started without its app, and no app program was found near %s", sys.executable)
+        print("formvis-engine is a part of FormVis and serves nothing on its own. Open FormVis instead.", file=sys.stderr)
+        return 4
+    try:
+        runtime.claim(data)
     except runtime.AlreadyRunning as err:
+        log.error("%s", err)
         print(err, file=sys.stderr)
         return 2
-    watch_parent()
+    watch_parent(data)
     sweep_stale_unpacks()
     bundled = os.path.join(resource_dir(), "frontend_dist")
     if os.path.isdir(bundled):
@@ -254,11 +279,11 @@ def main() -> int:
         print(window_key.LINE + window_key.KEY, flush=True)
     port = int(os.environ.get("FORMVIS_PORT", "0") or 0)
     server = uvicorn.Server(uvicorn.Config(fastapi_app, host="127.0.0.1", port=port, log_level="info"))
-    data = config.data_dir()
     announce_port(server, data)
     try:
         server.run()
     finally:
+        runtime.release(data)
         try:
             if json.loads((data / PORT_NAME).read_text(encoding="utf-8")).get("pid") == os.getpid():
                 (data / PORT_NAME).unlink()
