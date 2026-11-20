@@ -92,7 +92,7 @@ def dock_start(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("SHELL", str(stand_in(tmp_path / "zsh", STAND_IN_SHELL)))
     monkeypatch.setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
-    for name in ("FORMVIS_CLAUDE_BIN", "FORMVIS_CODEX_BIN", "FORMVIS_CURSOR_BIN", "FORMVIS_ANTIGRAVITY_BIN"):
+    for name in ("FORMVIS_CLAUDE_BIN", "FORMVIS_CODEX_BIN", "FORMVIS_CURSOR_BIN", "FORMVIS_ANTIGRAVITY_BIN", "NPM_CONFIG_PREFIX", "npm_config_prefix", "PNPM_HOME", "VOLTA_HOME", "BUN_INSTALL", "NVM_SYMLINK"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(agent_lookup, "system_folders", lambda platform=None: [])
     monkeypatch.setitem(claude_code._cache, "value", None)
