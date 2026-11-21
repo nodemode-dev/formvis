@@ -553,6 +553,7 @@ ASKS_IF = ("", "overwrite", "quit", "a risky command")   # asks always; only to 
 def declaration_faults() -> list[str]:
     """What is missing or cannot be true in the tools' own declarations (reach, asks, asks_if, headless, read): one line a fault."""
     faults = [f"{n} has no declaration" for n in NAMES - set(DECLARED)] + [f"{n} is declared but is not a tool" for n in set(DECLARED) - NAMES]
+    paths = {**{n: reading for n, (_, reading) in _FILES.items()}, **_HEADLESS_FILES}
     for name in sorted(NAMES & set(DECLARED)):
         d, props = DECLARED[name], SCHEMAS[name]["properties"]
         files = d["reach"] in ("reads files", "writes files")
@@ -566,8 +567,9 @@ def declaration_faults() -> list[str]:
                 (d["headless"] and d["reach"] == "document", "runs with no window but acts on the open document"),
                 ("output_path" in props and d["reach"] != "writes files", "has an output_path but does not declare that it writes files"),
                 (files and "path" not in props, "declares files but takes no path"),
-                (name in _FILES and not files, "takes a file path but declares no files"),
-                (name in _FILES and files and _FILES[name][1] != (d["reach"] == "reads files"), "reads or writes its path otherwise than it declares")]
+                (name in paths and not files, "takes a file path but declares no files"),
+                (name in paths and files and paths[name] != (d["reach"] == "reads files"), "reads or writes its path otherwise than it declares"),
+                (files and name not in paths, "declares files but no folder check covers its path")]
         faults += [f"{name} {why}" for bad, why in said if bad]
     return faults
 
@@ -763,6 +765,7 @@ _MAX_OPEN = 512 * 1024 * 1024
 _opened: dict[str, str] = {}   # document id: the file open_file read it from, for writing back to it
 _FILES = {"open_file": (_PICTURES | _PROJECTS | {".svg"}, True), "place_image": ({".png", ".jpg", ".jpeg", ".webp", ".svg"}, True), "glb_place": ({".glb", ".gltf"}, True), "glb_info": ({".glb", ".gltf"}, True), "timeline_render": ({".mp4", ".gif", ".zip"}, False),
           "save_project": ({".fvd"}, False), "export_image": (set(_EXPORTS), False), "export_mask": ({".png"}, False), "export_layer": ({".png"}, False)}   # tool: the suffixes it takes, whether it reads
+_HEADLESS_FILES = {"file_info": True, "convert_file": False}
 
 
 def _system_roots() -> list[str]:

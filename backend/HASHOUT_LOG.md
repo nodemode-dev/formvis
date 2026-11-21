@@ -2,6 +2,13 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A tool that declares files must be one whose path a folder check covers, and a headless file tool must declare files · 2.8.1 (app/routers/mcp.py `_HEADLESS_FILES`, `declaration_faults`; tests/test_agent_approvals.py)
+
+- Kind: fix · logged 2026-11-20 · the queued follow-up "the per-tool declaration check (read-only, approval-gated, folder-confined, document-only)".
+- **What was there.** Batch 5 gave all 140 tools their own declaration and `declaration_faults` already failed on an impossible read-only, approval or document-only declaration. For files it knew only the window tools in `_FILES`: a declaration of `reads files` or `writes files` passed on any tool with a `path` property, even one whose path no folder check covers (`ui_menu_list`, whose path is a menu path), and the two headless file tools could declare `app` or `document` and pass (`file_info` reads its file in `_info`, `convert_file` in `_convert_paths`, both through `_path` and so `_confined`). Seen by setting each declaration in memory: `declaration_faults()` answered `[]` for all three.
+- **The change.** `_HEADLESS_FILES` names the two headless tools that take a path and whether each only reads (`file_info` True, `convert_file` False), the same shape as `_FILES`' second field. `declaration_faults` reads both as one map: a tool in it that declares no files, or reads or writes otherwise than it declares, is named as before, and a tool that declares files and is in neither is named "declares files but no folder check covers its path". The gate's decisions are unchanged: `_refused`, `_risk` and `_FILES` are not touched, and `_HEADLESS_FILES` is read only by the check.
+- **Seen.** Three new rows in `test_a_missing_or_impossible_declaration_is_named` (`file_info` declared `app`, `convert_file` declared `document`, `ui_menu_list` declared `reads files`) failed on the released 2.8.0 code (3 failed, 18 passed) and pass here (21 passed). In a scratch copy with `file_info` declared `reach="app"` in its `_tool` call, `test_every_tool_declares_what_it_is_and_nothing_impossible` failed with "file_info takes a file path but declares no files"; on this tree `declaration_faults()` is `[]` over 140 tools.
+
 ## The shell waits 90 seconds for the engine's address, and the Windows engine opens no console window · after 2.6.0, unreleased (src-tauri/src/engine_start.rs ADDRESS_WAIT; setup/freeze_backend; setup/freeze_backend.bat)
 
 - Kind: change · logged 2026-11-20 · the owner's two decisions for every app of the family (D1 and D3 of the wave 7 brief).

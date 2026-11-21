@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.8.1 · 2026-11-20
+
+The check on what each agent tool says about itself now also covers files, and two documents written before the release say at their top that FormVis is released.
+
+- For agents and the people who set them up: every MCP tool that says it reads or writes files is one whose path formvis checks against the folders agents may use, and the eleven tools that open, place, inspect, save, export, render or convert a file at a path each say that they do. The engine's tests fail when a tool's own description says otherwise. What each tool asks before it runs is unchanged.
+- The guide for the alpha's reviewers (`docs/ALPHA_REVIEW.md`) and the record of the owner's hardware runs (`docs/BENCH.md`) keep their text and say at their top that FormVis is released, built and bundled for macOS, Windows and Linux and tested on all three.
+- The browser demos show this version.
+
 ## 2.8.0 · 2026-11-20
 
 The three browser demos show their Home screen's demo pictures and open those demos from a double-click, and all three are the window of this version.

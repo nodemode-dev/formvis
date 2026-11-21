@@ -1,5 +1,7 @@
 # formvis alpha: a guide for reviewers
 
+20 November 2026: FormVis is released, built and bundled for macOS, Windows and Linux and tested on all three; this guide is the record of the 1.72.8 alpha review, kept as it was written, and its known limits are that build's (see `CHANGELOG.md` for what changed since).
+
 This is for the people reviewing formvis 1.72.8, the first alpha handed to human review. It says how to run it, what
 to look at, what is known not to work yet, and how to report what you find.
 

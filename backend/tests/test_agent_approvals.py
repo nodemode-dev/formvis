@@ -90,6 +90,9 @@ def test_every_tool_declares_what_it_is_and_nothing_impossible():
     ("convert_file", {"reach": "reads files"}, "convert_file has an output_path but does not declare that it writes files"),
     ("get_document", {"headless": True}, "get_document runs with no window but acts on the open document"),
     ("open_file", {"reach": "document"}, "open_file takes a file path but declares no files"),
+    ("file_info", {"reach": "app"}, "file_info takes a file path but declares no files"),
+    ("convert_file", {"reach": "document", "headless": False}, "convert_file takes a file path but declares no files"),
+    ("ui_menu_list", {"reach": "reads files"}, "ui_menu_list declares files but no folder check covers its path"),
 ])
 def test_a_missing_or_impossible_declaration_is_named(name, change, fault, monkeypatch):
     monkeypatch.setitem(M.DECLARED, name, {**M.DECLARED[name], **change})
