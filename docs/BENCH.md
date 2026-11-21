@@ -1,5 +1,7 @@
 # Measured on real hardware
 
+20 November 2026: FormVis is released, built and bundled for macOS, Windows and Linux and tested on all three; the runs below are the dated record of 2 October 2026 (formvis 1.61.6 and 1.61.7), kept as they were measured, and what they name as still to verify is as it stood then.
+
 `./formvis bench` (from 1.61.5) times formvis's display paths on the computer it runs on, in Chrome with the graphics
 processor switched on, and records the machine. These are the runs on the owner's computers, newest first: the evidence
 for the register's H4 (GPU paths verified on real hardware).
