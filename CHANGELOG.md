@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5; its projects were `.fmv` until 1.87.0 and are `.fvd` since. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 2.8.2 · 2026-11-26
+
+On Linux, the rpm now carries the launcher and the library check that the deb has.
+
+- Installed from the rpm, FormVis's menu entry starts `formvis-launch`, which checks that the libraries the window needs are installed and names any that are missing before starting the program. Until now only the deb did this; the rpm started the program directly, and a missing library ended it with no message.
+- The rpm also installs the check itself as `/usr/share/formvis/libcheck`.
+- Nothing else changed: the program, the engine and the other packages are the same as 2.8.1.
+
 ## 2.8.1 · 2026-11-20
 
 The check on what each agent tool says about itself now also covers files, and two documents written before the release say at their top that FormVis is released.
