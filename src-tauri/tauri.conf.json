@@ -55,6 +55,10 @@
         "desktopTemplate": "../packaging/linux/formvis-deb.desktop",
         "files": { "/usr/share/formvis/libcheck": "../setup/libcheck", "/usr/bin/formvis-launch": "../packaging/linux/formvis-launch" }
       },
+      "rpm": {
+        "desktopTemplate": "../packaging/linux/formvis-deb.desktop",
+        "files": { "/usr/share/formvis/libcheck": "../setup/libcheck", "/usr/bin/formvis-launch": "../packaging/linux/formvis-launch" }
+      },
       "appimage": {
         "files": { "/usr/bin/formvis-launch": "../packaging/linux/formvis-launch" }
       }

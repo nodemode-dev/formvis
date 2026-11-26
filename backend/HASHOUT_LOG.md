@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The rpm carries the launcher and the library check, as the deb does · 2.8.2 (src-tauri/tauri.conf.json `bundle.linux.rpm`)
+
+- Kind: fix · logged 2026-11-26 · asked after a Linux tester's FormVis, installed from its rpm, closed right after starting.
+- **What was there.** `bundle.linux` had a `deb` section (the desktop entry from `packaging/linux/formvis-deb.desktop`, whose `Exec` is `formvis-launch`, plus `/usr/bin/formvis-launch` and `/usr/share/formvis/libcheck`) and an `appimage` section (the launcher), and no `rpm` section. The rpm therefore held `usr/bin/formvis` and Tauri's stock desktop entry (`Exec=formvis`): no launcher, no library check, so a missing library on an rpm system ended the program before any message.
+- **The change.** An `rpm` section with the same `desktopTemplate` and the same two `files` as the deb. The template's name says deb; it holds nothing deb-specific and is used as it is. The deb's `recommends` are Debian package names and are not copied. formcompiler's `--config` for the rpm (`compression: none`) merges into this section.
+- **Not the cause of the tester's report.** That was FormPortal's AppImage passing its own GTK settings to what it starts (fixed in FormPortal 0.73.1); the rpm's program runs on its own. This closes the gap found while looking.
+- **Seen.** The section's keys are in `RpmConfig` of the Tauri CLI's `config.schema.json` (2.12.1, `additionalProperties: false`), and both sources exist. The deb's tree, which has the same two files at the same two paths, was run on Ubuntu 24.04: `formvis-launch` starts `formvis`. Not built here: no rpm was made with this section, so that the launcher arrives executable in the rpm is shown only by the release build.
+
 ## A tool that declares files must be one whose path a folder check covers, and a headless file tool must declare files · 2.8.1 (app/routers/mcp.py `_HEADLESS_FILES`, `declaration_faults`; tests/test_agent_approvals.py)
 
 - Kind: fix · logged 2026-11-20 · the queued follow-up "the per-tool declaration check (read-only, approval-gated, folder-confined, document-only)".
